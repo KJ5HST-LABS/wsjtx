@@ -94,6 +94,16 @@ jobs:
           echo "stage_dir=${STAGE}" >> "$GITHUB_OUTPUT"
           echo "dmg_name=wsjtx-${WSJTX_VERSION}-arm64-macOS.dmg" >> "$GITHUB_OUTPUT"
 
+      - name: Ad-hoc code sign
+        run: |
+          STAGE="${{ steps.collect.outputs.stage_dir }}"
+
+          # Sign the app bundle (deep signs frameworks/helpers inside)
+          codesign --force --deep --sign - "${STAGE}/wsjtx.app"
+
+          # Sign all standalone binaries
+          find "${STAGE}" -maxdepth 1 -type f -perm +111 -exec codesign --force --sign - {} \;
+
       - name: Create DMG
         run: |
           hdiutil create -volname "WSJT-X ${WSJTX_VERSION} arm64" \
@@ -128,6 +138,8 @@ jobs:
             Contains the full `wsjtx.app` GUI application, command-line decoder tools (`jt9`, `wsprd`, etc.), and simulators — all built natively for arm64.
 
             Built on GitHub Actions macOS 15 (Apple Silicon).
+
+            **Note:** Binaries are ad-hoc signed (no Apple Developer ID). On first launch, right-click the app and select "Open", or run: `xattr -cr wsjtx.app`
           draft: false
           prerelease: ${{ contains(env.WSJTX_VERSION, 'rc') }}
           files: "**/*.dmg"
