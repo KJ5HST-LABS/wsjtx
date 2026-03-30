@@ -77,10 +77,19 @@ jobs:
           STAGE=stage/wsjtx-${WSJTX_VERSION}-arm64
 
           mkdir -p "${STAGE}"
-          cp "${BUILD}/jt9" "${STAGE}/"
-          cp "${BUILD}/wsprd" "${STAGE}/" 2>/dev/null || true
-          cp "${BUILD}/jt65code" "${STAGE}/" 2>/dev/null || true
-          cp "${BUILD}/jt9code" "${STAGE}/" 2>/dev/null || true
+
+          # Full GUI app bundle
+          cp -R "${BUILD}/wsjtx.app" "${STAGE}/"
+
+          # CLI decoder tools
+          for bin in jt9 wsprd wsprcode jt65code jt4code ft8code q65code encode77 fcal hash22calc; do
+            cp "${BUILD}/${bin}" "${STAGE}/" 2>/dev/null || true
+          done
+
+          # Simulators
+          for bin in ft4sim jt4sim jt65sim cwsim sfoxsim echosim EchoCallSim; do
+            cp "${BUILD}/${bin}" "${STAGE}/" 2>/dev/null || true
+          done
 
           echo "stage_dir=${STAGE}" >> "$GITHUB_OUTPUT"
           echo "dmg_name=wsjtx-${WSJTX_VERSION}-arm64-macOS.dmg" >> "$GITHUB_OUTPUT"
@@ -114,9 +123,9 @@ jobs:
           tag_name: v${{ env.WSJTX_VERSION }}
           name: WSJT-X ${{ env.WSJTX_VERSION }} — arm64 macOS
           body: |
-            Native Apple Silicon (arm64) build of WSJT-X ${{ env.WSJTX_VERSION }} decoder binaries for macOS.
+            Native Apple Silicon (arm64) build of WSJT-X ${{ env.WSJTX_VERSION }} for macOS.
 
-            Contains `jt9` and other command-line decoder tools built natively for arm64.
+            Contains the full `wsjtx.app` GUI application, command-line decoder tools (`jt9`, `wsprd`, etc.), and simulators — all built natively for arm64.
 
             Built on GitHub Actions macOS 15 (Apple Silicon).
           draft: false
