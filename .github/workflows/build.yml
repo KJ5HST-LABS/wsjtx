@@ -94,15 +94,53 @@ jobs:
           echo "stage_dir=${STAGE}" >> "$GITHUB_OUTPUT"
           echo "dmg_name=wsjtx-${WSJTX_VERSION}-arm64-macOS.dmg" >> "$GITHUB_OUTPUT"
 
-      - name: Ad-hoc code sign
+      - name: Import signing certificate
+        env:
+          P12_BASE64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}
+          P12_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+        run: |
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 16)"
+
+          # Decode certificate
+          echo "$P12_BASE64" | base64 --decode > "$CERT_PATH"
+
+          # Create temporary keychain
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Import certificate
+          security import "$CERT_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Add to search list
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+
+          # Find the Developer ID identity
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep "Developer ID Application" | head -1 | awk -F'"' '{print $2}')
+          echo "Found identity: $IDENTITY"
+          echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
+        id: keychain
+
+      - name: Code sign binaries
         run: |
           STAGE="${{ steps.collect.outputs.stage_dir }}"
+          IDENTITY="${{ steps.keychain.outputs.identity }}"
+
+          echo "Signing with: $IDENTITY"
+
+          # Sign all standalone binaries first
+          find "${STAGE}" -maxdepth 1 -type f -perm +111 \
+            -exec codesign --force --options runtime --timestamp --sign "$IDENTITY" {} \;
 
           # Sign the app bundle (deep signs frameworks/helpers inside)
-          codesign --force --deep --sign - "${STAGE}/wsjtx.app"
+          codesign --force --deep --options runtime --timestamp --sign "$IDENTITY" "${STAGE}/wsjtx.app"
 
-          # Sign all standalone binaries
-          find "${STAGE}" -maxdepth 1 -type f -perm +111 -exec codesign --force --sign - {} \;
+          # Verify
+          codesign --verify --verbose "${STAGE}/wsjtx.app"
 
       - name: Create DMG
         run: |
@@ -110,6 +148,33 @@ jobs:
             -srcfolder "${{ steps.collect.outputs.stage_dir }}" \
             -ov -format UDZO \
             "${{ steps.collect.outputs.dmg_name }}"
+
+      - name: Sign DMG
+        run: |
+          codesign --force --timestamp --sign "${{ steps.keychain.outputs.identity }}" \
+            "${{ steps.collect.outputs.dmg_name }}"
+
+      - name: Notarize DMG
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          DMG="${{ steps.collect.outputs.dmg_name }}"
+
+          # Submit for notarization
+          xcrun notarytool submit "$DMG" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_ID_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+
+          # Staple the notarization ticket to the DMG
+          xcrun stapler staple "$DMG"
+
+      - name: Clean up keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
 
       - name: Upload DMG artifact
         uses: actions/upload-artifact@v4
@@ -137,9 +202,7 @@ jobs:
 
             Contains the full `wsjtx.app` GUI application, command-line decoder tools (`jt9`, `wsprd`, etc.), and simulators — all built natively for arm64.
 
-            Built on GitHub Actions macOS 15 (Apple Silicon).
-
-            **Note:** Binaries are ad-hoc signed (no Apple Developer ID). On first launch, right-click the app and select "Open", or run: `xattr -cr wsjtx.app`
+            Signed with Developer ID and notarized by Apple. Built on GitHub Actions macOS 15 (Apple Silicon).
           draft: false
           prerelease: ${{ contains(env.WSJTX_VERSION, 'rc') }}
           files: "**/*.dmg"
