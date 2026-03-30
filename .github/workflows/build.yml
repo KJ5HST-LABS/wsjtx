@@ -75,23 +75,25 @@ jobs:
         run: |
           BUILD=wsjtx-build/wsjtx-prefix/src/wsjtx-build
           STAGE=stage/wsjtx-${WSJTX_VERSION}-arm64
+          ASSETS=assets
 
-          mkdir -p "${STAGE}"
+          mkdir -p "${STAGE}" "${ASSETS}"
 
           # Full GUI app bundle
           cp -R "${BUILD}/wsjtx.app" "${STAGE}/"
 
           # CLI decoder tools
           for bin in jt9 wsprd wsprcode jt65code jt4code ft8code q65code encode77 fcal hash22calc; do
-            cp "${BUILD}/${bin}" "${STAGE}/" 2>/dev/null || true
+            [ -f "${BUILD}/${bin}" ] && cp "${BUILD}/${bin}" "${STAGE}/" && cp "${BUILD}/${bin}" "${ASSETS}/"
           done
 
           # Simulators
           for bin in ft4sim jt4sim jt65sim cwsim sfoxsim echosim EchoCallSim; do
-            cp "${BUILD}/${bin}" "${STAGE}/" 2>/dev/null || true
+            [ -f "${BUILD}/${bin}" ] && cp "${BUILD}/${bin}" "${STAGE}/" && cp "${BUILD}/${bin}" "${ASSETS}/"
           done
 
           echo "stage_dir=${STAGE}" >> "$GITHUB_OUTPUT"
+          echo "assets_dir=${ASSETS}" >> "$GITHUB_OUTPUT"
           echo "dmg_name=wsjtx-${WSJTX_VERSION}-arm64-macOS.dmg" >> "$GITHUB_OUTPUT"
 
       - name: Import signing certificate
@@ -128,18 +130,19 @@ jobs:
       - name: Code sign binaries
         run: |
           STAGE="${{ steps.collect.outputs.stage_dir }}"
+          ASSETS="${{ steps.collect.outputs.assets_dir }}"
           IDENTITY="${{ steps.keychain.outputs.identity }}"
 
           echo "Signing with: $IDENTITY"
 
-          # Sign all standalone binaries first
-          find "${STAGE}" -maxdepth 1 -type f -perm +111 \
-            -exec codesign --force --options runtime --timestamp --sign "$IDENTITY" {} \;
+          # Sign standalone binaries (both stage and individual assets)
+          for dir in "${STAGE}" "${ASSETS}"; do
+            find "${dir}" -maxdepth 1 -type f -perm +111 \
+              -exec codesign --force --options runtime --timestamp --sign "$IDENTITY" {} \;
+          done
 
-          # Sign the app bundle (deep signs frameworks/helpers inside)
+          # Sign the app bundle
           codesign --force --deep --options runtime --timestamp --sign "$IDENTITY" "${STAGE}/wsjtx.app"
-
-          # Verify
           codesign --verify --verbose "${STAGE}/wsjtx.app"
 
       - name: Create DMG
@@ -154,23 +157,35 @@ jobs:
           codesign --force --timestamp --sign "${{ steps.keychain.outputs.identity }}" \
             "${{ steps.collect.outputs.dmg_name }}"
 
-      - name: Notarize DMG
+      - name: Create app zip for notarization
+        run: |
+          cd "${{ steps.collect.outputs.stage_dir }}"
+          zip -r "$GITHUB_WORKSPACE/wsjtx.app.zip" wsjtx.app
+
+      - name: Notarize DMG and app
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          DMG="${{ steps.collect.outputs.dmg_name }}"
-
-          # Submit for notarization
-          xcrun notarytool submit "$DMG" \
+          # Notarize the DMG
+          xcrun notarytool submit "${{ steps.collect.outputs.dmg_name }}" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_ID_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
             --wait
 
-          # Staple the notarization ticket to the DMG
-          xcrun stapler staple "$DMG"
+          xcrun stapler staple "${{ steps.collect.outputs.dmg_name }}"
+
+          # Notarize the standalone binaries (bundled as zip)
+          ASSETS="${{ steps.collect.outputs.assets_dir }}"
+          zip -j "${ASSETS}/cli-tools.zip" "${ASSETS}"/*
+          xcrun notarytool submit "${ASSETS}/cli-tools.zip" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_ID_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait
+          rm "${ASSETS}/cli-tools.zip"
 
       - name: Clean up keychain
         if: always()
@@ -182,6 +197,12 @@ jobs:
           name: ${{ steps.collect.outputs.dmg_name }}
           path: ${{ steps.collect.outputs.dmg_name }}
 
+      - name: Upload individual binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: individual-binaries
+          path: ${{ steps.collect.outputs.assets_dir }}/
+
   release:
     needs: build
     runs-on: ubuntu-latest
@@ -189,10 +210,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - name: Download artifact
+      - name: Download artifacts
         uses: actions/download-artifact@v4
 
-      - name: Create or update release
+      - name: Versioned release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ env.WSJTX_VERSION }}
@@ -200,9 +221,57 @@ jobs:
           body: |
             Native Apple Silicon (arm64) build of WSJT-X ${{ env.WSJTX_VERSION }} for macOS.
 
-            Contains the full `wsjtx.app` GUI application, command-line decoder tools (`jt9`, `wsprd`, etc.), and simulators — all built natively for arm64.
+            ## Downloads
+
+            | File | Description |
+            |------|-------------|
+            | `wsjtx-${{ env.WSJTX_VERSION }}-arm64-macOS.dmg` | Full package (app + all tools) |
+            | `jt9` | JT9/FT8/FT4/Q65 decoder |
+            | `wsprd` | WSPR decoder |
+            | `ft8code` | FT8 encoder/decoder |
+            | `jt65code` | JT65 encoder/decoder |
+            | `q65code` | Q65 encoder/decoder |
+            | `jt4code` | JT4 encoder/decoder |
+            | `wsprcode` | WSPR encoder/decoder |
+            | `encode77` | 77-bit message encoder |
 
             Signed with Developer ID and notarized by Apple. Built on GitHub Actions macOS 15 (Apple Silicon).
           draft: false
           prerelease: ${{ contains(env.WSJTX_VERSION, 'rc') }}
-          files: "**/*.dmg"
+          files: |
+            **/*.dmg
+            individual-binaries/*
+
+      - name: Latest release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest Build — arm64 macOS
+          body: |
+            **Always points to the newest build.** Currently WSJT-X ${{ env.WSJTX_VERSION }}.
+
+            Grab individual tools directly:
+            ```
+            curl -LO https://github.com/KJ5HST-LABS/WSJT-X-MAC-ARM64/releases/download/latest/jt9
+            chmod +x jt9
+            ```
+
+            | File | Description |
+            |------|-------------|
+            | `wsjtx-${{ env.WSJTX_VERSION }}-arm64-macOS.dmg` | Full package (app + all tools) |
+            | `jt9` | JT9/FT8/FT4/Q65 decoder |
+            | `wsprd` | WSPR decoder |
+            | `ft8code` | FT8 encoder/decoder |
+            | `jt65code` | JT65 encoder/decoder |
+            | `q65code` | Q65 encoder/decoder |
+            | `jt4code` | JT4 encoder/decoder |
+            | `wsprcode` | WSPR encoder/decoder |
+            | `encode77` | 77-bit message encoder |
+
+            Signed with Developer ID and notarized by Apple.
+          make_latest: true
+          draft: false
+          prerelease: false
+          files: |
+            **/*.dmg
+            individual-binaries/*
