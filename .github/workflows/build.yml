@@ -1,0 +1,115 @@
+name: Build WSJT-X arm64
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      wsjtx_version:
+        description: "WSJT-X version to build"
+        default: "3.0.0-rc1"
+        required: true
+
+env:
+  WSJTX_VERSION: ${{ github.event.inputs.wsjtx_version || '3.0.0-rc1' }}
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: brew install cmake gcc fftw boost qt@5 libusb
+
+      - name: Fix Qt5 keg-only paths
+        run: |
+          QT5_PREFIX="$(brew --prefix qt@5)"
+          [ -e /opt/homebrew/mkspecs ] || ln -s "${QT5_PREFIX}/mkspecs" /opt/homebrew/mkspecs
+          [ -e /opt/homebrew/plugins ] || ln -s "${QT5_PREFIX}/plugins" /opt/homebrew/plugins
+
+      - name: Download source
+        run: |
+          curl -L -o "wsjtx-${WSJTX_VERSION}.tgz" \
+            "https://sourceforge.net/projects/wsjt/files/wsjtx-${WSJTX_VERSION}/wsjtx-${WSJTX_VERSION}.tgz/download"
+          tar xzf "wsjtx-${WSJTX_VERSION}.tgz"
+
+      - name: Patch superbuild for CMake 4.x
+        run: |
+          sed -i '' \
+            -e 's/^add_custom_target (install DEPENDS/add_custom_target (wsjtx-do-install DEPENDS/' \
+            -e 's/^add_custom_target (package DEPENDS/add_custom_target (wsjtx-do-package DEPENDS/' \
+            "wsjtx-${WSJTX_VERSION}/CMakeLists.txt"
+
+      - name: Configure
+        run: |
+          mkdir wsjtx-build
+          cmake -S "wsjtx-${WSJTX_VERSION}" -B wsjtx-build \
+            -DCMAKE_PREFIX_PATH="$(brew --prefix qt@5);$(brew --prefix libusb);$(brew --prefix fftw);$(brew --prefix boost)" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DWSJT_GENERATE_DOCS=OFF \
+            -DWSJT_SKIP_MANPAGES=ON \
+            -Wno-dev
+
+      - name: Build
+        run: cmake --build wsjtx-build
+
+      - name: Verify arm64
+        run: |
+          JT9=wsjtx-build/wsjtx-prefix/src/wsjtx-build/jt9
+          file "$JT9"
+          lipo -archs "$JT9" | grep -q arm64
+
+      - name: Collect binaries
+        id: collect
+        run: |
+          BUILD=wsjtx-build/wsjtx-prefix/src/wsjtx-build
+          STAGE=stage/wsjtx-${WSJTX_VERSION}-arm64
+
+          mkdir -p "${STAGE}"
+          cp "${BUILD}/jt9" "${STAGE}/"
+          cp "${BUILD}/wsprd" "${STAGE}/" 2>/dev/null || true
+          cp "${BUILD}/jt65code" "${STAGE}/" 2>/dev/null || true
+          cp "${BUILD}/jt9code" "${STAGE}/" 2>/dev/null || true
+
+          echo "stage_dir=${STAGE}" >> "$GITHUB_OUTPUT"
+          echo "dmg_name=wsjtx-${WSJTX_VERSION}-arm64-macOS.dmg" >> "$GITHUB_OUTPUT"
+
+      - name: Create DMG
+        run: |
+          hdiutil create -volname "WSJT-X ${WSJTX_VERSION} arm64" \
+            -srcfolder "${{ steps.collect.outputs.stage_dir }}" \
+            -ov -format UDZO \
+            "${{ steps.collect.outputs.dmg_name }}"
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.collect.outputs.dmg_name }}
+          path: ${{ steps.collect.outputs.dmg_name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    permissions:
+      contents: write
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+
+      - name: Create or update release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.WSJTX_VERSION }}
+          name: WSJT-X ${{ env.WSJTX_VERSION }} — arm64 macOS
+          body: |
+            Native Apple Silicon (arm64) build of WSJT-X ${{ env.WSJTX_VERSION }} decoder binaries for macOS.
+
+            Contains `jt9` and other command-line decoder tools built natively for arm64.
+
+            Built on GitHub Actions macOS 15 (Apple Silicon).
+          draft: false
+          prerelease: ${{ contains(env.WSJTX_VERSION, 'rc') }}
+          files: "**/*.dmg"
