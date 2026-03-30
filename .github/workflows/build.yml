@@ -22,6 +22,14 @@ jobs:
       - name: Install dependencies
         run: brew install cmake gcc fftw boost qt@5 libusb
 
+      - name: Locate gfortran
+        id: fc
+        run: |
+          FC="$(brew --prefix gcc)/bin/gfortran"
+          [ -f "$FC" ] || FC="$(ls /opt/homebrew/bin/gfortran-* 2>/dev/null | sort -V | tail -1)"
+          echo "Found gfortran: $FC"
+          echo "path=$FC" >> "$GITHUB_OUTPUT"
+
       - name: Fix Qt5 keg-only paths
         run: |
           QT5_PREFIX="$(brew --prefix qt@5)"
@@ -46,6 +54,7 @@ jobs:
           mkdir wsjtx-build
           cmake -S "wsjtx-${WSJTX_VERSION}" -B wsjtx-build \
             -DCMAKE_PREFIX_PATH="$(brew --prefix qt@5);$(brew --prefix libusb);$(brew --prefix fftw);$(brew --prefix boost)" \
+            -DCMAKE_Fortran_COMPILER="${{ steps.fc.outputs.path }}" \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DWSJT_GENERATE_DOCS=OFF \
