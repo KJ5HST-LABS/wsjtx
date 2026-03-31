@@ -94,7 +94,6 @@ jobs:
 
           echo "stage_dir=${STAGE}" >> "$GITHUB_OUTPUT"
           echo "assets_dir=${ASSETS}" >> "$GITHUB_OUTPUT"
-          echo "dmg_name=wsjtx-${WSJTX_VERSION}-arm64-macOS.dmg" >> "$GITHUB_OUTPUT"
 
       - name: Bundle dylibs into app
         run: |
@@ -367,19 +366,7 @@ jobs:
             --sign "$INST_IDENTITY" \
             "wsjtx-${WSJTX_VERSION}-arm64-macOS.pkg"
 
-      - name: Create DMG
-        run: |
-          hdiutil create -volname "WSJT-X ${WSJTX_VERSION} arm64" \
-            -srcfolder "${{ steps.collect.outputs.stage_dir }}" \
-            -ov -format UDZO \
-            "${{ steps.collect.outputs.dmg_name }}"
-
-      - name: Sign DMG
-        run: |
-          codesign --force --timestamp --sign "${{ steps.keychain.outputs.identity }}" \
-            "${{ steps.collect.outputs.dmg_name }}"
-
-      - name: Notarize DMG and pkg
+      - name: Notarize pkg
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
@@ -407,7 +394,6 @@ jobs:
             xcrun stapler staple "$file"
           }
 
-          notarize_and_staple "${{ steps.collect.outputs.dmg_name }}"
           notarize_and_staple "wsjtx-${WSJTX_VERSION}-arm64-macOS.pkg"
 
       - name: Notarize CLI tools
@@ -437,12 +423,6 @@ jobs:
       - name: Clean up keychain
         if: always()
         run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
-
-      - name: Upload DMG artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ steps.collect.outputs.dmg_name }}
-          path: ${{ steps.collect.outputs.dmg_name }}
 
       - name: Upload pkg artifact
         uses: actions/upload-artifact@v4
@@ -495,8 +475,7 @@ jobs:
 
             | File | Description |
             |------|-------------|
-            | `wsjtx-${{ env.WSJTX_VERSION }}-arm64-macOS.pkg` | **Installer (recommended)** — installs app, CLI tools, and shared memory config |
-            | `wsjtx-${{ env.WSJTX_VERSION }}-arm64-macOS.dmg` | DMG with app + all tools (manual install) |
+            | `wsjtx-${{ env.WSJTX_VERSION }}-arm64-macOS.pkg` | **Installer** — installs app, CLI tools, and shared memory config |
             | `jt9.tar.gz` | JT9/FT8/FT4/Q65 decoder |
             | `wsprd.tar.gz` | WSPR decoder |
             | `ft8code.tar.gz` | FT8 encoder/decoder |
@@ -510,7 +489,6 @@ jobs:
           draft: false
           prerelease: ${{ contains(env.WSJTX_VERSION, 'rc') }}
           files: |
-            **/*.dmg
             **/*.pkg
             individual-binaries/*.tar.gz
 
@@ -530,8 +508,7 @@ jobs:
 
             | File | Description |
             |------|-------------|
-            | `wsjtx-${{ env.WSJTX_VERSION }}-arm64-macOS.pkg` | **Installer (recommended)** — installs app, CLI tools, and shared memory config |
-            | `wsjtx-${{ env.WSJTX_VERSION }}-arm64-macOS.dmg` | DMG with app + all tools (manual install) |
+            | `wsjtx-${{ env.WSJTX_VERSION }}-arm64-macOS.pkg` | **Installer** — installs app, CLI tools, and shared memory config |
             | `jt9.tar.gz` | JT9/FT8/FT4/Q65 decoder |
             | `wsprd.tar.gz` | WSPR decoder |
             | `ft8code.tar.gz` | FT8 encoder/decoder |
@@ -546,6 +523,5 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            **/*.dmg
             **/*.pkg
             individual-binaries/*.tar.gz
