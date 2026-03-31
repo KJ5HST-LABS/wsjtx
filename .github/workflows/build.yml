@@ -179,14 +179,10 @@ jobs:
             fi
           }
 
-          # Strip ad-hoc signatures so install_name_tool works
-          for bin in "${ASSETS}"/*; do
-            [ -f "$bin" ] && [ -x "$bin" ] && codesign --remove-signature "$bin" 2>/dev/null || true
-          done
-
           bundle_cli() {
             local binary="$1"
             local libdir="$2"
+            local changes_made=0
             for lib in $(otool -L "$binary" | awk '{print $1}' | grep -E '(/opt/homebrew|@rpath)'); do
               local resolved
               resolved=$(resolve_lib "$lib")
@@ -196,12 +192,15 @@ jobs:
                 echo "  Bundling: $resolved -> ${libname}"
                 cp "$resolved" "${libdir}/${libname}"
                 chmod 644 "${libdir}/${libname}"
-                codesign --remove-signature "${libdir}/${libname}" 2>/dev/null || true
                 install_name_tool -id "@loader_path/lib/${libname}" "${libdir}/${libname}"
+                codesign --force --sign - "${libdir}/${libname}"
                 bundle_cli "${libdir}/${libname}" "${libdir}"
               fi
               install_name_tool -change "$lib" "@loader_path/lib/${libname}" "$binary"
+              changes_made=1
             done
+            # Re-sign after all changes to this binary
+            [ "$changes_made" -eq 1 ] && codesign --force --sign - "$binary"
           }
 
           for bin in "${ASSETS}"/*; do
@@ -234,13 +233,15 @@ jobs:
           cp -R "${LIBDIR}" "${STAGE}/lib"
           for bin in "${STAGE}"/*; do
             [ -f "$bin" ] && [ -x "$bin" ] && {
-              codesign --remove-signature "$bin" 2>/dev/null || true
+              changes=0
               for lib in $(otool -L "$bin" | awk '{print $1}' | grep -E '(/opt/homebrew|@rpath)'); do
                 resolved=$(resolve_lib "$lib")
                 [ -z "$resolved" ] && continue
                 libname=$(basename "$resolved")
                 install_name_tool -change "$lib" "@loader_path/lib/${libname}" "$bin"
+                changes=1
               done
+              [ "$changes" -eq 1 ] && codesign --force --sign - "$bin"
             }
           done
 
