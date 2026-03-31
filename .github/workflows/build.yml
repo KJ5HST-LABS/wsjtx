@@ -223,35 +223,38 @@ jobs:
             }
           done
 
-      - name: Import signing certificate
+      - name: Import signing certificates
         env:
-          P12_BASE64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}
-          P12_PASSWORD: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          APP_P12: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}
+          APP_P12_PW: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          INST_P12: ${{ secrets.DEVELOPER_ID_INSTALLER_P12 }}
+          INST_P12_PW: ${{ secrets.DEVELOPER_ID_INSTALLER_PASSWORD }}
         run: |
-          CERT_PATH="$RUNNER_TEMP/certificate.p12"
           KEYCHAIN_PATH="$RUNNER_TEMP/signing.keychain-db"
           KEYCHAIN_PASSWORD="$(openssl rand -hex 16)"
 
-          # Decode certificate
-          echo "$P12_BASE64" | base64 --decode > "$CERT_PATH"
-
-          # Create temporary keychain
           security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
           security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
 
-          # Import certificate
-          security import "$CERT_PATH" -P "$P12_PASSWORD" -A -t cert -f pkcs12 \
-            -k "$KEYCHAIN_PATH"
-          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          # Import application cert
+          echo "$APP_P12" | base64 --decode > "$RUNNER_TEMP/app.p12"
+          security import "$RUNNER_TEMP/app.p12" -P "$APP_P12_PW" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
 
-          # Add to search list
+          # Import installer cert
+          echo "$INST_P12" | base64 --decode > "$RUNNER_TEMP/installer.p12"
+          security import "$RUNNER_TEMP/installer.p12" -P "$INST_P12_PW" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
           security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
 
-          # Find the Developer ID identity
-          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep "Developer ID Application" | head -1 | awk -F'"' '{print $2}')
-          echo "Found identity: $IDENTITY"
-          echo "identity=$IDENTITY" >> "$GITHUB_OUTPUT"
+          # Find identities
+          APP_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | grep "Developer ID Application" | head -1 | awk -F'"' '{print $2}')
+          INST_IDENTITY=$(security find-identity -v "$KEYCHAIN_PATH" | grep "Developer ID Installer" | head -1 | awk -F'"' '{print $2}')
+          echo "App identity: $APP_IDENTITY"
+          echo "Installer identity: $INST_IDENTITY"
+          echo "identity=$APP_IDENTITY" >> "$GITHUB_OUTPUT"
+          echo "installer_identity=$INST_IDENTITY" >> "$GITHUB_OUTPUT"
         id: keychain
 
       - name: Code sign binaries
@@ -342,13 +345,11 @@ jobs:
             "$RUNNER_TEMP/wsjtx-component.pkg"
 
           # Build the distribution pkg (nicer installer UI)
+          INST_IDENTITY="${{ steps.keychain.outputs.installer_identity }}"
           productbuild \
             --package "$RUNNER_TEMP/wsjtx-component.pkg" \
-            --sign "$IDENTITY" \
+            --sign "$INST_IDENTITY" \
             "wsjtx-${WSJTX_VERSION}-arm64-macOS.pkg"
-
-          # Sign the pkg if productbuild --sign didn't work
-          codesign --force --timestamp --sign "$IDENTITY" "wsjtx-${WSJTX_VERSION}-arm64-macOS.pkg" 2>/dev/null || true
 
       - name: Create DMG
         run: |
