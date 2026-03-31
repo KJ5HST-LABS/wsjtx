@@ -230,18 +230,39 @@ jobs:
           STAGE="${{ steps.collect.outputs.stage_dir }}"
           ASSETS="${{ steps.collect.outputs.assets_dir }}"
           IDENTITY="${{ steps.keychain.outputs.identity }}"
+          APP="${STAGE}/wsjtx.app"
 
           echo "Signing with: $IDENTITY"
 
-          # Sign standalone binaries (both stage and individual assets)
+          # Sign every Mach-O inside the app bundle individually (inside-out)
+          # Frameworks
+          find "${APP}/Contents/Frameworks" -type f \( -name "*.dylib" -o -perm +111 \) \
+            -exec codesign --force --options runtime --timestamp --sign "$IDENTITY" {} \;
+          # Framework bundles
+          find "${APP}/Contents/Frameworks" -name "*.framework" -type d | while read fw; do
+            codesign --force --options runtime --timestamp --sign "$IDENTITY" "$fw"
+          done
+          # Plugins
+          find "${APP}/Contents/PlugIns" -type f -name "*.dylib" \
+            -exec codesign --force --options runtime --timestamp --sign "$IDENTITY" {} \; 2>/dev/null || true
+          # Main executable and bundle
+          codesign --force --options runtime --timestamp --sign "$IDENTITY" "${APP}/Contents/MacOS/wsjtx"
+          codesign --force --options runtime --timestamp --sign "$IDENTITY" "${APP}"
+
+          # Verify
+          codesign --verify --deep --strict --verbose=2 "${APP}"
+
+          # Sign standalone CLI binaries
           for dir in "${STAGE}" "${ASSETS}"; do
             find "${dir}" -maxdepth 1 -type f -perm +111 \
               -exec codesign --force --options runtime --timestamp --sign "$IDENTITY" {} \;
           done
 
-          # Sign the app bundle
-          codesign --force --deep --options runtime --timestamp --sign "$IDENTITY" "${STAGE}/wsjtx.app"
-          codesign --verify --verbose "${STAGE}/wsjtx.app"
+          # Sign bundled dylibs for CLI tools
+          for dir in "${STAGE}/lib" "${ASSETS}/lib"; do
+            [ -d "$dir" ] && find "$dir" -type f \
+              -exec codesign --force --options runtime --timestamp --sign "$IDENTITY" {} \;
+          done
 
       - name: Create DMG
         run: |
@@ -260,30 +281,56 @@ jobs:
           cd "${{ steps.collect.outputs.stage_dir }}"
           zip -r "$GITHUB_WORKSPACE/wsjtx.app.zip" wsjtx.app
 
-      - name: Notarize DMG and app
+      - name: Notarize DMG
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          # Notarize the DMG
-          xcrun notarytool submit "${{ steps.collect.outputs.dmg_name }}" \
+          DMG="${{ steps.collect.outputs.dmg_name }}"
+
+          xcrun notarytool submit "$DMG" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_ID_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
-            --wait
+            --wait 2>&1 | tee notarize-dmg.log
 
-          xcrun stapler staple "${{ steps.collect.outputs.dmg_name }}"
+          # If notarization failed, fetch the detailed log
+          if grep -q "status: Invalid" notarize-dmg.log; then
+            SUBMISSION_ID=$(grep "id:" notarize-dmg.log | head -1 | awk '{print $2}')
+            echo "Notarization failed. Fetching log for $SUBMISSION_ID..."
+            xcrun notarytool log "$SUBMISSION_ID" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_ID_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" || true
+            exit 1
+          fi
 
-          # Notarize the standalone binaries (bundled as zip)
+          xcrun stapler staple "$DMG"
+
+      - name: Notarize CLI tools
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
           ASSETS="${{ steps.collect.outputs.assets_dir }}"
-          zip -j "${ASSETS}/cli-tools.zip" "${ASSETS}"/*
-          xcrun notarytool submit "${ASSETS}/cli-tools.zip" \
+          zip -r cli-tools.zip "${ASSETS}"/
+          xcrun notarytool submit cli-tools.zip \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_ID_PASSWORD" \
             --team-id "$APPLE_TEAM_ID" \
-            --wait
-          rm "${ASSETS}/cli-tools.zip"
+            --wait 2>&1 | tee notarize-cli.log
+
+          if grep -q "status: Invalid" notarize-cli.log; then
+            SUBMISSION_ID=$(grep "id:" notarize-cli.log | head -1 | awk '{print $2}')
+            xcrun notarytool log "$SUBMISSION_ID" \
+              --apple-id "$APPLE_ID" \
+              --password "$APPLE_ID_PASSWORD" \
+              --team-id "$APPLE_TEAM_ID" || true
+            exit 1
+          fi
+          rm cli-tools.zip
 
       - name: Clean up keychain
         if: always()
