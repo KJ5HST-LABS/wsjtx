@@ -101,31 +101,41 @@ jobs:
           STAGE="${{ steps.collect.outputs.stage_dir }}"
           APP="${STAGE}/wsjtx.app"
           FRAMEWORKS="${APP}/Contents/Frameworks"
+          GCC_LIB="$(brew --prefix gcc)/lib/gcc/current"
           mkdir -p "${FRAMEWORKS}"
 
           # Use macdeployqt to bundle Qt frameworks and plugins
           "$(brew --prefix qt@5)/bin/macdeployqt" "${APP}" -verbose=1
 
-          # Bundle non-Qt Homebrew dylibs into the app
+          # Resolve a dylib path to an actual file
+          resolve_lib() {
+            local lib="$1"
+            if [[ "$lib" == /opt/homebrew/* ]]; then
+              echo "$lib"
+            elif [[ "$lib" == @rpath/* ]]; then
+              local name="${lib#@rpath/}"
+              # Search known rpath locations
+              for dir in "$GCC_LIB" /opt/homebrew/lib; do
+                [ -f "$dir/$name" ] && echo "$dir/$name" && return
+              done
+            fi
+          }
+
+          # Recursively bundle a binary's non-system, non-Qt dylibs
           bundle_dylib() {
             local binary="$1"
-            for lib in $(otool -L "$binary" | awk '/\/opt\/homebrew/{print $1}' | grep -v Qt); do
-              local libname=$(basename "$lib")
+            for lib in $(otool -L "$binary" | awk '{print $1}' | grep -E '(/opt/homebrew|@rpath)' | grep -v Qt); do
+              local resolved
+              resolved=$(resolve_lib "$lib")
+              [ -z "$resolved" ] && continue
+              local libname=$(basename "$resolved")
               if [ ! -f "${FRAMEWORKS}/${libname}" ]; then
-                echo "  Bundling: $lib -> ${FRAMEWORKS}/${libname}"
-                cp "$lib" "${FRAMEWORKS}/${libname}"
+                echo "  Bundling: $resolved -> ${FRAMEWORKS}/${libname}"
+                cp "$resolved" "${FRAMEWORKS}/${libname}"
                 chmod 644 "${FRAMEWORKS}/${libname}"
-                # Recursively bundle dependencies of this lib
-                for sublib in $(otool -L "${FRAMEWORKS}/${libname}" | awk '/\/opt\/homebrew/{print $1}' | grep -v Qt); do
-                  local sublibname=$(basename "$sublib")
-                  if [ ! -f "${FRAMEWORKS}/${sublibname}" ]; then
-                    cp "$sublib" "${FRAMEWORKS}/${sublibname}"
-                    chmod 644 "${FRAMEWORKS}/${sublibname}"
-                    install_name_tool -id "@executable_path/../Frameworks/${sublibname}" "${FRAMEWORKS}/${sublibname}"
-                  fi
-                  install_name_tool -change "$sublib" "@executable_path/../Frameworks/${sublibname}" "${FRAMEWORKS}/${libname}" 2>/dev/null || true
-                done
                 install_name_tool -id "@executable_path/../Frameworks/${libname}" "${FRAMEWORKS}/${libname}"
+                # Recurse into this lib's deps
+                bundle_dylib "${FRAMEWORKS}/${libname}"
               fi
               install_name_tool -change "$lib" "@executable_path/../Frameworks/${libname}" "$binary" 2>/dev/null || true
             done
@@ -134,42 +144,55 @@ jobs:
           # Fix the main executable
           bundle_dylib "${APP}/Contents/MacOS/wsjtx"
 
-          # Verify no Homebrew paths remain
-          echo "Checking for remaining Homebrew references..."
-          if otool -L "${APP}/Contents/MacOS/wsjtx" | grep /opt/homebrew; then
-            echo "WARNING: Homebrew paths still present"
+          # Also fix any already-bundled Frameworks that have @rpath or Homebrew refs
+          for fw in "${FRAMEWORKS}"/*.dylib; do
+            [ -f "$fw" ] && bundle_dylib "$fw"
+          done
+
+          # Verify no Homebrew or @rpath refs remain
+          echo "Checking for remaining external references..."
+          REMAINING=$(otool -L "${APP}/Contents/MacOS/wsjtx" "${FRAMEWORKS}"/*.dylib 2>/dev/null | grep -E '(/opt/homebrew|@rpath)' | grep -v Qt || true)
+          if [ -n "$REMAINING" ]; then
+            echo "WARNING: External paths still present:"
+            echo "$REMAINING"
           else
-            echo "All Homebrew dylibs bundled successfully"
+            echo "All dylibs bundled successfully"
           fi
 
       - name: Bundle dylibs into CLI tools
         run: |
           ASSETS="${{ steps.collect.outputs.assets_dir }}"
           STAGE="${{ steps.collect.outputs.stage_dir }}"
+          GCC_LIB="$(brew --prefix gcc)/lib/gcc/current"
           LIBDIR="${ASSETS}/lib"
           mkdir -p "${LIBDIR}"
 
-          # Collect all Homebrew dylibs needed by any CLI tool
+          resolve_lib() {
+            local lib="$1"
+            if [[ "$lib" == /opt/homebrew/* ]]; then
+              echo "$lib"
+            elif [[ "$lib" == @rpath/* ]]; then
+              local name="${lib#@rpath/}"
+              for dir in "$GCC_LIB" /opt/homebrew/lib; do
+                [ -f "$dir/$name" ] && echo "$dir/$name" && return
+              done
+            fi
+          }
+
           bundle_cli() {
             local binary="$1"
             local libdir="$2"
-            for lib in $(otool -L "$binary" | awk '/\/opt\/homebrew/{print $1}'); do
-              local libname=$(basename "$lib")
+            for lib in $(otool -L "$binary" | awk '{print $1}' | grep -E '(/opt/homebrew|@rpath)'); do
+              local resolved
+              resolved=$(resolve_lib "$lib")
+              [ -z "$resolved" ] && continue
+              local libname=$(basename "$resolved")
               if [ ! -f "${libdir}/${libname}" ]; then
-                echo "  Bundling: $lib"
-                cp "$lib" "${libdir}/${libname}"
+                echo "  Bundling: $resolved"
+                cp "$resolved" "${libdir}/${libname}"
                 chmod 644 "${libdir}/${libname}"
                 install_name_tool -id "@loader_path/lib/${libname}" "${libdir}/${libname}"
-                # Handle transitive deps
-                for sublib in $(otool -L "${libdir}/${libname}" | awk '/\/opt\/homebrew/{print $1}'); do
-                  local sublibname=$(basename "$sublib")
-                  if [ ! -f "${libdir}/${sublibname}" ]; then
-                    cp "$sublib" "${libdir}/${sublibname}"
-                    chmod 644 "${libdir}/${sublibname}"
-                    install_name_tool -id "@loader_path/lib/${sublibname}" "${libdir}/${sublibname}"
-                  fi
-                  install_name_tool -change "$sublib" "@loader_path/lib/${sublibname}" "${libdir}/${libname}" 2>/dev/null || true
-                done
+                bundle_cli "${libdir}/${libname}" "${libdir}"
               fi
               install_name_tool -change "$lib" "@loader_path/lib/${libname}" "$binary" 2>/dev/null || true
             done
@@ -182,13 +205,19 @@ jobs:
             }
           done
 
-          # Also fix the stage copies (for the DMG)
-          STAGE_LIBDIR="${STAGE}/lib"
-          cp -R "${LIBDIR}" "${STAGE_LIBDIR}"
+          # Fix libs that reference other libs in the same dir
+          for lib in "${LIBDIR}"/*.dylib; do
+            [ -f "$lib" ] && bundle_cli "$lib" "${LIBDIR}"
+          done
+
+          # Copy lib dir to stage for the DMG, and fix stage binaries
+          cp -R "${LIBDIR}" "${STAGE}/lib"
           for bin in "${STAGE}"/*; do
             [ -f "$bin" ] && [ -x "$bin" ] && {
-              for lib in $(otool -L "$bin" | awk '/\/opt\/homebrew/{print $1}'); do
-                libname=$(basename "$lib")
+              for lib in $(otool -L "$bin" | awk '{print $1}' | grep -E '(/opt/homebrew|@rpath)'); do
+                resolved=$(resolve_lib "$lib")
+                [ -z "$resolved" ] && continue
+                libname=$(basename "$resolved")
                 install_name_tool -change "$lib" "@loader_path/lib/${libname}" "$bin" 2>/dev/null || true
               done
             }
