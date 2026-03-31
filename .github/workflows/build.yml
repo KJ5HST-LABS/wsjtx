@@ -185,7 +185,7 @@ jobs:
                 cp "$fw" "${LIBDIR}/${fwname}"
                 chmod 644 "${LIBDIR}/${fwname}"
                 # Bundle the framework's own Homebrew deps
-                dylibbundler -od -b -x "${LIBDIR}/${fwname}" -d "${LIBDIR}/" -p @loader_path/ 2>/dev/null || true
+                dylibbundler -b -x "${LIBDIR}/${fwname}" -d "${LIBDIR}/" -p @loader_path/ 2>/dev/null || true
               fi
               install_name_tool -change "$fw" "@loader_path/lib/${fwname}" "$bin"
               codesign --force --sign - "$bin"
@@ -217,26 +217,12 @@ jobs:
           done
           echo "All CLI tools are self-contained"
 
-          # Copy to stage for DMG
+          # Copy fixed binaries and libs to stage for DMG
           cp -R "${LIBDIR}" "${STAGE}/lib"
-          for bin in "${STAGE}"/*; do
+          for bin in "${ASSETS}"/*; do
             [ -f "$bin" ] && [ -x "$bin" ] && [ "$(basename "$bin")" != "lib" ] && {
-              dylibbundler -od -b -x "$bin" -d "${STAGE}/lib/" -p @loader_path/lib/ 2>/dev/null || true
-              # Fix framework refs in stage too
-              for fw in $(otool -L "$bin" | awk '{print $1}' | grep '\.framework/'); do
-                fwname=$(basename "$fw")
-                install_name_tool -change "$fw" "@loader_path/lib/${fwname}" "$bin" 2>/dev/null || true
-              done
-              codesign --force --sign - "$bin"
+              cp "$bin" "${STAGE}/$(basename "$bin")"
             }
-          done
-          for lib in "${STAGE}/lib"/*; do
-            [ -f "$lib" ] || continue
-            for dep in $(otool -L "$lib" | awk '{print $1}' | grep '@loader_path/lib/'); do
-              depname=$(basename "$dep")
-              install_name_tool -change "$dep" "@loader_path/${depname}" "$lib" 2>/dev/null || true
-            done
-            codesign --force --sign - "$lib"
           done
 
       - name: Import signing certificates
