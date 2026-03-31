@@ -82,6 +82,11 @@ jobs:
           # Full GUI app bundle
           cp -R "${BUILD}/wsjtx.app" "${STAGE}/"
 
+          # Copy helper binaries into the app bundle (wsjtx launches these as subprocesses)
+          for bin in jt9 wsprd; do
+            [ -f "${BUILD}/${bin}" ] && cp "${BUILD}/${bin}" "${STAGE}/wsjtx.app/Contents/MacOS/"
+          done
+
           # CLI decoder tools
           for bin in jt9 wsprd wsprcode jt65code jt4code ft8code q65code encode77 fcal hash22calc; do
             [ -f "${BUILD}/${bin}" ] && cp "${BUILD}/${bin}" "${STAGE}/" && cp "${BUILD}/${bin}" "${ASSETS}/"
