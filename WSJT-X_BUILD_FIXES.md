@@ -1,6 +1,6 @@
 # WSJT-X Build Fixes for CMake 4.x and Apple Silicon
 
-These issues were encountered building WSJT-X 3.0.0-rc1 from the self-contained source tarball on macOS (Darwin 25.3.0, Apple Silicon / arm64) using CMake 4.3.1, Homebrew Qt 5.15.18, and GCC/gfortran 15.2.0.
+These issues were encountered building WSJT-X 3.0.0-rc1 from the self-contained source tarball on macOS Apple Silicon (arm64). Both are build system issues — no application code changes are needed.
 
 ## 1. Superbuild: Reserved CMake target names (CMake >= 4.0)
 
@@ -22,7 +22,7 @@ CMake Error at CMakeLists.txt:199 (add_custom_target):
   behavior.
 ```
 
-**Fix:** Rename the targets:
+**Fix:**
 
 ```cmake
 add_custom_target (wsjtx-do-install DEPENDS wsjtx-install)
@@ -30,6 +30,8 @@ add_custom_target (wsjtx-do-package DEPENDS wsjtx-package)
 ```
 
 The `build` target on the line above (`add_custom_target (build ALL DEPENDS wsjtx-build)`) is not currently rejected but may also be at risk in future CMake versions.
+
+**Impact:** Affects all platforms, not just macOS. Anyone upgrading to CMake 4.x will hit this.
 
 ## 2. Inner WSJT-X: macOS deployment target incompatible with arm64
 
@@ -41,7 +43,7 @@ The `build` target on the line above (`add_custom_target (build ALL DEPENDS wsjt
 set (CMAKE_OSX_DEPLOYMENT_TARGET 10.12 CACHE STRING "Earliest version of macOS supported")
 ```
 
-Apple Silicon requires macOS 11.0 (Big Sur) as the minimum deployment target. Building for arm64 with a target of 10.12 is invalid — no arm64 Mac ever ran anything earlier than 11.0.
+Apple Silicon requires macOS 11.0 (Big Sur) as the minimum. No arm64 Mac has ever run anything earlier than 11.0.
 
 **Workaround:** Override from the command line:
 
@@ -49,7 +51,7 @@ Apple Silicon requires macOS 11.0 (Big Sur) as the minimum deployment target. Bu
 cmake -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 ...
 ```
 
-**Suggested fix:** Conditionally set the deployment target based on architecture:
+**Suggested fix:**
 
 ```cmake
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "arm64|aarch64")
@@ -59,38 +61,39 @@ else ()
 endif ()
 ```
 
+## Additional notes for arm64 macOS builds
+
+These are not bugs in WSJT-X. They are environment details relevant to anyone building on Apple Silicon.
+
+### Fortran compiler must be passed explicitly
+
+When using the superbuild, the inner WSJT-X ExternalProject does not inherit the shell PATH. If `gfortran` is installed via Homebrew (the common case on macOS), it must be passed explicitly:
+
+```
+cmake -DCMAKE_Fortran_COMPILER=/opt/homebrew/bin/gfortran ...
+```
+
+### Homebrew Qt5 keg-only paths
+
+Homebrew's Qt5 is keg-only (not linked into `/opt/homebrew/`). The Qt5 CMake config files compute the `_qt5Core_install_prefix` as three directories up from the config file location, which resolves to `/opt/homebrew/` — but the actual Qt5 files are under `/opt/homebrew/opt/qt@5/`. This causes `mkspecs/` and `plugins/` lookups to fail.
+
+Workaround: create symlinks.
+
+```bash
+ln -s /opt/homebrew/opt/qt@5/mkspecs /opt/homebrew/mkspecs
+ln -s /opt/homebrew/opt/qt@5/plugins /opt/homebrew/plugins
+```
+
+### OpenMP
+
+AppleClang does not include OpenMP for C/C++. The existing `OR APPLE` codepath in the WSJT-X CMakeLists correctly handles this — the Fortran OpenMP library (`libgomp`) from Homebrew's GCC works fine.
+
 ## Build environment
 
-- macOS 26.0 (Tahoe), Darwin 25.3.0, arm64
+- macOS 26.3.1 (Tahoe), Darwin 25.3.0, arm64
 - CMake 4.3.1
 - AppleClang 21.0.0
 - GCC/gfortran 15.2.0 (Homebrew)
 - Qt 5.15.18 (Homebrew, keg-only)
 - Boost 1.90.0, FFTW 3.3.10, libusb 1.0.29 (all Homebrew)
 - WSJT-X 3.0.0-rc1 self-contained source tarball
-
-## Build command
-
-```bash
-brew install cmake gcc fftw boost qt@5 libusb
-
-# Homebrew Qt5 keg-only workaround — CMake configs resolve paths
-# relative to /opt/homebrew but keg files live under /opt/homebrew/opt/qt@5
-ln -s /opt/homebrew/opt/qt@5/mkspecs /opt/homebrew/mkspecs
-ln -s /opt/homebrew/opt/qt@5/plugins /opt/homebrew/plugins
-
-tar xzf wsjtx-3.0.0-rc1.tgz
-mkdir wsjtx-build && cd wsjtx-build
-cmake \
-  -DCMAKE_PREFIX_PATH="$(brew --prefix qt@5);$(brew --prefix libusb);$(brew --prefix fftw);$(brew --prefix boost)" \
-  -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
-  -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
-  -DWSJT_GENERATE_DOCS=OFF \
-  -DWSJT_SKIP_MANPAGES=ON \
-  -Wno-dev \
-  ../wsjtx-3.0.0-rc1
-
-cmake --build .
-```
-
-The resulting `jt9` binary is at `wsjtx-prefix/src/wsjtx-build/jt9` — native Mach-O arm64.
