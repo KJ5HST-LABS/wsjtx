@@ -166,13 +166,15 @@ jobs:
           LIBDIR="${ASSETS}/lib"
           mkdir -p "${LIBDIR}"
 
-          # Use dylibbundler for each binary — handles transitive deps correctly
+          # Build dylibbundler args for all binaries at once
+          BUNDLE_ARGS=""
           for bin in "${ASSETS}"/*; do
             [ -f "$bin" ] && [ -x "$bin" ] && [ "$(basename "$bin")" != "lib" ] && {
-              echo "Bundling $(basename "$bin")..."
-              dylibbundler -b -x "$bin" -d "${LIBDIR}/" -p @loader_path/lib/
+              BUNDLE_ARGS="$BUNDLE_ARGS -x $bin"
             }
           done
+          echo "Running dylibbundler for all binaries..."
+          dylibbundler -od -b $BUNDLE_ARGS -d "${LIBDIR}/" -p @loader_path/lib/
 
           # dylibbundler doesn't handle Qt .framework bundles — fix manually
           QT5="$(brew --prefix qt@5)/lib"
