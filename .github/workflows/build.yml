@@ -145,8 +145,10 @@ jobs:
             done
           }
 
-          # Fix the main executable
-          bundle_dylib "${APP}/Contents/MacOS/wsjtx"
+          # Fix all executables in the app bundle (wsjtx, jt9, wsprd)
+          for exe in "${APP}/Contents/MacOS/"*; do
+            [ -f "$exe" ] && [ -x "$exe" ] && bundle_dylib "$exe"
+          done
 
           # Also fix any already-bundled Frameworks that have @rpath or Homebrew refs
           for fw in "${FRAMEWORKS}"/*.dylib; do
@@ -190,6 +192,8 @@ jobs:
                 echo "  Bundling framework: ${fwname}"
                 cp "$fw" "${LIBDIR}/${fwname}"
                 chmod 644 "${LIBDIR}/${fwname}"
+                # Fix the library's own identity
+                install_name_tool -id "@loader_path/lib/${fwname}" "${LIBDIR}/${fwname}"
                 # Bundle the framework's own Homebrew deps
                 dylibbundler -b -x "${LIBDIR}/${fwname}" -d "${LIBDIR}/" -p @loader_path/ 2>/dev/null || true
               fi
