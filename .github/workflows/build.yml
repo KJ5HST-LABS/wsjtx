@@ -202,6 +202,12 @@ jobs:
               depname=$(basename "$dep")
               install_name_tool -change "$dep" "@loader_path/${depname}" "$lib" 2>/dev/null || true
             done
+            # Remove duplicate LC_RPATH entries
+            RPATHS=$(otool -l "$lib" | grep -A2 LC_RPATH | grep "path " | awk '{print $2}' | sort | uniq -d)
+            for rp in $RPATHS; do
+              install_name_tool -delete_rpath "$rp" "$lib" 2>/dev/null || true
+              install_name_tool -add_rpath "$rp" "$lib" 2>/dev/null || true
+            done
             codesign --force --sign - "$lib"
           done
 
