@@ -307,18 +307,20 @@ jobs:
           # Plugins
           find "${APP}/Contents/PlugIns" -type f -name "*.dylib" \
             -exec codesign --force --options runtime --timestamp --sign "$IDENTITY" {} \; 2>/dev/null || true
-          # All executables in MacOS/ and the outer bundle
+          # All executables in MacOS/ — with entitlements for Fortran JIT
+          ENTITLEMENTS="${GITHUB_WORKSPACE}/entitlements.plist"
           find "${APP}/Contents/MacOS" -type f -perm +111 \
-            -exec codesign --force --options runtime --timestamp --sign "$IDENTITY" {} \;
+            -exec codesign --force --options runtime --entitlements "$ENTITLEMENTS" --timestamp --sign "$IDENTITY" {} \;
           codesign --force --options runtime --timestamp --sign "$IDENTITY" "${APP}"
 
           # Verify
           codesign --verify --deep --strict --verbose=2 "${APP}"
 
-          # Sign standalone CLI binaries
+          # Sign standalone CLI binaries — with entitlements for Fortran JIT
+          ENTITLEMENTS="${GITHUB_WORKSPACE}/entitlements.plist"
           for dir in "${STAGE}" "${ASSETS}"; do
             find "${dir}" -maxdepth 1 -type f -perm +111 \
-              -exec codesign --force --options runtime --timestamp --sign "$IDENTITY" {} \;
+              -exec codesign --force --options runtime --entitlements "$ENTITLEMENTS" --timestamp --sign "$IDENTITY" {} \;
           done
 
           # Sign bundled dylibs for CLI tools
