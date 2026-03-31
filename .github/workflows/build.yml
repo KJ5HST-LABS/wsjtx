@@ -293,6 +293,66 @@ jobs:
               -exec codesign --force --options runtime --timestamp --sign "$IDENTITY" {} \;
           done
 
+      - name: Build installer pkg
+        run: |
+          STAGE="${{ steps.collect.outputs.stage_dir }}"
+          IDENTITY="${{ steps.keychain.outputs.identity }}"
+          PKG_ID="org.k1jt.wsjtx.arm64"
+          PKG_VERSION="${WSJTX_VERSION%-rc*}"
+
+          # Create payload root
+          PAYLOAD="$RUNNER_TEMP/pkg-payload"
+          SCRIPTS="$RUNNER_TEMP/pkg-scripts"
+          mkdir -p "${PAYLOAD}/Applications" "${PAYLOAD}/Library/LaunchDaemons" "${SCRIPTS}"
+
+          # App bundle
+          cp -R "${STAGE}/wsjtx.app" "${PAYLOAD}/Applications/"
+
+          # CLI tools + libs into /usr/local/wsjtx
+          mkdir -p "${PAYLOAD}/usr/local/wsjtx/lib"
+          for bin in "${STAGE}"/*; do
+            [ -f "$bin" ] && [ -x "$bin" ] && cp "$bin" "${PAYLOAD}/usr/local/wsjtx/"
+          done
+          [ -d "${STAGE}/lib" ] && cp -R "${STAGE}/lib/"* "${PAYLOAD}/usr/local/wsjtx/lib/"
+
+          # Shared memory sysctl plist
+          BUILD=wsjtx-build/wsjtx-prefix/src/wsjtx
+          cp "${BUILD}/Darwin/com.wsjtx.sysctl.plist" "${PAYLOAD}/Library/LaunchDaemons/"
+
+          # Postinstall script to load the sysctl plist
+          cat > "${SCRIPTS}/postinstall" << 'SCRIPT'
+          #!/bin/bash
+          /bin/launchctl load /Library/LaunchDaemons/com.wsjtx.sysctl.plist 2>/dev/null || true
+          /usr/sbin/sysctl kern.sysv.shmmax=52428800 kern.sysv.shmall=25600 2>/dev/null || true
+          # Symlink CLI tools
+          mkdir -p /usr/local/bin
+          for bin in /usr/local/wsjtx/*; do
+            [ -f "$bin" ] && [ -x "$bin" ] && ln -sf "$bin" "/usr/local/bin/$(basename "$bin")"
+          done
+          SCRIPT
+          chmod +x "${SCRIPTS}/postinstall"
+
+          # Build the component pkg
+          pkgbuild \
+            --root "${PAYLOAD}" \
+            --scripts "${SCRIPTS}" \
+            --identifier "${PKG_ID}" \
+            --version "${PKG_VERSION}" \
+            --install-location / \
+            "$RUNNER_TEMP/wsjtx-component.pkg"
+
+          # Build the distribution pkg (nicer installer UI)
+          productbuild \
+            --package "$RUNNER_TEMP/wsjtx-component.pkg" \
+            --sign "$IDENTITY" \
+            "${{ steps.collect.outputs.dmg_name%.dmg}}.pkg" 2>/dev/null \
+          || productbuild \
+            --package "$RUNNER_TEMP/wsjtx-component.pkg" \
+            "wsjtx-${WSJTX_VERSION}-arm64-macOS.pkg"
+
+          # Also sign if productbuild didn't handle it
+          codesign --force --timestamp --sign "$IDENTITY" "wsjtx-${WSJTX_VERSION}-arm64-macOS.pkg" 2>/dev/null || true
+
       - name: Create DMG
         run: |
           hdiutil create -volname "WSJT-X ${WSJTX_VERSION} arm64" \
@@ -305,37 +365,36 @@ jobs:
           codesign --force --timestamp --sign "${{ steps.keychain.outputs.identity }}" \
             "${{ steps.collect.outputs.dmg_name }}"
 
-      - name: Create app zip for notarization
-        run: |
-          cd "${{ steps.collect.outputs.stage_dir }}"
-          zip -r "$GITHUB_WORKSPACE/wsjtx.app.zip" wsjtx.app
-
-      - name: Notarize DMG
+      - name: Notarize DMG and pkg
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_ID_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
-          DMG="${{ steps.collect.outputs.dmg_name }}"
-
-          xcrun notarytool submit "$DMG" \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_ID_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID" \
-            --wait 2>&1 | tee notarize-dmg.log
-
-          # If notarization failed, fetch the detailed log
-          if grep -q "status: Invalid" notarize-dmg.log; then
-            SUBMISSION_ID=$(grep "id:" notarize-dmg.log | head -1 | awk '{print $2}')
-            echo "Notarization failed. Fetching log for $SUBMISSION_ID..."
-            xcrun notarytool log "$SUBMISSION_ID" \
+          notarize_and_staple() {
+            local file="$1"
+            echo "Notarizing: $file"
+            xcrun notarytool submit "$file" \
               --apple-id "$APPLE_ID" \
               --password "$APPLE_ID_PASSWORD" \
-              --team-id "$APPLE_TEAM_ID" || true
-            exit 1
-          fi
+              --team-id "$APPLE_TEAM_ID" \
+              --wait 2>&1 | tee notarize.log
 
-          xcrun stapler staple "$DMG"
+            if grep -q "status: Invalid" notarize.log; then
+              SUBMISSION_ID=$(grep "id:" notarize.log | head -1 | awk '{print $2}')
+              echo "Notarization failed for $file. Fetching log..."
+              xcrun notarytool log "$SUBMISSION_ID" \
+                --apple-id "$APPLE_ID" \
+                --password "$APPLE_ID_PASSWORD" \
+                --team-id "$APPLE_TEAM_ID" || true
+              exit 1
+            fi
+
+            xcrun stapler staple "$file"
+          }
+
+          notarize_and_staple "${{ steps.collect.outputs.dmg_name }}"
+          notarize_and_staple "wsjtx-${WSJTX_VERSION}-arm64-macOS.pkg"
 
       - name: Notarize CLI tools
         env:
@@ -370,6 +429,12 @@ jobs:
         with:
           name: ${{ steps.collect.outputs.dmg_name }}
           path: ${{ steps.collect.outputs.dmg_name }}
+
+      - name: Upload pkg artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wsjtx-${{ env.WSJTX_VERSION }}-arm64-macOS.pkg
+          path: wsjtx-${{ env.WSJTX_VERSION }}-arm64-macOS.pkg
 
       - name: Package individual binaries
         run: |
@@ -416,7 +481,8 @@ jobs:
 
             | File | Description |
             |------|-------------|
-            | `wsjtx-${{ env.WSJTX_VERSION }}-arm64-macOS.dmg` | Full package (app + all tools) |
+            | `wsjtx-${{ env.WSJTX_VERSION }}-arm64-macOS.pkg` | **Installer (recommended)** — installs app, CLI tools, and shared memory config |
+            | `wsjtx-${{ env.WSJTX_VERSION }}-arm64-macOS.dmg` | DMG with app + all tools (manual install) |
             | `jt9.tar.gz` | JT9/FT8/FT4/Q65 decoder |
             | `wsprd.tar.gz` | WSPR decoder |
             | `ft8code.tar.gz` | FT8 encoder/decoder |
@@ -431,6 +497,7 @@ jobs:
           prerelease: ${{ contains(env.WSJTX_VERSION, 'rc') }}
           files: |
             **/*.dmg
+            **/*.pkg
             individual-binaries/*.tar.gz
 
       - name: Latest release
@@ -449,7 +516,8 @@ jobs:
 
             | File | Description |
             |------|-------------|
-            | `wsjtx-${{ env.WSJTX_VERSION }}-arm64-macOS.dmg` | Full package (app + all tools) |
+            | `wsjtx-${{ env.WSJTX_VERSION }}-arm64-macOS.pkg` | **Installer (recommended)** — installs app, CLI tools, and shared memory config |
+            | `wsjtx-${{ env.WSJTX_VERSION }}-arm64-macOS.dmg` | DMG with app + all tools (manual install) |
             | `jt9.tar.gz` | JT9/FT8/FT4/Q65 decoder |
             | `wsprd.tar.gz` | WSPR decoder |
             | `ft8code.tar.gz` | FT8 encoder/decoder |
@@ -465,4 +533,5 @@ jobs:
           prerelease: false
           files: |
             **/*.dmg
+            **/*.pkg
             individual-binaries/*.tar.gz
