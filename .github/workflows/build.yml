@@ -96,6 +96,104 @@ jobs:
           echo "assets_dir=${ASSETS}" >> "$GITHUB_OUTPUT"
           echo "dmg_name=wsjtx-${WSJTX_VERSION}-arm64-macOS.dmg" >> "$GITHUB_OUTPUT"
 
+      - name: Bundle dylibs into app
+        run: |
+          STAGE="${{ steps.collect.outputs.stage_dir }}"
+          APP="${STAGE}/wsjtx.app"
+          FRAMEWORKS="${APP}/Contents/Frameworks"
+          mkdir -p "${FRAMEWORKS}"
+
+          # Use macdeployqt to bundle Qt frameworks and plugins
+          "$(brew --prefix qt@5)/bin/macdeployqt" "${APP}" -verbose=1
+
+          # Bundle non-Qt Homebrew dylibs into the app
+          bundle_dylib() {
+            local binary="$1"
+            for lib in $(otool -L "$binary" | awk '/\/opt\/homebrew/{print $1}' | grep -v Qt); do
+              local libname=$(basename "$lib")
+              if [ ! -f "${FRAMEWORKS}/${libname}" ]; then
+                echo "  Bundling: $lib -> ${FRAMEWORKS}/${libname}"
+                cp "$lib" "${FRAMEWORKS}/${libname}"
+                chmod 644 "${FRAMEWORKS}/${libname}"
+                # Recursively bundle dependencies of this lib
+                for sublib in $(otool -L "${FRAMEWORKS}/${libname}" | awk '/\/opt\/homebrew/{print $1}' | grep -v Qt); do
+                  local sublibname=$(basename "$sublib")
+                  if [ ! -f "${FRAMEWORKS}/${sublibname}" ]; then
+                    cp "$sublib" "${FRAMEWORKS}/${sublibname}"
+                    chmod 644 "${FRAMEWORKS}/${sublibname}"
+                    install_name_tool -id "@executable_path/../Frameworks/${sublibname}" "${FRAMEWORKS}/${sublibname}"
+                  fi
+                  install_name_tool -change "$sublib" "@executable_path/../Frameworks/${sublibname}" "${FRAMEWORKS}/${libname}" 2>/dev/null || true
+                done
+                install_name_tool -id "@executable_path/../Frameworks/${libname}" "${FRAMEWORKS}/${libname}"
+              fi
+              install_name_tool -change "$lib" "@executable_path/../Frameworks/${libname}" "$binary" 2>/dev/null || true
+            done
+          }
+
+          # Fix the main executable
+          bundle_dylib "${APP}/Contents/MacOS/wsjtx"
+
+          # Verify no Homebrew paths remain
+          echo "Checking for remaining Homebrew references..."
+          if otool -L "${APP}/Contents/MacOS/wsjtx" | grep /opt/homebrew; then
+            echo "WARNING: Homebrew paths still present"
+          else
+            echo "All Homebrew dylibs bundled successfully"
+          fi
+
+      - name: Bundle dylibs into CLI tools
+        run: |
+          ASSETS="${{ steps.collect.outputs.assets_dir }}"
+          STAGE="${{ steps.collect.outputs.stage_dir }}"
+          LIBDIR="${ASSETS}/lib"
+          mkdir -p "${LIBDIR}"
+
+          # Collect all Homebrew dylibs needed by any CLI tool
+          bundle_cli() {
+            local binary="$1"
+            local libdir="$2"
+            for lib in $(otool -L "$binary" | awk '/\/opt\/homebrew/{print $1}'); do
+              local libname=$(basename "$lib")
+              if [ ! -f "${libdir}/${libname}" ]; then
+                echo "  Bundling: $lib"
+                cp "$lib" "${libdir}/${libname}"
+                chmod 644 "${libdir}/${libname}"
+                install_name_tool -id "@loader_path/lib/${libname}" "${libdir}/${libname}"
+                # Handle transitive deps
+                for sublib in $(otool -L "${libdir}/${libname}" | awk '/\/opt\/homebrew/{print $1}'); do
+                  local sublibname=$(basename "$sublib")
+                  if [ ! -f "${libdir}/${sublibname}" ]; then
+                    cp "$sublib" "${libdir}/${sublibname}"
+                    chmod 644 "${libdir}/${sublibname}"
+                    install_name_tool -id "@loader_path/lib/${sublibname}" "${libdir}/${sublibname}"
+                  fi
+                  install_name_tool -change "$sublib" "@loader_path/lib/${sublibname}" "${libdir}/${libname}" 2>/dev/null || true
+                done
+              fi
+              install_name_tool -change "$lib" "@loader_path/lib/${libname}" "$binary" 2>/dev/null || true
+            done
+          }
+
+          for bin in "${ASSETS}"/*; do
+            [ -f "$bin" ] && [ -x "$bin" ] && [ "$(basename "$bin")" != "lib" ] && {
+              echo "Bundling dylibs for $(basename "$bin")..."
+              bundle_cli "$bin" "${LIBDIR}"
+            }
+          done
+
+          # Also fix the stage copies (for the DMG)
+          STAGE_LIBDIR="${STAGE}/lib"
+          cp -R "${LIBDIR}" "${STAGE_LIBDIR}"
+          for bin in "${STAGE}"/*; do
+            [ -f "$bin" ] && [ -x "$bin" ] && {
+              for lib in $(otool -L "$bin" | awk '/\/opt\/homebrew/{print $1}'); do
+                libname=$(basename "$lib")
+                install_name_tool -change "$lib" "@loader_path/lib/${libname}" "$bin" 2>/dev/null || true
+              done
+            }
+          done
+
       - name: Import signing certificate
         env:
           P12_BASE64: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}
