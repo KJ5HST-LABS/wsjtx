@@ -179,40 +179,61 @@ jobs:
             fi
           }
 
-          bundle_cli() {
+          # First pass: collect all libs needed by all binaries
+          collect_libs() {
             local binary="$1"
             local libdir="$2"
-            local changes_made=0
             for lib in $(otool -L "$binary" | awk '{print $1}' | grep -E '(/opt/homebrew|@rpath)'); do
               local resolved
               resolved=$(resolve_lib "$lib")
               [ -z "$resolved" ] && continue
               local libname=$(basename "$resolved")
               if [ ! -f "${libdir}/${libname}" ]; then
-                echo "  Bundling: $resolved -> ${libname}"
+                echo "  Collecting: $resolved -> ${libname}"
                 cp "$resolved" "${libdir}/${libname}"
                 chmod 644 "${libdir}/${libname}"
-                install_name_tool -id "@loader_path/lib/${libname}" "${libdir}/${libname}"
-                codesign --force --sign - "${libdir}/${libname}"
-                bundle_cli "${libdir}/${libname}" "${libdir}"
+                # Recurse into this lib's deps
+                collect_libs "${libdir}/${libname}" "${libdir}"
               fi
-              install_name_tool -change "$lib" "@loader_path/lib/${libname}" "$binary"
-              changes_made=1
             done
-            # Re-sign after all changes to this binary
-            [ "$changes_made" -eq 1 ] && codesign --force --sign - "$binary"
           }
 
+          echo "=== Pass 1: Collecting all dylibs ==="
           for bin in "${ASSETS}"/*; do
             [ -f "$bin" ] && [ -x "$bin" ] && [ "$(basename "$bin")" != "lib" ] && {
-              echo "Bundling dylibs for $(basename "$bin")..."
-              bundle_cli "$bin" "${LIBDIR}"
+              echo "Scanning $(basename "$bin")..."
+              collect_libs "$bin" "${LIBDIR}"
             }
           done
 
-          # Fix libs that reference other libs in the same dir (catch extensionless like QtCore)
+          echo "=== Pass 2: Rewriting all load paths ==="
+          # Rewrite IDs in all collected libs
           for lib in "${LIBDIR}"/*; do
-            [ -f "$lib" ] && bundle_cli "$lib" "${LIBDIR}"
+            [ -f "$lib" ] || continue
+            libname=$(basename "$lib")
+            install_name_tool -id "@loader_path/lib/${libname}" "$lib" 2>/dev/null || true
+            # Rewrite this lib's own deps
+            for dep in $(otool -L "$lib" | awk '{print $1}' | grep -E '(/opt/homebrew|@rpath)'); do
+              resolved=$(resolve_lib "$dep")
+              [ -z "$resolved" ] && continue
+              depname=$(basename "$resolved")
+              install_name_tool -change "$dep" "@loader_path/${depname}" "$lib" 2>/dev/null || true
+            done
+            codesign --force --sign - "$lib"
+          done
+
+          # Rewrite all binary load paths
+          for bin in "${ASSETS}"/*; do
+            [ -f "$bin" ] && [ -x "$bin" ] && [ "$(basename "$bin")" != "lib" ] && {
+              echo "Relinking $(basename "$bin")..."
+              for dep in $(otool -L "$bin" | awk '{print $1}' | grep -E '(/opt/homebrew|@rpath)'); do
+                resolved=$(resolve_lib "$dep")
+                [ -z "$resolved" ] && continue
+                depname=$(basename "$resolved")
+                install_name_tool -change "$dep" "@loader_path/lib/${depname}" "$bin" 2>/dev/null || true
+              done
+              codesign --force --sign - "$bin"
+            }
           done
 
           # Verify no external refs remain in binaries
