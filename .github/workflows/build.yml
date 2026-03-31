@@ -346,9 +346,15 @@ jobs:
           chmod +x "${SCRIPTS}/postinstall"
 
           # Build the component pkg
+          # Generate component plist and disable bundle relocation
+          pkgbuild --analyze --root "${PAYLOAD}" "$RUNNER_TEMP/components.plist"
+          # Set BundleIsRelocatable to false for all components
+          /usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$RUNNER_TEMP/components.plist" 2>/dev/null || true
+
           pkgbuild \
             --root "${PAYLOAD}" \
             --scripts "${SCRIPTS}" \
+            --component-plist "$RUNNER_TEMP/components.plist" \
             --identifier "${PKG_ID}" \
             --version "${PKG_VERSION}" \
             --install-location / \
