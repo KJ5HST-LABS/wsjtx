@@ -170,7 +170,7 @@ jobs:
           for bin in "${ASSETS}"/*; do
             [ -f "$bin" ] && [ -x "$bin" ] && [ "$(basename "$bin")" != "lib" ] && {
               echo "Bundling $(basename "$bin")..."
-              dylibbundler -od -b -x "$bin" -d "${LIBDIR}/" -p @loader_path/lib/
+              dylibbundler -b -x "$bin" -d "${LIBDIR}/" -p @loader_path/lib/
             }
           done
 
