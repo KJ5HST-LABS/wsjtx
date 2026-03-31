@@ -20,7 +20,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: brew install cmake gcc fftw boost qt@5 libusb
+        run: brew install cmake gcc fftw boost qt@5 libusb dylibbundler
 
       - name: Locate gfortran
         id: fc
@@ -163,80 +163,47 @@ jobs:
         run: |
           ASSETS="${{ steps.collect.outputs.assets_dir }}"
           STAGE="${{ steps.collect.outputs.stage_dir }}"
-          GCC_LIB="$(brew --prefix gcc)/lib/gcc/current"
           LIBDIR="${ASSETS}/lib"
           mkdir -p "${LIBDIR}"
 
-          resolve_lib() {
-            local lib="$1"
-            if [[ "$lib" == /opt/homebrew/* ]]; then
-              echo "$lib"
-            elif [[ "$lib" == @rpath/* ]]; then
-              local name="${lib#@rpath/}"
-              for dir in "$GCC_LIB" /opt/homebrew/lib; do
-                [ -f "$dir/$name" ] && echo "$dir/$name" && return
-              done
-            fi
-          }
-
-          # First pass: collect all libs needed by all binaries
-          collect_libs() {
-            local binary="$1"
-            local libdir="$2"
-            for lib in $(otool -L "$binary" | awk '{print $1}' | grep -E '(/opt/homebrew|@rpath)'); do
-              local resolved
-              resolved=$(resolve_lib "$lib")
-              [ -z "$resolved" ] && continue
-              local libname=$(basename "$resolved")
-              if [ ! -f "${libdir}/${libname}" ]; then
-                echo "  Collecting: $resolved -> ${libname}"
-                cp "$resolved" "${libdir}/${libname}"
-                chmod 644 "${libdir}/${libname}"
-                # Recurse into this lib's deps
-                collect_libs "${libdir}/${libname}" "${libdir}"
-              fi
-            done
-          }
-
-          echo "=== Pass 1: Collecting all dylibs ==="
+          # Use dylibbundler for each binary — handles transitive deps correctly
           for bin in "${ASSETS}"/*; do
             [ -f "$bin" ] && [ -x "$bin" ] && [ "$(basename "$bin")" != "lib" ] && {
-              echo "Scanning $(basename "$bin")..."
-              collect_libs "$bin" "${LIBDIR}"
+              echo "Bundling $(basename "$bin")..."
+              dylibbundler -od -b -x "$bin" -d "${LIBDIR}/" -p @loader_path/lib/
             }
           done
 
-          echo "=== Pass 2: Rewriting all load paths ==="
-          # Rewrite IDs in all collected libs
+          # dylibbundler doesn't handle Qt .framework bundles — fix manually
+          QT5="$(brew --prefix qt@5)/lib"
+          for bin in "${ASSETS}"/*; do
+            [ -f "$bin" ] && [ -x "$bin" ] && [ "$(basename "$bin")" != "lib" ] || continue
+            for fw in $(otool -L "$bin" | awk '{print $1}' | grep '\.framework/'); do
+              fwname=$(basename "$fw")
+              if [ ! -f "${LIBDIR}/${fwname}" ]; then
+                echo "  Bundling framework: ${fwname}"
+                cp "$fw" "${LIBDIR}/${fwname}"
+                chmod 644 "${LIBDIR}/${fwname}"
+                # Bundle the framework's own Homebrew deps
+                dylibbundler -od -b -x "${LIBDIR}/${fwname}" -d "${LIBDIR}/" -p @loader_path/ 2>/dev/null || true
+              fi
+              install_name_tool -change "$fw" "@loader_path/lib/${fwname}" "$bin"
+              codesign --force --sign - "$bin"
+            done
+          done
+
+          # Fix lib-to-lib refs: dylibbundler uses @loader_path/lib/ but libs
+          # are already IN lib/, so their cross-refs should be @loader_path/
           for lib in "${LIBDIR}"/*; do
             [ -f "$lib" ] || continue
-            libname=$(basename "$lib")
-            install_name_tool -id "@loader_path/lib/${libname}" "$lib" 2>/dev/null || true
-            # Rewrite this lib's own deps
-            for dep in $(otool -L "$lib" | awk '{print $1}' | grep -E '(/opt/homebrew|@rpath)'); do
-              resolved=$(resolve_lib "$dep")
-              [ -z "$resolved" ] && continue
-              depname=$(basename "$resolved")
+            for dep in $(otool -L "$lib" | awk '{print $1}' | grep '@loader_path/lib/'); do
+              depname=$(basename "$dep")
               install_name_tool -change "$dep" "@loader_path/${depname}" "$lib" 2>/dev/null || true
             done
             codesign --force --sign - "$lib"
           done
 
-          # Rewrite all binary load paths
-          for bin in "${ASSETS}"/*; do
-            [ -f "$bin" ] && [ -x "$bin" ] && [ "$(basename "$bin")" != "lib" ] && {
-              echo "Relinking $(basename "$bin")..."
-              for dep in $(otool -L "$bin" | awk '{print $1}' | grep -E '(/opt/homebrew|@rpath)'); do
-                resolved=$(resolve_lib "$dep")
-                [ -z "$resolved" ] && continue
-                depname=$(basename "$resolved")
-                install_name_tool -change "$dep" "@loader_path/lib/${depname}" "$bin" 2>/dev/null || true
-              done
-              codesign --force --sign - "$bin"
-            }
-          done
-
-          # Verify no external refs remain in binaries
+          # Verify no external refs remain
           echo "Verifying CLI tools..."
           for bin in "${ASSETS}"/*; do
             [ -f "$bin" ] && [ -x "$bin" ] && [ "$(basename "$bin")" != "lib" ] && {
@@ -250,20 +217,26 @@ jobs:
           done
           echo "All CLI tools are self-contained"
 
-          # Copy lib dir to stage for the DMG, and fix stage binaries
+          # Copy to stage for DMG
           cp -R "${LIBDIR}" "${STAGE}/lib"
           for bin in "${STAGE}"/*; do
-            [ -f "$bin" ] && [ -x "$bin" ] && {
-              changes=0
-              for lib in $(otool -L "$bin" | awk '{print $1}' | grep -E '(/opt/homebrew|@rpath)'); do
-                resolved=$(resolve_lib "$lib")
-                [ -z "$resolved" ] && continue
-                libname=$(basename "$resolved")
-                install_name_tool -change "$lib" "@loader_path/lib/${libname}" "$bin"
-                changes=1
+            [ -f "$bin" ] && [ -x "$bin" ] && [ "$(basename "$bin")" != "lib" ] && {
+              dylibbundler -od -b -x "$bin" -d "${STAGE}/lib/" -p @loader_path/lib/ 2>/dev/null || true
+              # Fix framework refs in stage too
+              for fw in $(otool -L "$bin" | awk '{print $1}' | grep '\.framework/'); do
+                fwname=$(basename "$fw")
+                install_name_tool -change "$fw" "@loader_path/lib/${fwname}" "$bin" 2>/dev/null || true
               done
-              [ "$changes" -eq 1 ] && codesign --force --sign - "$bin"
+              codesign --force --sign - "$bin"
             }
+          done
+          for lib in "${STAGE}/lib"/*; do
+            [ -f "$lib" ] || continue
+            for dep in $(otool -L "$lib" | awk '{print $1}' | grep '@loader_path/lib/'); do
+              depname=$(basename "$dep")
+              install_name_tool -change "$dep" "@loader_path/${depname}" "$lib" 2>/dev/null || true
+            done
+            codesign --force --sign - "$lib"
           done
 
       - name: Import signing certificates
