@@ -345,12 +345,9 @@ jobs:
           productbuild \
             --package "$RUNNER_TEMP/wsjtx-component.pkg" \
             --sign "$IDENTITY" \
-            "${{ steps.collect.outputs.dmg_name%.dmg}}.pkg" 2>/dev/null \
-          || productbuild \
-            --package "$RUNNER_TEMP/wsjtx-component.pkg" \
             "wsjtx-${WSJTX_VERSION}-arm64-macOS.pkg"
 
-          # Also sign if productbuild didn't handle it
+          # Sign the pkg if productbuild --sign didn't work
           codesign --force --timestamp --sign "$IDENTITY" "wsjtx-${WSJTX_VERSION}-arm64-macOS.pkg" 2>/dev/null || true
 
       - name: Create DMG
