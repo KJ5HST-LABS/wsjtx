@@ -179,6 +179,11 @@ jobs:
             fi
           }
 
+          # Strip ad-hoc signatures so install_name_tool works
+          for bin in "${ASSETS}"/*; do
+            [ -f "$bin" ] && [ -x "$bin" ] && codesign --remove-signature "$bin" 2>/dev/null || true
+          done
+
           bundle_cli() {
             local binary="$1"
             local libdir="$2"
@@ -188,13 +193,14 @@ jobs:
               [ -z "$resolved" ] && continue
               local libname=$(basename "$resolved")
               if [ ! -f "${libdir}/${libname}" ]; then
-                echo "  Bundling: $resolved"
+                echo "  Bundling: $resolved -> ${libname}"
                 cp "$resolved" "${libdir}/${libname}"
                 chmod 644 "${libdir}/${libname}"
+                codesign --remove-signature "${libdir}/${libname}" 2>/dev/null || true
                 install_name_tool -id "@loader_path/lib/${libname}" "${libdir}/${libname}"
                 bundle_cli "${libdir}/${libname}" "${libdir}"
               fi
-              install_name_tool -change "$lib" "@loader_path/lib/${libname}" "$binary" 2>/dev/null || true
+              install_name_tool -change "$lib" "@loader_path/lib/${libname}" "$binary"
             done
           }
 
@@ -205,20 +211,35 @@ jobs:
             }
           done
 
-          # Fix libs that reference other libs in the same dir
-          for lib in "${LIBDIR}"/*.dylib; do
+          # Fix libs that reference other libs in the same dir (catch extensionless like QtCore)
+          for lib in "${LIBDIR}"/*; do
             [ -f "$lib" ] && bundle_cli "$lib" "${LIBDIR}"
           done
+
+          # Verify no external refs remain in binaries
+          echo "Verifying CLI tools..."
+          for bin in "${ASSETS}"/*; do
+            [ -f "$bin" ] && [ -x "$bin" ] && [ "$(basename "$bin")" != "lib" ] && {
+              BAD=$(otool -L "$bin" | grep /opt/homebrew || true)
+              if [ -n "$BAD" ]; then
+                echo "ERROR: $(basename "$bin") still has Homebrew refs:"
+                echo "$BAD"
+                exit 1
+              fi
+            }
+          done
+          echo "All CLI tools are self-contained"
 
           # Copy lib dir to stage for the DMG, and fix stage binaries
           cp -R "${LIBDIR}" "${STAGE}/lib"
           for bin in "${STAGE}"/*; do
             [ -f "$bin" ] && [ -x "$bin" ] && {
+              codesign --remove-signature "$bin" 2>/dev/null || true
               for lib in $(otool -L "$bin" | awk '{print $1}' | grep -E '(/opt/homebrew|@rpath)'); do
                 resolved=$(resolve_lib "$lib")
                 [ -z "$resolved" ] && continue
                 libname=$(basename "$resolved")
-                install_name_tool -change "$lib" "@loader_path/lib/${libname}" "$bin" 2>/dev/null || true
+                install_name_tool -change "$lib" "@loader_path/lib/${libname}" "$bin"
               done
             }
           done
