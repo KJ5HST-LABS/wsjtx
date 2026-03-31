@@ -295,8 +295,9 @@ jobs:
           # Plugins
           find "${APP}/Contents/PlugIns" -type f -name "*.dylib" \
             -exec codesign --force --options runtime --timestamp --sign "$IDENTITY" {} \; 2>/dev/null || true
-          # Main executable and bundle
-          codesign --force --options runtime --timestamp --sign "$IDENTITY" "${APP}/Contents/MacOS/wsjtx"
+          # All executables in MacOS/ and the outer bundle
+          find "${APP}/Contents/MacOS" -type f -perm +111 \
+            -exec codesign --force --options runtime --timestamp --sign "$IDENTITY" {} \;
           codesign --force --options runtime --timestamp --sign "$IDENTITY" "${APP}"
 
           # Verify
