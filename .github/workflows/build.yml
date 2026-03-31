@@ -147,7 +147,19 @@ jobs:
 
           # Fix all executables in the app bundle (wsjtx, jt9, wsprd)
           for exe in "${APP}/Contents/MacOS/"*; do
-            [ -f "$exe" ] && [ -x "$exe" ] && bundle_dylib "$exe"
+            [ -f "$exe" ] && [ -x "$exe" ] && {
+              bundle_dylib "$exe"
+              # Rewrite Qt framework refs to use macdeployqt-bundled frameworks
+              for fw in $(otool -L "$exe" | awk '{print $1}' | grep '\.framework/'); do
+                fwname=$(basename "$fw")
+                # Find the bundled framework in Frameworks/
+                bundled=$(find "${FRAMEWORKS}" -name "${fwname}" -path "*.framework/*" 2>/dev/null | head -1)
+                if [ -n "$bundled" ]; then
+                  fwrel="${bundled#${APP}/Contents/}"
+                  install_name_tool -change "$fw" "@executable_path/../${fwrel}" "$exe" 2>/dev/null || true
+                fi
+              done
+            }
           done
 
           # Also fix any already-bundled Frameworks that have @rpath or Homebrew refs
@@ -157,7 +169,7 @@ jobs:
 
           # Verify no Homebrew or @rpath refs remain
           echo "Checking for remaining external references..."
-          REMAINING=$(otool -L "${APP}/Contents/MacOS/wsjtx" "${FRAMEWORKS}"/*.dylib 2>/dev/null | grep -E '(/opt/homebrew|@rpath)' | grep -v Qt || true)
+          REMAINING=$(find "${APP}/Contents/MacOS" -type f -perm +111 -exec otool -L {} \; 2>/dev/null | grep /opt/homebrew || true)
           if [ -n "$REMAINING" ]; then
             echo "WARNING: External paths still present:"
             echo "$REMAINING"
