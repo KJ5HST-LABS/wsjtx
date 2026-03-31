@@ -371,11 +371,28 @@ jobs:
           name: ${{ steps.collect.outputs.dmg_name }}
           path: ${{ steps.collect.outputs.dmg_name }}
 
+      - name: Package individual binaries
+        run: |
+          ASSETS="${{ steps.collect.outputs.assets_dir }}"
+          PKGS=packages
+          mkdir -p "${PKGS}"
+
+          for bin in "${ASSETS}"/*; do
+            [ -f "$bin" ] && [ -x "$bin" ] || continue
+            name=$(basename "$bin")
+            dir="${PKGS}/${name}"
+            mkdir -p "${dir}"
+            cp "$bin" "${dir}/"
+            [ -d "${ASSETS}/lib" ] && cp -R "${ASSETS}/lib" "${dir}/lib"
+            tar -czf "${PKGS}/${name}.tar.gz" -C "${PKGS}" "${name}"
+            rm -rf "${dir}"
+          done
+
       - name: Upload individual binaries
         uses: actions/upload-artifact@v4
         with:
           name: individual-binaries
-          path: ${{ steps.collect.outputs.assets_dir }}/
+          path: packages/*.tar.gz
 
   release:
     needs: build
@@ -400,21 +417,21 @@ jobs:
             | File | Description |
             |------|-------------|
             | `wsjtx-${{ env.WSJTX_VERSION }}-arm64-macOS.dmg` | Full package (app + all tools) |
-            | `jt9` | JT9/FT8/FT4/Q65 decoder |
-            | `wsprd` | WSPR decoder |
-            | `ft8code` | FT8 encoder/decoder |
-            | `jt65code` | JT65 encoder/decoder |
-            | `q65code` | Q65 encoder/decoder |
-            | `jt4code` | JT4 encoder/decoder |
-            | `wsprcode` | WSPR encoder/decoder |
-            | `encode77` | 77-bit message encoder |
+            | `jt9.tar.gz` | JT9/FT8/FT4/Q65 decoder |
+            | `wsprd.tar.gz` | WSPR decoder |
+            | `ft8code.tar.gz` | FT8 encoder/decoder |
+            | `jt65code.tar.gz` | JT65 encoder/decoder |
+            | `q65code.tar.gz` | Q65 encoder/decoder |
+            | `jt4code.tar.gz` | JT4 encoder/decoder |
+            | `wsprcode.tar.gz` | WSPR encoder/decoder |
+            | `encode77.tar.gz` | 77-bit message encoder |
 
             Signed with Developer ID and notarized by Apple. Built on GitHub Actions macOS 15 (Apple Silicon).
           draft: false
           prerelease: ${{ contains(env.WSJTX_VERSION, 'rc') }}
           files: |
             **/*.dmg
-            individual-binaries/*
+            individual-binaries/*.tar.gz
 
       - name: Latest release
         uses: softprops/action-gh-release@v2
@@ -426,21 +443,21 @@ jobs:
 
             Grab individual tools directly:
             ```
-            curl -LO https://github.com/KJ5HST-LABS/WSJT-X-MAC-ARM64/releases/download/latest/jt9
-            chmod +x jt9
+            curl -LO https://github.com/KJ5HST-LABS/WSJT-X-MAC-ARM64/releases/download/latest/jt9.tar.gz
+            tar xzf jt9.tar.gz
             ```
 
             | File | Description |
             |------|-------------|
             | `wsjtx-${{ env.WSJTX_VERSION }}-arm64-macOS.dmg` | Full package (app + all tools) |
-            | `jt9` | JT9/FT8/FT4/Q65 decoder |
-            | `wsprd` | WSPR decoder |
-            | `ft8code` | FT8 encoder/decoder |
-            | `jt65code` | JT65 encoder/decoder |
-            | `q65code` | Q65 encoder/decoder |
-            | `jt4code` | JT4 encoder/decoder |
-            | `wsprcode` | WSPR encoder/decoder |
-            | `encode77` | 77-bit message encoder |
+            | `jt9.tar.gz` | JT9/FT8/FT4/Q65 decoder |
+            | `wsprd.tar.gz` | WSPR decoder |
+            | `ft8code.tar.gz` | FT8 encoder/decoder |
+            | `jt65code.tar.gz` | JT65 encoder/decoder |
+            | `q65code.tar.gz` | Q65 encoder/decoder |
+            | `jt4code.tar.gz` | JT4 encoder/decoder |
+            | `wsprcode.tar.gz` | WSPR encoder/decoder |
+            | `encode77.tar.gz` | 77-bit message encoder |
 
             Signed with Developer ID and notarized by Apple.
           make_latest: true
@@ -448,4 +465,4 @@ jobs:
           prerelease: false
           files: |
             **/*.dmg
-            individual-binaries/*
+            individual-binaries/*.tar.gz
