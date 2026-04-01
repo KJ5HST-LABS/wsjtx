@@ -11,7 +11,6 @@ Go to [Releases](https://github.com/KJ5HST-LABS/WSJT-X-MAC-ARM64/releases) or us
 | Download | Description |
 |----------|-------------|
 | [Installer (.pkg)](https://github.com/KJ5HST-LABS/WSJT-X-MAC-ARM64/releases/latest) | **Recommended.** Installs app, CLI tools, and shared memory config |
-| [DMG](https://github.com/KJ5HST-LABS/WSJT-X-MAC-ARM64/releases/latest) | Full app bundle + all tools (manual install) |
 | [jt9.tar.gz](https://github.com/KJ5HST-LABS/WSJT-X-MAC-ARM64/releases/download/latest/jt9.tar.gz) | Self-contained JT9/FT8/FT4/Q65 decoder |
 | [wsprd.tar.gz](https://github.com/KJ5HST-LABS/WSJT-X-MAC-ARM64/releases/download/latest/wsprd.tar.gz) | Self-contained WSPR decoder |
 
