@@ -192,5 +192,3 @@ rm /opt/homebrew/mkspecs /opt/homebrew/plugins
 ## License
 
 WSJT-X is licensed under GPLv3. This repository contains no WSJT-X source code — only build scripts, CI configuration, and documentation.
-
-73 de KJ5HST
