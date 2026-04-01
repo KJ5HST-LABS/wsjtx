@@ -7,8 +7,7 @@ Detailed documentation of the GitHub Actions build pipeline in `.github/workflow
 The workflow builds WSJT-X from the official source tarball on a macOS Apple Silicon runner, producing three deliverables:
 
 1. **`.pkg` installer** — signed, notarized, installs app + CLI tools + shared memory config
-2. **`.dmg` disk image** — signed, notarized, contains app bundle + standalone CLI tools
-3. **`.tar.gz` archives** — one per CLI tool, each self-contained with bundled libraries
+2. **`.tar.gz` archives** — one per CLI tool, each self-contained with bundled libraries
 
 ## Triggers
 
@@ -99,7 +98,7 @@ This builds hamlib first (from bundled source, via autotools `./configure && mak
 
 Copies built artifacts into two directories:
 
-- `stage/` — everything for the DMG (app bundle + CLI tools)
+- `stage/` — everything for the installer (app bundle + CLI tools)
 - `assets/` — CLI tools only (for individual tar.gz packaging)
 
 #### 9. Bundle dylibs into app (`macdeployqt` + custom)
@@ -177,13 +176,9 @@ Creates a macOS installer package:
 
 The sysctl plist configures shared memory limits (`kern.sysv.shmmax=52428800`, `kern.sysv.shmall=25600`) that WSJT-X requires. Without this, the app shows "Shared memory error" on launch.
 
-#### 14. Create and sign DMG
+#### 14. Notarize
 
-Standard `hdiutil create` + `codesign`.
-
-#### 15. Notarize
-
-Submits the DMG, PKG, and CLI tools (as a zip) to Apple's notary service using `xcrun notarytool`. Waits for completion and staples the notarization ticket.
+Submits the PKG and CLI tools (as a zip) to Apple's notary service using `xcrun notarytool`. Waits for completion and staples the notarization ticket.
 
 If notarization returns "Invalid", the workflow fetches the detailed Apple log showing which specific binary failed and why, then exits with an error.
 
@@ -209,7 +204,7 @@ Creates two GitHub releases:
 1. **Versioned** (`v3.0.0-rc1`) — permanent, marked as prerelease for RC versions
 2. **Latest** (`latest`) — rolling tag, always updated to the newest build, marked as the GitHub "Latest Release"
 
-Both contain the DMG, PKG, and all `.tar.gz` archives.
+Both contain the PKG and all `.tar.gz` archives.
 
 ## Lessons learned
 
