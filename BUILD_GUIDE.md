@@ -4,7 +4,7 @@ This guide documents how to build the `jt9` decoder binary from WSJT-X 3.0.0-rc1
 
 ## Prerequisites
 
-- Apple Silicon Mac (M1/M2/M3/M4)
+- Apple Silicon Mac (M1/M2/M3/M4/M5)
 - macOS 11.0 (Big Sur) or later
 - Xcode Command Line Tools (`xcode-select --install`)
 - Homebrew (`https://brew.sh`)

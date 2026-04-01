@@ -69,7 +69,7 @@ The inner WSJT-X `CMakeLists.txt` hardcodes `CMAKE_OSX_DEPLOYMENT_TARGET` to 10.
 
 The [build workflow](.github/workflows/build.yml) runs on `macos-15` (Apple Silicon runner) and produces three types of artifacts:
 
-### App bundle (DMG and PKG)
+### App bundle (PKG)
 
 - Built using the WSJT-X superbuild (hamlib + wsjtx)
 - Qt frameworks bundled via `macdeployqt`
