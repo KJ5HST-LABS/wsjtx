@@ -2,7 +2,7 @@
 
 **Context:** This repository distributes GPL-3.0 licensed binaries and its maintainer participates in the WSJT-X development team while building a commercial product (rad-con). This document analyzes the legal, technical, social, strategic, and operational risks across that boundary.
 
-**Governing doctrine:** `docs/SYMBIOTIC_OPEN_SOURCE.md`
+**Governing doctrine:** `docs/consumer/SYMBIOTIC_OPEN_SOURCE.md`
 
 ## Summary
 
@@ -240,7 +240,7 @@ Under *New Kids on the Block v. News America Publishing* (9th Cir., 1992), a thi
 
 ### The Problem
 
-The white room concept (see `docs/SYMBIOTIC_OPEN_SOURCE.md`) assumes organizational separation — different teams, different buildings, different information access. In practice, Terrell is one person on both sides of the wall:
+The white room concept (see `docs/consumer/SYMBIOTIC_OPEN_SOURCE.md`) assumes organizational separation — different teams, different buildings, different information access. In practice, Terrell is one person on both sides of the wall:
 
 - He has access to wsjtx-internal (unreleased features, protocol changes, development discussions)
 - He is building rad-con (a commercial product that integrates with WSJT-X)
@@ -567,7 +567,7 @@ As the project professionalizes (GitHub migration, CI/CD, new contributors), gov
 
 3. **Keep copyright on contributions.** Under the current no-CLA arrangement, Terrell retains copyright on his contributions (licensed to the project under GPL-3.0). This is the default under copyright law and does not require any special action.
 
-4. **If a CLA is proposed, evaluate it against the symbiotic doctrine.** A CLA that enables dual-licensing could benefit the project financially (selling commercial licenses to fund development). But it could also harm the ecosystem by allowing proprietary forks. Evaluate on the merits per `docs/SYMBIOTIC_OPEN_SOURCE.md`.
+4. **If a CLA is proposed, evaluate it against the symbiotic doctrine.** A CLA that enables dual-licensing could benefit the project financially (selling commercial licenses to fund development). But it could also harm the ecosystem by allowing proprietary forks. Evaluate on the merits per `docs/consumer/SYMBIOTIC_OPEN_SOURCE.md`.
 
 5. **Do not be the one who proposes a CLA.** Even if it might benefit the project, proposing it as the person with commercial interests is a bad look. If governance discussions arise, participate transparently but don't drive them.
 
@@ -637,7 +637,7 @@ But social legitimacy and legal legitimacy are different things. The WSJT-X team
 
 This is the ultimate test of whether the symbiosis is genuine. If rad-con succeeds because of WSJT-X's decoders, and the WSJT-X project sees no benefit from rad-con's success, that's parasitism, not symbiosis — even if it's legally permitted parasitism.
 
-The answer is the funding model described in `docs/SYMBIOTIC_OPEN_SOURCE.md`. When rad-con generates revenue, a portion flows back to the open source projects it depends on. Not as a licensing fee. Not as payment for services. As an unconditional acknowledgment that commercial success built on open source creates an obligation to sustain it.
+The answer is the funding model described in `docs/consumer/SYMBIOTIC_OPEN_SOURCE.md`. When rad-con generates revenue, a portion flows back to the open source projects it depends on. Not as a licensing fee. Not as payment for services. As an unconditional acknowledgment that commercial success built on open source creates an obligation to sustain it.
 
 ### Practical Mitigations
 

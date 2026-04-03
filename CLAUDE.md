@@ -16,9 +16,9 @@
 WSJT-X ARM64 macOS native build project. Produces signed, notarized `.pkg` installers for Apple Silicon Macs.
 
 ### Key Context
-- **Governing doctrine:** `docs/SYMBIOTIC_OPEN_SOURCE.md` — read before any cross-project decision
-- **Contribution plan:** `docs/planning/WSJTX_TEAM_CONTRIBUTION_PLAN.md` — 6-phase plan for WSJT-X team
-- **Risk analysis:** `docs/planning/GPL_COMPLIANCE_GAPS.md` — 14-gap compliance/risk analysis
+- **Contributor docs:** `docs/contributor/` — contribution plan, repo audit, migration plan (never reference consumer context here)
+- **Consumer docs:** `docs/consumer/` — symbiotic doctrine, GPL compliance gaps, consumer strategy
+- **Persona rule:** Contributor persona never mentions rad-con, consumer agenda, or AI tooling. Consumer can reference contributor work freely.
 - **Build pipeline:** `.github/workflows/build.yml` — GitHub Actions CI/CD (uses superbuild)
 
 ### Architecture
@@ -28,4 +28,4 @@ WSJT-X ARM64 macOS native build project. Produces signed, notarized `.pkg` insta
 
 ### Safety
 - `.p12` files in repo root are signing certificates — NEVER commit them
-- GPL boundary with rad-con is foundational — see symbiotic doctrine before any changes
+- GPL boundary with rad-con is foundational — see `docs/consumer/SYMBIOTIC_OPEN_SOURCE.md` before any changes

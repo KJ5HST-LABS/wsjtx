@@ -24,11 +24,15 @@ Every session has exactly ONE deliverable. When it's done, you close out. You do
    - Ghost session detection results (step 6)
    - Dashboard health score and any risk flags
    - Build status if known
-8. **STOP. Wait for the user to give you a task.**
+8. **Ask: "Which persona for this session — Contributor or Consumer?"**
+   - **Contributor:** Open source work on WSJTX org repos. No mention of rad-con, consumer agenda, commercial interests, or AI tooling in any output.
+   - **Consumer:** Work in this repo (wsjtx-arm) or local directories. May reference contributor work freely.
+   - The persona governs the entire session. Do not switch personas mid-session.
+9. **STOP. Wait for the user to confirm persona and give you a task.**
 
 DO NOT skip the report. DO NOT start working. DO NOT assume you know what to do.
 
-**Even if the user's first message contains a task** (e.g., "Implement the following plan"), Phase 0 is still mandatory. That phrase comes from Plan Mode's auto-generated preamble — it does NOT mean start coding. The orientation report exists for the user's benefit — it establishes shared understanding of the current state. The user needs to see the report and confirm before work begins. A task in the prompt does not mean Phase 0 is complete. Complete all 8 steps, then the user will re-state or confirm the task in Phase 1.
+**Even if the user's first message contains a task** (e.g., "Implement the following plan"), Phase 0 is still mandatory. That phrase comes from Plan Mode's auto-generated preamble — it does NOT mean start coding. The orientation report exists for the user's benefit — it establishes shared understanding of the current state. The user needs to see the report and confirm before work begins. A task in the prompt does not mean Phase 0 is complete. Complete all 9 steps, then the user will re-state or confirm the task in Phase 1.
 
 **Steps 1-3 are READS, not skims.** Every step exists because a session failed without it.
 
@@ -51,7 +55,7 @@ Common task-to-workstream mappings:
 | "Plan [feature/migration]" | One architecture document | `docs/methodology/workstreams/ARCHITECTURE_WORKSTREAM.md` |
 | "Fix [bug campaign]" | One fix campaign pass | `docs/methodology/workstreams/DEVELOPMENT_WORKSTREAM.md` |
 | "Review [code/PR]" | One review document | The review produces a plan; follow DEVELOPMENT_WORKSTREAM for structure |
-| Multi-phase plan appears in prompt (from Plan Mode or user) | Plan document written to `docs/planning/` with evidence-based inventory | Planning workstream |
+| Multi-phase plan appears in prompt (from Plan Mode or user) | Plan document written to `docs/contributor/` or `docs/consumer/` (by persona) with evidence-based inventory | Planning workstream |
 
 **⚠ Plan Mode exit trap.** Plan Mode generates "Implement the following plan" as its preamble. **This does NOT mean "start coding."** When a multi-phase plan appears in the prompt — regardless of the preamble wording — the deliverable is writing the plan document with grep-based evidence and per-phase criteria. Orient first. The plan is a DRAFT until evidence-verified. See Planning Sessions below.
 
@@ -84,7 +88,7 @@ State your understanding back to the user: *"I'm going to [deliverable] followin
 
 ### Planning Sessions
 
-**⚠ The plan is the deliverable. Do not start implementing it.** Write the plan document to `docs/planning/`, commit it, close out. Implementation happens in a separate session.
+**⚠ The plan is the deliverable. Do not start implementing it.** Write the plan document to `docs/contributor/` or `docs/consumer/` (by persona), commit it, close out. Implementation happens in a separate session.
 
 **A plan is a deliverable, not a preamble.** When the session's deliverable is a plan (architecture doc, migration plan, multi-phase implementation plan), additional discipline applies:
 
@@ -235,7 +239,7 @@ These are documented tendencies. The agent must actively guard against them.
 | 16 | **False credit / fabrication** | Session claims credit for work it didn't do, or attributes quotes the user never said. Trust destruction. | Never claim deliverables you didn't produce. If a plan was input, say so. If you produced nothing, say so. |
 | 17 | **Protocol erosion** | Each session shaves off "just one" protocol step. Individually minor. Over 5-10 sessions, the whole protocol collapses. Scores drift from 9/10 to 1/10. | The protocol is not optional, advisory, or improvable-by-subtraction during a session. Every step exists because a previous session failed without it. If you think a step is unnecessary, that's the erosion happening. Do the step. |
 | 18 | **Planning-to-implementation bleed** | A session produces a plan, then immediately begins implementing it. Or the next session bundles multiple phases because "the plan is done, implementation is easy." | A planning session's deliverable IS the plan. Close out after the plan. The next session implements ONE phase. If a plan has N phases, expect N+1 sessions minimum (1 planning + N implementation). If a session's commit history shows both "docs: plan" and "feat: implement," it bundled. |
-| 19 | **Plan-mode bypass** | Plan-mode output arrives in the prompt with "implement." Session treats it as an implementation task and starts coding, skipping the planning workstream entirely. The plan hasn't been evidence-verified. | Plan-mode output is a DRAFT. The first session writes it to `docs/planning/` with evidence-based inventory. Implementation is a separate session. If the prompt contains a multi-phase plan and says "implement," the deliverable is the plan document, not code. |
+| 19 | **Plan-mode bypass** | Plan-mode output arrives in the prompt with "implement." Session treats it as an implementation task and starts coding, skipping the planning workstream entirely. The plan hasn't been evidence-verified. | Plan-mode output is a DRAFT. The first session writes it to `docs/contributor/` or `docs/consumer/` with evidence-based inventory. Implementation is a separate session. If the prompt contains a multi-phase plan and says "implement," the deliverable is the plan document, not code. |
 
 ---
 
@@ -253,7 +257,7 @@ These are documented tendencies. The agent must actively guard against them.
 | Score dropping session-over-session | Multiple failure modes compounding | Re-read this entire document. Reset to full protocol. |
 | "This step doesn't apply to my session" | Failure mode #17 (protocol erosion) is active | The step applies. Do it. Every step exists because a session failed without it. |
 | Plan commit + implementation commit in same session | Failure mode #18 (planning-to-implementation bleed) is active | The plan was the deliverable. Close out. Implementation is a separate session. |
-| Session starts coding from plan-mode output | Failure mode #19 (plan-mode bypass) is active | The plan is a draft. Write it to `docs/planning/` with evidence-based inventory first. |
+| Session starts coding from plan-mode output | Failure mode #19 (plan-mode bypass) is active | The plan is a draft. Write it to `docs/contributor/` or `docs/consumer/` with evidence-based inventory first. |
 
 **If you detect 2+ warning signs: STOP.** Re-read this document from the top. Do not continue until you've re-internalized the protocol. The cost of pausing to re-read is 2 minutes. The cost of a ghost session or failed delivery is the user's trust.
 

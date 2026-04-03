@@ -3,7 +3,7 @@
 ## ACTIVE TASK
 **Task:** Phase 2: GitHub templates and guards (after v3.0.0 GA April 8)
 **Status:** Blocked until v3.0.0 GA releases April 8, 2026. Also need WRITE access — currently READ-only.
-**Session:** 3 complete
+**Session:** 4 complete
 **Started:** 2026-04-02
 
 ---
@@ -49,15 +49,15 @@
    - Identify who owns the Apple Developer account (Gap #9)
    - Check for existing protocol documentation (Gap #2/12)
 2. Start by running `gh org list` or browsing the wsjtx org repos via `gh` CLI
-3. Read `docs/planning/WSJTX_TEAM_CONTRIBUTION_PLAN.md` Phase 1 section for the full audit checklist
+3. Read `docs/contributor/CONTRIBUTION_PLAN.md` Phase 1 section for the full audit checklist
 
 **Key files:**
 - `CLAUDE.md` — new, project agent instructions
 - `SESSION_RUNNER.md` — new, cockpit checklist (follow this every session)
 - `SAFEGUARDS.md` — new, safety rails
 - `BACKLOG.md:10-16` — Phase 1 audit subtasks
-- `docs/planning/WSJTX_TEAM_CONTRIBUTION_PLAN.md` — Phase 1 details
-- `docs/planning/GPL_COMPLIANCE_GAPS.md` — gaps to investigate during audit
+- `docs/contributor/CONTRIBUTION_PLAN.md` — Phase 1 details
+- `docs/consumer/GPL_COMPLIANCE_GAPS.md` — gaps to investigate during audit
 - `.github/workflows/build.yml` — existing CI/CD pipeline (uses superbuild)
 
 **Gotchas for next session:**
@@ -93,7 +93,7 @@
 **Status:** Audit report written and committed.
 
 **What was produced:**
-1. `docs/planning/wsjtx_repo_audit.md` — Comprehensive audit of the WSJTX GitHub org (2 repos, 24 branches, 7 PRs, 7 issues, org membership, CI/CD status, Hamlib resolution, protocol docs, v3.0.0 timeline)
+1. `docs/contributor/REPO_AUDIT.md` — Comprehensive audit of the WSJTX GitHub org (2 repos, 24 branches, 7 PRs, 7 issues, org membership, CI/CD status, Hamlib resolution, protocol docs, v3.0.0 timeline)
 
 **Key discoveries:**
 1. **Superbuild is NOT on GitHub.** Only exists in SourceForge tarballs. Neither wsjtx nor wsjtx-internal is the superbuild.
@@ -117,8 +117,8 @@
 5. **Consider:** Gap #1 fix (source tarball in release workflow) can be done in this repo independently.
 
 **Key files:**
-- `docs/planning/wsjtx_repo_audit.md` — THIS SESSION'S OUTPUT. Full audit with 9 findings.
-- `docs/planning/WSJTX_TEAM_CONTRIBUTION_PLAN.md` — Updated impact table at bottom of audit
+- `docs/contributor/REPO_AUDIT.md` — Session 3 audit output. Full audit with 9 findings.
+- `docs/contributor/CONTRIBUTION_PLAN.md` — Contribution phases and timeline
 - `BACKLOG.md:10-16` — Phase 1 subtasks (all now addressed)
 - `Network/NetworkMessage.hpp` (in WSJTX/wsjtx-internal) — Protocol documentation
 - `INSTALL` (in WSJTX/wsjtx-internal) — Build instructions, Hamlib source info
@@ -143,3 +143,78 @@
 - (-) Apple Developer account remains unresolved (expected — not discoverable from repos)
 - (-) Did not examine wiki content (wiki enabled on wsjtx but content unknown)
 - Score: 9/10
+
+---
+
+### Session 3 Handoff Evaluation (by Session 4)
+- **Score: 9/10**
+- **What helped:** The "What's next" section was perfectly prioritized — "wait for GA, request WRITE, then Phase 2" was exactly right. Key files list included remote repo paths (NetworkMessage.hpp, INSTALL, Release_Notes.txt:5) which saved lookup time. The gotchas about release freeze timing and READ-only access prevented wasted effort.
+- **What was missing:** No mention of the doc structure — all planning docs were in a flat `docs/planning/` directory with mixed contributor/consumer content. Session 4 had to reorganize everything when the persona framework was established. Not a fault of Session 3 (the framework didn't exist yet), but worth noting.
+- **What was wrong:** Nothing factually wrong.
+- **ROI:** Excellent. The structured next-steps and timing constraints were immediately actionable.
+
+---
+
+### What Session 4 Did
+**Deliverable:** Migration/CI-CD plan + persona-based documentation reorganization — COMPLETE
+**Started:** 2026-04-03
+**Status:** All files written and references updated. Not yet committed.
+
+**What was produced:**
+
+1. **Migration/CI-CD plan** — `docs/contributor/MIGRATION_PLAN.md`
+   - 5 workstreams: repo hygiene, contribution infrastructure, CI/CD (3 platforms), superbuild decision, release automation
+   - Prerequisites matrix (access, information, buy-in, technical)
+   - Timeline: 8-11 sessions over ~3 months
+   - Risk register with mitigations
+
+2. **Persona framework and documentation reorganization:**
+   - Established Contributor and Consumer personas with strict one-way information flow
+   - `docs/contributor/` — 3 docs (CONTRIBUTION_PLAN.md, REPO_AUDIT.md, MIGRATION_PLAN.md) — all verified zero consumer leakage via grep
+   - `docs/consumer/` — 3 docs (SYMBIOTIC_OPEN_SOURCE.md, GPL_COMPLIANCE_GAPS.md, CONSUMER_STRATEGY.md)
+   - `docs/planning/` — removed (content split into persona directories)
+   - All references updated in CLAUDE.md, BACKLOG.md, SESSION_NOTES.md, SESSION_RUNNER.md, and cross-references within consumer docs
+
+3. **SESSION_RUNNER.md updated** — Phase 0 now includes step 8: "Ask which persona for this session — Contributor or Consumer?" Step count updated from 8 to 9.
+
+4. **Memory saved** — `feedback_persona_framework.md` indexed as FOUNDATIONAL in MEMORY.md
+
+**What's next:**
+1. **Wait for v3.0.0 GA (April 8).** Do not submit PRs during release freeze.
+2. **User action items (non-code):**
+   - Email team: request WRITE access for KJ5HST on both repos
+   - Email team: ask about Apple Developer account ownership and Windows build toolchain
+3. **Next contributor session (after GA + WRITE access):** Phase 2 quick wins — CONTRIBUTING.md, PR template, close stale PR #1 / issue #1, propose branch protection. One session.
+4. **Next consumer session (anytime):** Prototype switching build.yml from SourceForge tarball to two-stage GitHub source build. Also: rebuild when v3.0.0 GA drops, add corresponding source tarball to releases (GPL compliance Gap #1).
+5. **Phase 6 upstream patches** can be done anytime (no access needed) — CMake 4.x fixes, deployment target, stale URLs.
+
+**Key files:**
+- `docs/contributor/MIGRATION_PLAN.md` — THIS SESSION'S PRIMARY OUTPUT. Full CI/CD migration plan.
+- `docs/contributor/CONTRIBUTION_PLAN.md` — Clean contributor version of the 6-phase plan
+- `docs/contributor/REPO_AUDIT.md` — Clean contributor version of the org audit
+- `docs/consumer/CONSUMER_STRATEGY.md` — NEW. Persona framework definition, pipeline impact, cert strategy.
+- `docs/consumer/SYMBIOTIC_OPEN_SOURCE.md` — Moved from `docs/`
+- `docs/consumer/GPL_COMPLIANCE_GAPS.md` — Moved from `docs/planning/`
+- `SESSION_RUNNER.md:Phase 0` — Updated with persona selection step (step 8)
+- `CLAUDE.md` — Updated doc references and persona rule
+- `BACKLOG.md` — Updated doc references
+
+**Gotchas for next session:**
+- v3.0.0 GA is April 8 (5 days). Do NOT submit PRs to WSJTX org repos before then.
+- We have READ-only access. Need WRITE before any contributor work on org repos.
+- **Persona must be declared at session start.** Contributor sessions produce zero consumer references. Consumer sessions can reference contributor work. No mid-session switching.
+- Contributor docs were verified clean (zero matches for rad-con/commercial/Claude/consumer/KJ5HST-LABS/symbiotic). Maintain this standard.
+- `.p12` files still in repo root (untracked). Never commit.
+- `OUTREACH.md`, `jt9_wisdom.dat`, `timer.out` still untracked.
+- `docs/planning/` no longer exists. Plans go to `docs/contributor/` or `docs/consumer/` by persona.
+
+**Self-assessment:**
+- (+) Migration plan covers all 5 workstreams with concrete technical details (workflow pseudocode, dependency matrices, timeline)
+- (+) Persona reorganization verified clean — grep confirmed zero consumer leakage in contributor docs
+- (+) All file references updated across 6 files with no orphaned paths (one methodology template reference left intentionally)
+- (+) SESSION_RUNNER.md updated to enforce persona selection during orientation
+- (+) Memory saved for cross-session persistence
+- (+) Session had two deliverables (migration plan + persona reorg) but they were requested together by the user as a single unit of work
+- (-) Session produced two deliverables rather than the strict "1 and done" rule. The persona reorg was a user-directed mid-session pivot, not scope creep — but worth noting.
+- (-) The migration plan was written once with mixed content, then had to be rewritten clean for the contributor persona. Could have anticipated the split if the persona framework had been established first.
+- Score: 8/10

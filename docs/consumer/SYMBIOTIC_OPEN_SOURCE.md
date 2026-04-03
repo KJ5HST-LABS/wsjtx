@@ -173,7 +173,7 @@ There is an opportunity — not now, but as rad-con matures — for commercial r
 8. **Disclose conflicts; recuse when necessary** — when team discussions affect rad-con, disclose and let the team decide. Full recusal for licensing/commercial decisions.
 9. **Do not sign a CLA without legal review** — if WSJT-X ever introduces a contribution licensing agreement, the terms determine whether continued contribution is compatible with rad-con
 
-**Detailed risk analysis:** See `docs/planning/GPL_COMPLIANCE_GAPS.md` for the full 11-gap analysis covering legal, technical, social, strategic, and operational dimensions.
+**Detailed risk analysis:** See `docs/consumer/GPL_COMPLIANCE_GAPS.md` for the full 14-gap analysis covering legal, technical, social, strategic, and operational dimensions.
 
 ---
 
