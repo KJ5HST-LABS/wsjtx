@@ -6,8 +6,8 @@ Full plan: `docs/planning/WSJTX_TEAM_CONTRIBUTION_PLAN.md`
 Risk analysis: `docs/planning/GPL_COMPLIANCE_GAPS.md`
 Governing principle: `docs/SYMBIOTIC_OPEN_SOURCE.md`
 
-### Blocked
-- [ ] Phase 1: Repo audit (wsjtx + wsjtx-internal) — **blocked on GitHub invitation**
+### Ready (access confirmed 2026-04-03)
+- [ ] Phase 1: Repo audit (wsjtx + wsjtx-internal) — **UNBLOCKED**
   - Find the superbuild (wsjtx-internal?)
   - Resolve Hamlib fork location and status
   - Map branching strategy and release process
@@ -37,3 +37,4 @@ Governing principle: `docs/SYMBIOTIC_OPEN_SOURCE.md`
 - [x] Hamlib fork situation analyzed
 - [x] Hybrid integration architecture defined (shared memory input, UDP output)
 - [x] GitHub invitation troubleshooting — instructions sent to Joe K1JT
+- [x] Methodology bootstrap (SESSION_RUNNER, SAFEGUARDS, CLAUDE.md, docs/methodology/)
