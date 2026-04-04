@@ -29,3 +29,11 @@ WSJT-X ARM64 macOS native build project. Produces signed, notarized `.pkg` insta
 ### Safety
 - `.p12` files in repo root are signing certificates — NEVER commit them
 - GPL boundary with rad-con is foundational — see `docs/consumer/SYMBIOTIC_OPEN_SOURCE.md` before any changes
+
+## Backlog & Issues
+
+Use **GitHub Issues** for backlog items, bugs, and cross-project coordination. Do not use BACKLOG.md — it has been migrated to GitHub Issues.
+
+- View issues: `gh issue list`
+- Create issue: `gh issue create --title "..." --body "..."`
+- Cross-project issues: use the target repo's issue tracker
