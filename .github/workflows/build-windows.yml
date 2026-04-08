@@ -72,55 +72,39 @@ jobs:
           make -j$(nproc)
           make install-strip
 
-      - name: Install OmniRig
-        shell: powershell
+      - name: Patch OmniRig requirement
         run: |
-          # OmniRig is a COM server required by WSJT-X on Windows for rig control.
-          # The installer's /regserver fails silently on CI runners.
-          # Workaround: extract the type library from OmniRig.exe and register it manually.
-          $url = "https://www.dxatlas.com/OmniRig/Files/OmniRig.zip"
-          $zip = "$env:RUNNER_TEMP\OmniRig.zip"
-          $dir = "$env:RUNNER_TEMP\OmniRig"
-
-          Write-Host "Downloading OmniRig..."
-          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
-          Expand-Archive -Path $zip -DestinationPath $dir -Force
-
-          # Run the installer
-          $setup = Get-ChildItem -Path $dir -Recurse -Filter "*.exe" | Select-Object -First 1
-          Start-Process -FilePath $setup.FullName -ArgumentList "/VERYSILENT","/NORESTART","/SUPPRESSMSGBOXES" -Wait -NoNewWindow
-
-          # The OmniRig.exe embeds a type library. Extract it with the Windows SDK tool.
-          $exe = "${env:ProgramFiles(x86)}\Afreet\OmniRig\OmniRig.exe"
-          $tlbDir = "$env:RUNNER_TEMP\omnirig-tlb"
-          New-Item -ItemType Directory -Force -Path $tlbDir | Out-Null
-
-          # Use regtlb or manually create registry entries pointing to the exe as a TypeLib
-          # OmniRig's CLSID is {4FE359C5-A58F-459D-BE95-CA559FB4F270}
-          # Its TypeLib GUID is {4FE359C5-A58F-459D-BE95-CA559FB4F270} (same)
-          $clsid = "{4FE359C5-A58F-459D-BE95-CA559FB4F270}"
-
-          # Manually create the registry entries that /regserver would create
-          # CLSID entry (LocalServer32)
-          $clsidPath = "HKLM:\SOFTWARE\Classes\CLSID\$clsid"
-          New-Item -Path "$clsidPath\LocalServer32" -Force | Out-Null
-          Set-ItemProperty -Path "$clsidPath\LocalServer32" -Name "(default)" -Value $exe
-          Set-ItemProperty -Path $clsidPath -Name "(default)" -Value "OmniRig Engine"
-
-          # TypeLib entry pointing to the exe (type library is embedded in the exe)
-          $tlbPath = "HKLM:\SOFTWARE\Classes\TypeLib\$clsid\1.0\0\win32"
-          New-Item -Path $tlbPath -Force | Out-Null
-          Set-ItemProperty -Path $tlbPath -Name "(default)" -Value $exe
-          $tlbParent = "HKLM:\SOFTWARE\Classes\TypeLib\$clsid\1.0"
-          Set-ItemProperty -Path $tlbParent -Name "(default)" -Value "OmniRig Engine Type Library"
-
-          # Also create a 64-bit entry since dumpcpp may look there
-          $tlb64Path = "HKLM:\SOFTWARE\Classes\TypeLib\$clsid\1.0\0\win64"
-          New-Item -Path $tlb64Path -Force | Out-Null
-          Set-ItemProperty -Path $tlb64Path -Name "(default)" -Value $exe
-
-          Write-Host "OmniRig registry entries created manually"
-          Write-Host "TypeLib path: $exe"
+          # OmniRig COM registration fails on CI runners. Skip it for now.
+          # TODO: Ask the WSJT-X team how they handle OmniRig in their Windows builds.
+          python3 -c "
+          import re
+          with open('CMakeLists.txt', 'r') as f:
+              txt = f.read()
+          # Replace the entire WIN32 OmniRig block (lines 933-950) with a skip
+          txt = re.sub(
+              r'if \(WIN32\)\s*\n\s*# generate the OmniRig COM interface source.*?endif \(\)',
+              '''if (WIN32)
+            # OmniRig skipped in CI — COM type library not available on GitHub Actions runners
+            message (STATUS \"OmniRig support disabled (CI build)\")
+            set (WSJT_SKIP_OMNIRIG ON)
+          endif ()''',
+              txt, count=1, flags=re.DOTALL)
+          # Guard the wrap_ax_server call
+          txt = txt.replace('wrap_ax_server (GENAXSRCS \${AXSERVERSRCS})',
+              'if (NOT WSJT_SKIP_OMNIRIG)\n    wrap_ax_server (GENAXSRCS \${AXSERVERSRCS})\n  endif ()')
+          # Guard the AxContainer link
+          txt = txt.replace('target_link_libraries (wsjt_qt Qt5::AxContainer Qt5::AxBase)',
+              'if (NOT WSJT_SKIP_OMNIRIG)\n    target_link_libraries (wsjt_qt Qt5::AxContainer Qt5::AxBase)\n  endif ()')
+          # Remove OmniRigTransceiver.cpp from sources when skipped
+          txt = txt.replace('Transceiver/OmniRigTransceiver.cpp',
+              '\$<\$<NOT:\$<BOOL:\${WSJT_SKIP_OMNIRIG}>>:Transceiver/OmniRigTransceiver.cpp>')
+          # Guard find_package(Qt5AxContainer)
+          txt = txt.replace('find_package (Qt5AxContainer REQUIRED)',
+              'if (NOT WSJT_SKIP_OMNIRIG)\n    find_package (Qt5AxContainer REQUIRED)\n  endif ()')
+          with open('CMakeLists.txt', 'w') as f:
+              f.write(txt)
+          print('OmniRig patched out successfully')
+          "
 
       - name: Configure
         run: |
