@@ -136,9 +136,37 @@ jobs:
             }
           }
 
-          # Verify
-          $testCmd = "dumpcpp -getfile $clsid"
-          Write-Host "Testing: $testCmd"
+          # Dump what actually got registered
+          Write-Host "Checking all registry hives for OmniRig..."
+          foreach ($hive in @("HKLM:\SOFTWARE\Classes\CLSID", "HKLM:\SOFTWARE\WOW6432Node\Classes\CLSID", "HKCU:\SOFTWARE\Classes\CLSID")) {
+            if (Test-Path $hive) {
+              $found = Get-ChildItem $hive -ErrorAction SilentlyContinue | Where-Object {
+                (Get-ItemProperty -Path "$($_.PSPath)\InprocServer32" -ErrorAction SilentlyContinue) -or
+                (Get-ItemProperty -Path $_.PSPath -ErrorAction SilentlyContinue).'(default)' -match 'OmniRig'
+              }
+              if ($found) { $found | ForEach-Object { Write-Host "  $hive : $($_.PSChildName)" } }
+            }
+          }
+          # Also check TypeLib hives
+          foreach ($hive in @("HKLM:\SOFTWARE\Classes\TypeLib", "HKLM:\SOFTWARE\WOW6432Node\Classes\TypeLib", "HKCU:\SOFTWARE\Classes\TypeLib")) {
+            if (Test-Path $hive) {
+              Get-ChildItem $hive -ErrorAction SilentlyContinue | ForEach-Object {
+                $content = Get-ChildItem $_.PSPath -Recurse -ErrorAction SilentlyContinue | Out-String
+                if ($content -match "OmniRig") {
+                  Write-Host "  TypeLib in $hive : $($_.PSChildName)"
+                }
+              }
+            }
+          }
+          # Check if the OmniRig.exe registered as a LocalServer32
+          $localSrv = "HKLM:\SOFTWARE\Classes\CLSID\$clsid\LocalServer32"
+          $localSrvWow = "HKLM:\SOFTWARE\WOW6432Node\Classes\CLSID\$clsid\LocalServer32"
+          $localSrvCU = "HKCU:\SOFTWARE\Classes\CLSID\$clsid\LocalServer32"
+          foreach ($k in @($localSrv, $localSrvWow, $localSrvCU)) {
+            if (Test-Path $k) {
+              Write-Host "  LocalServer32 at $k : $((Get-ItemProperty $k).'(default)')"
+            }
+          }
 
       - name: Configure
         run: |
