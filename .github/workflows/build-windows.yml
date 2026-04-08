@@ -96,25 +96,47 @@ jobs:
             Write-Host "Installer finished"
           }
 
-          # Verify COM registration
+          # Find and register OmniRig COM server
+          # The installer puts files in Program Files (x86) by default
+          $searchPaths = @(
+            "${env:ProgramFiles(x86)}\Afreet\OmniRig",
+            "${env:ProgramFiles}\Afreet\OmniRig",
+            "${env:ProgramFiles(x86)}\OmniRig",
+            "${env:ProgramFiles}\OmniRig"
+          )
+          Write-Host "Searching for OmniRig installation..."
+          foreach ($p in $searchPaths) {
+            if (Test-Path $p) {
+              Write-Host "Found OmniRig at: $p"
+              Get-ChildItem $p -Recurse | ForEach-Object { Write-Host "  $($_.Name)" }
+              # Register the COM DLL explicitly
+              $dll = Get-ChildItem $p -Recurse -Filter "OmniRig.dll" | Select-Object -First 1
+              if ($dll) {
+                Write-Host "Registering COM server: $($dll.FullName)"
+                regsvr32 /s "$($dll.FullName)"
+                Write-Host "regsvr32 exit code: $LASTEXITCODE"
+              }
+              # Also look for .tlb type library
+              $tlb = Get-ChildItem $p -Recurse -Filter "*.tlb" | Select-Object -First 1
+              if ($tlb) {
+                Write-Host "Found type library: $($tlb.FullName)"
+              }
+            }
+          }
+
+          # Verify
           $clsid = "{4FE359C5-A58F-459D-BE95-CA559FB4F270}"
-          $key = "HKLM:\SOFTWARE\Classes\CLSID\$clsid"
-          $keyWow = "HKLM:\SOFTWARE\WOW6432Node\Classes\CLSID\$clsid"
-          if (Test-Path $key) {
-            Write-Host "OmniRig registered at: $key"
-          } elseif (Test-Path $keyWow) {
-            Write-Host "OmniRig registered (WOW64) at: $keyWow"
+          if (Test-Path "HKLM:\SOFTWARE\Classes\CLSID\$clsid") {
+            Write-Host "OmniRig COM registered (64-bit)"
+          } elseif (Test-Path "HKLM:\SOFTWARE\WOW6432Node\Classes\CLSID\$clsid") {
+            Write-Host "OmniRig COM registered (WOW64)"
           } else {
-            Write-Host "WARNING: OmniRig CLSID not found in registry"
-            Write-Host "Searching registry for OmniRig..."
-            Get-ChildItem "HKLM:\SOFTWARE\Classes\CLSID" -ErrorAction SilentlyContinue |
-              Where-Object { $_.Name -match "OmniRig" } |
-              ForEach-Object { Write-Host "  Found: $($_.Name)" }
-            # Also check if the type library was registered
-            Write-Host "Checking TypeLib registry..."
-            Get-ChildItem "HKLM:\SOFTWARE\Classes\TypeLib" -ErrorAction SilentlyContinue |
-              Where-Object { $_.Name -match "OmniRig" } |
-              ForEach-Object { Write-Host "  TypeLib: $($_.Name)" }
+            Write-Host "OmniRig CLSID still not in registry — checking user hive..."
+            if (Test-Path "HKCU:\SOFTWARE\Classes\CLSID\$clsid") {
+              Write-Host "OmniRig COM registered in HKCU"
+            } else {
+              Write-Host "ERROR: OmniRig COM not registered anywhere"
+            }
           }
 
       - name: Configure
