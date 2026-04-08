@@ -12,5 +12,19 @@ jobs:
     uses: ./.github/workflows/build-macos.yml
     with:
       version: "3.0.0"
-      hamlib_branch: "integration"
+      hamlib_branch: "master"
+    secrets: inherit
+
+  linux:
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      version: "3.0.0"
+      hamlib_branch: "master"
+    secrets: inherit
+
+  windows:
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      version: "3.0.0"
+      hamlib_branch: "master"
     secrets: inherit
