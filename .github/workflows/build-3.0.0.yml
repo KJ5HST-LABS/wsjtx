@@ -3,13 +3,19 @@ name: Build WSJT-X 3.0.0 arm64
 on:
   workflow_dispatch:
     inputs:
-      wsjtx_version:
-        description: "WSJT-X version to build"
-        default: "3.0.0"
+      wsjtx_tag:
+        description: "WSJT-X git tag to build"
+        default: "v3.0.0"
+        required: true
+      hamlib_branch:
+        description: "Hamlib branch"
+        default: "integration"
         required: true
 
 env:
-  WSJTX_VERSION: ${{ github.event.inputs.wsjtx_version || '3.0.0' }}
+  WSJTX_TAG: ${{ github.event.inputs.wsjtx_tag || 'v3.0.0' }}
+  WSJTX_VERSION: "3.0.0"
+  HAMLIB_BRANCH: ${{ github.event.inputs.hamlib_branch || 'integration' }}
 
 jobs:
   build:
@@ -18,7 +24,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install dependencies
-        run: brew install cmake gcc fftw boost qt@5 libusb dylibbundler
+        run: brew install cmake gcc fftw boost qt@5 libusb dylibbundler autoconf automake libtool
 
       - name: Locate gfortran
         id: fc
@@ -34,24 +40,30 @@ jobs:
           [ -e /opt/homebrew/mkspecs ] || ln -s "${QT5_PREFIX}/mkspecs" /opt/homebrew/mkspecs
           [ -e /opt/homebrew/plugins ] || ln -s "${QT5_PREFIX}/plugins" /opt/homebrew/plugins
 
-      - name: Download source
+      - name: Clone WSJT-X source
         run: |
-          curl -L -o "wsjtx-${WSJTX_VERSION}.tgz" \
-            "https://sourceforge.net/projects/wsjt/files/wsjtx-${WSJTX_VERSION}/wsjtx-${WSJTX_VERSION}.tgz/download"
-          tar xzf "wsjtx-${WSJTX_VERSION}.tgz"
+          git clone --depth 1 --branch "${WSJTX_TAG}" \
+            https://github.com/WSJTX/wsjtx.git wsjtx-src
+          echo "Source checked out at tag ${WSJTX_TAG}"
 
-      - name: Patch superbuild for CMake 4.x
+      - name: Build Hamlib
         run: |
-          sed -i '' \
-            -e 's/^add_custom_target (install DEPENDS/add_custom_target (wsjtx-do-install DEPENDS/' \
-            -e 's/^add_custom_target (package DEPENDS/add_custom_target (wsjtx-do-package DEPENDS/' \
-            "wsjtx-${WSJTX_VERSION}/CMakeLists.txt"
+          git clone --depth 1 --branch "${HAMLIB_BRANCH}" \
+            https://github.com/Hamlib/Hamlib.git hamlib-src
+          cd hamlib-src
+          ./bootstrap
+          ./configure \
+            --prefix="${GITHUB_WORKSPACE}/hamlib-prefix" \
+            --disable-shared --enable-static \
+            --without-cxx-binding
+          make -j$(sysctl -n hw.ncpu)
+          make install
 
       - name: Configure
         run: |
           mkdir wsjtx-build
-          cmake -S "wsjtx-${WSJTX_VERSION}" -B wsjtx-build \
-            -DCMAKE_PREFIX_PATH="$(brew --prefix qt@5);$(brew --prefix libusb);$(brew --prefix fftw);$(brew --prefix boost)" \
+          cmake -S wsjtx-src -B wsjtx-build \
+            -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/hamlib-prefix;$(brew --prefix qt@5);$(brew --prefix libusb);$(brew --prefix fftw);$(brew --prefix boost)" \
             -DCMAKE_Fortran_COMPILER="${{ steps.fc.outputs.path }}" \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
@@ -60,18 +72,17 @@ jobs:
             -Wno-dev
 
       - name: Build
-        run: cmake --build wsjtx-build
+        run: cmake --build wsjtx-build -j$(sysctl -n hw.ncpu)
 
       - name: Verify arm64
         run: |
-          JT9=wsjtx-build/wsjtx-prefix/src/wsjtx-build/jt9
-          file "$JT9"
-          lipo -archs "$JT9" | grep -q arm64
+          file wsjtx-build/jt9
+          lipo -archs wsjtx-build/jt9 | grep -q arm64
 
       - name: Collect binaries
         id: collect
         run: |
-          BUILD=wsjtx-build/wsjtx-prefix/src/wsjtx-build
+          BUILD=wsjtx-build
           STAGE=stage/wsjtx-${WSJTX_VERSION}-arm64
           ASSETS=assets
 
@@ -350,8 +361,7 @@ jobs:
           [ -d "${STAGE}/lib" ] && cp -R "${STAGE}/lib/"* "${PAYLOAD}/usr/local/wsjtx/lib/"
 
           # Shared memory sysctl plist
-          BUILD=wsjtx-build/wsjtx-prefix/src/wsjtx
-          cp "${BUILD}/Darwin/com.wsjtx.sysctl.plist" "${PAYLOAD}/Library/LaunchDaemons/"
+          cp "wsjtx-src/Darwin/com.wsjtx.sysctl.plist" "${PAYLOAD}/Library/LaunchDaemons/"
 
           # Postinstall script to load the sysctl plist
           cat > "${SCRIPTS}/postinstall" << 'SCRIPT'
@@ -491,6 +501,8 @@ jobs:
           name: WSJT-X ${{ env.WSJTX_VERSION }} — arm64 macOS
           body: |
             Native Apple Silicon (arm64) build of WSJT-X ${{ env.WSJTX_VERSION }} for macOS.
+
+            Built from GitHub source ([WSJTX/wsjtx](https://github.com/WSJTX/wsjtx) tag `${{ env.WSJTX_TAG }}`).
 
             ## Downloads
 
