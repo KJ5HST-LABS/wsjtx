@@ -75,16 +75,46 @@ jobs:
       - name: Install OmniRig
         shell: powershell
         run: |
-          # OmniRig is a COM server required by WSJT-X on Windows
-          Invoke-WebRequest -Uri "https://www.dxatlas.com/OmniRig/Files/OmniRig.zip" -OutFile "$env:RUNNER_TEMP\OmniRig.zip"
-          Expand-Archive -Path "$env:RUNNER_TEMP\OmniRig.zip" -DestinationPath "$env:RUNNER_TEMP\OmniRig"
-          $setup = Get-ChildItem -Path "$env:RUNNER_TEMP\OmniRig" -Recurse -Filter "*.exe" | Select-Object -First 1
+          # OmniRig is a COM server required by WSJT-X on Windows for rig control
+          $url = "https://www.dxatlas.com/OmniRig/Files/OmniRig.zip"
+          $zip = "$env:RUNNER_TEMP\OmniRig.zip"
+          $dir = "$env:RUNNER_TEMP\OmniRig"
+
+          Write-Host "Downloading OmniRig..."
+          Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
+          Write-Host "Download size: $((Get-Item $zip).Length) bytes"
+
+          Expand-Archive -Path $zip -DestinationPath $dir -Force
+          Write-Host "Extracted contents:"
+          Get-ChildItem -Path $dir -Recurse | ForEach-Object { Write-Host "  $($_.FullName)" }
+
+          # Look for InnoSetup installer
+          $setup = Get-ChildItem -Path $dir -Recurse -Filter "*.exe" | Select-Object -First 1
           if ($setup) {
-            Start-Process -FilePath $setup.FullName -ArgumentList "/VERYSILENT","/NORESTART" -Wait
+            Write-Host "Running installer: $($setup.FullName)"
+            Start-Process -FilePath $setup.FullName -ArgumentList "/VERYSILENT","/NORESTART","/SUPPRESSMSGBOXES" -Wait -NoNewWindow
+            Write-Host "Installer finished"
+          }
+
+          # Verify COM registration
+          $clsid = "{4FE359C5-A58F-459D-BE95-CA559FB4F270}"
+          $key = "HKLM:\SOFTWARE\Classes\CLSID\$clsid"
+          $keyWow = "HKLM:\SOFTWARE\WOW6432Node\Classes\CLSID\$clsid"
+          if (Test-Path $key) {
+            Write-Host "OmniRig registered at: $key"
+          } elseif (Test-Path $keyWow) {
+            Write-Host "OmniRig registered (WOW64) at: $keyWow"
           } else {
-            # If no exe, register the DLL directly
-            $dll = Get-ChildItem -Path "$env:RUNNER_TEMP\OmniRig" -Recurse -Filter "OmniRig.dll" | Select-Object -First 1
-            if ($dll) { regsvr32 /s $dll.FullName }
+            Write-Host "WARNING: OmniRig CLSID not found in registry"
+            Write-Host "Searching registry for OmniRig..."
+            Get-ChildItem "HKLM:\SOFTWARE\Classes\CLSID" -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -match "OmniRig" } |
+              ForEach-Object { Write-Host "  Found: $($_.Name)" }
+            # Also check if the type library was registered
+            Write-Host "Checking TypeLib registry..."
+            Get-ChildItem "HKLM:\SOFTWARE\Classes\TypeLib" -ErrorAction SilentlyContinue |
+              Where-Object { $_.Name -match "OmniRig" } |
+              ForEach-Object { Write-Host "  TypeLib: $($_.Name)" }
           }
 
       - name: Configure
