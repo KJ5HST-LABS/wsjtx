@@ -37,6 +37,7 @@ jobs:
             mingw-w64-x86_64-qt5-serialport
             mingw-w64-x86_64-qt5-tools
             mingw-w64-x86_64-qt5-websockets
+            mingw-w64-x86_64-qt5-activeqt
             mingw-w64-x86_64-fftw
             mingw-w64-x86_64-boost
             mingw-w64-x86_64-libusb
@@ -71,12 +72,20 @@ jobs:
           make -j$(nproc)
           make install-strip
 
-      - name: Patch OmniRig requirement
+      - name: Install OmniRig
+        shell: powershell
         run: |
-          # OmniRig is a Windows COM component that requires installation on the
-          # build machine. Make it non-fatal for CI builds.
-          sed -i 's/message (FATAL_ERROR "You need to install OmniRig on this computer")/message (WARNING "OmniRig not found - OmniRig support disabled")/' CMakeLists.txt
-          sed -i 's/message (FATAL_ERROR "dumpcpp tool not found")/message (WARNING "dumpcpp not found - OmniRig support disabled")/' CMakeLists.txt
+          # OmniRig is a COM server required by WSJT-X on Windows
+          Invoke-WebRequest -Uri "https://www.dxatlas.com/OmniRig/Files/OmniRig.zip" -OutFile "$env:RUNNER_TEMP\OmniRig.zip"
+          Expand-Archive -Path "$env:RUNNER_TEMP\OmniRig.zip" -DestinationPath "$env:RUNNER_TEMP\OmniRig"
+          $setup = Get-ChildItem -Path "$env:RUNNER_TEMP\OmniRig" -Recurse -Filter "*.exe" | Select-Object -First 1
+          if ($setup) {
+            Start-Process -FilePath $setup.FullName -ArgumentList "/VERYSILENT","/NORESTART" -Wait
+          } else {
+            # If no exe, register the DLL directly
+            $dll = Get-ChildItem -Path "$env:RUNNER_TEMP\OmniRig" -Recurse -Filter "OmniRig.dll" | Select-Object -First 1
+            if ($dll) { regsvr32 /s $dll.FullName }
+          }
 
       - name: Configure
         run: |
