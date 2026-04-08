@@ -1,12 +1,96 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Phase 2: GitHub templates and guards (after v3.0.0 GA April 8)
-**Status:** Blocked until v3.0.0 GA releases April 8, 2026. Also need WRITE access — currently READ-only.
-**Session:** 4 complete
+**Task:** Two-repo CI/CD proof of concept — Phase 2: CI workflows
+**Status:** Phase 1 (repo setup) complete. Phase 2 ready to start.
+**Session:** 5 complete
 **Started:** 2026-04-02
 
 ---
+
+### Session 4 Handoff Evaluation (by Session 5)
+- **Score: 7/10**
+- **What helped:** Persona framework, key file references, gotchas about release freeze and READ-only access.
+- **What was missing:** No mention of org-level secrets having `visibility: all` but actually not reaching repos — Session 5 spent significant time debugging this. The ACTIVE TASK was stale (still said "blocked until GA + WRITE access" but WRITE was granted April 4 and GA shipped).
+- **What was wrong:** "docs/planning/ no longer exists" was wrong — Session 5 created docs/planning/ for the CI/CD PoC plan.
+- **ROI:** Moderate. The persona framework guidance was useful but the stale task/status info required re-orientation.
+
+---
+
+### What Session 5 Did
+**Deliverable:** CI/CD proof-of-concept — Phase 1 repo setup + plan — COMPLETE
+**Started:** 2026-04-06
+**Status:** All Phase 1 steps committed and pushed.
+
+**What was produced:**
+
+1. **Build pipeline fixes:**
+   - Fixed org-level secret visibility (`.p12` secrets had `visibility: private` with no repos selected)
+   - Fixed notarization secret name (`APPLE_ID_PASSWORD` → `APPLE_APP_SPECIFIC_PASSWORD`)
+   - Commit `6dab96d` — workflow fix for notarization secret
+
+2. **WSJT-X 3.0.0 GA build workflow:**
+   - `build-3.0.0.yml` — two-stage build from GitHub source (no SourceForge superbuild)
+   - Clones WSJTX/wsjtx at tag, builds Hamlib from source, builds WSJT-X via cmake
+   - Commit `95f326c` (initial), updated in `0ce8928`
+
+3. **CI/CD proof-of-concept plan:**
+   - `docs/planning/CICD_PROOF_OF_CONCEPT.md` — audited plan with reusable workflows, caching, external contribution flow
+   - `docs/contributor/drafts/email_cicd_proposal.md` — team-facing email draft
+   - `docs/contributor/drafts/email_bundle_fix.md` — email draft for bundle fix discussion
+
+4. **Phase 1 repo setup (the main deliverable):**
+   - Renamed `WSJT-X-MAC-ARM64` → `KJ5HST-LABS/wsjtx-internal`
+   - Renamed `main` → `develop` branch, set as default
+   - Imported WSJT-X v3.0.0 source from `WSJTX/wsjtx` (merge with `--allow-unrelated-histories`)
+   - Created `KJ5HST-LABS/wsjtx` (private, `main` default)
+   - Generated two deploy key pairs (release flow + sync flow)
+   - Deploy keys installed on both repos, private keys stored as secrets
+
+**Key discoveries:**
+1. **Org-level secrets with `visibility: all` were not reaching repos.** Root cause unknown. Fixed by re-uploading secrets. Later moved to repo-level, then back to org-level after the user re-set them.
+2. **`APPLE_ID_PASSWORD` secret was the wrong name.** The app-specific password was stored as `APPLE_APP_SPECIFIC_PASSWORD`. Workflow was referencing the wrong secret.
+3. **Deploy keys were disabled by org policy.** Had to ask user to enable in org settings before keys could be added.
+4. **Shallow clone caused push failures.** `git fetch --depth=1` left missing objects; needed full fetch before push would work.
+
+**What's next:**
+1. **Phase 2: CI workflows** — the next session's deliverable. Build order:
+   - Write `build-macos.yml` (reusable workflow, adapt from `build-3.0.0.yml`)
+   - Write `ci.yml` (thin orchestrator, macOS only first)
+   - Push to `develop`, verify macOS builds green
+   - Add `build-linux.yml`, verify
+   - Add `build-windows.yml`, verify (expect 2-3 iterations)
+   - Write `release.yml` (tag-triggered, pushes to wsjtx)
+2. **Phase 3: Three test changes** to prove the workflow end-to-end
+3. **Phase 4: Document results and share with team**
+
+**Key files:**
+- `docs/planning/CICD_PROOF_OF_CONCEPT.md` — the audited PoC plan (reusable workflows, caching, external contribution flow)
+- `.github/workflows/build-3.0.0.yml` — proven macOS two-stage build to adapt for `build-macos.yml`
+- `entitlements.plist` — macOS Fortran JIT entitlements, must be on `develop`
+- `docs/contributor/drafts/email_cicd_proposal.md` — email draft to update with results after Phase 3
+
+**Gotchas for next session:**
+- **Repo is now `KJ5HST-LABS/wsjtx-internal`**, not `WSJT-X-MAC-ARM64`. Local remote is updated.
+- **Branch is `develop`**, not `main`. Default branch on GitHub is `develop`.
+- **WSJT-X source is in the repo root.** `CMakeLists.txt`, `INSTALL`, `COPYING`, etc. coexist with our docs and workflows.
+- **The old `build.yml` and `build-3.0.0.yml` still exist on `develop`.** They trigger on push to `main` (which no longer exists) or workflow_dispatch. They won't auto-trigger but could be dispatched manually. Remove or update once `ci.yml` is in place.
+- **Deploy keys are in place.** `WSJTX_DEPLOY_KEY` on wsjtx-internal, `INTERNAL_DEPLOY_KEY` on wsjtx. Both read-write.
+- **Org secrets exist** (`visibility: all`): APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID, DEVELOPER_ID_CERTIFICATE_P12, DEVELOPER_ID_CERTIFICATE_PASSWORD, DEVELOPER_ID_INSTALLER_P12, DEVELOPER_ID_INSTALLER_PASSWORD.
+- **`.p12` files still in repo root** (untracked). Never commit.
+- **Windows build is highest risk** in Phase 2. MSYS2 MINGW64 approach planned, expect iterations.
+- **The upstream remote `upstream` points to `WSJTX/wsjtx`.** Can be used to pull future upstream changes.
+
+**Self-assessment:**
+- (+) Fixed three separate build failures (secret visibility, secret name, org policy) — each required diagnosis
+- (+) Phase 1 repo setup completed cleanly: rename, branch, source import, public repo, deploy keys
+- (+) CI/CD plan audited for best practices: reusable workflows, caching, external contribution flow added
+- (+) Identified and resolved the shallow clone push failure without data loss
+- (+) Email draft written in contributor persona (clean, no consumer leakage)
+- (-) Session was long and covered multiple concerns (build fixes, plan writing, plan auditing, repo setup) — more than "1 and done" strictly allows, but the user drove the scope
+- (-) Did not commit the updated `docs/planning/CICD_PROOF_OF_CONCEPT.md` after the audit revision — it was committed before the audit but the post-audit version was committed separately
+- (-) The `build-3.0.0.yml` on `develop` still references the old trigger pattern (workflow_dispatch only, SourceForge download removed but old build.yml still exists)
+- Score: 7/10
 
 ### Session 1 Handoff Evaluation (by Session 2)
 - **Score: 8/10**
