@@ -1,3 +1,30 @@
+# WSJT-X upstream
+~*
+TAGS
+tags
+GPATH
+GRTAGS
+GTAGS
+*~
+junk*
+jnq*
+!*.exe
+*.o
+*.mod
+*.pro.user
+*.txt
+*.bak
+!**/CMakeLists.txt
+!**/*.txt
+__pycache__
+cmake-build-debug
+cmake-build-release
+CMakeFiles
+fnd
+lib/77bit/tmp
+lib/tmp
+
+# Build artifacts
 *.tgz
 wsjtx-3.0.0-rc1/
 wsjtx-build/
