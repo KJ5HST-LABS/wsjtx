@@ -96,47 +96,18 @@ jobs:
             Write-Host "Installer finished"
           }
 
-          # Find and register OmniRig COM server
-          # The installer puts files in Program Files (x86) by default
-          $searchPaths = @(
-            "${env:ProgramFiles(x86)}\Afreet\OmniRig",
-            "${env:ProgramFiles}\Afreet\OmniRig",
-            "${env:ProgramFiles(x86)}\OmniRig",
-            "${env:ProgramFiles}\OmniRig"
-          )
-          Write-Host "Searching for OmniRig installation..."
-          foreach ($p in $searchPaths) {
-            if (Test-Path $p) {
-              Write-Host "Found OmniRig at: $p"
-              Get-ChildItem $p -Recurse | ForEach-Object { Write-Host "  $($_.Name)" }
-              # Register the COM DLL explicitly
-              $dll = Get-ChildItem $p -Recurse -Filter "OmniRig.dll" | Select-Object -First 1
-              if ($dll) {
-                Write-Host "Registering COM server: $($dll.FullName)"
-                regsvr32 /s "$($dll.FullName)"
-                Write-Host "regsvr32 exit code: $LASTEXITCODE"
-              }
-              # Also look for .tlb type library
-              $tlb = Get-ChildItem $p -Recurse -Filter "*.tlb" | Select-Object -First 1
-              if ($tlb) {
-                Write-Host "Found type library: $($tlb.FullName)"
-              }
-            }
-          }
+          # Find where OmniRig installed
+          Write-Host "Searching entire system for OmniRig files..."
+          Get-ChildItem -Path "C:\" -Recurse -Filter "OmniRig*" -ErrorAction SilentlyContinue |
+            ForEach-Object { Write-Host "  $($_.FullName)" }
 
-          # Verify
-          $clsid = "{4FE359C5-A58F-459D-BE95-CA559FB4F270}"
-          if (Test-Path "HKLM:\SOFTWARE\Classes\CLSID\$clsid") {
-            Write-Host "OmniRig COM registered (64-bit)"
-          } elseif (Test-Path "HKLM:\SOFTWARE\WOW6432Node\Classes\CLSID\$clsid") {
-            Write-Host "OmniRig COM registered (WOW64)"
+          # Find the DLL and register it
+          $dll = Get-ChildItem -Path "C:\" -Recurse -Filter "OmniRig.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($dll) {
+            Write-Host "Registering: $($dll.FullName)"
+            regsvr32 /s "$($dll.FullName)"
           } else {
-            Write-Host "OmniRig CLSID still not in registry — checking user hive..."
-            if (Test-Path "HKCU:\SOFTWARE\Classes\CLSID\$clsid") {
-              Write-Host "OmniRig COM registered in HKCU"
-            } else {
-              Write-Host "ERROR: OmniRig COM not registered anywhere"
-            }
+            Write-Host "OmniRig.dll not found on disk"
           }
 
       - name: Configure
