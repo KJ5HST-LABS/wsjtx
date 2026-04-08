@@ -71,6 +71,13 @@ jobs:
           make -j$(nproc)
           make install-strip
 
+      - name: Patch OmniRig requirement
+        run: |
+          # OmniRig is a Windows COM component that requires installation on the
+          # build machine. Make it non-fatal for CI builds.
+          sed -i 's/message (FATAL_ERROR "You need to install OmniRig on this computer")/message (WARNING "OmniRig not found - OmniRig support disabled")/' CMakeLists.txt
+          sed -i 's/message (FATAL_ERROR "dumpcpp tool not found")/message (WARNING "dumpcpp not found - OmniRig support disabled")/' CMakeLists.txt
+
       - name: Configure
         run: |
           WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
