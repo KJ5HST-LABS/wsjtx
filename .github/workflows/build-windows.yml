@@ -98,14 +98,47 @@ jobs:
 
           # OmniRig.exe IS the COM server — register it
           $exe = "${env:ProgramFiles(x86)}\Afreet\OmniRig\OmniRig.exe"
-          if (Test-Path $exe) {
-            Write-Host "Registering OmniRig COM server: $exe"
-            Start-Process -FilePath $exe -ArgumentList "/regserver" -Wait -NoNewWindow
-            Write-Host "Registration complete"
-          } else {
+          if (!(Test-Path $exe)) {
             Write-Host "ERROR: OmniRig.exe not found"
             exit 1
           }
+          Write-Host "Registering OmniRig COM server..."
+          Start-Process -FilePath $exe -ArgumentList "/regserver" -Wait -NoNewWindow
+
+          # OmniRig is 32-bit and registers in WOW6432Node.
+          # Mirror the TypeLib entry to the 64-bit hive so 64-bit dumpcpp can find it.
+          Write-Host "Mirroring 32-bit TypeLib to 64-bit registry..."
+          $wow = "HKLM:\SOFTWARE\WOW6432Node\Classes\TypeLib"
+          $target = "HKLM:\SOFTWARE\Classes\TypeLib"
+          Get-ChildItem $wow -Recurse -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match "OmniRig" } |
+            ForEach-Object { Write-Host "  Found 32-bit TypeLib: $($_.Name)" }
+
+          # Copy the OmniRig CLSID and TypeLib from WOW64 to native 64-bit
+          $clsid = "{4FE359C5-A58F-459D-BE95-CA559FB4F270}"
+          $wowClsid = "HKLM:\SOFTWARE\WOW6432Node\Classes\CLSID\$clsid"
+          $natClsid = "HKLM:\SOFTWARE\Classes\CLSID\$clsid"
+          if ((Test-Path $wowClsid) -and !(Test-Path $natClsid)) {
+            Write-Host "Copying CLSID from WOW64 to native..."
+            Copy-Item -Path $wowClsid -Destination $natClsid -Recurse -Force
+          }
+
+          # Also mirror the TypeLib GUID used by OmniRig
+          # Search for it and copy
+          Get-ChildItem "$wow" -ErrorAction SilentlyContinue | ForEach-Object {
+            $tlbKey = $_
+            if ((Get-ChildItem $tlbKey.PSPath -Recurse -ErrorAction SilentlyContinue | Out-String) -match "OmniRig") {
+              $natKey = $tlbKey.PSPath -replace "WOW6432Node\\", ""
+              if (!(Test-Path $natKey)) {
+                Write-Host "Copying TypeLib: $($tlbKey.Name)"
+                Copy-Item -Path $tlbKey.PSPath -Destination $natKey -Recurse -Force
+              }
+            }
+          }
+
+          # Verify
+          $testCmd = "dumpcpp -getfile $clsid"
+          Write-Host "Testing: $testCmd"
 
       - name: Configure
         run: |
