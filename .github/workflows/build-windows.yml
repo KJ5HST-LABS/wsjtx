@@ -11,7 +11,7 @@ on:
         description: "Hamlib branch to build"
         required: false
         type: string
-        default: "master"
+        default: "4.7.0"
 
 jobs:
   build:
@@ -53,13 +53,16 @@ jobs:
 
       - name: Build Hamlib
         if: steps.hamlib-cache.outputs.cache-hit != 'true'
+        env:
+          MSYS2_PATH_TYPE: inherit
         run: |
+          WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
           git clone --depth 1 --branch "${{ inputs.hamlib_branch }}" \
             https://github.com/Hamlib/Hamlib.git hamlib-src
           cd hamlib-src
           ./bootstrap
           ./configure \
-            --prefix="${GITHUB_WORKSPACE}/hamlib-prefix" \
+            --prefix="${WORKSPACE}/hamlib-prefix" \
             --enable-shared --disable-static \
             --without-cxx-binding \
             CFLAGS="-DNDEBUG -g -O2 -fdata-sections -ffunction-sections" \
@@ -69,8 +72,9 @@ jobs:
 
       - name: Configure
         run: |
+          WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
           cmake -G "MSYS Makefiles" -S . -B wsjtx-build \
-            -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/hamlib-prefix" \
+            -DCMAKE_PREFIX_PATH="${WORKSPACE}/hamlib-prefix" \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DWSJT_GENERATE_DOCS=OFF \
             -DWSJT_SKIP_MANPAGES=ON \

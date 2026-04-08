@@ -11,7 +11,7 @@ on:
         description: "Hamlib branch to build"
         required: false
         type: string
-        default: "master"
+        default: "4.7.0"
 
 jobs:
   build:
