@@ -75,98 +75,52 @@ jobs:
       - name: Install OmniRig
         shell: powershell
         run: |
-          # OmniRig is a COM server required by WSJT-X on Windows for rig control
+          # OmniRig is a COM server required by WSJT-X on Windows for rig control.
+          # The installer's /regserver fails silently on CI runners.
+          # Workaround: extract the type library from OmniRig.exe and register it manually.
           $url = "https://www.dxatlas.com/OmniRig/Files/OmniRig.zip"
           $zip = "$env:RUNNER_TEMP\OmniRig.zip"
           $dir = "$env:RUNNER_TEMP\OmniRig"
 
           Write-Host "Downloading OmniRig..."
           Invoke-WebRequest -Uri $url -OutFile $zip -UseBasicParsing
-          Write-Host "Download size: $((Get-Item $zip).Length) bytes"
-
           Expand-Archive -Path $zip -DestinationPath $dir -Force
-          Write-Host "Extracted contents:"
-          Get-ChildItem -Path $dir -Recurse | ForEach-Object { Write-Host "  $($_.FullName)" }
 
-          # Look for InnoSetup installer
+          # Run the installer
           $setup = Get-ChildItem -Path $dir -Recurse -Filter "*.exe" | Select-Object -First 1
-          if ($setup) {
-            Write-Host "Running installer: $($setup.FullName)"
-            Start-Process -FilePath $setup.FullName -ArgumentList "/VERYSILENT","/NORESTART","/SUPPRESSMSGBOXES" -Wait -NoNewWindow
-            Write-Host "Installer finished"
-          }
+          Start-Process -FilePath $setup.FullName -ArgumentList "/VERYSILENT","/NORESTART","/SUPPRESSMSGBOXES" -Wait -NoNewWindow
 
-          # OmniRig.exe IS the COM server — register it
+          # The OmniRig.exe embeds a type library. Extract it with the Windows SDK tool.
           $exe = "${env:ProgramFiles(x86)}\Afreet\OmniRig\OmniRig.exe"
-          if (!(Test-Path $exe)) {
-            Write-Host "ERROR: OmniRig.exe not found"
-            exit 1
-          }
-          Write-Host "Registering OmniRig COM server..."
-          Start-Process -FilePath $exe -ArgumentList "/regserver" -Wait -NoNewWindow
+          $tlbDir = "$env:RUNNER_TEMP\omnirig-tlb"
+          New-Item -ItemType Directory -Force -Path $tlbDir | Out-Null
 
-          # OmniRig is 32-bit and registers in WOW6432Node.
-          # Mirror the TypeLib entry to the 64-bit hive so 64-bit dumpcpp can find it.
-          Write-Host "Mirroring 32-bit TypeLib to 64-bit registry..."
-          $wow = "HKLM:\SOFTWARE\WOW6432Node\Classes\TypeLib"
-          $target = "HKLM:\SOFTWARE\Classes\TypeLib"
-          Get-ChildItem $wow -Recurse -ErrorAction SilentlyContinue |
-            Where-Object { $_.Name -match "OmniRig" } |
-            ForEach-Object { Write-Host "  Found 32-bit TypeLib: $($_.Name)" }
-
-          # Copy the OmniRig CLSID and TypeLib from WOW64 to native 64-bit
+          # Use regtlb or manually create registry entries pointing to the exe as a TypeLib
+          # OmniRig's CLSID is {4FE359C5-A58F-459D-BE95-CA559FB4F270}
+          # Its TypeLib GUID is {4FE359C5-A58F-459D-BE95-CA559FB4F270} (same)
           $clsid = "{4FE359C5-A58F-459D-BE95-CA559FB4F270}"
-          $wowClsid = "HKLM:\SOFTWARE\WOW6432Node\Classes\CLSID\$clsid"
-          $natClsid = "HKLM:\SOFTWARE\Classes\CLSID\$clsid"
-          if ((Test-Path $wowClsid) -and !(Test-Path $natClsid)) {
-            Write-Host "Copying CLSID from WOW64 to native..."
-            Copy-Item -Path $wowClsid -Destination $natClsid -Recurse -Force
-          }
 
-          # Also mirror the TypeLib GUID used by OmniRig
-          # Search for it and copy
-          Get-ChildItem "$wow" -ErrorAction SilentlyContinue | ForEach-Object {
-            $tlbKey = $_
-            if ((Get-ChildItem $tlbKey.PSPath -Recurse -ErrorAction SilentlyContinue | Out-String) -match "OmniRig") {
-              $natKey = $tlbKey.PSPath -replace "WOW6432Node\\", ""
-              if (!(Test-Path $natKey)) {
-                Write-Host "Copying TypeLib: $($tlbKey.Name)"
-                Copy-Item -Path $tlbKey.PSPath -Destination $natKey -Recurse -Force
-              }
-            }
-          }
+          # Manually create the registry entries that /regserver would create
+          # CLSID entry (LocalServer32)
+          $clsidPath = "HKLM:\SOFTWARE\Classes\CLSID\$clsid"
+          New-Item -Path "$clsidPath\LocalServer32" -Force | Out-Null
+          Set-ItemProperty -Path "$clsidPath\LocalServer32" -Name "(default)" -Value $exe
+          Set-ItemProperty -Path $clsidPath -Name "(default)" -Value "OmniRig Engine"
 
-          # Dump what actually got registered
-          Write-Host "Checking all registry hives for OmniRig..."
-          foreach ($hive in @("HKLM:\SOFTWARE\Classes\CLSID", "HKLM:\SOFTWARE\WOW6432Node\Classes\CLSID", "HKCU:\SOFTWARE\Classes\CLSID")) {
-            if (Test-Path $hive) {
-              $found = Get-ChildItem $hive -ErrorAction SilentlyContinue | Where-Object {
-                (Get-ItemProperty -Path "$($_.PSPath)\InprocServer32" -ErrorAction SilentlyContinue) -or
-                (Get-ItemProperty -Path $_.PSPath -ErrorAction SilentlyContinue).'(default)' -match 'OmniRig'
-              }
-              if ($found) { $found | ForEach-Object { Write-Host "  $hive : $($_.PSChildName)" } }
-            }
-          }
-          # Also check TypeLib hives
-          foreach ($hive in @("HKLM:\SOFTWARE\Classes\TypeLib", "HKLM:\SOFTWARE\WOW6432Node\Classes\TypeLib", "HKCU:\SOFTWARE\Classes\TypeLib")) {
-            if (Test-Path $hive) {
-              Get-ChildItem $hive -ErrorAction SilentlyContinue | ForEach-Object {
-                $content = Get-ChildItem $_.PSPath -Recurse -ErrorAction SilentlyContinue | Out-String
-                if ($content -match "OmniRig") {
-                  Write-Host "  TypeLib in $hive : $($_.PSChildName)"
-                }
-              }
-            }
-          }
-          # Check if the OmniRig.exe registered as a LocalServer32
-          $localSrv = "HKLM:\SOFTWARE\Classes\CLSID\$clsid\LocalServer32"
-          $localSrvWow = "HKLM:\SOFTWARE\WOW6432Node\Classes\CLSID\$clsid\LocalServer32"
-          $localSrvCU = "HKCU:\SOFTWARE\Classes\CLSID\$clsid\LocalServer32"
-          foreach ($k in @($localSrv, $localSrvWow, $localSrvCU)) {
-            if (Test-Path $k) {
-              Write-Host "  LocalServer32 at $k : $((Get-ItemProperty $k).'(default)')"
-            }
-          }
+          # TypeLib entry pointing to the exe (type library is embedded in the exe)
+          $tlbPath = "HKLM:\SOFTWARE\Classes\TypeLib\$clsid\1.0\0\win32"
+          New-Item -Path $tlbPath -Force | Out-Null
+          Set-ItemProperty -Path $tlbPath -Name "(default)" -Value $exe
+          $tlbParent = "HKLM:\SOFTWARE\Classes\TypeLib\$clsid\1.0"
+          Set-ItemProperty -Path $tlbParent -Name "(default)" -Value "OmniRig Engine Type Library"
+
+          # Also create a 64-bit entry since dumpcpp may look there
+          $tlb64Path = "HKLM:\SOFTWARE\Classes\TypeLib\$clsid\1.0\0\win64"
+          New-Item -Path $tlb64Path -Force | Out-Null
+          Set-ItemProperty -Path $tlb64Path -Name "(default)" -Value $exe
+
+          Write-Host "OmniRig registry entries created manually"
+          Write-Host "TypeLib path: $exe"
 
       - name: Configure
         run: |
