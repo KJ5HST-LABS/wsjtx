@@ -109,6 +109,11 @@ jobs:
       - name: Configure
         run: |
           WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
+          # MSYS2 FFTW splits threads into a separate lib, but the WSJT-X
+          # FindFFTW3.cmake assumes Windows bundles threads into the main lib.
+          # Patch the module to include threads on Windows too.
+          sed -i 's/if (NOT WIN32 AND _use_threads)/if (_use_threads)/' CMake/Modules/FindFFTW3.cmake
+
           cmake -G "MSYS Makefiles" -S . -B wsjtx-build \
             -DCMAKE_PREFIX_PATH="${WORKSPACE}/hamlib-prefix" \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
