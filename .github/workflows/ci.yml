@@ -1,0 +1,16 @@
+name: CI
+
+on:
+  push:
+    branches: [develop]
+  pull_request:
+    branches: [develop]
+  workflow_dispatch:
+
+jobs:
+  macos:
+    uses: ./.github/workflows/build-macos.yml
+    with:
+      version: "3.0.0"
+      hamlib_branch: "integration"
+    secrets: inherit
