@@ -96,18 +96,15 @@ jobs:
             Write-Host "Installer finished"
           }
 
-          # Find where OmniRig installed
-          Write-Host "Searching entire system for OmniRig files..."
-          Get-ChildItem -Path "C:\" -Recurse -Filter "OmniRig*" -ErrorAction SilentlyContinue |
-            ForEach-Object { Write-Host "  $($_.FullName)" }
-
-          # Find the DLL and register it
-          $dll = Get-ChildItem -Path "C:\" -Recurse -Filter "OmniRig.dll" -ErrorAction SilentlyContinue | Select-Object -First 1
-          if ($dll) {
-            Write-Host "Registering: $($dll.FullName)"
-            regsvr32 /s "$($dll.FullName)"
+          # OmniRig.exe IS the COM server — register it
+          $exe = "${env:ProgramFiles(x86)}\Afreet\OmniRig\OmniRig.exe"
+          if (Test-Path $exe) {
+            Write-Host "Registering OmniRig COM server: $exe"
+            Start-Process -FilePath $exe -ArgumentList "/regserver" -Wait -NoNewWindow
+            Write-Host "Registration complete"
           } else {
-            Write-Host "OmniRig.dll not found on disk"
+            Write-Host "ERROR: OmniRig.exe not found"
+            exit 1
           }
 
       - name: Configure
