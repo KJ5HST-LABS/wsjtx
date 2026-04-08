@@ -65,6 +65,7 @@ jobs:
             --prefix="${WORKSPACE}/hamlib-prefix" \
             --enable-shared --disable-static \
             --without-cxx-binding \
+            --without-readline \
             CFLAGS="-DNDEBUG -g -O2 -fdata-sections -ffunction-sections" \
             LDFLAGS="-Wl,--gc-sections"
           make -j$(nproc)
