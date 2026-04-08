@@ -7,10 +7,10 @@ Migration plan: `docs/contributor/MIGRATION_PLAN.md`
 Risk analysis: `docs/consumer/GPL_COMPLIANCE_GAPS.md`
 Governing principle: `docs/consumer/SYMBIOTIC_OPEN_SOURCE.md`
 
-### Blocked (until v3.0.0 GA April 8 + WRITE access)
+### Blocked (until v3.0.0 GA April 8)
 - [ ] Phase 2: GitHub templates and guards — REVISED scope:
   - Bug template already exists (skip). Focus on: CONTRIBUTING.md, branch protection, close stale PR #1 / issue #1
-  - **Requires:** WRITE access (currently READ-only). Request from Joe or Brian.
+  - **WRITE access granted 2026-04-04.** Waiting on GA only.
 - [ ] Phase 3: CI/CD foundation — macOS (two-stage: Hamlib from github.com/Hamlib/Hamlib integration branch → WSJT-X)
 - [ ] Phase 4: CI/CD expansion — Linux and Windows
 - [ ] Phase 5: Release automation (GitHub Releases as new channel alongside SourceForge)
@@ -21,7 +21,7 @@ Governing principle: `docs/consumer/SYMBIOTIC_OPEN_SOURCE.md`
 - [ ] Rebuild when v3.0.0 GA drops (April 8, 2026)
 
 ### Action items (non-code)
-- [ ] Email team: request WRITE access for KJ5HST on both repos
+- [x] Email team: request WRITE access for KJ5HST on both repos — GRANTED 2026-04-04
 - [ ] Email team: ask about Apple Developer account ownership (Gap #9, still unresolved)
 
 ### Done
