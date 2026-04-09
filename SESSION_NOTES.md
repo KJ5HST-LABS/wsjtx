@@ -1,10 +1,83 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Two-repo CI/CD proof of concept — Phase 2: CI workflows
-**Status:** Phase 1 (repo setup) complete. Phase 2 ready to start.
-**Session:** 5 complete
+**Task:** Two-repo CI/CD proof of concept — Phase 2: CI workflows (Windows)
+**Status:** macOS and Linux green. Windows in progress — OmniRig and GCC 15 issues being worked.
+**Session:** 6 complete
 **Started:** 2026-04-02
+
+---
+
+### What Session 6 Did
+**Deliverable:** Phase 2 CI workflows — macOS and Linux complete, Windows in progress
+**Started:** 2026-04-08
+**Status:** macOS green, Linux green, Windows iterating.
+
+**What was produced:**
+
+1. **Reusable workflow architecture:**
+   - `build-macos.yml` — reusable via `workflow_call`, full signing + notarization
+   - `build-linux.yml` — reusable, unsigned Ubuntu 24.04 build
+   - `build-windows.yml` — reusable, MSYS2 MINGW64, in progress
+   - `ci.yml` — thin orchestrator calling all three on push/PR to `develop`
+
+2. **macOS CI: GREEN** — builds from repo source, Hamlib 4.7.0, signed + notarized, cached Hamlib
+
+3. **Linux CI: GREEN** — builds from repo source, Hamlib 4.7.0, all apt deps
+
+4. **Windows CI: IN PROGRESS** — multiple issues discovered and documented:
+   - Hamlib `integration` branch gone → using `4.7.0` tag (issue #7)
+   - FFTW threads split in MSYS2 → patched FindFFTW3.cmake (issue #6)
+   - OmniRig COM registration fails on CI runners → skipped with stub header (issue #4)
+   - MAP65 decode0.f90 rejects GCC 15 → skipped (issue #5)
+   - OmniRigTransceiver.cpp removal and stub OmniRig.h — last push, untested
+
+5. **Issues logged:**
+   - #4: OmniRig COM registration fails on GitHub Actions runners
+   - #5: MAP65 fails to compile with GCC 15 (decode0.f90)
+   - #6: FFTW3 threads library not linked on Windows (MSYS2)
+   - #7: Hamlib `integration` branch removed from GitHub
+
+6. **Team contact:** Charlie (DL3WDG) confirmed OmniRig 1.19/1.20 must be installed on build machines. JTSDK has same requirement.
+
+**What's next:**
+1. **Check Windows build** — run `24200135962` may still be in progress or completed. Check results.
+2. **If Windows green:** Write `release.yml`, proceed to Phase 3 test changes.
+3. **If Windows still failing:** The OmniRig stub approach may need more work. TransceiverFactory.cpp uses OmniRig classes extensively — the stub types may not be sufficient for all code paths. Consider asking the team about their GCC version (JTSDK).
+4. **Clean up old workflows:** `build.yml` and `build-3.0.0.yml` still on `develop`, trigger on `main` (gone). Should be removed.
+5. **Phase 3:** Three test changes to prove the workflow end-to-end.
+6. **Phase 4:** Document results, update email draft.
+
+**Key files:**
+- `.github/workflows/ci.yml` — orchestrator, calls all three platforms
+- `.github/workflows/build-macos.yml` — proven, green
+- `.github/workflows/build-linux.yml` — proven, green
+- `.github/workflows/build-windows.yml` — in progress, multiple patches
+- `docs/planning/CICD_PROOF_OF_CONCEPT.md` — plan doc (stale, needs update)
+- `docs/contributor/drafts/email_cicd_proposal.md` — email draft
+
+**Gotchas for next session:**
+- **Repo is `KJ5HST-LABS/wsjtx-internal`**, branch is `develop`.
+- **Run `24200135962` may have results** — check before doing anything.
+- **The Windows workflow patches CMakeLists.txt, FindFFTW3.cmake, and creates stub headers at build time.** This is fragile. If the team provides guidance on OmniRig/JTSDK toolchain, we may be able to simplify.
+- **Hamlib 4.7.0** is the correct version, not `master` or `integration`.
+- **Deploy keys are in place** but untested — `release.yml` hasn't been written yet.
+- **Old workflows** (`build.yml`, `build-3.0.0.yml`) still exist on `develop`.
+- **`.p12` files** still in repo root (untracked). Never commit.
+- **Session was very long** — covered Phase 1 repo setup AND most of Phase 2. Multiple Windows iterations.
+
+**Self-assessment:**
+- (+) macOS and Linux green on first real attempt (after Hamlib branch fix)
+- (+) Reusable workflow architecture implemented cleanly
+- (+) Four issues logged with full context for each Windows workaround
+- (+) Team engaged — Charlie's OmniRig guidance was immediately useful
+- (+) Hamlib 4.7.0 discovery is valuable for the team
+- (-) Windows took 15+ iterations and is still not green
+- (-) Session far exceeded "1 and done" — should have stopped after macOS+Linux green
+- (-) OmniRig workaround is fragile (stub headers, sed patches, Python CMake patching)
+- (-) docs/planning/CICD_PROOF_OF_CONCEPT.md not updated with findings
+- (-) Old workflows not cleaned up
+- Score: 6/10
 
 ---
 
