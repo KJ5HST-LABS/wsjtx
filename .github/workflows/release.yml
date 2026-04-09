@@ -65,6 +65,10 @@ jobs:
             echo "::warning::WSJTX_DEPLOY_KEY not set — skipping public repo sync"
             exit 0
           fi
+          # Remove the HTTPS credential that actions/checkout injects — it lacks
+          # the 'workflow' scope needed to push .github/workflows/ files.
+          # The SSH deploy key has no such restriction.
+          git config --unset-all http.https://github.com/.extraheader || true
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
