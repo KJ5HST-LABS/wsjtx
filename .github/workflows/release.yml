@@ -35,6 +35,8 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -68,5 +70,6 @@ jobs:
           chmod 600 ~/.ssh/deploy_key
           export GIT_SSH_COMMAND="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no"
           git remote add public git@github.com:KJ5HST-LABS/wsjtx.git || true
+          git push public HEAD:main --force
           git push public "$GITHUB_REF_NAME"
           rm -f ~/.ssh/deploy_key
