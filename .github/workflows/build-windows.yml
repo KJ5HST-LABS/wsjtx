@@ -75,10 +75,14 @@ jobs:
       - name: Install OmniRig
         shell: pwsh
         run: |
-          # Download and silently install OmniRig (provides COM type library for dumpcpp)
-          Invoke-WebRequest -Uri "https://www.dxatlas.com/OmniRig/OR2Install.exe" -OutFile OmniRig-setup.exe
-          Start-Process -FilePath .\OmniRig-setup.exe -ArgumentList '/VERYSILENT','/NORESTART' -Wait
-          # Locate the installed type library
+          # Download OmniRig (provides type library embedded in OmniRig.exe for dumpcpp)
+          Invoke-WebRequest -Uri "https://www.dxatlas.com/OmniRig/Files/OmniRig.zip" -OutFile OmniRig.zip
+          Expand-Archive -Path OmniRig.zip -DestinationPath omnirig-extract
+          # Run the installer silently (InnoSetup)
+          $setup = Get-ChildItem -Path omnirig-extract -Filter "*.exe" -Recurse | Select-Object -First 1
+          if (-not $setup) { throw "No installer found in OmniRig.zip" }
+          Start-Process -FilePath $setup.FullName -ArgumentList '/VERYSILENT','/NORESTART' -Wait
+          # Locate the installed OmniRig.exe (embeds the COM type library)
           $omnirig = Get-ChildItem -Path "C:\Program Files*\Afreet\OmniRig" -Filter "OmniRig.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
           if (-not $omnirig) { throw "OmniRig install failed — OmniRig.exe not found" }
           echo "OMNIRIG_PATH=$($omnirig.FullName)" >> $env:GITHUB_ENV
