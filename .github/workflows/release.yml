@@ -1,0 +1,71 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+jobs:
+  # ── Build all three platforms ──────────────────────────────────────
+  macos:
+    uses: ./.github/workflows/build-macos.yml
+    with:
+      version: "3.0.0"
+      hamlib_branch: "4.7.0"
+    secrets: inherit
+
+  linux:
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      version: "3.0.0"
+      hamlib_branch: "4.7.0"
+    secrets: inherit
+
+  windows:
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      version: "3.0.0"
+      hamlib_branch: "4.7.0"
+    secrets: inherit
+
+  # ── Publish release + sync to public repo ──────────────────────────
+  release:
+    needs: [macos, linux, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: find artifacts -type f | sort
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          gh release create "$TAG" \
+            --title "WSJT-X $TAG" \
+            --generate-notes \
+            artifacts/**/*
+
+      - name: Push tag to public repo
+        env:
+          SSH_KEY: ${{ secrets.WSJTX_DEPLOY_KEY }}
+        run: |
+          if [ -z "$SSH_KEY" ]; then
+            echo "::warning::WSJTX_DEPLOY_KEY not set — skipping public repo sync"
+            exit 0
+          fi
+          mkdir -p ~/.ssh
+          echo "$SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no"
+          git remote add public git@github.com:KJ5HST-LABS/wsjtx.git || true
+          git push public "$GITHUB_REF_NAME"
+          rm -f ~/.ssh/deploy_key
