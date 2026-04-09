@@ -1,3 +1,5 @@
+[![CI](https://github.com/KJ5HST-LABS/wsjtx-internal/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/KJ5HST-LABS/wsjtx-internal/actions/workflows/ci.yml)
+
 # WSJT-X Native ARM Build for macOS
 
 Native arm64 (Apple Silicon) build of WSJT-X for macOS. The official WSJT-X macOS release ships as x86_64 only and runs under Rosetta 2. This project builds the full application and all CLI tools natively for Apple Silicon.
