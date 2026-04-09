@@ -49,10 +49,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${GITHUB_REF_NAME}"
+          FILES=$(find artifacts -type f)
           gh release create "$TAG" \
             --title "WSJT-X $TAG" \
             --generate-notes \
-            artifacts/**/*
+            $FILES
 
       - name: Push tag to public repo
         env:
