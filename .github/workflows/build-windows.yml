@@ -72,10 +72,13 @@ jobs:
           make -j$(nproc)
           make install-strip
 
-      - name: Patch OmniRig requirement
+      - name: Patch Windows build for CI
         run: |
-          # OmniRig COM registration fails on CI runners. Skip it for now.
-          # TODO: Ask the WSJT-X team how they handle OmniRig in their Windows builds.
+          # Two patches needed for CI:
+          # 1. OmniRig: COM registration fails on runners (issue #4)
+          # 2. MAP65: GCC 15 rejects legacy Fortran array dimensions in decode0.f90
+          #    MAP65 is a separate EME app, not core WSJT-X. Skip it.
+          sed -i 's/add_subdirectory (map65)/# add_subdirectory (map65)  # skipped: GCC 15 compat/' CMakeLists.txt
           python3 -c "
           import re
           with open('CMakeLists.txt', 'r') as f:
