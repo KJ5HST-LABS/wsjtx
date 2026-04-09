@@ -116,7 +116,7 @@ jobs:
 
           cmake -G "MSYS Makefiles" -S . -B wsjtx-build \
             -DCMAKE_PREFIX_PATH="${WORKSPACE}/hamlib-prefix" \
-            -DCMAKE_Fortran_FLAGS="-fallow-argument-mismatch" \
+            -DCMAKE_Fortran_FLAGS="-fallow-argument-mismatch -std=legacy" \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DWSJT_GENERATE_DOCS=OFF \
             -DWSJT_SKIP_MANPAGES=ON \
