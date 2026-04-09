@@ -85,6 +85,9 @@ jobs:
           echo '// Stub — OmniRig COM type library not available in CI' > OmniRig.h
           echo 'namespace OmniRig { enum RigParamX { OnLine=0 }; struct OmniRigX {}; struct RigX {}; struct PortBits {}; }' >> OmniRig.h
           cp OmniRig.h Transceiver/OmniRig.h
+
+          # Remove OmniRigTransceiver.cpp from the source list entirely
+          sed -i '/OmniRigTransceiver\.cpp/d' CMakeLists.txt
           python3 -c "
           import re
           with open('CMakeLists.txt', 'r') as f:
