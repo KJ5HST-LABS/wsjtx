@@ -58,7 +58,7 @@ jobs:
             --generate-notes \
             $FILES
 
-      - name: Push tag to public repo
+      - name: Push to public repo
         env:
           SSH_KEY: ${{ secrets.WSJTX_DEPLOY_KEY }}
         run: |
@@ -66,6 +66,15 @@ jobs:
             echo "::warning::WSJTX_DEPLOY_KEY not set — skipping public repo sync"
             exit 0
           fi
+          # Strip HTTPS credential overrides injected by actions/checkout —
+          # they rewrite git@github.com: to HTTPS with a GITHUB_TOKEN that
+          # lacks 'workflow' scope, blocking pushes of .github/workflows/.
+          # The SSH deploy key has no such restriction.  Clear both local
+          # (set by checkout) and global (set by runner) levels.
+          git config --local  --unset-all "http.https://github.com/.extraheader" 2>/dev/null || true
+          git config --global --unset-all "http.https://github.com/.extraheader" 2>/dev/null || true
+          git config --local  --unset-all "url.https://github.com/.insteadOf" 2>/dev/null || true
+          git config --global --unset-all "url.https://github.com/.insteadOf" 2>/dev/null || true
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
