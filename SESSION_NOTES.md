@@ -1,10 +1,94 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Two-repo CI/CD proof of concept — Phase 2: CI workflows (Windows)
-**Status:** macOS and Linux green. Windows in progress — OmniRig and GCC 15 issues being worked.
-**Session:** 6 complete
+**Task:** Two-repo CI/CD proof of concept — Phase 2 complete, Phase 3 next
+**Status:** ALL THREE PLATFORMS GREEN. macOS, Linux, Windows CI all passing.
+**Session:** 7 complete
 **Started:** 2026-04-02
+
+---
+
+### Session 6 Handoff Evaluation (by Session 7)
+- **Score: 7/10**
+- **What helped:** The remediation plan (`docs/planning/WINDOWS_CI_REMEDIATION.md`) was excellent — correctly identified the root cause (registry query vs. file-based code generation), provided the right CMake change, and anticipated the `dumpcpp` failure with a fallback plan. The "two files to change" scope was exactly right.
+- **What was missing:** The download URL (`OR2Install.exe`) was wrong — it 404'd. The actual distribution is `OmniRig.zip` at `/Files/OmniRig.zip`. Also didn't anticipate that MSYS2 renames `dumpcpp` to `dumpcpp-qt5.exe`, which caused a second failure. Neither of these could have been known without testing, but the plan could have included a "verify download URL" pre-step.
+- **What was wrong:** The URL in the remediation plan was `https://www.dxatlas.com/OmniRig/OR2Install.exe` — this file doesn't exist on dxatlas.com.
+- **ROI:** High. The plan's architecture was correct. Both failures were surface-level issues (wrong URL, wrong binary name) that were fixed in one commit each. Without the plan, this would have been another 15+ iteration thrash session.
+
+---
+
+### What Session 7 Did
+**Deliverable:** Windows CI green — OmniRig type library integration
+**Started:** 2026-04-09
+**Status:** COMPLETE. All three platforms green.
+
+**What was produced:**
+
+1. **CMakeLists.txt OmniRig fallback** (commit `801bf1f`):
+   - Added `OMNIRIG_TYPE_LIB` CMake variable at lines 940-943
+   - When set, skips the `dumpcpp -getfile` COM registry query and uses the provided path directly
+   - Backward-compatible: local builds with OmniRig installed work exactly as before
+   - Updated error message to hint at `-DOMNIRIG_TYPE_LIB=<path>` when OmniRig not found
+
+2. **build-windows.yml rewrite** (commits `801bf1f`, `2724dc7`, `3fc6161`):
+   - Replaced 48-line Python/sed/stub patch block with 3 clean steps:
+     - `Install OmniRig`: downloads `OmniRig.zip` from dxatlas.com, extracts, runs InnoSetup silently
+     - `Fix dumpcpp name`: symlinks `dumpcpp-qt5.exe` → `dumpcpp.exe` (MSYS2 naming)
+     - `Patch MAP65 for GCC 15`: single sed line to skip MAP65 (unchanged)
+   - Configure step passes `-DOMNIRIG_TYPE_LIB="${OMNIRIG}"` to cmake
+   - Net reduction: fewer lines, no Python, no stub headers, no source file removal
+
+3. **Three CI iterations to get green:**
+   - Iteration 1: OmniRig download URL 404 (`OR2Install.exe` → `OmniRig.zip`)
+   - Iteration 2: `dumpcpp` not found (MSYS2 ships as `dumpcpp-qt5.exe`)
+   - Iteration 3: GREEN
+
+**Key discoveries:**
+1. **OmniRig installs to `C:\Program Files (x86)\Afreet\OmniRig\`** on CI runners (x86, not x64)
+2. **MSYS2 renames Qt5 ActiveQt tools** with `-qt5` suffix: `dumpcpp-qt5.exe`, not `dumpcpp.exe`
+3. **The upstream `find_program` check is buggy**: `if (DUMPCPP-NOTFOUND)` checks a variable named that literal string, never fires. Configure passes silently when `dumpcpp` is missing.
+4. **OmniRig.zip from dxatlas.com** contains an InnoSetup installer that accepts `/VERYSILENT /NORESTART`
+5. **`dumpcpp -o <outfile> <infile>` works without COM registration** — confirmed on CI. The type library is loaded from disk via `LoadTypeLib()`, not the COM registry.
+
+**What's next:**
+1. **Write `release.yml`** — tag-triggered, pushes to wsjtx. Deploy keys already in place.
+2. **Phase 3: Three test changes** to prove the workflow end-to-end.
+3. **Phase 4: Document results**, update email draft, share with team.
+4. **Clean up old workflows**: `build.yml` and `build-3.0.0.yml` still on `develop`, trigger on `main` (gone). Should be removed.
+5. **Update `docs/planning/CICD_PROOF_OF_CONCEPT.md`** with Phase 2 findings.
+
+**Key files:**
+- `.github/workflows/ci.yml` — orchestrator, calls all three platforms
+- `.github/workflows/build-macos.yml` — proven, green
+- `.github/workflows/build-linux.yml` — proven, green
+- `.github/workflows/build-windows.yml` — NOW GREEN. OmniRig download + dumpcpp symlink + type lib path
+- `CMakeLists.txt:933-957` — `OMNIRIG_TYPE_LIB` fallback (the key upstream-compatible change)
+- `docs/planning/WINDOWS_CI_REMEDIATION.md` — the plan that guided this session
+- `docs/planning/CICD_PROOF_OF_CONCEPT.md` — plan doc (stale, needs update)
+- `docs/contributor/drafts/email_cicd_proposal.md` — email draft
+
+**Gotchas for next session:**
+- **All three platforms green.** CI run `24213369265` is the proof.
+- **Repo is `KJ5HST-LABS/wsjtx-internal`**, branch is `develop`.
+- **Deploy keys are in place** but untested — `release.yml` hasn't been written yet.
+- **Old workflows** (`build.yml`, `build-3.0.0.yml`) still exist on `develop`. They trigger on `main` (gone) so they don't auto-run, but should be cleaned up.
+- **Hamlib 4.7.0** is the correct version, not `master` or `integration`.
+- **FindFFTW3.cmake patch** is still done via sed in the workflow. Could be upstreamed as a CMake change similar to the OmniRig one.
+- **MAP65 skip** is done via sed in the workflow. Acceptable — GCC 15 Fortran issue is upstream's problem.
+- **`.p12` files** still in repo root (untracked). Never commit.
+- **Windows build takes ~32 min** (Hamlib cached). Without cache: ~45 min.
+
+**Self-assessment:**
+- (+) Windows CI green in 3 iterations — massive improvement over Session 6's 15+
+- (+) Remediation plan from Session 6 was followed precisely, only surface issues to fix
+- (+) CMakeLists.txt change is backward-compatible and upstream-submittable
+- (+) Workflow is clean: no Python regex, no stub headers, no source file removal
+- (+) OmniRig is fully built and linked — no features disabled
+- (+) Session was focused: one deliverable, three commits, done
+- (-) Didn't verify the OmniRig download URL before the first push (would have saved one iteration)
+- (-) Didn't anticipate the MSYS2 `dumpcpp-qt5` rename (would have saved one iteration)
+- (-) Old workflows and stale docs not cleaned up (out of scope, but noted)
+- Score: 8/10
 
 ---
 
