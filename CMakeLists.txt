@@ -10,10 +10,17 @@ if (APPLE)
   #
   # otool -l <binary> | grep -A3 LC_VERSION_MIN_MACOSX
   #
-  set (CMAKE_OSX_DEPLOYMENT_TARGET 10.12
+  if (CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")
+    set (_min_osx_target 11.0)
+    set (_osx_target_reason "Apple Silicon requires macOS 11.0 (Big Sur) minimum")
+  else ()
+    set (_min_osx_target 10.12)
+    set (_osx_target_reason "Qt 5.12, C++11 & libc++ require macOS 10.12 minimum")
+  endif ()
+  set (CMAKE_OSX_DEPLOYMENT_TARGET ${_min_osx_target}
     CACHE STRING "Earliest version of macOS supported
 
-Earliest version we can support with Qt 5.12, C++11 & libc++ is 10.12.
+${_osx_target_reason}.
 Do not override this if you intend to build an official deployable installer.")
 endif (APPLE)
 
