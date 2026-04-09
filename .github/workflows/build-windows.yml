@@ -87,6 +87,14 @@ jobs:
           if (-not $omnirig) { throw "OmniRig install failed — OmniRig.exe not found" }
           echo "OMNIRIG_PATH=$($omnirig.FullName)" >> $env:GITHUB_ENV
 
+      - name: Verify dumpcpp available
+        run: |
+          echo "=== Checking for dumpcpp ==="
+          which dumpcpp.exe || which dumpcpp || echo "dumpcpp NOT in PATH"
+          pacman -Ql mingw-w64-x86_64-qt5-activeqt 2>/dev/null | grep -i dumpcpp || echo "dumpcpp not in qt5-activeqt package"
+          find /mingw64/bin -name "dumpcpp*" 2>/dev/null || echo "dumpcpp not in /mingw64/bin"
+          echo "=== OMNIRIG_PATH=${OMNIRIG_PATH} ==="
+
       - name: Patch MAP65 for GCC 15
         run: |
           # MAP65 is a standalone EME app. GCC 15 rejects its legacy Fortran.
