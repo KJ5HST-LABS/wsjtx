@@ -9,18 +9,20 @@ The WSJT-X team uses a two-repo model: `wsjtx-internal` (private, `develop` bran
 | Phase | Status | Sessions |
 |-------|--------|----------|
 | Phase 1: Repo setup | **COMPLETE** | Session 5 |
-| Phase 2: CI workflows | **90% — release.yml remaining** | Sessions 6–7 |
-| Phase 3: Test changes | Not started | — |
+| Phase 2: CI workflows | **COMPLETE** | Sessions 6–8 |
+| Phase 3: Test changes | **COMPLETE** | Sessions 5–9 |
 | Phase 4: Document & share | Not started | — |
 
-**Proof run:** `24213369265` — all three platforms green (2026-04-09).
+**Proof runs:**
+- CI: `24222053261` — all three platforms green (2026-04-10)
+- Release: `24224001691` — tag-triggered build + GitHub Release + public sync all green (2026-04-10)
 
 ## Phase 1: Repo Setup — COMPLETE
 
 1. **Renamed** `WSJT-X-MAC-ARM64` → `KJ5HST-LABS/wsjtx-internal`
 2. **Renamed `main` → `develop`** — imported upstream `WSJTX/wsjtx` v3.0.0 source
 3. **Created `KJ5HST-LABS/wsjtx`** (private, `main` default)
-4. **Deploy keys** in place: `WSJTX_DEPLOY_KEY` (wsjtx-internal), `INTERNAL_DEPLOY_KEY` (wsjtx). Both read-write. Untested — `release.yml` not yet written.
+4. **Secrets**: `CROSS_REPO_TOKEN` (fine-grained PAT, repo secret on wsjtx-internal) for public repo sync. `WSJTX_DEPLOY_KEY` still exists but is unused — can be removed.
 
 ## Phase 2: CI Workflows
 
@@ -78,6 +80,16 @@ Lines 940–957: `OMNIRIG_TYPE_LIB` CMake variable. When set, bypasses the `dump
 5. `dumpcpp -o <outfile> <infile>` works without COM registration — `LoadTypeLib()` from disk
 6. Windows build: ~32 min (Hamlib cached), ~45 min without cache
 
+### Release workflow (`release.yml`) — COMPLETE
+
+Tag-triggered (`v*` tags). Calls all three platform builds, then:
+1. Creates GitHub Release on `wsjtx-internal` with all artifacts
+2. Pushes source to `KJ5HST-LABS/wsjtx` (public) via `CROSS_REPO_TOKEN`
+
+**Key discovery:** Deploy keys cannot push `.github/workflows/` files (GitHub platform restriction). The error message ("OAuth App") is misleading. Fix: use a fine-grained PAT (`CROSS_REPO_TOKEN`) with Contents + Workflows write access over HTTPS.
+
+**`CROSS_REPO_TOKEN`**: Fine-grained PAT (Token ID 13035353, expires 2027-04-03), scoped to all KJ5HST-LABS repos. Set as a repo secret on `wsjtx-internal`.
+
 ### Remaining workflow patches (sed in CI, not upstreamed)
 
 | Patch | Why | Upstream path |
@@ -86,11 +98,13 @@ Lines 940–957: `OMNIRIG_TYPE_LIB` CMake variable. When set, bypasses the `dump
 | MAP65 `add_subdirectory` skip | GCC 15 rejects legacy Fortran `decode0.f90` | Upstream Fortran modernization (not our problem) |
 | `dumpcpp-qt5` → `dumpcpp` symlink | MSYS2 naming convention | MSYS2-specific, no upstream fix |
 
-## Phase 3: Three Test Changes
+## Phase 3: Three Test Changes — COMPLETE
 
-1. **README badge** — push to `develop` → verify all 3 platforms build
-2. **CMake deployment target fix** — real code change → verify rebuilds
-3. **Version bump + tag `v3.0.0.1`** → `release.yml` fires, artifacts land on `KJ5HST-LABS/wsjtx` as GitHub Release
+1. **README badge** — commit `4edab10b1`, CI green ✓
+2. **CMake deployment target fix** — commit `b446c9328`, CI green ✓
+3. **Version bump + tag `v3.0.0.1`** → release run `24224001691`, GitHub Release created, public sync verified ✓
+
+All three test changes pushed to `develop`, triggered CI, and passed on all three platforms. The tag-triggered release workflow created a GitHub Release with macOS/Linux/Windows artifacts and synced source to the public repo.
 
 ## Phase 4: Document & Share
 
@@ -105,7 +119,7 @@ Phase 2: CI workflows
   → build-macos.yml + ci.yml ✓
   → build-linux.yml ✓
   → build-windows.yml ✓
-  → release.yml (NEXT)
-Phase 3: Three test changes
-Phase 4: Document & share
+  → release.yml ✓
+Phase 3: Three test changes ✓
+Phase 4: Document & share (NEXT)
 ```

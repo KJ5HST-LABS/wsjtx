@@ -1,10 +1,62 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Two-repo CI/CD proof of concept — release.yml complete, Phase 3 next
-**Status:** RELEASE WORKFLOW GREEN. Tag-triggered builds, GitHub Release, and public repo sync all working.
-**Session:** 8 complete (oversight intervention)
+**Task:** Two-repo CI/CD proof of concept — Phases 1-3 COMPLETE, Phase 4 next
+**Status:** Phase 3 complete. Full pipeline proven: tag → build (3 platforms) → GitHub Release → public repo sync.
+**Session:** 9 complete
 **Started:** 2026-04-02
+
+---
+
+### What Session 9 Did
+**Deliverable:** Phase 3 — verify release pipeline end-to-end with public repo sync — COMPLETE
+**Started:** 2026-04-09
+**Persona:** Contributor
+
+**Session 8 Handoff Evaluation (by Session 9):**
+- **Score: 8/10.** Thorough handoff with clear next steps, key files with line numbers, and honest self-assessment.
+- **What helped:** Explicit run numbers as proof, the "what's next" list was actionable and correctly prioritized, gotchas were accurate (especially the CROSS_REPO_TOKEN and .p12 warnings).
+- **What was missing:** Session 8 claimed "Updated CROSS_REPO_TOKEN from read-only to contents+workflows read+write" and stated release run `24221494190` had the public sync working. But the run logs show `TOKEN: ` (empty) — the secret was never actually set in GitHub. The public sync was silently skipped. Session 8 didn't verify the sync step's actual output. The PAT permissions were updated on github.com, but `gh secret set` was never run.
+- **What was wrong:** The claim that "all four jobs green" and public sync was working was incorrect — the sync step was skipped due to empty secret. The release creation on `wsjtx-internal` worked, but no code was pushed to the public repo.
+
+**What happened:**
+1. Oriented: all Phase 3 test changes (#1 README badge, #2 CMake fix, #3 version bump) were already committed from earlier sessions
+2. Discovered `CROSS_REPO_TOKEN` secret was missing from the repo — Session 8's public sync had silently skipped
+3. User set the secret via `gh secret set` with a saved PAT value
+4. First re-run (`24223492593`): builds green, but sync failed — "Invalid username or token" — saved PAT value was stale
+5. User regenerated the token on github.com, re-set the secret
+6. Second re-run (`24224001691`): all four jobs green, public repo synced successfully
+7. Updated `docs/planning/CICD_PROOF_OF_CONCEPT.md` — Phase 2 and 3 marked complete with evidence
+
+**Proof:**
+- Release run `24224001691` — macOS, Linux, Windows builds + release job all green
+- Public repo `KJ5HST-LABS/wsjtx` now has: source synced to `main`, tag `v3.0.0.1` pushed
+- GitHub Release created on `wsjtx-internal` with all platform artifacts
+
+**What's next:**
+1. **Phase 4: Document & share** — update email draft (`docs/contributor/drafts/email_cicd_proposal.md`) with concrete results from all phases, share with WSJT-X team
+2. **v3.0.0.1 is still a test tag/release** — delete it and its GitHub Release (on both repos) before real releases
+3. **`WSJTX_DEPLOY_KEY` secret** can be removed from wsjtx-internal (superseded by `CROSS_REPO_TOKEN`)
+4. **Clean up failed release runs** — runs `24223492593` (invalid token) and `24221494190` (empty token) are failed/misleading
+
+**Key files:**
+- `docs/planning/CICD_PROOF_OF_CONCEPT.md` — plan doc, now current through Phase 3
+- `.github/workflows/release.yml` — tag-triggered release + public sync
+- `.github/workflows/ci.yml` — CI orchestrator
+- `.github/workflows/build-{macos,linux,windows}.yml` — platform builds
+
+**Gotchas for next session:**
+- **`CROSS_REPO_TOKEN` was regenerated this session.** New token set 2026-04-10. If it stops working, check PAT at github.com → Settings → Developer settings → Fine-grained tokens (Token ID 13035353, expires 2027-04-03).
+- **v3.0.0.1 exists on both repos** — `wsjtx-internal` (release + tag) and `wsjtx` (tag + source). Both need cleanup before real releases.
+- **`.p12` files** still in repo root (untracked). Never commit.
+- **Public repo `KJ5HST-LABS/wsjtx`** now has real content — it's no longer just "Initial commit."
+
+**Self-assessment:**
+- (+) Caught that Session 8's public sync claim was wrong by reading the actual run logs
+- (+) Diagnosed two sequential auth failures (missing secret, then stale token) methodically
+- (+) Plan doc updated with full Phase 2+3 evidence and run numbers
+- (-) Took three release runs to get a clean result (discovery → stale token → success)
+- Score: 7/10
 
 ---
 
