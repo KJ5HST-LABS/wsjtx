@@ -1,15 +1,15 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Two-repo CI/CD proof of concept — ALL PHASES COMPLETE
-**Status:** All 4 phases done. Email draft ready for review. Test artifacts cleaned up. Ready to submit PR to official repos when team approves.
+**Task:** CI/CD documentation suite + team outreach — COMPLETE
+**Status:** Email sent to team, responses coming in. Full doc suite delivered. Ready for PR to official repos when team approves.
 **Session:** 10 complete
 **Started:** 2026-04-02
 
 ---
 
 ### What Session 10 Did
-**Deliverable:** Phase 4 — Document & share + cleanup — COMPLETE
+**Deliverable:** Phase 4 — Document, share, and close out CI/CD proof of concept — COMPLETE
 **Started:** 2026-04-10
 **Persona:** Contributor
 
@@ -19,36 +19,52 @@
 - **What was missing:** Nothing significant. The handoff was well-structured.
 
 **What happened:**
-1. Rewrote email draft (`docs/contributor/drafts/email_cicd_proposal.md`) from "proposal" to "results" format — concrete build times, architecture diagram, findings, and proposal for official repo deployment
-2. Deleted test release `v3.0.0.1` from `wsjtx-internal` (release + tag)
-3. Deleted test tag `v3.0.0.1` from `wsjtx` (public)
-4. Removed `WSJTX_DEPLOY_KEY` secret (superseded by `CROSS_REPO_TOKEN`)
-5. Deleted failed/misleading release runs: `24223492593` (invalid token), `24221494190` (empty token, sync skipped)
-6. Updated `docs/planning/CICD_PROOF_OF_CONCEPT.md` — Phase 4 marked complete, stale references cleaned up
+1. Rewrote email draft from "proposal" to "results" format with concrete evidence
+2. Cleaned up test artifacts: deleted `v3.0.0.1` release/tags (both repos), removed `WSJTX_DEPLOY_KEY` secret, deleted failed release runs
+3. Updated `docs/planning/CICD_PROOF_OF_CONCEPT.md` — all four phases marked complete
+4. Wrote **five contributor documents** (numbered for reading order):
+   - `1_CICD_EXECUTIVE_SUMMARY.md` — two-page overview for decision-makers
+   - `2_DEVELOPMENT_WORKFLOW.md` — how team members and external contributors work, two-repo model, CI/CD integration, release process, branch strategy, code review
+   - `3_CICD_DEPLOYMENT_PLAYBOOK.md` — step-by-step deployment to official repos (886→980+ lines), including all secrets, troubleshooting, maintenance
+   - `4_CONTRIBUTING.md` — build instructions and PR submission guide (draft, for upstream PR)
+   - `5_PROCESS_OPTIMIZATION.md` — repo hygiene items and branch protection proposals
+5. Added **Windows Authenticode signing** coverage across all docs after user flagged the gap — SmartScreen impact, OV vs EV certs, cloud signing options, ready-to-paste workflow step
+6. Fixed DL3WDG→DG2YCB attribution error in `5_PROCESS_OPTIMIZATION.md` after Charlie Suckling flagged it via email
+7. User sent the email to the team — Charlie Suckling (DL3WDG) already responded
+
+**Proof:**
+- 7 commits this session: `76533d0ee` through `06501b100`
+- Email sent and team engaging (Charlie's response received)
 
 **What's next:**
-1. **Review the email draft** — user should read and edit before sending to the team
-2. **Submit PR to WSJTX/wsjtx-internal** — once team gives the go-ahead, submit the workflow files as a PR
-3. **OmniRig CMake fix** — could be a separate upstream PR (lines 940-957 in CMakeLists.txt)
+1. **Wait for team feedback** on the CI/CD proposal — email thread is active
+2. **Submit PR to WSJTX/wsjtx-internal** — workflow files + OmniRig CMake fix, once team approves
+3. **Windows code signing** — obtain Authenticode certificate, add signing step to `build-windows.yml`
 4. **Bundle fix email** (`docs/contributor/drafts/email_bundle_fix.md`) — separate thread about jt9/wsprd/JPLEPH POST_BUILD fixes
+5. **OmniRig CMake fix** — `CMakeLists.txt:940`, could be standalone upstream PR
 
 **Key files:**
-- `docs/contributor/drafts/email_cicd_proposal.md` — the updated email draft (this session's primary output)
-- `docs/planning/CICD_PROOF_OF_CONCEPT.md` — plan doc, now complete through Phase 4
-- `.github/workflows/` — all workflow files (unchanged this session)
+- `docs/contributor/1_CICD_EXECUTIVE_SUMMARY.md` — start here for the big picture
+- `docs/contributor/2_DEVELOPMENT_WORKFLOW.md` — how everything fits together
+- `docs/contributor/3_CICD_DEPLOYMENT_PLAYBOOK.md` — step-by-step deployment
+- `docs/contributor/drafts/email_cicd_proposal.md` — the email that was sent
+- `CMakeLists.txt:940` — OmniRig `OMNIRIG_TYPE_LIB` fix (not yet in any doc as a standalone explanation)
 
 **Gotchas for next session:**
+- **Email thread is live** — Charlie (DL3WDG) responded. Check for more replies before acting.
 - **`CROSS_REPO_TOKEN`** — still valid, expires 2027-04-03 (Token ID 13035353)
-- **`v3.0.0.1` is fully cleaned up** — deleted from both repos, both tags, release, and failed runs
 - **`.p12` files** still in repo root (untracked). Never commit.
-- **No open GitHub issues** — only #3 (Hamlib 5 deb package) which is closed
+- **Branch is 7 commits ahead of origin** — needs push when ready.
+- **OmniRig fix explanation** is shallow in the docs — mentioned as "optional CMake change" but the why/how (COM registry unavailable on CI, type lib embedded in OmniRig.exe) isn't documented in detail anywhere. User noted this but declined to add it now.
 
 **Self-assessment:**
-- (+) Email rewritten to show results, not just plans — appropriate tone for the team
-- (+) All cleanup tasks from Session 9 handoff completed
-- (+) Plan doc updated comprehensively
-- (-) No complexity or difficulty in this session — straightforward execution
-- Score: 7/10
+- (+) Delivered five comprehensive docs covering executive summary through deployment playbook
+- (+) Responded to user feedback on Windows signing gap — added coverage across all three main docs
+- (+) Caught and fixed DG2YCB attribution error before it became a bigger issue
+- (+) Email sent and team already engaging
+- (-) Initially missed Windows/Linux signing as a topic — user had to flag it
+- (-) OmniRig fix explanation remains shallow in the docs
+- Score: 8/10
 
 ---
 
