@@ -60,25 +60,15 @@ jobs:
 
       - name: Push to public repo
         env:
-          SSH_KEY: ${{ secrets.WSJTX_DEPLOY_KEY }}
+          TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
         run: |
-          if [ -z "$SSH_KEY" ]; then
-            echo "::warning::WSJTX_DEPLOY_KEY not set — skipping public repo sync"
+          if [ -z "$TOKEN" ]; then
+            echo "::warning::CROSS_REPO_TOKEN not set — skipping public repo sync"
             exit 0
           fi
-          # Push via SSH deploy key, bypassing any GITHUB_TOKEN credential
-          # the runner or checkout action injected.  The -c flags override
-          # ALL config levels (local/global/system), and IdentitiesOnly
-          # prevents SSH from trying agent keys before the deploy key.
-          mkdir -p ~/.ssh
-          echo "$SSH_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
-          export GIT_SSH_COMMAND="ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no"
-          git remote add public git@github.com:KJ5HST-LABS/wsjtx.git || true
-          git -c credential.helper= \
-              -c "http.https://github.com/.extraheader=" \
-              push public HEAD:main --force
-          git -c credential.helper= \
-              -c "http.https://github.com/.extraheader=" \
-              push public "$GITHUB_REF_NAME"
-          rm -f ~/.ssh/deploy_key
+          # Deploy keys can't push .github/workflows/ (GitHub platform
+          # restriction).  Use CROSS_REPO_TOKEN (PAT with repo+workflow
+          # scopes) over HTTPS instead.
+          git remote add public https://x-access-token:${TOKEN}@github.com/KJ5HST-LABS/wsjtx.git || true
+          git push public HEAD:main --force
+          git push public "$GITHUB_REF_NAME"
