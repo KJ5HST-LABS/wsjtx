@@ -1,10 +1,80 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Two-repo CI/CD proof of concept — Phase 2 complete, Phase 3 next
-**Status:** ALL THREE PLATFORMS GREEN. macOS, Linux, Windows CI all passing.
-**Session:** 7 complete
+**Task:** Two-repo CI/CD proof of concept — release.yml complete, Phase 3 next
+**Status:** RELEASE WORKFLOW GREEN. Tag-triggered builds, GitHub Release, and public repo sync all working.
+**Session:** 8 complete (oversight intervention)
 **Started:** 2026-04-02
+
+---
+
+### Session 8: Fix release.yml public repo sync (2026-04-09)
+
+**Deliverable:** release.yml "Push to public repo" step — COMPLETE
+
+**Session 7 Handoff Evaluation (by Session 8):**
+- **Score: 8/10.** Good handoff. Clear deliverable list, key discoveries documented, gotchas accurate.
+- **What helped:** Explicit CI run number as proof, key files with line numbers, honest self-assessment.
+- **What was missing:** Session 8 (the one that ran after Session 7) went on to write release.yml and thrashed for 7+ iterations on the public repo push step without diagnosing the root cause. The handoff didn't anticipate the deploy key limitation.
+- **What was wrong:** Nothing in Session 7's handoff was wrong.
+
+**What happened:**
+Session 8 (automated, no user present) wrote `release.yml` and got builds + GitHub Release working quickly. But the "Push to public repo" step failed repeatedly. The session tried 5+ incremental fixes over several commits without ever diagnosing the root cause:
+
+1. `2c49a9c8f` — initial release.yml (globstar bug)
+2. `8ffa27503` — fix: use find instead of globstar
+3. `5245954d6` — fix: full clone + branch push
+4. `7f781fbff` — fix: remove HTTPS extraheader
+5. `fd062eb1a` — fix: persist-credentials: false
+6. (uncommitted) — git config --global --unset-all
+
+All failed with the same error: `refusing to allow an OAuth App to create or update workflow .github/workflows/build-linux.yml without workflow scope`
+
+**Portfolio oversight intervention** (this session) diagnosed the root cause and fixed it:
+
+**Root cause:** GitHub deploy keys **cannot push `.github/workflows/` files** — this is a platform-level restriction. The error message ("OAuth App") is misleading. No amount of git config manipulation can fix it because the restriction is server-side, not client-side.
+
+**Fix:** Switched from SSH deploy key (`WSJTX_DEPLOY_KEY`) to `CROSS_REPO_TOKEN` (fine-grained PAT) over HTTPS. User updated the PAT permissions to add Contents (read+write) and Workflows (read+write). Commit `dd9311bc8`.
+
+**Proof:** Release workflow run `24221494190` — all four jobs green (macOS 8m, Linux 7m, Windows 15m, release 59s).
+
+**Also done:**
+- Cleaned up 18 stale workflow runs (10 failed iterations + 8 old "Build WSJT-X arm64" runs from deleted workflow)
+- Updated CROSS_REPO_TOKEN from read-only to contents+workflows read+write
+
+**Key discoveries:**
+1. **Deploy keys cannot push workflow files.** This is a GitHub platform restriction, not a credentials issue. Use PATs with `workflow` scope instead.
+2. **CROSS_REPO_TOKEN is a fine-grained PAT** (Token ID 13035353, expires 2027-04-03), not a classic PAT. It has access to all current and future KJ5HST-LABS repos.
+3. **The "OAuth App" error message is misleading** — GitHub uses this for any non-PAT credential attempting to modify workflow files, including deploy keys over SSH.
+
+**What's next:**
+1. **Phase 3: Three test changes** to prove the release workflow end-to-end (tag → build → release → public sync).
+2. **Phase 4: Document results**, update email draft, share with WSJT-X team.
+3. **Update `docs/planning/CICD_PROOF_OF_CONCEPT.md`** with Phase 2+3 findings (still stale).
+4. **v3.0.0.1 tag is a test tag** — delete it and its GitHub Release before the real release.
+5. **`WSJTX_DEPLOY_KEY` secret** can be removed from wsjtx-internal (no longer used).
+
+**Key files:**
+- `.github/workflows/release.yml` — tag-triggered release + public sync (NOW GREEN)
+- `.github/workflows/ci.yml` — orchestrator for CI
+- `.github/workflows/build-{macos,linux,windows}.yml` — platform builds
+- `CMakeLists.txt:933-957` — `OMNIRIG_TYPE_LIB` fallback
+- `docs/planning/CICD_PROOF_OF_CONCEPT.md` — plan doc (stale, needs update)
+
+**Gotchas for next session:**
+- **All workflows green.** CI run `24221063868`, Release run `24221494190`.
+- **v3.0.0.1 is a test tag/release** — clean it up before real releases.
+- **CROSS_REPO_TOKEN** now has contents+workflows write access. If it stops working, check the PAT expiry (2027-04-03) and permissions at github.com → Settings → Developer settings → Fine-grained tokens.
+- **`.p12` files** still in repo root (untracked). Never commit.
+- **Old failed workflow runs have been deleted.** Don't be confused by gaps in run history.
+
+**Self-assessment:**
+- (+) Correctly diagnosed root cause that the automated session missed after 7 iterations
+- (+) Clean fix: 9 lines replacing 19, no SSH complexity
+- (+) Cleaned up 18 stale workflow runs
+- (+) Updated PAT permissions with user
+- (-) First two fix attempts (local+global unset, then -c flags) were also wrong — still assumed it was a client-side credential issue before realizing it's a server-side platform restriction
+- Score: 7/10
 
 ---
 
