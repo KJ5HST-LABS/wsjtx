@@ -179,7 +179,7 @@ When the PR is opened (and on every subsequent push to the PR branch), CI builds
 
 - **macOS ARM64** — builds, signs, and notarizes
 - **Linux x86_64** — builds
-- **Windows x86_64** — builds via MSYS2/MinGW
+- **Windows x86_64** — builds and signs via MSYS2/MinGW
 
 Green checks mean it compiles everywhere. A red X means something broke — click the check to see which platform failed and view the logs.
 
@@ -303,6 +303,7 @@ CI/CD serves two purposes: **quality gates** (does it compile?) and **release au
 **What CI checks:**
 - The code compiles on all three platforms (macOS ARM64, Linux x86_64, Windows x86_64)
 - On macOS: the binary is correctly signed and notarized
+- On Windows: executables are signed with Authenticode
 - Build artifacts are uploaded for inspection
 
 **What CI does NOT check (yet):**
@@ -354,7 +355,7 @@ Team decides to release v3.0.1
   │                                               │
   │  1. Build macOS ARM64 (signed + notarized)    │
   │  2. Build Linux x86_64                        │
-  │  3. Build Windows x86_64                      │
+  │  3. Build Windows x86_64 (signed)             │
   │                                               │
   │  4. Create GitHub Release on wsjtx-internal   │
   │     with all platform binaries attached       │
@@ -422,11 +423,9 @@ gh api repos/WSJTX/wsjtx/tags --jq '.[0].name'
 | Artifact | Platform | Signed | Notes |
 |----------|----------|--------|-------|
 | `wsjtx-3.0.1-arm64-macOS.pkg` | macOS ARM64 | Yes (Developer ID + Apple Notarization) | Gatekeeper-ready, no user warnings |
-| `wsjtx-3.0.1-linux-x86_64/` | Linux x86_64 | Not yet | GPG signing can be added for package repos |
-| `wsjtx-3.0.1-windows-x86_64/` | Windows x86_64 | Not yet (see note) | SmartScreen warnings until Authenticode signing is added |
+| `wsjtx-3.0.1-linux-x86_64/` | Linux x86_64 | No | GPG signing can be added |
+| `wsjtx-3.0.1-windows-x86_64/` | Windows x86_64 | Yes | Authenticode-signed executables |
 | Individual binary `.tar.gz` archives | macOS ARM64 | Yes | Signed and notarized |
-
-**Windows signing note:** Without an Authenticode code signing certificate, Windows users see SmartScreen warnings when running the downloaded binaries. Adding Windows signing requires an OV or EV certificate (~$200-600/year) and a small addition to the Windows workflow. See the [Deployment Playbook](CICD_DEPLOYMENT_PLAYBOOK.md) for details.
 
 ### Who can trigger a release?
 
@@ -629,7 +628,7 @@ The `release.yml` workflow triggers automatically:
     │     └─→ jt9, wsprd, wsjtx binaries
     │
     ├─→ Windows x86_64 build (15 min, cached)
-    │     └─→ jt9.exe, wsprd.exe, wsjtx.exe
+    │     └─→ Signed jt9.exe, wsprd.exe, wsjtx.exe
     │
     └─→ Release job (after all builds complete)
           ├─→ Creates GitHub Release "WSJT-X v3.0.1"

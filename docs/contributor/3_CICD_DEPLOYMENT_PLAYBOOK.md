@@ -1,6 +1,6 @@
 # CI/CD Deployment Playbook
 
-Deploy the WSJT-X GitHub Actions CI/CD pipeline from the prototype (`KJ5HST-LABS/wsjtx-internal`) to the official WSJTX organization repos.
+Deploy the WSJT-X GitHub Actions CI/CD pipeline to the official WSJTX organization repos.
 
 **Audience:** Someone with moderate GitHub Actions experience.
 **Time estimate:** 1-2 hours for a full deployment, assuming you have all credentials ready.
@@ -73,7 +73,7 @@ Understanding the architecture will help you debug issues during deployment.
 │                           Linux x86_64 build, unsigned.
 │
 ├── build-windows.yml    ← Reusable workflow (workflow_call).
-│                           Windows x86_64 via MSYS2/MinGW64, unsigned.
+│                           Windows x86_64 via MSYS2/MinGW64 + Authenticode signing.
 │
 └── release.yml          ← Triggers on version tags (v*).
                             Calls all three builds, creates a GitHub Release
@@ -209,11 +209,9 @@ If the official repo already uses `develop`, no change needed.
 
 **Public repo URL** (line 72): This is the most critical change.
 
-```yaml
-# BEFORE (prototype):
-git remote add public https://x-access-token:${TOKEN}@github.com/KJ5HST-LABS/wsjtx.git || true
+Verify this line points at the official public repo:
 
-# AFTER (official):
+```yaml
 git remote add public https://x-access-token:${TOKEN}@github.com/WSJTX/wsjtx.git || true
 ```
 
@@ -258,11 +256,11 @@ ENTITLEMENTS="${GITHUB_WORKSPACE}/entitlements.plist"
 |------|---------|----------------|-----|
 | `ci.yml` | 5, 7 | `develop` → `master` (if applicable) | Match official branch name |
 | `ci.yml` | 13, 19, 25 | Version string | Match current release version |
-| `release.yml` | 72 | `KJ5HST-LABS/wsjtx` → `WSJTX/wsjtx` | Point sync at official public repo |
+| `release.yml` | 72 | Verify public repo URL is `WSJTX/wsjtx` | Point sync at official public repo |
 | `release.yml` | 73 | `HEAD:main` → `HEAD:master` (if applicable) | Match public repo default branch |
 | `release.yml` | 13, 19, 25 | Version string | Match current release version |
 
-That's it. Five lines in two files, plus optional version bumps.
+That's it. Five lines in two files (public repo URL, branch name, and version strings).
 
 ---
 
@@ -435,32 +433,13 @@ DEVELOPER_ID_INSTALLER_PASSWORD Updated 2026-...
 
 If any are missing, the macOS build will fail at the signing step with an empty identity error.
 
-### Secrets 9-10: Windows Authenticode Signing (Recommended)
+### Secrets 9-10: Windows Authenticode Signing
 
-Without code signing, Windows users see a SmartScreen warning ("Windows protected your PC — Microsoft Defender SmartScreen prevented an unrecognized app from starting"). Depending on security settings, the binary may be silently quarantined by Defender. **This is the most impactful signing gap in the current pipeline.**
-
-#### Getting a Windows code signing certificate
-
-You need an Authenticode certificate from a trusted Certificate Authority. Options:
-
-| Certificate Type | Cost | SmartScreen Behavior | CI Compatibility |
-|-----------------|------|---------------------|-----------------|
-| **OV (Organization Validation)** | ~$200-500/year | Warnings disappear gradually as download reputation builds | `.pfx` file stored as CI secret — straightforward |
-| **EV (Extended Validation)** | ~$300-600/year | SmartScreen warnings eliminated immediately | Traditionally requires hardware USB token (problematic for CI). Cloud-based alternatives exist — see below. |
-
-**Recommended providers:** DigiCert, Sectigo, SSL.com, GlobalSign
-
-**EV certificates in CI:** Hardware tokens can't plug into a cloud runner. These services provide cloud-based EV signing compatible with CI:
-
-- **SSL.com eSigner** — signs via API, integrates with GitHub Actions via their official action
-- **DigiCert KeyLocker** — cloud-based key storage, works with `signtool.exe` + a client tool
-- **Azure Trusted Signing** — Microsoft's signing service, native to GitHub Actions runners (requires Azure account)
-
-For a first deployment, an **OV certificate with a `.pfx` file** is the simplest path. Upgrade to EV or cloud signing later if SmartScreen reputation is slow to build.
+The team's existing Windows signing certificate is used in CI the same way as macOS — base64-encoded and stored as a repository secret.
 
 #### Preparing the certificate
 
-Your CA will issue a `.pfx` (or `.p12`) file containing the signing key and certificate chain. Base64-encode it, same as the macOS certificates:
+Export the existing Authenticode certificate as a `.pfx` file (if you don't already have one exported). Base64-encode it, same as the macOS certificates:
 
 ```bash
 # On macOS:
@@ -520,15 +499,15 @@ Insert this step after the "Build" step and before "Upload build artifacts":
         Remove-Item $pfxPath
 ```
 
-The step is structured to skip gracefully if the secrets aren't set — the build succeeds unsigned, just like today. This means you can add the step to the workflow before the certificate is purchased without breaking anything.
+The step is structured to skip gracefully if the secrets aren't set — the build succeeds unsigned during initial setup while secrets are being configured.
 
 ### Linux Signing (Optional)
 
 Linux binary signing is less critical — Linux users don't encounter SmartScreen-style warnings when downloading binaries. However, GPG-signing release tarballs is good practice if the team distributes `.tar.gz` or `.deb` packages. This would require one additional secret (`GPG_SIGNING_KEY`) and a small step in the release workflow.
 
-### Updated Verification: All Secrets
+### Verification: All Secrets
 
-After adding Windows signing, you should see up to 10 secrets:
+You should see 10 secrets:
 
 ```bash
 gh secret list --repo WSJTX/wsjtx-internal
@@ -543,8 +522,8 @@ DEVELOPER_ID_CERTIFICATE_P12      Updated 2026-...
 DEVELOPER_ID_CERTIFICATE_PASSWORD Updated 2026-...
 DEVELOPER_ID_INSTALLER_P12        Updated 2026-...
 DEVELOPER_ID_INSTALLER_PASSWORD   Updated 2026-...
-WINDOWS_SIGNING_CERT_PFX          Updated 2026-...  (if Windows signing enabled)
-WINDOWS_SIGNING_CERT_PASSWORD     Updated 2026-...  (if Windows signing enabled)
+WINDOWS_SIGNING_CERT_PFX          Updated 2026-...
+WINDOWS_SIGNING_CERT_PASSWORD     Updated 2026-...
 ```
 
 ---
@@ -978,8 +957,8 @@ gh secret set CROSS_REPO_TOKEN --repo WSJTX/wsjtx-internal
 | `APPLE_ID` | `build-macos.yml` | macOS notarization | Yes |
 | `APPLE_APP_SPECIFIC_PASSWORD` | `build-macos.yml` | macOS notarization | Yes |
 | `APPLE_TEAM_ID` | `build-macos.yml` | macOS notarization | Yes |
-| `WINDOWS_SIGNING_CERT_PFX` | `build-windows.yml` | Windows Authenticode signing | Recommended |
-| `WINDOWS_SIGNING_CERT_PASSWORD` | `build-windows.yml` | Windows Authenticode signing | Recommended |
+| `WINDOWS_SIGNING_CERT_PFX` | `build-windows.yml` | Windows Authenticode signing | Yes |
+| `WINDOWS_SIGNING_CERT_PASSWORD` | `build-windows.yml` | Windows Authenticode signing | Yes |
 
 ### External Dependencies (Downloaded at Build Time)
 

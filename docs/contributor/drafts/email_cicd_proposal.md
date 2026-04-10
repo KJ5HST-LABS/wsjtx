@@ -1,57 +1,48 @@
-**Subject:** CI/CD proof of concept — three platforms building, ready for review
+**Subject:** CI/CD pipeline for WSJT-X — built and tested, ready for deployment
 
 Joe, Brian, all,
 
-I prototyped a CI/CD pipeline for WSJT-X in a fork and wanted to share results before proposing anything for the official repos.
+I built a CI/CD pipeline for WSJT-X and have it working end-to-end on all three platforms. Sharing the results and documentation so the team can evaluate whether to adopt it.
 
 ## What it does
 
-Push to `develop` → automatic build on three platforms. Tag a version (`v*`) → build all three + create a GitHub Release with downloadable binaries + sync source to the public repo. Green check = compiles. Red X = something broke.
+Push to `develop` → automatic build on macOS ARM64, Linux x86_64, and Windows x86_64. Green check = compiles everywhere. Red X = something broke.
 
-## Results
+Tag a version (`v*`) → builds all three platforms, creates a GitHub Release with signed binaries, and syncs source + tag to the public repo. The two-repo workflow is preserved.
 
-All three platforms build successfully from the raw WSJT-X source (no superbuild):
+## Build results
 
-| Platform | Runner | Build time | Notes |
-|----------|--------|------------|-------|
-| macOS ARM64 | macos-15 | ~8 min | Signed + notarized via org secrets |
-| Linux x86_64 | ubuntu-24.04 | ~7 min | Unsigned |
-| Windows x86_64 | windows-latest + MSYS2 | ~15 min (cached) | MSYS2 MINGW64, unsigned |
+| Platform | Build time (cached) | Signed | Notes |
+|----------|-------------------|--------|-------|
+| macOS ARM64 | ~8 min | Yes | Developer ID + Apple Notarization, Gatekeeper-ready |
+| Linux x86_64 | ~7 min | No | GPG signing can be added |
+| Windows x86_64 | ~15 min | Yes | Authenticode via existing certificate |
 
-Build times include Hamlib. With caching (Hamlib install, MSYS2 packages), repeat builds are faster.
+The release pipeline was validated end-to-end: tag push triggered three-platform builds, created a GitHub Release with all artifacts, and synced source + tag to the public repo automatically.
 
-## Architecture
+## What's needed to deploy
 
-Five workflow files, no duplicated build logic:
+Five workflow files copied to `.github/workflows/`. Five lines need changing across two files (public repo URL, branch name, and version strings). Ten repository secrets (Apple signing/notarization credentials, Windows Authenticode certificate, and a GitHub PAT for public repo sync), set once via `gh secret set`. The team's existing macOS and Windows signing credentials are used directly — they just need to be exported as secrets for CI.
 
-```
-.github/workflows/
-├── build-macos.yml      reusable, called by ci.yml and release.yml
-├── build-linux.yml      reusable
-├── build-windows.yml    reusable
-├── ci.yml               push/PR trigger → calls all three builds
-└── release.yml          tag trigger → builds + GitHub Release + public repo sync
-```
+One prerequisite: GitHub Actions must be enabled at the WSJTX org level.
 
-Each platform build is a two-stage process: build Hamlib 4.7.0 from source, then build WSJT-X against it. This matches what developers do locally but automates the dependency chain. Hamlib installs are cached per-platform.
+No changes to the build system are required. One optional CMake change (`OMNIRIG_TYPE_LIB` variable) makes the Windows build more portable — when set, `dumpcpp` uses a file path instead of querying the COM registry. When not set, existing behavior is unchanged.
 
-The release workflow pushes source and tags to the public repo automatically on tagged releases, preserving the current two-repo workflow.
+## Things found along the way
 
-## One CMake fix worth discussing
-
-Windows CI needed a way to tell CMake where the OmniRig type library is when OmniRig isn't installed in the COM registry (which it isn't on a fresh CI runner). I added a `OMNIRIG_TYPE_LIB` CMake variable — when set, `dumpcpp` uses the file path directly instead of querying the registry. When not set, existing behavior is unchanged. This might be worth upstreaming since it makes the build more portable.
-
-## Things I found along the way
-
-- **MAP65** doesn't compile with GCC 15 — `decode0.f90` has legacy Fortran that the new compiler rejects. I skip it in CI for now. Not a WSJT-X issue per se, but worth knowing.
+- **MAP65** doesn't compile with GCC 15 — `decode0.f90` has legacy Fortran that the new compiler rejects. Skipped in CI. Not a WSJT-X issue per se, but worth knowing.
 - **Deploy keys can't push workflow files** — GitHub platform restriction. The release workflow uses a fine-grained PAT instead.
 - **MSYS2 renames Qt5 tools** with a `-qt5` suffix (`dumpcpp-qt5` instead of `dumpcpp`). Handled with a symlink in CI.
-- **The `find_program` check for dumpcpp** in the existing CMake has a bug — `if (DUMPCPP-NOTFOUND)` checks a literal string, never a variable. It works anyway because dumpcpp is always found, but it's a latent issue.
+- **The `find_program` check for dumpcpp** in the existing CMake has a bug — `if (DUMPCPP-NOTFOUND)` checks a literal string, never a variable. It works because dumpcpp is always found, but it's a latent issue.
 
-## What I'd propose
+## Documentation
 
-If the team is interested, I could submit a PR to `wsjtx-internal` with these workflows. The CI would run on every push to `develop` and every PR, giving everyone immediate feedback on whether their changes compile across platforms. The release workflow could be enabled later when you're ready.
+I wrote three documents that cover the full picture:
 
-Happy to walk through any of this or adjust the approach. The fork is at `KJ5HST-LABS/wsjtx-internal` if anyone wants to look at the workflow files or build logs directly.
+- **[Executive Summary](../1_CICD_EXECUTIVE_SUMMARY.md)** — two-page overview of what was built, what it produces, and what's needed to deploy
+- **[Development Workflow](../2_DEVELOPMENT_WORKFLOW.md)** — how the two-repo model works, how CI/CD integrates into daily development, branch strategy, release process, code review
+- **[Deployment Playbook](../3_CICD_DEPLOYMENT_PLAYBOOK.md)** — step-by-step instructions to stand up the pipeline on the official repos, including secrets, troubleshooting, and ongoing maintenance
+
+If the team wants to move forward, I can submit a PR to `wsjtx-internal` with the workflow files. The Deployment Playbook covers the rest.
 
 73, Terrell KJ5HST
