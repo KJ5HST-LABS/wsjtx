@@ -11,18 +11,19 @@ The WSJT-X team uses a two-repo model: `wsjtx-internal` (private, `develop` bran
 | Phase 1: Repo setup | **COMPLETE** | Session 5 |
 | Phase 2: CI workflows | **COMPLETE** | Sessions 6–8 |
 | Phase 3: Test changes | **COMPLETE** | Sessions 5–9 |
-| Phase 4: Document & share | Not started | — |
+| Phase 4: Document & share | **COMPLETE** | Session 10 |
 
 **Proof runs:**
 - CI: `24222053261` — all three platforms green (2026-04-10)
 - Release: `24224001691` — tag-triggered build + GitHub Release + public sync all green (2026-04-10)
+- Test artifacts (`v3.0.0.1` release/tags, deploy key, failed runs) cleaned up in Session 10
 
 ## Phase 1: Repo Setup — COMPLETE
 
 1. **Renamed** `WSJT-X-MAC-ARM64` → `KJ5HST-LABS/wsjtx-internal`
 2. **Renamed `main` → `develop`** — imported upstream `WSJTX/wsjtx` v3.0.0 source
 3. **Created `KJ5HST-LABS/wsjtx`** (private, `main` default)
-4. **Secrets**: `CROSS_REPO_TOKEN` (fine-grained PAT, repo secret on wsjtx-internal) for public repo sync. `WSJTX_DEPLOY_KEY` still exists but is unused — can be removed.
+4. **Secrets**: `CROSS_REPO_TOKEN` (fine-grained PAT, repo secret on wsjtx-internal) for public repo sync. `WSJTX_DEPLOY_KEY` removed (Session 10).
 
 ## Phase 2: CI Workflows
 
@@ -34,7 +35,7 @@ The WSJT-X team uses a two-repo model: `wsjtx-internal` (private, `develop` bran
 ├── build-linux.yml      (reusable via workflow_call) — GREEN
 ├── build-windows.yml    (reusable via workflow_call) — GREEN
 ├── ci.yml               (calls all three on push/PR to develop) — GREEN
-└── release.yml          (TODO: tag-triggered, publishes to wsjtx)
+└── release.yml          (tag-triggered, publishes to wsjtx) — GREEN
 ```
 
 Each `build-*.yml` uses `on: workflow_call` with shared inputs (version, hamlib_branch). `ci.yml` is a thin orchestrator — no build logic, just `uses:` calls. Separate per-platform workflows because build steps are radically different across platforms.
@@ -106,10 +107,14 @@ Tag-triggered (`v*` tags). Calls all three platform builds, then:
 
 All three test changes pushed to `develop`, triggered CI, and passed on all three platforms. The tag-triggered release workflow created a GitHub Release with macOS/Linux/Windows artifacts and synced source to the public repo.
 
-## Phase 4: Document & Share
+## Phase 4: Document & Share — COMPLETE
 
-- Update email draft (`docs/contributor/drafts/email_cicd_proposal.md`) with concrete results
-- Share with team
+- Email draft updated with concrete results from all phases (`docs/contributor/drafts/email_cicd_proposal.md`)
+- Test artifacts cleaned up:
+  - Deleted `v3.0.0.1` release + tag from `wsjtx-internal`
+  - Deleted `v3.0.0.1` tag from `wsjtx` (public)
+  - Removed `WSJTX_DEPLOY_KEY` secret (superseded by `CROSS_REPO_TOKEN`)
+  - Deleted failed/misleading release runs (`24223492593`, `24221494190`)
 
 ## Build Order
 
@@ -121,5 +126,5 @@ Phase 2: CI workflows
   → build-windows.yml ✓
   → release.yml ✓
 Phase 3: Three test changes ✓
-Phase 4: Document & share (NEXT)
+Phase 4: Document & share ✓
 ```

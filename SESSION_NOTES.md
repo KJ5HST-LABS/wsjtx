@@ -1,10 +1,54 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Two-repo CI/CD proof of concept — Phases 1-3 COMPLETE, Phase 4 next
-**Status:** Phase 3 complete. Full pipeline proven: tag → build (3 platforms) → GitHub Release → public repo sync.
-**Session:** 9 complete
+**Task:** Two-repo CI/CD proof of concept — ALL PHASES COMPLETE
+**Status:** All 4 phases done. Email draft ready for review. Test artifacts cleaned up. Ready to submit PR to official repos when team approves.
+**Session:** 10 complete
 **Started:** 2026-04-02
+
+---
+
+### What Session 10 Did
+**Deliverable:** Phase 4 — Document & share + cleanup — COMPLETE
+**Started:** 2026-04-10
+**Persona:** Contributor
+
+**Session 9 Handoff Evaluation (by Session 10):**
+- **Score: 8/10.** Clear next steps with all four items actionable. Good proof citations and gotchas.
+- **What helped:** Explicit list of cleanup tasks with specific run numbers and repo targets. Token details (ID, expiry) were useful for verification.
+- **What was missing:** Nothing significant. The handoff was well-structured.
+
+**What happened:**
+1. Rewrote email draft (`docs/contributor/drafts/email_cicd_proposal.md`) from "proposal" to "results" format — concrete build times, architecture diagram, findings, and proposal for official repo deployment
+2. Deleted test release `v3.0.0.1` from `wsjtx-internal` (release + tag)
+3. Deleted test tag `v3.0.0.1` from `wsjtx` (public)
+4. Removed `WSJTX_DEPLOY_KEY` secret (superseded by `CROSS_REPO_TOKEN`)
+5. Deleted failed/misleading release runs: `24223492593` (invalid token), `24221494190` (empty token, sync skipped)
+6. Updated `docs/planning/CICD_PROOF_OF_CONCEPT.md` — Phase 4 marked complete, stale references cleaned up
+
+**What's next:**
+1. **Review the email draft** — user should read and edit before sending to the team
+2. **Submit PR to WSJTX/wsjtx-internal** — once team gives the go-ahead, submit the workflow files as a PR
+3. **OmniRig CMake fix** — could be a separate upstream PR (lines 940-957 in CMakeLists.txt)
+4. **Bundle fix email** (`docs/contributor/drafts/email_bundle_fix.md`) — separate thread about jt9/wsprd/JPLEPH POST_BUILD fixes
+
+**Key files:**
+- `docs/contributor/drafts/email_cicd_proposal.md` — the updated email draft (this session's primary output)
+- `docs/planning/CICD_PROOF_OF_CONCEPT.md` — plan doc, now complete through Phase 4
+- `.github/workflows/` — all workflow files (unchanged this session)
+
+**Gotchas for next session:**
+- **`CROSS_REPO_TOKEN`** — still valid, expires 2027-04-03 (Token ID 13035353)
+- **`v3.0.0.1` is fully cleaned up** — deleted from both repos, both tags, release, and failed runs
+- **`.p12` files** still in repo root (untracked). Never commit.
+- **No open GitHub issues** — only #3 (Hamlib 5 deb package) which is closed
+
+**Self-assessment:**
+- (+) Email rewritten to show results, not just plans — appropriate tone for the team
+- (+) All cleanup tasks from Session 9 handoff completed
+- (+) Plan doc updated comprehensively
+- (-) No complexity or difficulty in this session — straightforward execution
+- Score: 7/10
 
 ---
 
