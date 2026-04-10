@@ -29,14 +29,14 @@ WSJT-X uses two separate repositories in the WSJTX GitHub organization:
 
 ```
 WSJTX/wsjtx-internal  (private)     WSJTX/wsjtx  (public)
-┌─────────────────────────┐         ┌─────────────────────────┐
+┌──────────────────────────┐         ┌──────────────────────────┐
 │  Default branch: develop │         │  Default branch: master  │
 │                          │         │                          │
 │  Active development      │  ────>  │  Tagged releases only    │
 │  Feature branches        │  sync   │                          │
 │  Issues & PRs            │         │  External contributors   │
 │  CI/CD workflows         │         │  fork from here          │
-└─────────────────────────┘         └─────────────────────────┘
+└──────────────────────────┘         └──────────────────────────┘
 ```
 
 ### Why two repos?
@@ -284,8 +284,8 @@ CI/CD serves two purposes: **quality gates** (does it compile?) and **release au
 
 ```
                     ┌──────────────────────────────────┐
-  Push to develop   │           ci.yml                  │
-  or open a PR  ──> │  ┌─────────┐ ┌───────┐ ┌──────┐ │
+  Push to develop   │           ci.yml                 │
+  or open a PR  ──> │  ┌──────────┐ ┌───────┐ ┌──────┐ │
                     │  │  macOS   │ │ Linux │ │ Win  │ │
                     │  │  ARM64   │ │ x86   │ │ x86  │ │
                     │  └────┬─────┘ └───┬───┘ └──┬───┘ │
@@ -349,7 +349,7 @@ Team decides to release v3.0.1
   Tag v3.0.1 on develop (wsjtx-internal)
          │
          v
-  ┌──────────────────────────────────────────────┐
+  ┌───────────────────────────────────────────────┐
   │              release.yml                      │
   │                                               │
   │  1. Build macOS ARM64 (signed + notarized)    │
@@ -357,12 +357,12 @@ Team decides to release v3.0.1
   │  3. Build Windows x86_64                      │
   │                                               │
   │  4. Create GitHub Release on wsjtx-internal   │
-  │     with all platform binaries attached        │
+  │     with all platform binaries attached       │
   │                                               │
   │  5. Sync source to WSJTX/wsjtx (public)       │
   │     - Push code to master                     │
   │     - Push tag v3.0.1                         │
-  └──────────────────────────────────────────────┘
+  └───────────────────────────────────────────────┘
          │
          v
   Public repo updated. External contributors
@@ -419,12 +419,14 @@ gh api repos/WSJTX/wsjtx/tags --jq '.[0].name'
 
 ### What the release produces
 
-| Artifact | Platform | Signed | Notarized |
-|----------|----------|--------|-----------|
-| `wsjtx-3.0.1-arm64-macOS.pkg` | macOS ARM64 | Yes (Developer ID) | Yes (Apple Notary) |
-| `wsjtx-3.0.1-linux-x86_64/` | Linux x86_64 | No | N/A |
-| `wsjtx-3.0.1-windows-x86_64/` | Windows x86_64 | No | N/A |
-| Individual binary `.tar.gz` archives | macOS ARM64 | Yes | Yes |
+| Artifact | Platform | Signed | Notes |
+|----------|----------|--------|-------|
+| `wsjtx-3.0.1-arm64-macOS.pkg` | macOS ARM64 | Yes (Developer ID + Apple Notarization) | Gatekeeper-ready, no user warnings |
+| `wsjtx-3.0.1-linux-x86_64/` | Linux x86_64 | Not yet | GPG signing can be added for package repos |
+| `wsjtx-3.0.1-windows-x86_64/` | Windows x86_64 | Not yet (see note) | SmartScreen warnings until Authenticode signing is added |
+| Individual binary `.tar.gz` archives | macOS ARM64 | Yes | Signed and notarized |
+
+**Windows signing note:** Without an Authenticode code signing certificate, Windows users see SmartScreen warnings when running the downloaded binaries. Adding Windows signing requires an OV or EV certificate (~$200-600/year) and a small addition to the Windows workflow. See the [Deployment Playbook](CICD_DEPLOYMENT_PLAYBOOK.md) for details.
 
 ### Who can trigger a release?
 

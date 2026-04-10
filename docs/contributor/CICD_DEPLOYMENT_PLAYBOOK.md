@@ -435,6 +435,118 @@ DEVELOPER_ID_INSTALLER_PASSWORD Updated 2026-...
 
 If any are missing, the macOS build will fail at the signing step with an empty identity error.
 
+### Secrets 9-10: Windows Authenticode Signing (Recommended)
+
+Without code signing, Windows users see a SmartScreen warning ("Windows protected your PC — Microsoft Defender SmartScreen prevented an unrecognized app from starting"). Depending on security settings, the binary may be silently quarantined by Defender. **This is the most impactful signing gap in the current pipeline.**
+
+#### Getting a Windows code signing certificate
+
+You need an Authenticode certificate from a trusted Certificate Authority. Options:
+
+| Certificate Type | Cost | SmartScreen Behavior | CI Compatibility |
+|-----------------|------|---------------------|-----------------|
+| **OV (Organization Validation)** | ~$200-500/year | Warnings disappear gradually as download reputation builds | `.pfx` file stored as CI secret — straightforward |
+| **EV (Extended Validation)** | ~$300-600/year | SmartScreen warnings eliminated immediately | Traditionally requires hardware USB token (problematic for CI). Cloud-based alternatives exist — see below. |
+
+**Recommended providers:** DigiCert, Sectigo, SSL.com, GlobalSign
+
+**EV certificates in CI:** Hardware tokens can't plug into a cloud runner. These services provide cloud-based EV signing compatible with CI:
+
+- **SSL.com eSigner** — signs via API, integrates with GitHub Actions via their official action
+- **DigiCert KeyLocker** — cloud-based key storage, works with `signtool.exe` + a client tool
+- **Azure Trusted Signing** — Microsoft's signing service, native to GitHub Actions runners (requires Azure account)
+
+For a first deployment, an **OV certificate with a `.pfx` file** is the simplest path. Upgrade to EV or cloud signing later if SmartScreen reputation is slow to build.
+
+#### Preparing the certificate
+
+Your CA will issue a `.pfx` (or `.p12`) file containing the signing key and certificate chain. Base64-encode it, same as the macOS certificates:
+
+```bash
+# On macOS:
+base64 -i wsjtx-signing.pfx -o wsjtx-signing.pfx.b64
+
+# On Linux:
+base64 -w0 wsjtx-signing.pfx > wsjtx-signing.pfx.b64
+```
+
+#### Set the secrets
+
+```bash
+# Windows signing certificate (base64-encoded .pfx):
+gh secret set WINDOWS_SIGNING_CERT_PFX --repo WSJTX/wsjtx-internal < wsjtx-signing.pfx.b64
+
+# Password for the certificate:
+gh secret set WINDOWS_SIGNING_CERT_PASSWORD --repo WSJTX/wsjtx-internal
+# (paste the password, press Enter)
+```
+
+**Delete local files after setting secrets:**
+```bash
+rm wsjtx-signing.pfx wsjtx-signing.pfx.b64
+```
+
+#### Adding the signing step to `build-windows.yml`
+
+Insert this step after the "Build" step and before "Upload build artifacts":
+
+```yaml
+    - name: Sign Windows binaries
+      shell: pwsh
+      env:
+        CERT_PFX: ${{ secrets.WINDOWS_SIGNING_CERT_PFX }}
+        CERT_PASSWORD: ${{ secrets.WINDOWS_SIGNING_CERT_PASSWORD }}
+      run: |
+        if (-not $env:CERT_PFX) {
+          Write-Warning "WINDOWS_SIGNING_CERT_PFX not set — skipping signing"
+          exit 0
+        }
+        $pfxPath = "$env:RUNNER_TEMP\signing.pfx"
+        [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:CERT_PFX))
+
+        $signtool = Get-ChildItem -Path "C:\Program Files (x86)\Windows Kits" `
+          -Recurse -Filter "signtool.exe" | Where-Object {
+            $_.FullName -match "x64"
+          } | Select-Object -First 1
+
+        if (-not $signtool) { throw "signtool.exe not found" }
+
+        foreach ($exe in @("wsjtx-build\wsjtx.exe", "wsjtx-build\jt9.exe", "wsjtx-build\wsprd.exe")) {
+          if (Test-Path $exe) {
+            & $signtool.FullName sign /f $pfxPath /p $env:CERT_PASSWORD `
+              /tr http://timestamp.digicert.com /td sha256 /fd sha256 $exe
+          }
+        }
+        Remove-Item $pfxPath
+```
+
+The step is structured to skip gracefully if the secrets aren't set — the build succeeds unsigned, just like today. This means you can add the step to the workflow before the certificate is purchased without breaking anything.
+
+### Linux Signing (Optional)
+
+Linux binary signing is less critical — Linux users don't encounter SmartScreen-style warnings when downloading binaries. However, GPG-signing release tarballs is good practice if the team distributes `.tar.gz` or `.deb` packages. This would require one additional secret (`GPG_SIGNING_KEY`) and a small step in the release workflow.
+
+### Updated Verification: All Secrets
+
+After adding Windows signing, you should see up to 10 secrets:
+
+```bash
+gh secret list --repo WSJTX/wsjtx-internal
+```
+
+```
+APPLE_APP_SPECIFIC_PASSWORD       Updated 2026-...
+APPLE_ID                          Updated 2026-...
+APPLE_TEAM_ID                     Updated 2026-...
+CROSS_REPO_TOKEN                  Updated 2026-...
+DEVELOPER_ID_CERTIFICATE_P12      Updated 2026-...
+DEVELOPER_ID_CERTIFICATE_PASSWORD Updated 2026-...
+DEVELOPER_ID_INSTALLER_P12        Updated 2026-...
+DEVELOPER_ID_INSTALLER_PASSWORD   Updated 2026-...
+WINDOWS_SIGNING_CERT_PFX          Updated 2026-...  (if Windows signing enabled)
+WINDOWS_SIGNING_CERT_PASSWORD     Updated 2026-...  (if Windows signing enabled)
+```
+
 ---
 
 ## 6. Phase 4: Supporting Files
@@ -716,7 +828,8 @@ git tag -d "$TEST_TAG"
 |--------|-------------------|---------------|
 | `CROSS_REPO_TOKEN` | Before expiry (check token settings at github.com) | Generate new PAT → `gh secret set CROSS_REPO_TOKEN --repo WSJTX/wsjtx-internal` |
 | `APPLE_APP_SPECIFIC_PASSWORD` | When Apple revokes it or account password changes | Generate new app-specific password → update secret |
-| Signing certificates (.p12) | When certificate expires (typically 5 years) | Export new cert from Keychain → base64-encode → update both P12 and PASSWORD secrets |
+| macOS signing certificates (.p12) | When certificate expires (typically 5 years) | Export new cert from Keychain → base64-encode → update both P12 and PASSWORD secrets |
+| Windows signing certificate (.pfx) | When certificate expires (typically 1-3 years for OV) | Obtain renewed cert from CA → base64-encode → update PFX and PASSWORD secrets |
 
 ### Version Bumps
 
@@ -855,16 +968,18 @@ gh secret set CROSS_REPO_TOKEN --repo WSJTX/wsjtx-internal
 
 ### Secrets Required on `wsjtx-internal`
 
-| Secret Name | Used By | Required For |
-|-------------|---------|-------------|
-| `CROSS_REPO_TOKEN` | `release.yml` | Public repo sync |
-| `DEVELOPER_ID_CERTIFICATE_P12` | `build-macos.yml` | App code signing |
-| `DEVELOPER_ID_CERTIFICATE_PASSWORD` | `build-macos.yml` | App code signing |
-| `DEVELOPER_ID_INSTALLER_P12` | `build-macos.yml` | Installer signing |
-| `DEVELOPER_ID_INSTALLER_PASSWORD` | `build-macos.yml` | Installer signing |
-| `APPLE_ID` | `build-macos.yml` | Notarization |
-| `APPLE_APP_SPECIFIC_PASSWORD` | `build-macos.yml` | Notarization |
-| `APPLE_TEAM_ID` | `build-macos.yml` | Notarization |
+| Secret Name | Used By | Required For | Required? |
+|-------------|---------|-------------|-----------|
+| `CROSS_REPO_TOKEN` | `release.yml` | Public repo sync | Yes |
+| `DEVELOPER_ID_CERTIFICATE_P12` | `build-macos.yml` | macOS app code signing | Yes |
+| `DEVELOPER_ID_CERTIFICATE_PASSWORD` | `build-macos.yml` | macOS app code signing | Yes |
+| `DEVELOPER_ID_INSTALLER_P12` | `build-macos.yml` | macOS installer signing | Yes |
+| `DEVELOPER_ID_INSTALLER_PASSWORD` | `build-macos.yml` | macOS installer signing | Yes |
+| `APPLE_ID` | `build-macos.yml` | macOS notarization | Yes |
+| `APPLE_APP_SPECIFIC_PASSWORD` | `build-macos.yml` | macOS notarization | Yes |
+| `APPLE_TEAM_ID` | `build-macos.yml` | macOS notarization | Yes |
+| `WINDOWS_SIGNING_CERT_PFX` | `build-windows.yml` | Windows Authenticode signing | Recommended |
+| `WINDOWS_SIGNING_CERT_PASSWORD` | `build-windows.yml` | Windows Authenticode signing | Recommended |
 
 ### External Dependencies (Downloaded at Build Time)
 
