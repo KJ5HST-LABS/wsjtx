@@ -66,20 +66,19 @@ jobs:
             echo "::warning::WSJTX_DEPLOY_KEY not set — skipping public repo sync"
             exit 0
           fi
-          # Strip HTTPS credential overrides injected by actions/checkout —
-          # they rewrite git@github.com: to HTTPS with a GITHUB_TOKEN that
-          # lacks 'workflow' scope, blocking pushes of .github/workflows/.
-          # The SSH deploy key has no such restriction.  Clear both local
-          # (set by checkout) and global (set by runner) levels.
-          git config --local  --unset-all "http.https://github.com/.extraheader" 2>/dev/null || true
-          git config --global --unset-all "http.https://github.com/.extraheader" 2>/dev/null || true
-          git config --local  --unset-all "url.https://github.com/.insteadOf" 2>/dev/null || true
-          git config --global --unset-all "url.https://github.com/.insteadOf" 2>/dev/null || true
+          # Push via SSH deploy key, bypassing any GITHUB_TOKEN credential
+          # the runner or checkout action injected.  The -c flags override
+          # ALL config levels (local/global/system), and IdentitiesOnly
+          # prevents SSH from trying agent keys before the deploy key.
           mkdir -p ~/.ssh
           echo "$SSH_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
-          export GIT_SSH_COMMAND="ssh -i ~/.ssh/deploy_key -o StrictHostKeyChecking=no"
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes -o StrictHostKeyChecking=no"
           git remote add public git@github.com:KJ5HST-LABS/wsjtx.git || true
-          git push public HEAD:main --force
-          git push public "$GITHUB_REF_NAME"
+          git -c credential.helper= \
+              -c "http.https://github.com/.extraheader=" \
+              push public HEAD:main --force
+          git -c credential.helper= \
+              -c "http.https://github.com/.extraheader=" \
+              push public "$GITHUB_REF_NAME"
           rm -f ~/.ssh/deploy_key
