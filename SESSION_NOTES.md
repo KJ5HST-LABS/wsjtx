@@ -1,11 +1,19 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Issue #13 — source tarball as release artifact — COMPLETE
-**Status:** Issue closed. Commit `72670f593` pushed to `origin/develop`. New issue #18 filed for follow-up work.
-**Session:** 16 complete
+**Task:** Issue #14 — Scheduled Hamlib upstream version check (IN PROGRESS)
+**Status:** Session 17 claimed. Work beginning.
+**Session:** 17
 **Started:** 2026-04-15
 **Persona:** Contributor
+
+---
+
+### What Session 17 Did
+**Deliverable:** Close issue #14 — add `.github/workflows/hamlib-upstream-check.yml` (scheduled weekly) that reads the pinned Hamlib version from `ci.yml`, queries Hamlib upstream tags, and files a tracking issue if a newer 4.x release is available. IN PROGRESS.
+**Started:** 2026-04-15
+**Persona:** Contributor
+**Status:** Stub written (Phase 1B). Full handoff to be filled in during Phase 3D close-out.
 
 ---
 

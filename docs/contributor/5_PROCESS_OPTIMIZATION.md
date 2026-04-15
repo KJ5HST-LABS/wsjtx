@@ -182,7 +182,9 @@ The Deployment Playbook documents how to set secrets but not when to rotate them
 
 ### Dependency Monitoring
 
-Qt5, Hamlib, Boost — all pinned or semi-pinned. No automated monitoring for security updates. GitHub's Dependabot doesn't work well with CMake projects, but a scheduled GitHub Action that checks upstream release feeds would catch critical updates.
+Qt5, Hamlib, Boost — all pinned or semi-pinned. GitHub's Dependabot doesn't work well with CMake projects, but a scheduled GitHub Action that checks upstream release feeds catches critical updates.
+
+**Status:** Hamlib is now monitored weekly by `.github/workflows/hamlib-upstream-check.yml`, which reads the pin from `ci.yml`, queries `Hamlib/Hamlib` tags, and files a tracking issue when a newer 4.x release appears. Qt5 and Boost remain gaps — the workflow is structured so the same pattern can be duplicated or matrix-extended for additional upstreams.
 
 ### Qt5 End of Life
 
