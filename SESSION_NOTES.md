@@ -1,10 +1,88 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** CI/CD documentation suite + team outreach — COMPLETE
-**Status:** Email sent to team, responses coming in. Full doc suite delivered. Ready for PR to official repos when team approves.
-**Session:** 10 complete
-**Started:** 2026-04-02
+**Task:** Draft reply to WSJT-X team's feedback on CI/CD proposal — COMPLETE
+**Status:** Reply draft written, 9 follow-up issues filed in KJ5HST-LABS/wsjtx-internal. Draft is pending user review + send (not auto-sent).
+**Session:** 11 complete
+**Started:** 2026-04-15
+
+---
+
+### What Session 11 Did
+**Deliverable:** Review the WSJT-X team's email responses, evaluate each action item against the current repo state, draft a concise reply, and file issues for every commitment made in the reply — COMPLETE
+**Started:** 2026-04-15
+**Persona:** Contributor
+
+**Session 10 Handoff Evaluation (by Session 11):**
+- **Score: 8/10.** Matches Session 10's own self-assessment.
+- **What helped:** The "email thread is live — Charlie responded" warning was accurate and immediately relevant. Key files list pointed me straight to `docs/contributor/` without discovery. Gotchas about `.p12` and `CROSS_REPO_TOKEN` were still valid. The explicit "what's next" list gave me a clear anchor even though the team's responses changed the priorities.
+- **What was missing:** Nothing structural. Session 10's "what's next" assumed the team would respond positively with questions, not with pushback interpreting Terrell's own reply as a platform-dropping proposal. That's not a gap — it's genuinely unpredictable.
+- **What was wrong:** Nothing. Every claim held up.
+- **ROI:** High. Orientation took ~3 minutes because the handoff was dense and accurate.
+
+**What happened:**
+1. Oriented, read the full 7-message email thread archive at `docs/contributor/email/Re_ CI_CD Success!` (1670 lines, 7 messages from 6 responders Apr 10-12)
+2. Mapped the thread chronologically and identified 7 substantive action items + one recurring pushback theme (John G4KLA and Charlie G3WDG both read the Sunday "where do you guys want to draw that line?" reply as a proposal to drop Intel Mac support)
+3. Entered plan mode. Ran two parallel Explore agents:
+   - One audited the workflows (architectures, Qt version, entitlements, release trigger pattern, hamlib pinning, test execution)
+   - One audited the five contributor docs for each of the 14 feedback items
+4. Diagnosed the "draw the line" misread: Terrell's paragraph contained both a question AND an opinion, and John/Charlie latched onto the opinion. The docs themselves ("macOS ARM64" everywhere) reinforced the advocacy reading.
+5. Drafted a ~450-word reply that owns the ambiguity ("That's on me"), resets Terrell's posture to "contributor not policy-maker," commits to retaining all current platforms, and addresses each of the 7 items with specifics
+6. Exited plan mode, wrote the draft to `docs/contributor/drafts/email_cicd_reply.md`
+7. Created 9 GitHub issues (#8–#16) in `KJ5HST-LABS/wsjtx-internal` — one per commitment in the reply. User interrupted my first attempt because `gh issue create` default-resolved to `WSJTX/wsjtx` (upstream remote); corrected to explicit `--repo KJ5HST-LABS/wsjtx-internal`.
+
+**Proof:**
+- Draft: `docs/contributor/drafts/email_cicd_reply.md` (1 file, ~450 words)
+- Issues: #8–#16 in `KJ5HST-LABS/wsjtx-internal` (9 issues, all with file/line cross-references back to the draft)
+- Thread archive committed: `docs/contributor/email/Re_ CI_CD Success!` (was untracked until this session)
+- Plan file (outside repo): `/Users/terrell/.claude/plans/hidden-noodling-hanrahan.md`
+
+**What's next:**
+1. **User sends the reply** — draft is not auto-sent. User should read and send manually.
+2. **Prioritized follow-up issues** — suggest this order for future sessions:
+   - **#11 (entitlements audit)** — fastest win, directly commits back to John. Test build without `entitlements.plist` entries, report result.
+   - **#9 (tag-on-develop doc fix)** — 1-line fix, directly commits back to Joe.
+   - **#10 (name Apple Developer account owner)** — small doc fix, directly commits back to John.
+   - **#8 (Intel macOS build job)** — bigger change; `macos-13` runner, x86_64, `CMAKE_OSX_DEPLOYMENT_TARGET=10.13`.
+   - **#12, #13, #14** (RC prerelease flag, source tarball, Hamlib scheduled check) — medium effort each.
+   - **#15** (gh glossary + audience labels) — trivial polish.
+   - **#16** (ctest + pfUnit integration) — biggest; separate multi-session workstream.
+3. **Doc revision v2** — once items above are merged, circulate revised docs to the team for another review pass.
+4. **Unpushed commits** — branch is now ahead of `origin/develop` by 9 commits. User may want to push when ready.
+
+**Key files:**
+- `docs/contributor/drafts/email_cicd_reply.md` — draft reply, pending user send
+- `docs/contributor/email/Re_ CI_CD Success!` — archived email thread (now tracked)
+- `.github/workflows/build-macos.yml:74-77` — arm64-only verification (site of Intel expansion, #8)
+- `.github/workflows/build-macos.yml:284-292` — entitlements application (site of #11)
+- `.github/workflows/release.yml:1-6` — `v*` tag trigger (site of #12 prerelease flag)
+- `entitlements.plist` — the cargo-culted entitlements file John flagged
+- `docs/contributor/2_DEVELOPMENT_WORKFLOW.md:386-389` — tag-on-develop doc bug (site of #9)
+- `docs/contributor/3_CICD_DEPLOYMENT_PLAYBOOK.md:45, 402-410, 535-554` — Apple account + entitlements doc (sites of #10, #11)
+
+**Gotchas for next session:**
+- **`gh` commands resolve to `WSJTX/wsjtx` (upstream) by default in this repo.** The remotes are `origin = KJ5HST-LABS/wsjtx-internal` and `upstream = WSJTX/wsjtx`, and `gh repo view` resolves to upstream. You MUST pass `--repo KJ5HST-LABS/wsjtx-internal` explicitly for any issue/PR operations that should land in the sandbox. Learned this the hard way mid-session when I nearly created issues in the official org.
+- **Don't auto-send the draft.** The reply is a draft for the user to edit + send manually. Never invoke mail clients or email APIs on it.
+- **Entitlements audit (#11) requires a real signing test.** You can't just delete the plist — you need to produce a signed + notarized build without it, verify Gatekeeper accepts it, and verify the app actually runs. Needs access to the signing certs.
+- **.p12 files still untracked in repo root.** Never commit. Consider adding `*.p12`, `.DS_Store`, `*.out`, `*.dat` to a `.gitignore` as a hygiene task (not done this session — didn't want scope creep during close-out).
+- **OUTREACH.md** is an earlier outreach draft, still untracked. Pre-existed this session; left alone intentionally.
+- **9 issues created in KJ5HST-LABS/wsjtx-internal (#8–#16).** Each references `docs/contributor/drafts/email_cicd_reply.md` as the commitment source.
+- **The team still hasn't approved deploying the pipeline to the official WSJTX repos.** Nothing in `.github/workflows/` on the KJ5HST-LABS sandbox has been merged upstream. Don't assume the pipeline exists in the official repo.
+
+**Self-assessment:**
+- (+) Used plan mode with two parallel Explore agents efficiently (one for workflows, one for docs) — clean split of concerns, no wasted exploration
+- (+) Correctly read the misunderstanding as a reading ambiguity reinforced by the docs themselves, not as a tech disagreement. The draft owns the ambiguity instead of walking it back — right posture for the relationship.
+- (+) Draft addresses all 7 action items in ~450 words without feeling rushed or comprehensive-but-shallow
+- (+) 9 issues are well-scoped: each is independently actionable with cross-references to specific file paths + line numbers
+- (+) Stayed scoped — did NOT implement doc revisions or workflow changes despite the reply committing to them. Those are future sessions.
+- (-) Failed to verify `gh` default-repo resolution before running issue creation commands. User had to interrupt and redirect. Should have run `git remote -v && gh repo view` before any side-effect `gh` command.
+- (-) The plan file contained a near-complete draft of the email that got duplicated into the work file — some redundancy, but the plan's purpose is to show the user the shape before committing, so this is mild.
+- **Score: 8/10**
+
+**Learnings (add to SESSION_RUNNER.md table if pattern recurs):**
+1. **Always verify `gh` default repo via `git remote -v && gh repo view` before any side-effect `gh` command.** Multi-remote repos (origin + upstream) cause `gh` to resolve defaults in surprising ways. A 2-second verification prevents filing issues in the wrong org. (Applied to: `gh issue create`, `gh pr create`, `gh release create`, anything that writes state.)
+2. **Parallel Explore agents pair well: one for code, one for docs.** Splitting the exploration along that boundary let me get two independent perspectives on the same 14 questions without duplication.
+3. **When team feedback contains pushback, read tone as well as content.** John and Charlie weren't disagreeing with the tech — they were responding to perceived advocacy. Diagnosing that correctly changed the draft from a defensive technical rebuttal into a posture reset.
 
 ---
 

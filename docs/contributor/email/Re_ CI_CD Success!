@@ -1,0 +1,1670 @@
+From jmn@rmnjmn.co.uk Sun Apr 12 07:45:26 2026
+Delivered-To: terrell@deppe.com
+Received: by 2002:a05:622a:2a12:b0:502:af54:50e2 with SMTP id hc18csp1434614qtb;
+        Sun, 12 Apr 2026 00:45:26 -0700 (PDT)
+X-Received: by 2002:a05:600c:1c06:b0:485:c456:5e4f with SMTP id 5b1f17b1804b1-488d7e21466mr65535095e9.0.1775979926287;
+        Sun, 12 Apr 2026 00:45:26 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1775979926; cv=none;
+        d=google.com; s=arc-20240605;
+        b=Rcn5qqpaO0NyaS9jt9fq3G0iKWL/PJaCYUcDdgwTHU14iBSaoAFREjGWIm7FU3aCBK
+         dB3IrK1P7J5VAnxPcjfIby+L7VKVbfGOedRAjo/PSTK37uitEgx3gKemdz+UeYwKJ0sk
+         oi2rZqM1gSCesh84eh3jscriXnEsLb+ASm5vy4jUSkFCmzUSTX+ay/4fo2ywCv8NAJwH
+         PB1gYcxQ0jTUJLStlTvesbEFgLEt8CKfYu33ZzFJGCHYP+c4GsT1p5l9lSxn71NYJ9rn
+         7sArPgQ6/O7izOA3+Ly7UggK/N4aqNhsGOe/MTWoZ9JNm2mJjN3D5H/adeV6GHTs0oAi
+         Sg9Q==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=to:references:message-id:content-transfer-encoding:cc:date
+         :in-reply-to:from:subject:mime-version:dkim-signature;
+        bh=eMejirLTm4NithMhX01xjlJ0w+Rhb4hCi3tZSWzoi3s=;
+        fh=87L28jm1ZSvfUMp9Toas17k4K9JLg8PrhNzwwH8trxU=;
+        b=Yeeb+Db9QKxOus6JIyHe46mOEJq6xmcuWyTOeN8uDVFIyrPJbeYTLGHeeFH7+5rSqa
+         /8FhH0x3nH+AQMyc+HGCeXbDwHmZb1LRH9+pgc0WoaGGidqDXHHIAcHDumcFjMsArmiQ
+         q6Ua8VctUSUVhWuzkSqJbVt7j5q7sBAWU1Sp0dRFih8DIpMRtX7LIesXBIl05sooEKkg
+         gq96KHBtabDRaUKQfNv8FQpDuQezv2wFECV42zx77EMSGJYxWWm5vWvOpzOYGzmb9WAZ
+         xNfFECowONB70mgw7t/i1WUS5JP8mO8gOMNBMX0IqYuh76G5aknJ1tHc8NDVpK5kM5mj
+         eBMQ==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@rmnjmn.co.uk header.s=email header.b="ybb/J0Pn";
+       spf=pass (google.com: domain of jmn@rmnjmn.co.uk designates 80.229.21.169 as permitted sender) smtp.mailfrom=jmn@rmnjmn.co.uk;
+       dmarc=pass (p=QUARANTINE sp=QUARANTINE dis=NONE) header.from=rmnjmn.co.uk
+Return-Path: <jmn@rmnjmn.co.uk>
+Received: from mail.rmnjmn.co.uk (mail.rmnjmn.co.uk. [80.229.21.169])
+        by mx.google.com with ESMTP id 5b1f17b1804b1-488d58c8410si145584315e9.9.2026.04.12.00.45.26
+        for <terrell@deppe.com>;
+        Sun, 12 Apr 2026 00:45:26 -0700 (PDT)
+Received-SPF: pass (google.com: domain of jmn@rmnjmn.co.uk designates 80.229.21.169 as permitted sender) client-ip=80.229.21.169;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@rmnjmn.co.uk header.s=email header.b="ybb/J0Pn";
+       spf=pass (google.com: domain of jmn@rmnjmn.co.uk designates 80.229.21.169 as permitted sender) smtp.mailfrom=jmn@rmnjmn.co.uk;
+       dmarc=pass (p=QUARANTINE sp=QUARANTINE dis=NONE) header.from=rmnjmn.co.uk
+Received: from smtpclient.apple (unknown [31.94.20.34])
+	by mail.rmnjmn.co.uk (Postfix) with ESMTPSA id 458B160FBF;
+	Sun, 12 Apr 2026 08:45:25 +0100 (BST)
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=rmnjmn.co.uk;
+	s=email; t=1775979925;
+	bh=eMejirLTm4NithMhX01xjlJ0w+Rhb4hCi3tZSWzoi3s=;
+	h=Subject:From:In-Reply-To:Date:Cc:References:To:From;
+	b=ybb/J0PnaYihJJrXGvG/HmQsluvkJuaPCX1O9n3ZfAKdHfEArt0lZhl4z09txfFC9
+	 y43IEfkkOoECIQ9uGlYW3FkgtRbwHx+u+a0feHJ+tb1ptmc2LcmcEWMOMSBuYpv5FO
+	 AAfoo5nim/KrbllG3gsZWN5ogQJLH7iX5ex4iyA7mVo4rKdIMAHx7rK9etmRGIxtFo
+	 o40R/Z6sQarrwRDHpy3x2f2j80aEBz9QCVvmtN9AEkkR8inKhyx8CwoSM3xnNzog02
+	 xPrVaqFGZHEfA9UcMX8R/OLLTSnUplHg1bwymZmMnqyCRHI32I7TlApyTymf7aOTJ7
+	 Uj00tvbVPfKzQ==
+Content-Type: text/plain;
+	charset=utf-8
+Mime-Version: 1.0 (Mac OS X Mail 16.0 \(3776.700.51.11.8\))
+Subject: Re: CI/CD Success!
+From: John <jmn@rmnjmn.co.uk>
+In-Reply-To: <7DF9CB37-5814-452B-9940-77E10D481197@deppe.com>
+Date: Sun, 12 Apr 2026 08:45:13 +0100
+Cc: Charles Suckling <g3wdg1@gmail.com>,
+ Joe Taylor <joe@princeton.edu>,
+ "w3sz@comcast.net" <w3sz@comcast.net>,
+ Brian Moran <brian.moran@gmail.com>,
+ Steven Franke <s.j.franke@icloud.com>
+Content-Transfer-Encoding: quoted-printable
+Message-Id: <2C34FDB8-6324-4D51-8277-0B3AFBA29CD6@rmnjmn.co.uk>
+References: <c1a98987-e7ad-48c2-b8a4-457aa54db3e4@princeton.edu>
+ <db23f9a3-148a-4fc7-94f4-4941bef7e8c1@comcast.net>
+ <45bc8add-b0f8-47d1-9b86-9dc248b01d5a@princeton.edu>
+ <46D4F0CC-BE09-42F0-824E-637FE9E35D8E@rmnjmn.co.uk>
+ <a1284102-9e0e-4b69-b9e8-ccba839e6505@princeton.edu>
+ <f32808f5-4dfd-4e31-80fe-2cf7451649e4@princeton.edu>
+ <392247E5-6D7F-4B8C-9B0C-3C87869A6D11@rmnjmn.co.uk>
+ <57288fe4-5314-4bcd-b630-3679f292be37@princeton.edu>
+ <8bac2c5c-ff6a-4730-bc5d-f07e13bb3f93@princeton.edu>
+ <0660d387-889c-4157-82d0-4d5731da8f84@princeton.edu>
+ <25cf5993-b691-4944-b884-a8c05590de94@comcast.net>
+ <e08db730-5942-4d63-ae2a-a360928f5e5f@princeton.edu>
+ <2d317be7-c0a8-4094-ae65-42d4699204c0@comcast.net>
+ <f35e094a-6c51-4fd7-9cea-31eac13663f5@comcast.net>
+ <17913254-c42b-4468-af8f-e9c953e5969c@comcast.net>
+ <7f48e85c-12f0-4de2-a18f-c0ef722d5001@comcast.net>
+ <b7d3f3ab-3fd2-4f91-bfb2-f5e7472686e0@princeton.edu>
+ <C4961317-838F-4B2F-9915-443C8FBA4FB2@rmnjmn.co.uk>
+ <4e454259-44a7-4da4-ad60-fe7b8256954e@princeton.edu>
+ <0DA2CFD4-CE7A-4541-9F67-AD29F789AC0E@rmnjmn.co.uk>
+ <883BFAF8-A5E3-4556-99E2-F0FFAA9ECEDD@deppe.com>
+ <CA+30ZEk9t4m6qv1ztsE3F7dViKzOR5aM44xbb2pjMPPEFrgiHw@mail.gmail.com>
+ <7245059A-72BD-44C4-9603-6FD5E094ED2F@deppe.com>
+ <BE2752B9-4760-4664-B6BD-29FC38DCE153@rmnjmn.co.uk>
+ <7DF9CB37-5814-452B-9940-77E10D481197@deppe.com>
+To: Terrell Deppe <terrell@deppe.com>
+X-Mailer: Apple Mail (2.3776.700.51.11.8)
+
+Hi Terrell,
+
+> As for Intel Macs, Apple is going EOL on Rosetta.=20
+
+That is correct but not a relevant comment.   For the first time with =
+v3.0.0 GA  we are providing a native build for Apple Silicon.  Why would =
+anyone want to run an Intel version of WSJT-X on their Apple Silicon =
+platform when a native ARM build is provided?
+
+There is no logic in the suggestion that WSJT-X support should end for =
+Intel Macs just because Rosetta on Apple Silicon will end.   There is a =
+large WSJT-X Intel Mac community which is quite separate from Apple =
+Silicon and support should (must) continue.  I recommend that your =
+document should acknowledge this.
+
+Apple Silicon requires that code for distribution should be signed (ant =
+notarised) by someone (?) with a valid  Apple team account ($79 per =
+annum).  Who might that person be?   (At the moment, that person is me.)
+
+Your document requires this entitlement as part of code signing: =
+com.apple.security.cs.allow-unsigned-executable-memory.  Apple suggests =
+this is not a good idea.
+
+=E2=80=94 John G4KLA=
+
+From g3wdg1@gmail.com Sun Apr 12 06:38:07 2026
+Delivered-To: terrell@deppe.com
+Received: by 2002:a05:622a:2a12:b0:502:af54:50e2 with SMTP id hc18csp1416786qtb;
+        Sat, 11 Apr 2026 23:38:07 -0700 (PDT)
+X-Received: by 2002:a05:6402:a508:10b0:670:8c7e:4028 with SMTP id 4fb4d7f45d1cf-6708c7e4215mr1003725a12.1.1775975887025;
+        Sat, 11 Apr 2026 23:38:07 -0700 (PDT)
+ARC-Seal: i=2; a=rsa-sha256; t=1775975887; cv=pass;
+        d=google.com; s=arc-20240605;
+        b=NQW4PP7+is4nPra/sfQGCjPhN5kg/uq9lC+O9+QA5POy704gCPfCXszfOaU37AS1Wn
+         FMFLn6OMd4rYc1Sa6cLyGMDvEgVDJIiM/sMOr23JVYei1na+9KFIAWija/0rbUg4Gd39
+         TDgT4XeWqEO+325dequ08ms/aThUFXUXXwSk/1WeSC4wKrl2gY+RIKJV6LlT4X6nqXgQ
+         kZyYV6CRhvPJCCPYfdGqmOcJNm5ES1q5mdNROcZx5RLCRIxovAxP4Z4VoYDSQUFGQOcR
+         qgVLzS1B/ZU1fNOd0erYUvWzzZ1ZVife8OycdRtPhHgYUhRgEVJueX4EBAyOLQduZlZt
+         0yLg==
+ARC-Message-Signature: i=2; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=cc:to:subject:message-id:date:from:in-reply-to:references
+         :mime-version:dkim-signature;
+        bh=5DfTtXm/p1JAI7yKnHSqOYf0eoTVRN4EqIUsRqN4yBc=;
+        fh=JIjqUsOiK3+asXy7QXr3O0g806KVGGTLTdiBjEe69rk=;
+        b=lphjcQir0bkI8iGo99TxVT2/boIN1M6LmYxbPBZAJtDf68e3tKk57Bk5YF3ipX4gPB
+         5EeKx/GE3mH2FyNV3y4AaGk/NT8UPfWda010wcV9nP9btfCFiETgZaVIEbwspXmHdRuJ
+         OD+9tf5zp+3fG7cjPWpUu4oTIoRUl9qUu/JVHDcXznsoWGJrOV5PoOl/ZodvsXKNeJ99
+         WfCoCDXllVoEaxLx8/oTHOQvXf3m6zIPeJU2qXoxRdFNtmYYQQBDpOFAzQeuk04DuVNo
+         0KXuNGX5+YLMx3slr190PjvVZMbj/xAFsVWtdAUU7o/s0Ah72T/w0Cp6eydLWVAfeHWX
+         lFug==;
+        dara=google.com
+ARC-Authentication-Results: i=2; mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20251104 header.b=rag8eOnQ;
+       arc=pass (i=1);
+       spf=pass (google.com: domain of g3wdg1@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=g3wdg1@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=neutral header.i=@deppe.com
+Return-Path: <g3wdg1@gmail.com>
+Received: from mail-sor-f41.google.com (mail-sor-f41.google.com. [209.85.220.41])
+        by mx.google.com with SMTPS id 4fb4d7f45d1cf-6716a8b3dafsor3831a12.6.2026.04.11.23.38.06
+        for <terrell@deppe.com>
+        (Google Transport Security);
+        Sat, 11 Apr 2026 23:38:07 -0700 (PDT)
+Received-SPF: pass (google.com: domain of g3wdg1@gmail.com designates 209.85.220.41 as permitted sender) client-ip=209.85.220.41;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20251104 header.b=rag8eOnQ;
+       arc=pass (i=1);
+       spf=pass (google.com: domain of g3wdg1@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=g3wdg1@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=neutral header.i=@deppe.com
+ARC-Seal: i=1; a=rsa-sha256; t=1775975886; cv=none;
+        d=google.com; s=arc-20240605;
+        b=iTwD0tH8y5riCscRTaNsciOTWQM+Z62GuP+2tpApkznu4AfWZpIFHEsdHs+FPfM7Xm
+         jXSvAefIaQRDlrifHSuHhRNmP34f8RHST2ZLL8T2KSqd+SEEc4BsWGyDp6dtrZj8c1ZZ
+         Pcc5i8zuV4mv+PEw1XQsgvbIhTCyhZtX58tEx+wI/FLoY4SRFQ5qeII2Nlzz+gOLIkhI
+         BltHs9NAeyWafH2d/vkIk7xbNo8+9x663GPWj3bkyKr3S0tZAkrSaqVko2A/0hoEV+FL
+         cTUCvforTphgfMej9zSn0FRWW+zW6YvBXQj+BrDU8fsbd63juuSLVFZZ3hMfYsxJxKWu
+         sSmA==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=cc:to:subject:message-id:date:from:in-reply-to:references
+         :mime-version:dkim-signature;
+        bh=5DfTtXm/p1JAI7yKnHSqOYf0eoTVRN4EqIUsRqN4yBc=;
+        fh=JIjqUsOiK3+asXy7QXr3O0g806KVGGTLTdiBjEe69rk=;
+        b=Gku2MZ7KtRs692mBysplqXnc7RU9bCXG/ldmsAQVL3bkrJsFJpCPOQRk4g4hKPFcY/
+         4vcpsxmsZTN8Gm+c0iZFUKFRQdQ6vi1XDzNxFtjsFJmuvaIwRQUkvc4K9VHFKOaKJyKK
+         jfLAy4XmEi6x9BRq+KkAZF8uyJqXzke+llLFQld/HMoeiqnfOJf1xgnk75eNUza4RAV5
+         AMSgGnnGfWFeI9c0bafuga7xaOtqO7hKm+dqmEH/TBU8s2wQ6xRJArjCh83bOKvW4bVG
+         pyD7UMa8a3ZfGdFsfgyTEsOZz5VXASOmC11tlfvpkvrUAohSaCOz1gyyOIjOLHwecbAz
+         iPUg==;
+        darn=deppe.com
+ARC-Authentication-Results: i=1; mx.google.com; arc=none
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=gmail.com; s=20251104; t=1775975886; x=1776580686; darn=deppe.com;
+        h=cc:to:subject:message-id:date:from:in-reply-to:references
+         :mime-version:from:to:cc:subject:date:message-id:reply-to;
+        bh=5DfTtXm/p1JAI7yKnHSqOYf0eoTVRN4EqIUsRqN4yBc=;
+        b=rag8eOnQpoN41i9oGnvAqYUb6WQoQ2slOU8v18cvyH08m9KWibNzIGYbYbyKt3uzTF
+         Y3HJNql1VNiNcL69gYxtZxnnMJ+TvA+bbWNMhgw3wujaoxIzGD96dyjDDzb+onuXGhi/
+         kH4Cf2hjzuAbt8XYqyAlhTChM4T+sr3avsy1dpKkJdhPVmQzRiOK6i1QG/XmWJPBLGxL
+         R4TDhBhFGtR/txNEtpKbVx6q6V7y2vPvHZWRN4SKjB/CWP59PujZmgbE7Mr/+qEElUDM
+         sYTT8gr/zqh25cdOy8Ckcu1Cp1V53yaLGjtv0fkYluYaC2z9hVrGGhBWUtgWqWtvm802
+         IAuA==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20251104; t=1775975886; x=1776580686;
+        h=cc:to:subject:message-id:date:from:in-reply-to:references
+         :mime-version:x-gm-gg:x-gm-message-state:from:to:cc:subject:date
+         :message-id:reply-to;
+        bh=5DfTtXm/p1JAI7yKnHSqOYf0eoTVRN4EqIUsRqN4yBc=;
+        b=gQu3JrcNFG0S8C/yHR+nBhkzEbQuo4MnAEQKUGTWhA9QDHVQi65bYNQjzNapP1lA4d
+         j1l1H6cDVBBrtKUG41YCQJ+4fhTotCCV23w1EhEbJnZAC8xrZpLOAblGpHs+m/T+7ilp
+         oeEnOTB0WlYbXAPIn3cOC8kCh/3J+LNykuDFvFefnznLSe8s7eQ8qJjB0J0gdGAV73ZN
+         4bE7yyX+KZYF3Gaeo6dEooy9EhGyZVIhfum8Q9moEVVxz60DzhvTNd6b5g8qWaDr7vIx
+         JDHZ7UxgDfa85bUV2eL3ig5WKTHjRVnJ7BC0wuOfQdig1dnizzBanwiFLTd4f6DvY5D5
+         w8zw==
+X-Gm-Message-State: AOJu0YwS5eM3GazyZXGCq50fc7hh2dplWHmpL0cgNw9Ee+Oo6C5Ctsrm
+	bzZBtnRMEoqHQkq6+9Pjpfyf1AnwqtHo2yIRE+cPh5dFeXS6dquCumsjCRP6rHf2oMQz5aTDKu9
+	dtfY7E/gsxK/MeWGdynDz7IG6AnPo1Wnp74Kn
+X-Gm-Gg: AeBDiesUmaLdSvuNM/lVZvlm4+FbY+FhqSLxMRA2lQVZixmGyfNYpylDpbBn7gqXlwZ
+	0ms9fTEb+AghpARZwgiCUf0xJWYfP0uZ0zWmTa97yDOlDTY4ZIbOoRFfLBizDnUmOxO/cY/H7kJ
+	1Z5vf9uYS+dVYKEPj+74ppruFfX2hBj7F3TOuGPRPD0wWx0Rwpe+NJodlm3yXUgjINRFS5NGqaW
+	FJg5pBeG6XOMNjEh9MkfKB+damPB9/PMTHP4TCdxn3im9hWi1YeYxFSwnkBT1uEI8Ksl7lOR77g
+	XEaQ+M1J8scB18GgAKo6QDHwfgwIhPVzFs+5lQ==
+X-Received: by 2002:a05:6402:454a:b0:66e:6f38:47ef with SMTP id
+ 4fb4d7f45d1cf-670752ab0e7mr2907982a12.8.1775975886289; Sat, 11 Apr 2026
+ 23:38:06 -0700 (PDT)
+MIME-Version: 1.0
+References: <c1a98987-e7ad-48c2-b8a4-457aa54db3e4@princeton.edu>
+ <db23f9a3-148a-4fc7-94f4-4941bef7e8c1@comcast.net> <45bc8add-b0f8-47d1-9b86-9dc248b01d5a@princeton.edu>
+ <46D4F0CC-BE09-42F0-824E-637FE9E35D8E@rmnjmn.co.uk> <a1284102-9e0e-4b69-b9e8-ccba839e6505@princeton.edu>
+ <f32808f5-4dfd-4e31-80fe-2cf7451649e4@princeton.edu> <392247E5-6D7F-4B8C-9B0C-3C87869A6D11@rmnjmn.co.uk>
+ <57288fe4-5314-4bcd-b630-3679f292be37@princeton.edu> <8bac2c5c-ff6a-4730-bc5d-f07e13bb3f93@princeton.edu>
+ <0660d387-889c-4157-82d0-4d5731da8f84@princeton.edu> <25cf5993-b691-4944-b884-a8c05590de94@comcast.net>
+ <e08db730-5942-4d63-ae2a-a360928f5e5f@princeton.edu> <2d317be7-c0a8-4094-ae65-42d4699204c0@comcast.net>
+ <f35e094a-6c51-4fd7-9cea-31eac13663f5@comcast.net> <17913254-c42b-4468-af8f-e9c953e5969c@comcast.net>
+ <7f48e85c-12f0-4de2-a18f-c0ef722d5001@comcast.net> <b7d3f3ab-3fd2-4f91-bfb2-f5e7472686e0@princeton.edu>
+ <C4961317-838F-4B2F-9915-443C8FBA4FB2@rmnjmn.co.uk> <4e454259-44a7-4da4-ad60-fe7b8256954e@princeton.edu>
+ <0DA2CFD4-CE7A-4541-9F67-AD29F789AC0E@rmnjmn.co.uk> <883BFAF8-A5E3-4556-99E2-F0FFAA9ECEDD@deppe.com>
+ <CA+30ZEk9t4m6qv1ztsE3F7dViKzOR5aM44xbb2pjMPPEFrgiHw@mail.gmail.com>
+ <7245059A-72BD-44C4-9603-6FD5E094ED2F@deppe.com> <BE2752B9-4760-4664-B6BD-29FC38DCE153@rmnjmn.co.uk>
+ <7DF9CB37-5814-452B-9940-77E10D481197@deppe.com>
+In-Reply-To: <7DF9CB37-5814-452B-9940-77E10D481197@deppe.com>
+From: Charles Suckling <g3wdg1@gmail.com>
+Date: Sun, 12 Apr 2026 08:37:50 +0200
+X-Gm-Features: AQROBzD08b9j3ECwLOL1zr_Krb9aRlXw4lwDImeyRvGuyPJhweMPnGmHv7YZhTA
+Message-ID: <CA+30ZEkGuD9F9hXyr5+3rH9x5zqL1wYZ1NiMqNfiJx=rO2gRSA@mail.gmail.com>
+Subject: Re: CI/CD Success!
+To: Terrell Deppe <terrell@deppe.com>
+Cc: John <jmn@rmnjmn.co.uk>, Joe Taylor <joe@princeton.edu>, 
+	"w3sz@comcast.net" <w3sz@comcast.net>, Brian Moran <brian.moran@gmail.com>, 
+	Steven Franke <s.j.franke@icloud.com>
+Content-Type: multipart/alternative; boundary="000000000000d4fe1a064f3d9b1f"
+
+--000000000000d4fe1a064f3d9b1f
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+
+Hi Terrell
+
+Regarding 'drawing the line', and  =E2=80=9Cyeah, sorry, but this is tech, =
+and
+we=E2=80=99ve all moved on=E2=80=9D moment where we don=E2=80=99t support X=
+ anymore'  I can't speak
+for MAC users, but if the same philosophy was applied to Windows 7, I think
+quite a lot of users would be upset, and simply switch to Uwe's version.
+Windows 7 also went EOL many years ago, but that does not stop folks using
+it.
+
+It seems a lot of people are willing to spend a lot of money on new radios,
+but the same attitude does not apply to PCs.
+
+73
+
+Charlie
+
+On Sun, 12 Apr 2026 at 06:34, Terrell Deppe <terrell@deppe.com> wrote:
+
+> I=E2=80=99m behind on tax prep so am limited on bandwidth for this since =
+I robbed
+> Peter to pay Paul to get this to all of you, but wanted to say that I
+> appreciate everyone=E2=80=99s thoughtful responses, and will be going rad=
+io silent
+> for several days (tax day is <4 days away here). Keep the feed back comin=
+g,
+> though.
+>
+> As for Intel Macs, Apple is going EOL on Rosetta. It=E2=80=99s been 6, go=
+ing on 7,
+> years. At some point a line has to be drawn. Where do you guys want to dr=
+aw
+> that line? I=E2=80=99m pretty sure a Pi 5 has almost the same ability as =
+the last
+> Intel Mac (I didn=E2=80=99t actually look =E2=80=94 I=E2=80=99m just just=
+ guessing). I=E2=80=99m just
+> saying, there should be a =E2=80=9Cyeah, sorry, but this is tech, and we=
+=E2=80=99ve all
+> moved on=E2=80=9D moment where we don=E2=80=99t support X anymore. My ori=
+ginal IBM PC (64K)
+> is certainly in a landfill somewhere and not operating a 7300 MK2.
+>
+> As for 3.0.1, I suggest releasing before we have the CI/CD in place. This
+> will be a multi-step process to put in place. It is a paradigm shift, and
+> there are many moving parts.
+>
+> On a personal level, I=E2=80=99ve had a few rough months (nothing super s=
+erious),
+> but you guys have brought a light and unexpected encouragement into my
+> world. I am grateful to be able to provide value.
+>
+> --
+>
+> *Terrell Deppe*
+>
+>
+>
+>
+> On Apr 11, 2026, at 11:17=E2=80=AFAM, John <jmn@rmnjmn.co.uk> wrote:
+>
+> Terrell,
+>
+> An interesting set of documents.
+>
+> As far as MacOS is concerned it is essential to allow for two platforms.
+> The majority of Mac users have Intel based systems which are not mentione=
+d
+> in your documents where the emphasis is on Apple Silicon only.  I presume
+> it is straight forward to expand your methods (and documentation) to
+> include Intel Macs.
+>
+> I would like to know how Mac builds for OS prior to 10.15 can overcome th=
+e
+> changes made in System extensions in macOS
+>
+> =E2=80=94 John G4KLA
+>
+>
+>
+
+--000000000000d4fe1a064f3d9b1f
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+
+<div dir=3D"ltr"><div class=3D"gmail_default" style=3D"font-size:large">Hi =
+Terrell</div><div class=3D"gmail_default" style=3D"font-size:large"><br></d=
+iv><div class=3D"gmail_default" style=3D"font-size:large">Regarding &#39;dr=
+awing the line&#39;, and=C2=A0<span style=3D"font-size:small">=C2=A0</span>=
+<span style=3D"font-size:small">=E2=80=9Cyeah, sorry, but this is tech, and=
+ we=E2=80=99ve all moved on=E2=80=9D moment where we don=E2=80=99t support =
+X anymore&#39;=C2=A0</span>=C2=A0I can&#39;t speak for MAC users, but if th=
+e same philosophy was applied to Windows 7, I think quite a lot of users wo=
+uld be upset, and simply switch to Uwe&#39;s version.=C2=A0 Windows 7 also =
+went EOL many years ago, but that does not stop folks using it.</div><div c=
+lass=3D"gmail_default" style=3D"font-size:large"><br></div><div class=3D"gm=
+ail_default" style=3D"font-size:large">It seems a lot of people are willing=
+ to spend a lot of money on new radios, but the same attitude does not appl=
+y to PCs.</div><div class=3D"gmail_default" style=3D"font-size:large"><br><=
+/div><div class=3D"gmail_default" style=3D"font-size:large">73</div><div cl=
+ass=3D"gmail_default" style=3D"font-size:large"><br></div><div class=3D"gma=
+il_default" style=3D"font-size:large">Charlie=C2=A0</div></div><br><div cla=
+ss=3D"gmail_quote gmail_quote_container"><div dir=3D"ltr" class=3D"gmail_at=
+tr">On Sun, 12 Apr 2026 at 06:34, Terrell Deppe &lt;<a href=3D"mailto:terre=
+ll@deppe.com">terrell@deppe.com</a>&gt; wrote:<br></div><blockquote class=
+=3D"gmail_quote" style=3D"margin:0px 0px 0px 0.8ex;border-left:1px solid rg=
+b(204,204,204);padding-left:1ex"><div>I=E2=80=99m behind on tax prep so am =
+limited on bandwidth for this since I robbed Peter to pay Paul to get this =
+to all of you, but wanted to say that I appreciate everyone=E2=80=99s thoug=
+htful responses, and will be going radio silent for several days (tax day i=
+s &lt;4 days away here). Keep the feed back coming, though.<div><br></div><=
+div>As for Intel Macs, Apple is going EOL on Rosetta. It=E2=80=99s been 6, =
+going on 7, years. At some point a line has to be drawn. Where do you guys =
+want to draw that line? I=E2=80=99m pretty sure a Pi 5 has almost the same =
+ability as the last Intel Mac (I didn=E2=80=99t actually look =E2=80=94 I=
+=E2=80=99m just just guessing). I=E2=80=99m just saying, there should be a =
+=E2=80=9Cyeah, sorry, but this is tech, and we=E2=80=99ve all moved on=E2=
+=80=9D moment where we don=E2=80=99t support X anymore. My original IBM PC =
+(64K) is certainly in a landfill somewhere and not operating a 7300 MK2.</d=
+iv><div><br></div><div>As for 3.0.1, I suggest releasing before we have the=
+ CI/CD in place. This will be a multi-step process to put in place. It is a=
+ paradigm shift, and there are many moving parts.</div><div><br></div><div>=
+On a personal level, I=E2=80=99ve had a few rough months (nothing super ser=
+ious), but you guys have brought a light and unexpected encouragement into =
+my world. I am grateful to be able to provide value.<br id=3D"m_73652126587=
+70600005lineBreakAtBeginningOfMessage"><div>
+<div style=3D"color:rgb(0,0,0);font-family:Helvetica;font-style:normal;font=
+-variant-ligatures:normal;font-variant-numeric:normal;font-variant-caps:nor=
+mal;font-variant-alternates:normal;font-variant-east-asian:normal;font-weig=
+ht:normal;letter-spacing:normal;line-height:normal;text-align:-webkit-auto;=
+text-indent:0px;text-transform:none;white-space:normal;word-spacing:0px"><b=
+r>--<br><br><b>Terrell Deppe</b></div><div style=3D"color:rgb(0,0,0);font-f=
+amily:Helvetica;font-style:normal;font-variant-ligatures:normal;font-varian=
+t-numeric:normal;font-variant-caps:normal;font-variant-alternates:normal;fo=
+nt-variant-east-asian:normal;font-weight:normal;letter-spacing:normal;line-=
+height:normal;text-align:-webkit-auto;text-indent:0px;text-transform:none;w=
+hite-space:normal;word-spacing:0px"><b><br></b></div><div style=3D"color:rg=
+b(0,0,0);font-family:Helvetica;font-style:normal;font-variant-ligatures:nor=
+mal;font-variant-numeric:normal;font-variant-caps:normal;font-variant-alter=
+nates:normal;font-variant-east-asian:normal;font-weight:normal;letter-spaci=
+ng:normal;line-height:normal;text-align:-webkit-auto;text-indent:0px;text-t=
+ransform:none;white-space:normal;word-spacing:0px"><b><br></b></div><br>
+</div>
+<div><br><blockquote type=3D"cite"><div>On Apr 11, 2026, at 11:17=E2=80=AFA=
+M, John &lt;<a href=3D"mailto:jmn@rmnjmn.co.uk" target=3D"_blank">jmn@rmnjm=
+n.co.uk</a>&gt; wrote:</div><br><div><div>Terrell,<br><br>An interesting se=
+t of documents. =C2=A0<br><br>As far as MacOS is concerned it is essential =
+to allow for two platforms.=C2=A0 The majority of Mac users have Intel base=
+d systems which are not mentioned in your documents where the emphasis is o=
+n Apple Silicon only.=C2=A0 I presume it is straight forward to expand your=
+ methods (and documentation) to include Intel Macs.<br><br>I would like to =
+know how Mac builds for OS prior to 10.15 can overcome the changes made in =
+System extensions in macOS <br><br>=E2=80=94 John G4KLA</div></div></blockq=
+uote></div><br></div></div></blockquote></div>
+
+--000000000000d4fe1a064f3d9b1f--
+
+From w3sz@comcast.net Sun Apr 12 04:23:32 2026
+Delivered-To: terrell@deppe.com
+Received: by 2002:a05:622a:2a12:b0:502:af54:50e2 with SMTP id hc18csp1379679qtb;
+        Sat, 11 Apr 2026 21:23:32 -0700 (PDT)
+X-Received: by 2002:a05:7022:6b8d:b0:11a:2020:ac85 with SMTP id a92af1059eb24-12c34eda892mr2397863c88.4.1775967812499;
+        Sat, 11 Apr 2026 21:23:32 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1775967812; cv=none;
+        d=google.com; s=arc-20240605;
+        b=cQcKhsO/dCNCWGN4JBSfm3HM/dw8C87kqM2WPMxXQZrUFT4KA2JyIKQ/K9XhxZ4osK
+         3HGjhz0uUWZbJS+LwtPfz3URoow0/51ZEfHEiEAURC/NfXK1gvECjbrM9Jp/JLMt4pKH
+         6PVBSPdEniB6PuiKmAiXo79vzMCkluJ6nhhwaEXj7ap2wS50i4DTIoOtaDfSCaY4Ayh3
+         xGhazjhmAmuJg+m8QJHX0/Ll5DSFXNO6zHqEF/YlOqXSp19lkfJQDMvXTctux5tZP030
+         sib4Wr3M7h3PGjU6w6T1qPxYSrAb/1Ch52cKWiomsSyFOnartTCNzlqAbmhRWSy2N0Yz
+         /KQg==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=in-reply-to:content-language:references:cc:to:reply-to:subject:from
+         :user-agent:mime-version:date:message-id:xfinity-qid:dkim-signature;
+        bh=O35jLbx+6TsSstMyLHVeTC/BhkcbhJUpLTonh3bdXyI=;
+        fh=XdZo8TI3QUq3uFYJvbnouO0DSS/fVhLcusdrvjDlZCE=;
+        b=h25/jNkAF4SN0SzzFGjSOk+ykkR5wBqFvfemneroglGEI6IDg5vEhrnH+5fSW4sxP9
+         KfC/GLTdfFM2xc3lIC4bwgIxHgARfDxvym1C+Q7pNCdmmjNgex1mxNRWXmlIyfr+f0Sh
+         IIQZ+zhWz4ZPZ9lNJhNtYJpH+CxQh5Wc3BdQYDwFCDB4n8i4Evfe2/3yxy/0CgUoNJ5P
+         nyl20SuvAuzeH2z3q0SlsV/WcwlJHdG4ifPYwABz5aigFNJ6z9UmZ4hcm2cvMwx1wYNK
+         jfQMO/PkK6KpXy+H/NzvoKsoco3wp4hvWxoGVjqUYrrwwWhttVndKNSc9fwAwSc0rcJt
+         zMGQ==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@comcast.net header.s=20190202a header.b=JDSOwqUa;
+       spf=pass (google.com: domain of w3sz@comcast.net designates 2001:558:fd02:2446::5 as permitted sender) smtp.mailfrom=w3sz@comcast.net;
+       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=comcast.net
+Return-Path: <w3sz@comcast.net>
+Received: from resqmta-h2p-567354.sys.comcast.net (resqmta-h2p-567354.sys.comcast.net. [2001:558:fd02:2446::5])
+        by mx.google.com with ESMTPS id a92af1059eb24-12c34946202si29556936c88.77.2026.04.11.21.23.32
+        for <terrell@deppe.com>
+        (version=TLS1_3 cipher=TLS_AES_256_GCM_SHA384 bits=256/256);
+        Sat, 11 Apr 2026 21:23:32 -0700 (PDT)
+Received-SPF: pass (google.com: domain of w3sz@comcast.net designates 2001:558:fd02:2446::5 as permitted sender) client-ip=2001:558:fd02:2446::5;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@comcast.net header.s=20190202a header.b=JDSOwqUa;
+       spf=pass (google.com: domain of w3sz@comcast.net designates 2001:558:fd02:2446::5 as permitted sender) smtp.mailfrom=w3sz@comcast.net;
+       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=comcast.net
+Received: from resomta-h2p-554994.sys.comcast.net ([96.102.179.205])
+	(using TLSv1.3 with cipher TLS_AES_256_GCM_SHA384 256/256 bits)
+	(Client did not present a certificate)
+	by resqmta-h2p-567354.sys.comcast.net with ESMTPS
+	id BmCywlhpvN7zRBmM7wirOA; Sun, 12 Apr 2026 04:23:31 +0000
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=comcast.net;
+	s=20190202a; t=1775967811;
+	bh=O35jLbx+6TsSstMyLHVeTC/BhkcbhJUpLTonh3bdXyI=;
+	h=Received:Received:Content-Type:Message-ID:Date:MIME-Version:From:
+	 Subject:Reply-To:To:Xfinity-Spam-Result;
+	b=JDSOwqUaCwcoqUSblcuYO/jdeXJ3pzqC2wAqefwX9O3jLSc/3qecKAiWMgZwM6Xvf
+	 aoeK7xdaKqUoMCwUFiSuJQ7lIDBXHnME7aGe32PueNoY4IhdlBD3f9pkfP9uwIO9Db
+	 L8nbX0rgoHH5DEAvUya8UOU1g+ad+PMse31YSMiRwE/mVelRhcEfKy0SikaX3LMA3L
+	 +TXQ0brlQHrQ17CvgfVJMSZ86WXQwvn2ZB1YB+oxkSoBM7KVJFVaH6aTP7S49eF2qJ
+	 NBmUpQvUZYZ7vRBxMlArxSZa/7t5s7sDnSGFTyCeQ6s31AN4l1dyY+Sd0Do1O3s1tb
+	 wXOoYDad8d+KA==
+Received: from [192.168.10.169] ([71.58.229.127])
+	(using TLSv1.3 with cipher TLS_AES_256_GCM_SHA384 256/256 bits)
+	(Client did not present a certificate)
+	by resomta-h2p-554994.sys.comcast.net with ESMTPSA
+	id BmM3wHD56ruZGBmM5wRlnB; Sun, 12 Apr 2026 04:23:31 +0000
+Xfinity-QID: BmM3wHD56ruZGBmM5wRlnB
+Content-Type: multipart/alternative;
+ boundary="------------x0GvXbpyyKS3H19UHDk9S0A6"
+Message-ID: <376db3e3-ea08-483d-9749-ce6f0cec5c3a@comcast.net>
+Date: Sun, 12 Apr 2026 00:23:27 -0400
+MIME-Version: 1.0
+User-Agent: Mozilla Thunderbird
+From: Roger Rehr <w3sz@comcast.net>
+Subject: Re: CI/CD Success!
+Reply-To: w3sz@comcast.net
+To: Terrell Deppe <terrell@deppe.com>, Charles Suckling <g3wdg1@gmail.com>
+Cc: John Nelson <jmn@rmnjmn.co.uk>, Joe Taylor <joe@princeton.edu>,
+ Brian Moran <brian.moran@gmail.com>, Steven Franke <s.j.franke@icloud.com>
+References: <c1a98987-e7ad-48c2-b8a4-457aa54db3e4@princeton.edu>
+ <392247E5-6D7F-4B8C-9B0C-3C87869A6D11@rmnjmn.co.uk>
+ <57288fe4-5314-4bcd-b630-3679f292be37@princeton.edu>
+ <8bac2c5c-ff6a-4730-bc5d-f07e13bb3f93@princeton.edu>
+ <0660d387-889c-4157-82d0-4d5731da8f84@princeton.edu>
+ <25cf5993-b691-4944-b884-a8c05590de94@comcast.net>
+ <e08db730-5942-4d63-ae2a-a360928f5e5f@princeton.edu>
+ <2d317be7-c0a8-4094-ae65-42d4699204c0@comcast.net>
+ <f35e094a-6c51-4fd7-9cea-31eac13663f5@comcast.net>
+ <17913254-c42b-4468-af8f-e9c953e5969c@comcast.net>
+ <7f48e85c-12f0-4de2-a18f-c0ef722d5001@comcast.net>
+ <b7d3f3ab-3fd2-4f91-bfb2-f5e7472686e0@princeton.edu>
+ <C4961317-838F-4B2F-9915-443C8FBA4FB2@rmnjmn.co.uk>
+ <4e454259-44a7-4da4-ad60-fe7b8256954e@princeton.edu>
+ <0DA2CFD4-CE7A-4541-9F67-AD29F789AC0E@rmnjmn.co.uk>
+ <883BFAF8-A5E3-4556-99E2-F0FFAA9ECEDD@deppe.com>
+ <CA+30ZEk9t4m6qv1ztsE3F7dViKzOR5aM44xbb2pjMPPEFrgiHw@mail.gmail.com>
+ <7245059A-72BD-44C4-9603-6FD5E094ED2F@deppe.com>
+Content-Language: en-US
+In-Reply-To: <7245059A-72BD-44C4-9603-6FD5E094ED2F@deppe.com>
+X-CMAE-Envelope: MS4xfDxwNHJfEAoZDE0+KgzpimOeW0md28DHommjIfFEoJVjM+uWpchozbbhDv1sOSIyMKWP5+HGY+F6MzJ7hHqpkxDZygAlg/JMPYgc5DjfGXveS8O6MrL/
+ JLX4a1A9EBi/yXLYiupPY2yXJwtcDHNNHr3lATNBdfbts5FoK8Ver+9j2rsww3DGBvxDg1QQj9xNV/TfAiMU5BA1AX5iIA3yzsj0hoYlHUMUYE2j1/ir9DLT
+ Ue/K2jQtd5XC2AXD/o1/bTvtON7PQdXz7OXkge2B6tQj1cyI4Qh3ABraYAEPyaFf623aQQ08F6ZlLT9ZGlmZb+iNLYyRYpnC7CFctBHDkME=
+
+This is a multi-part message in MIME format.
+--------------x0GvXbpyyKS3H19UHDk9S0A6
+Content-Type: text/plain; charset=UTF-8; format=flowed
+Content-Transfer-Encoding: 8bit
+
+Hi Terrell,
+
+I second Joe's thoughts... your document is awesome!  Very thorough and 
+thoughtful.
+
+I have a few notes regarding details of a few areas with which I have 
+some familiarity:
+
+1.  The "known" wav files that provide a starting point for testing 
+_*are*_ in the repository.  Previously I had mistakenly said that they 
+are not, but Joe corrected me several days ago.  They are in the 
+~.samples directory.
+
+2.  I have modernized the MAP65 code but my changes are not yet in the 
+github codebase.  An earlier version of my code is in branch 
+develop-fort but the code there is not at all up to date and I really 
+should just delete that branch.
+
+When I build the "stock" v3.0.0_test branch with gcc 15.2.0 here, 
+testing with strict flags, over the entire  wsjtx codebase I get 5874 
+build errors. 500 of those errors are in MAP65.
+
+When I build my modernized MAP65 code with gcc 15.2.0 here with strict 
+flags, instead of the 500 errors gotten with the MAP65 code in 
+v3.0.0_test I get zero build errors. So this newer MAP65 code does well 
+with the gcc 15.2.0 compiler here.  I will eventually upload this code 
+to our github repository.  If you want to review the code before then 
+let me know and I will post a tarball.
+
+3. Qt6.  We have had a branch that compiles and runs fine with Qt6 for 
+at least a couple of years.  It "works" through at least Qt 6.10.1;  I 
+have not tested it beyond that Qt version.  This code is on BB and I was 
+keeping it up to date until sometime in mid February but I have not been 
+doing so since then.  So some work would need to be done to port this to 
+our github code given the divergence in the two codebases since then.  
+But that might still be easier than starting from scratch.  If you want 
+to see this code let me know and I will post a tarball.
+
+Thanks again for this absolutely superb, comprehensive document Terrell!
+
+73,
+
+Roger
+
+On 4/10/2026 8:36 AM, Terrell Deppe wrote:
+> This is the only one of the documents that had that wrong. The other 
+> three (REPO_AUDIT, MIGRATION_PLAN, CONTRIBUTION_PLAN) had the 
+> attribution correct.
+>
+> Good help is hard to find.
+>
+>
+>
+>
+> --
+>
+> *Terrell Deppe*
+> *
+> *
+> *
+> *
+>
+>
+>> On Apr 10, 2026, at 2:46 AM, Charles Suckling <g3wdg1@gmail.com> wrote:
+>>
+>> improved is NOT by DL3WDG :-(
+>>
+>> On Fri, 10 Apr 2026 at 08:30, Terrell Deppe <terrell@deppe.com> wrote:
+>>
+>>     I’ve never really considered myself a DevOps guy, but looking
+>>     back at my approach to CI/CD starting about 20 years ago, I guess
+>>     I am at some level. My CI/CD sandbox passed all tests. Windows
+>>     was a pain (as usual), but I think I found a work around for the
+>>     OmniRig problem. That will need some evaluation by someone who
+>>     doesn’t yet hate Windows.
+>>
+>>     Attached is a spewing of information gathered over the last week
+>>     or so. The documents are numbered from course to fine grain, in
+>>     terms of detail, followed by a document of recommendations. It is
+>>     a short term treatment for insomnia if nothing else. #3 is in the
+>>     weeds. #2 and #4 are probably the most relevant to most of you
+>>     followed by #5.
+>>
+>>     My secretary, Claudia, wrote all these from my dictation. I talk
+>>     funny, and she is deaf so pardon any mistakes in the material. I
+>>     asked her go over it more than once, but my sign language is
+>>     generally limited to one finger, and I can never seem to remember
+>>     which one is appropriate in any given situation.
+>>
+>>
+>>
+>>
+>>     --
+>>
+>>     *Terrell Deppe*
+>>     (What is the difference between peas and boogers? Kids don’t
+>>     always eat their peas.)
+>>
+>
+
+--------------x0GvXbpyyKS3H19UHDk9S0A6
+Content-Type: text/html; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+  </head>
+  <body>
+    <font face="monospace">Hi Terrell,<br>
+      <br>
+      I second Joe's thoughts... your document is awesome!  Very
+      thorough and thoughtful.<br>
+      <br>
+      I have a few notes regarding details of a few areas with which I
+      have some familiarity:<br>
+      <br>
+      1.  The "known" wav files that provide a starting point for
+      testing <u><b>are</b></u> in the repository.  Previously I had
+      mistakenly said that they are not, but Joe corrected me several
+      days ago.  They are in the ~.samples directory.<br>
+      <br>
+      2.  I have modernized the MAP65 code but my changes are not yet in
+      the github codebase.  An earlier version of my code is in branch
+      develop-fort but the code there is not at all up to date and I
+      really should just delete that branch.  <br>
+      <br>
+      When I build the "stock" </font><font face="monospace">v3.0.0_test
+      branch</font><font face="monospace"> with gcc 15.2.0 here, testing
+      with strict flags, over the entire  wsjtx codebase I get 5874
+      build errors. 500 of those errors are in MAP65.  <br>
+      <br>
+      When I build my modernized MAP65 code with gcc 15.2.0 here with
+      strict flags, instead of the 500 errors gotten with the MAP65 code
+      in v3.0.0_test I get zero build errors. So this newer MAP65 code
+      does well with the gcc 15.2.0 compiler here.  I will eventually
+      upload this code to our github repository.  If you want to review
+      the code before then let me know and I will post a tarball.  <br>
+      <br>
+      3. Qt6.  We have had a branch that compiles and runs fine with Qt6
+      for at least a couple of years.  It "works" through at least Qt
+      6.10.1;  I have not tested it beyond that Qt version.  This code
+      is on BB and I was keeping it up to date until sometime in mid
+      February but I have not been doing so since then.  So some work
+      would need to be done to port this to our github code given the
+      divergence in the two codebases since then.  But that might still
+      be easier than starting from scratch.  If you want to see this
+      code let me know and I will post a tarball.  <br>
+      <br>
+      Thanks again for this absolutely superb, comprehensive document
+      Terrell!<br>
+      <br>
+      73,<br>
+      <br>
+      Roger<br>
+    </font><br>
+    <div class="moz-cite-prefix">On 4/10/2026 8:36 AM, Terrell Deppe
+      wrote:<br>
+    </div>
+    <blockquote type="cite"
+      cite="mid:7245059A-72BD-44C4-9603-6FD5E094ED2F@deppe.com">
+      <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+      <div>This is the only one of the documents that had that wrong.
+        The other three (REPO_AUDIT, MIGRATION_PLAN, CONTRIBUTION_PLAN)
+        had the attribution correct. </div>
+      <div><br>
+      </div>
+      <div>Good help is hard to find.</div>
+      <div><br>
+      </div>
+      <br>
+      <fieldset class="moz-mime-attachment-header"></fieldset>
+      <meta http-equiv="content-type" content="text/html; charset=UTF-8">
+      <br id="lineBreakAtBeginningOfMessage">
+      <div>
+        <div
+style="color: rgb(0, 0, 0); font-family: Helvetica; font-style: normal; font-variant-ligatures: normal; font-variant-numeric: normal; font-variant-caps: normal; font-variant-alternates: normal; font-variant-east-asian: normal; font-variant-position: normal; font-weight: normal; letter-spacing: normal; line-height: normal; orphans: 2; text-align: -webkit-auto; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; overflow-wrap: break-word; -webkit-nbsp-mode: space; line-break: after-white-space;"><br>
+          --<br>
+          <br>
+          <b>Terrell Deppe</b></div>
+        <div
+style="color: rgb(0, 0, 0); font-family: Helvetica; font-style: normal; font-variant-ligatures: normal; font-variant-numeric: normal; font-variant-caps: normal; font-variant-alternates: normal; font-variant-east-asian: normal; font-variant-position: normal; font-weight: normal; letter-spacing: normal; line-height: normal; orphans: 2; text-align: -webkit-auto; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; overflow-wrap: break-word; -webkit-nbsp-mode: space; line-break: after-white-space;"><b><br>
+          </b></div>
+        <div
+style="color: rgb(0, 0, 0); font-family: Helvetica; font-style: normal; font-variant-ligatures: normal; font-variant-numeric: normal; font-variant-caps: normal; font-variant-alternates: normal; font-variant-east-asian: normal; font-variant-position: normal; font-weight: normal; letter-spacing: normal; line-height: normal; orphans: 2; text-align: -webkit-auto; text-indent: 0px; text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; -webkit-text-stroke-width: 0px; overflow-wrap: break-word; -webkit-nbsp-mode: space; line-break: after-white-space;"><b><br>
+          </b></div>
+        <br class="Apple-interchange-newline">
+      </div>
+      <div><br>
+        <blockquote type="cite">
+          <div>On Apr 10, 2026, at 2:46 AM, Charles Suckling <a
+              class="moz-txt-link-rfc2396E"
+              href="mailto:g3wdg1@gmail.com">&lt;g3wdg1@gmail.com&gt;</a>
+            wrote:</div>
+          <br class="Apple-interchange-newline">
+          <div>
+            <div dir="ltr">
+              <div class="gmail_default" style="font-size:large">improved
+                is NOT by DL3WDG :-(</div>
+            </div>
+            <br>
+            <div class="gmail_quote gmail_quote_container">
+              <div dir="ltr" class="gmail_attr">On Fri, 10 Apr 2026 at
+                08:30, Terrell Deppe &lt;<a
+                  href="mailto:terrell@deppe.com" moz-do-not-send="true"
+                  class="moz-txt-link-freetext">terrell@deppe.com</a>&gt;
+                wrote:<br>
+              </div>
+              <blockquote class="gmail_quote"
+style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex">
+                <div>I’ve never really considered myself a DevOps guy,
+                  but looking back at my approach to CI/CD starting
+                  about 20 years ago, I guess I am at some level. My
+                  CI/CD sandbox passed all tests. Windows was a pain (as
+                  usual), but I think I found a work around for the
+                  OmniRig problem. That will need some evaluation by
+                  someone who doesn’t yet hate Windows.
+                  <div><br>
+                  </div>
+                  <div>Attached is a spewing of information gathered
+                    over the last week or so. The documents are numbered
+                    from course to fine grain, in terms of detail,
+                    followed by a document of recommendations. It is a
+                    short term treatment for insomnia if nothing else.
+                    #3 is in the weeds. #2 and #4 are probably the most
+                    relevant to most of you followed by #5.</div>
+                  <div><br>
+                  </div>
+                  <div>My secretary, Claudia, wrote all these from my
+                    dictation. I talk funny, and she is deaf so pardon
+                    any mistakes in the material. I asked her go over it
+                    more than once, but my sign language is generally
+                    limited to one finger, and I can never seem to
+                    remember which one is appropriate in any given
+                    situation.<br>
+                    <div><br>
+                    </div>
+                    <div><br>
+                    </div>
+                  </div>
+                </div>
+                <div>
+                  <div>
+                    <div><br
+id="m_-488398012117322980lineBreakAtBeginningOfMessage">
+                      <div>
+                        <div
+style="font-family: Helvetica; font-style: normal; font-variant-ligatures: normal; font-variant-numeric: normal; font-variant-caps: normal; font-variant-alternates: normal; font-variant-east-asian: normal; font-weight: normal; letter-spacing: normal; line-height: normal; text-align: -webkit-auto; text-indent: 0px; text-transform: none; white-space: normal; word-spacing: 0px;"><br>
+                          --<br>
+                          <br>
+                          <b>Terrell Deppe</b></div>
+                        <div
+style="font-family: Helvetica; font-style: normal; font-variant-ligatures: normal; font-variant-numeric: normal; font-variant-caps: normal; font-variant-alternates: normal; font-variant-east-asian: normal; font-weight: normal; letter-spacing: normal; line-height: normal; text-align: -webkit-auto; text-indent: 0px; text-transform: none; white-space: normal; word-spacing: 0px;">(What
+                          is the difference between peas and boogers?
+                          Kids don’t always eat their peas.)</div>
+                      </div>
+                    </div>
+                  </div>
+                  <div
+style="font-family: Helvetica; font-style: normal; font-variant-ligatures: normal; font-variant-numeric: normal; font-variant-caps: normal; font-variant-alternates: normal; font-variant-east-asian: normal; font-weight: normal; letter-spacing: normal; line-height: normal; text-align: -webkit-auto; text-indent: 0px; text-transform: none; white-space: normal; word-spacing: 0px;"><br>
+                  </div>
+                </div>
+              </blockquote>
+            </div>
+          </div>
+        </blockquote>
+      </div>
+      <br>
+    </blockquote>
+    <br>
+  </body>
+</html>
+
+--------------x0GvXbpyyKS3H19UHDk9S0A6--
+
+From jmn@rmnjmn.co.uk Sat Apr 11 15:17:41 2026
+Delivered-To: terrell@deppe.com
+Received: by 2002:a05:622a:2a12:b0:502:af54:50e2 with SMTP id hc18csp1138037qtb;
+        Sat, 11 Apr 2026 08:17:41 -0700 (PDT)
+X-Received: by 2002:a05:600c:1f83:b0:488:a9e4:35be with SMTP id 5b1f17b1804b1-488d687c0f9mr52045925e9.5.1775920661686;
+        Sat, 11 Apr 2026 08:17:41 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1775920661; cv=none;
+        d=google.com; s=arc-20240605;
+        b=a+vlcc5dXtf2c1X0J3bNeHoo+UQ+D4rWlrfjo0ED+L/Dh5vIEJN0EiCy/buHUIcSZW
+         5Day1jwP6lG91W1oYNOymTUreLTRkW9ZI0sbWGxXvT6vJhBC+g3lyJvo+oIDEJ3zBuog
+         GZUueK6oMfeP942z20VqO/171RZG/wLaAUxirfrci0Dfme6IzxNKcQdx2dz/tNRRx3RW
+         L6MEitY9v049nPt34FzTQE5/imm/o444JfjFk5LPAW0SOOS6L0pktgJZoeEF/8CQJ0UB
+         ToUEmA3/rc1KrzYGZqTnuqhmQuVBlwrl+PTlTIKfHm3BF1SQC3VLmZGjGAhTMouXFdID
+         P1+w==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=to:references:message-id:content-transfer-encoding:cc:date
+         :in-reply-to:from:subject:mime-version:dkim-signature;
+        bh=Tg10OCNWWySF4LQiR9xH86U09INGuBca9ScLP2Caot8=;
+        fh=87L28jm1ZSvfUMp9Toas17k4K9JLg8PrhNzwwH8trxU=;
+        b=bwHEKauLrJCcBymWHMLhzNDX1VQ6ii4V70FraIgyz8ZZkNBJP2q82rfuYRF3/AcV4s
+         KMw4dpUR5wqrtH8DnOkT7+CwEsB2qOgZ4snI3MtYPsn3Aa11LlS7PhU0ecAFSGx42yCi
+         WgR6GrrwZvOfIpfxLJbfaxjBPf3uOsE2F0fckCqdOkXNzC2HZqLmhIuEj9WA0m6ZTBZz
+         8TcBGb5eDjqajs3VuPdgSS/R1N+3uCsgAoKv15yu01pTYEWzSYbKDfRSgZMELOmSDQlH
+         CpqigCQ75YkbChc6jhs6Tzwsx3906yhYO2vEivp+9Ey5Qf4sMYofv0ObFd9qfh/+uSAT
+         hZsQ==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@rmnjmn.co.uk header.s=email header.b=kkrvA4m1;
+       spf=pass (google.com: domain of jmn@rmnjmn.co.uk designates 80.229.21.169 as permitted sender) smtp.mailfrom=jmn@rmnjmn.co.uk;
+       dmarc=pass (p=QUARANTINE sp=QUARANTINE dis=NONE) header.from=rmnjmn.co.uk
+Return-Path: <jmn@rmnjmn.co.uk>
+Received: from mail.rmnjmn.co.uk (mail.rmnjmn.co.uk. [80.229.21.169])
+        by mx.google.com with ESMTP id 5b1f17b1804b1-488d56085cdsi116327545e9.6.2026.04.11.08.17.41
+        for <terrell@deppe.com>;
+        Sat, 11 Apr 2026 08:17:41 -0700 (PDT)
+Received-SPF: pass (google.com: domain of jmn@rmnjmn.co.uk designates 80.229.21.169 as permitted sender) client-ip=80.229.21.169;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@rmnjmn.co.uk header.s=email header.b=kkrvA4m1;
+       spf=pass (google.com: domain of jmn@rmnjmn.co.uk designates 80.229.21.169 as permitted sender) smtp.mailfrom=jmn@rmnjmn.co.uk;
+       dmarc=pass (p=QUARANTINE sp=QUARANTINE dis=NONE) header.from=rmnjmn.co.uk
+Received: from smtpclient.apple (unknown [31.94.20.34])
+	by mail.rmnjmn.co.uk (Postfix) with ESMTPSA id 92EF061086;
+	Sat, 11 Apr 2026 16:17:40 +0100 (BST)
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=rmnjmn.co.uk;
+	s=email; t=1775920661;
+	bh=Tg10OCNWWySF4LQiR9xH86U09INGuBca9ScLP2Caot8=;
+	h=Subject:From:In-Reply-To:Date:Cc:References:To:From;
+	b=kkrvA4m1kOfDGS0ovvA2RJ/YT1UxG/Y+pXunivLvVvr/Cfet2wVobhlONqVO/DYVT
+	 T+jYjfHfrJAnJEOCeTsWPH2aQlQmNLxj5VS0VKj+XHFX26tgPJrHfsPWPx6j7v1EuW
+	 SvoI4dmdD/IrqOFpQjJ+III38eOZDnqdeAt45d/6Cmf6atETTP65ceTtRAtxusWTJc
+	 1dF6WGH0DPOD9kTC66fjA3UDpbwgD8+rirSnAjg+OQqEtpRpyLAo+xREGqrwtlzcnK
+	 c0Lz+adGqfhIj2qQb0X60+zmJak82FQTLfOK8bprdKlrFdM65HvOyJBfNISEQoKjaH
+	 0u66R2rUqBQxg==
+Content-Type: text/plain;
+	charset=utf-8
+Mime-Version: 1.0 (Mac OS X Mail 16.0 \(3776.700.51.11.8\))
+Subject: Re: CI/CD Success!
+From: John <jmn@rmnjmn.co.uk>
+In-Reply-To: <7245059A-72BD-44C4-9603-6FD5E094ED2F@deppe.com>
+Date: Sat, 11 Apr 2026 16:17:29 +0100
+Cc: Charles Suckling <g3wdg1@gmail.com>,
+ Joe Taylor <joe@princeton.edu>,
+ "w3sz@comcast.net" <w3sz@comcast.net>,
+ Brian Moran <brian.moran@gmail.com>,
+ Steven Franke <s.j.franke@icloud.com>
+Content-Transfer-Encoding: quoted-printable
+Message-Id: <BE2752B9-4760-4664-B6BD-29FC38DCE153@rmnjmn.co.uk>
+References: <c1a98987-e7ad-48c2-b8a4-457aa54db3e4@princeton.edu>
+ <db23f9a3-148a-4fc7-94f4-4941bef7e8c1@comcast.net>
+ <45bc8add-b0f8-47d1-9b86-9dc248b01d5a@princeton.edu>
+ <46D4F0CC-BE09-42F0-824E-637FE9E35D8E@rmnjmn.co.uk>
+ <a1284102-9e0e-4b69-b9e8-ccba839e6505@princeton.edu>
+ <f32808f5-4dfd-4e31-80fe-2cf7451649e4@princeton.edu>
+ <392247E5-6D7F-4B8C-9B0C-3C87869A6D11@rmnjmn.co.uk>
+ <57288fe4-5314-4bcd-b630-3679f292be37@princeton.edu>
+ <8bac2c5c-ff6a-4730-bc5d-f07e13bb3f93@princeton.edu>
+ <0660d387-889c-4157-82d0-4d5731da8f84@princeton.edu>
+ <25cf5993-b691-4944-b884-a8c05590de94@comcast.net>
+ <e08db730-5942-4d63-ae2a-a360928f5e5f@princeton.edu>
+ <2d317be7-c0a8-4094-ae65-42d4699204c0@comcast.net>
+ <f35e094a-6c51-4fd7-9cea-31eac13663f5@comcast.net>
+ <17913254-c42b-4468-af8f-e9c953e5969c@comcast.net>
+ <7f48e85c-12f0-4de2-a18f-c0ef722d5001@comcast.net>
+ <b7d3f3ab-3fd2-4f91-bfb2-f5e7472686e0@princeton.edu>
+ <C4961317-838F-4B2F-9915-443C8FBA4FB2@rmnjmn.co.uk>
+ <4e454259-44a7-4da4-ad60-fe7b8256954e@princeton.edu>
+ <0DA2CFD4-CE7A-4541-9F67-AD29F789AC0E@rmnjmn.co.uk>
+ <883BFAF8-A5E3-4556-99E2-F0FFAA9ECEDD@deppe.com>
+ <CA+30ZEk9t4m6qv1ztsE3F7dViKzOR5aM44xbb2pjMPPEFrgiHw@mail.gmail.com>
+ <7245059A-72BD-44C4-9603-6FD5E094ED2F@deppe.com>
+To: Terrell Deppe <terrell@deppe.com>
+X-Mailer: Apple Mail (2.3776.700.51.11.8)
+
+Terrell,
+
+An interesting set of documents. =20
+
+As far as MacOS is concerned it is essential to allow for two platforms. =
+ The majority of Mac users have Intel based systems which are not =
+mentioned in your documents where the emphasis is on Apple Silicon only. =
+ I presume it is straight forward to expand your methods (and =
+documentation) to include Intel Macs.
+
+I would like to know how Mac builds for OS prior to 10.15 can overcome =
+the changes made in System extensions in macOS=20
+
+=E2=80=94 John G4KLA=
+
+From brian.moran@gmail.com Sat Apr 11 13:20:38 2026
+Delivered-To: terrell@deppe.com
+Received: by 2002:a05:622a:2a12:b0:502:af54:50e2 with SMTP id hc18csp1083367qtb;
+        Sat, 11 Apr 2026 06:20:38 -0700 (PDT)
+X-Received: by 2002:a05:622a:34f:b0:50d:aa1f:68be with SMTP id d75a77b69052e-50dd5bf0dabmr72183741cf.4.1775913638485;
+        Sat, 11 Apr 2026 06:20:38 -0700 (PDT)
+ARC-Seal: i=2; a=rsa-sha256; t=1775913638; cv=pass;
+        d=google.com; s=arc-20240605;
+        b=S4mWzW1Pzo2VaOMdt+njCCXv7g+DCdL3SCx5FRkVbYGlgpBEzH3s1qFrOCUGvWn+h1
+         +WHqzM5CKq9ypEYfKQ6EvvIcVQCxMWHNMEE7eEEq0YiNL6e6KVN7zUNWK8bN+XyCyXPY
+         byDGyqoNIDqryraUibT2Hq8H3W7HAoedGHEAXwXW7C0LKh5G7iX0iIWhSVq5/wDw22/2
+         xveQuFW38alaniEEIM9mikr1jUJk9xgVOa2KcvRy/Ry7+uey6Tmsj2xiHJAMlKJ4QuyB
+         rPZX1qqXh4AID5Re8tBpZyhnxeQ++KuSshfCW3AwwU2S7JSUGQZR7Phxs6dmtrHBS6+Y
+         3NKA==
+ARC-Message-Signature: i=2; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=cc:to:subject:message-id:date:from:in-reply-to:references
+         :mime-version:dkim-signature;
+        bh=PWhiRI79SDzIFiCj9n5wj33knVFOHmPm2Za4ipHdgLA=;
+        fh=Rets4mrI3CHRpbqhYKCMD8BfZhJSU+Sxdc8707NLCw8=;
+        b=auh8CW4ucQdY0Y8X3uVB0Q/2aWVxmesSsPgoIlJS74YQiuwpmLXIcoBjM/yl1V6Xnc
+         pvG/jfDpAva4ffAxmO3uLkUHAbchJqA7gma3CKgkhFZ4s2plLcpwOxSkpIkfm+gU5L7l
+         7wr6QfGdxbtUfWwEZZSS0OUE2PNml8gD/DA9+h5KxZBah3ju3fPCjGanlIH26ItMmqpL
+         5j+olulEi5LMAj5RQEsbDFEpWJtWzoFQ/kPuRyKH2lv87okOSHV4S8A7AqIzatGq0co1
+         KS+GMowc5wxWETKKvGxiNAxXcXpV5t3LPX0DvaHXMIp28ReiC29UdSdDifFRcGisUROa
+         pJ0g==;
+        dara=google.com
+ARC-Authentication-Results: i=2; mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20251104 header.b=j3iNnkjh;
+       arc=pass (i=1);
+       spf=pass (google.com: domain of brian.moran@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=brian.moran@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=neutral header.i=@deppe.com
+Return-Path: <brian.moran@gmail.com>
+Received: from mail-sor-f41.google.com (mail-sor-f41.google.com. [209.85.220.41])
+        by mx.google.com with SMTPS id 6a1803df08f44-8ac84c39e86sor46818836d6.7.2026.04.11.06.20.38
+        for <terrell@deppe.com>
+        (Google Transport Security);
+        Sat, 11 Apr 2026 06:20:38 -0700 (PDT)
+Received-SPF: pass (google.com: domain of brian.moran@gmail.com designates 209.85.220.41 as permitted sender) client-ip=209.85.220.41;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20251104 header.b=j3iNnkjh;
+       arc=pass (i=1);
+       spf=pass (google.com: domain of brian.moran@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=brian.moran@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=neutral header.i=@deppe.com
+ARC-Seal: i=1; a=rsa-sha256; t=1775913638; cv=none;
+        d=google.com; s=arc-20240605;
+        b=NJ77+Of4UURTHtKtsnEYR7g0Tdu9EPvRoHa+P1TYzvR7ykaqg0xS8fjk+nPEsSwoCR
+         O+H36jUHrRnhP8Bda8t2g44Thza4tFdHh+R0rZG1tqJPYVeC1uLCzZ6uX9vC2zF7NyrS
+         lvXipjYE1OFGoqFkb0oKLslZgNg+DPgbgTjqUNqsnKowPkhxxqRb4cF/X2KV1firFa84
+         Yfk7N1zflIqwYKL3rkhEKzYFGwbebX0SpYjOZ75cI+p8urektg04KyC0dUl7fuek2Jp5
+         2brIHf8VQbfr4Xn6Pg2h7HemV6Igt/e7fS5eHPfUtRdzCF6mUI94C+axQA4PrR8t+p0a
+         I1mA==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=cc:to:subject:message-id:date:from:in-reply-to:references
+         :mime-version:dkim-signature;
+        bh=PWhiRI79SDzIFiCj9n5wj33knVFOHmPm2Za4ipHdgLA=;
+        fh=Rets4mrI3CHRpbqhYKCMD8BfZhJSU+Sxdc8707NLCw8=;
+        b=Dar2AWpX9C5I8rq+hsHPt+5sYpaT7hK73HY0I4h3jvKIlMKLF6ur22d5Iu7mOFnEeG
+         HNK339PtyJ45gLDqvM+1tC4ap69X0/byGyu7YTRyb8OC3M0Q/UbWfee7Jca32Zt5ZBQx
+         +sCuXJHg9YpdTEk78x3L3PLw3GRwbbPdyT+ufWRa8Auq/cV/nOY6bQ/oeat16nRTaLdb
+         NpZqRoSKQN67tplRmn+Ba6J3NzVn8Y5QlxDrZkHUBTn1J+ofcXshS0eWY46oE6tyisVF
+         AwxXYpgV2bhvMjZ9RAL6AUhSPw2wa0BJa3kh2SjjBbXAg8LbVWCHHTgoojjP9KBO0W42
+         ghYQ==;
+        darn=deppe.com
+ARC-Authentication-Results: i=1; mx.google.com; arc=none
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=gmail.com; s=20251104; t=1775913638; x=1776518438; darn=deppe.com;
+        h=cc:to:subject:message-id:date:from:in-reply-to:references
+         :mime-version:from:to:cc:subject:date:message-id:reply-to;
+        bh=PWhiRI79SDzIFiCj9n5wj33knVFOHmPm2Za4ipHdgLA=;
+        b=j3iNnkjhQ6m0EAUej+tSXcQ0Yp/K7uCwVv/5RRecuuna8aUZao3HgwMUkwRgBbyKaR
+         QRTKMO3VdnHox4vl0yXTdoOcrqUeeBh9C9XVRDT9tAjLnMa8jGjVTd32Ct4TaSP6nnlp
+         KAqwLPHo33Wm+/90oozqc1mCiS7ayr/6o7JnF5NKbSrTo/b5bSlcsKzoI6Zn4r0vqM0h
+         u5gKiTW7786fp1HZJlmcBKcRc8NYN/fNtPzm7eRPS+9KxM/7PTpEo0lawOofQkgm57+p
+         ztIcRUZIJDIeA8y8TOH9VKWYbgXO7maTrRlE3xdZPk1Of0ZJO770O/u9mPL4VEZTpSOY
+         B5Tg==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20251104; t=1775913638; x=1776518438;
+        h=cc:to:subject:message-id:date:from:in-reply-to:references
+         :mime-version:x-gm-gg:x-gm-message-state:from:to:cc:subject:date
+         :message-id:reply-to;
+        bh=PWhiRI79SDzIFiCj9n5wj33knVFOHmPm2Za4ipHdgLA=;
+        b=Y/v4nUQ5XxcZegSzzR8dWkgaUFMzhd+ktfZXDC/YYevnWfU0BYSfgjnBTEqrDXFsfk
+         2ao9VSPF9BR3chu8vAvcZSICGz5WsZr92Jf0SQ+YjmO0ZH96mJJ4t3rVBgruxEGroVwE
+         ITJo7tPRHc2m/E+Huu8OjWLcYDAYq40V8RkamaenNDgxA1RWkzXdsoKkEnuLct6j6dqR
+         j+/2gsqHwBViTlmC3jK4+Cfcr6RgIwWzXrgk0pCiR1cV4G0zLHRPHSAB243WQ601tM04
+         6xf2k8mtiWX+EtGbORjwS1Jx6T9Jsv+Tio/y2Mu7CVbbIl8MM66ZxhkqUUnGCKJySIaY
+         INrQ==
+X-Gm-Message-State: AOJu0YywWr4gW6fS/8KlsGlNFhAYGnNVuZDvrQV8sk2bpPfZFVsqKvDO
+	3SZfCfI5L5FO6SiuSiHHRJlhJ5aWU8T/Q9hozLSjZ8hCJ/rrMYGN0xwQKO2qW0NSd46riGWsa88
+	/QdMBD7AOZfyLBgJ1bObYO19IYnPiiAE=
+X-Gm-Gg: AeBDievjiQHHBbcf3typcZcthJ1fT74nE5+Hb92GSluAtHNti0QNyFgDA0oqO7Qahun
+	l28n9JIkAsTvwcJlMjUPmcUgUH8+HCeJhQyD6apTkrH+OjhuHfuufNPlp+Es++qVOO5rf8Nfcww
+	95jLTHFL2RwvNaxCgxNTFw+nLvbc+NU1pYDA99HSgOhIce+sTzFvUMAKrI8z1RjfgPciJ0gjrJH
+	W48GAsqASgTRd6e7LRp2I0hYnK4ib+l9sOzKp7vHUkY3jK+8A8NGrBh0iff3EVe/uAXK2XYWRRN
+	XqW8sB4kCwEakKXsndLJDwdludmbSUNM4JnYXA==
+X-Received: by 2002:a05:6214:2027:b0:899:f092:9da with SMTP id
+ 6a1803df08f44-8ac862814fdmr114447816d6.28.1775913638030; Sat, 11 Apr 2026
+ 06:20:38 -0700 (PDT)
+MIME-Version: 1.0
+References: <c1a98987-e7ad-48c2-b8a4-457aa54db3e4@princeton.edu>
+ <a1284102-9e0e-4b69-b9e8-ccba839e6505@princeton.edu> <f32808f5-4dfd-4e31-80fe-2cf7451649e4@princeton.edu>
+ <392247E5-6D7F-4B8C-9B0C-3C87869A6D11@rmnjmn.co.uk> <57288fe4-5314-4bcd-b630-3679f292be37@princeton.edu>
+ <8bac2c5c-ff6a-4730-bc5d-f07e13bb3f93@princeton.edu> <0660d387-889c-4157-82d0-4d5731da8f84@princeton.edu>
+ <25cf5993-b691-4944-b884-a8c05590de94@comcast.net> <e08db730-5942-4d63-ae2a-a360928f5e5f@princeton.edu>
+ <2d317be7-c0a8-4094-ae65-42d4699204c0@comcast.net> <f35e094a-6c51-4fd7-9cea-31eac13663f5@comcast.net>
+ <17913254-c42b-4468-af8f-e9c953e5969c@comcast.net> <7f48e85c-12f0-4de2-a18f-c0ef722d5001@comcast.net>
+ <b7d3f3ab-3fd2-4f91-bfb2-f5e7472686e0@princeton.edu> <C4961317-838F-4B2F-9915-443C8FBA4FB2@rmnjmn.co.uk>
+ <4e454259-44a7-4da4-ad60-fe7b8256954e@princeton.edu> <0DA2CFD4-CE7A-4541-9F67-AD29F789AC0E@rmnjmn.co.uk>
+ <883BFAF8-A5E3-4556-99E2-F0FFAA9ECEDD@deppe.com> <487121c7-9e40-4086-bc83-e304b9f3dc99@princeton.edu>
+In-Reply-To: <487121c7-9e40-4086-bc83-e304b9f3dc99@princeton.edu>
+From: Brian Moran <brian.moran@gmail.com>
+Date: Sat, 11 Apr 2026 06:20:26 -0700
+X-Gm-Features: AQROBzDEwTSaq-yzhONiYdAEsecDagUuf6_-WdIXH-0roXbs0JTo8PgFIzexsG0
+Message-ID: <CA+NiGusye9cNsYFJX=J83ZFoq996MTRNdfj0R1=Ze4=73gr6+Q@mail.gmail.com>
+Subject: Re: CI/CD Success!
+To: Joe Taylor <joe@princeton.edu>
+Cc: Terrell Deppe <terrell@deppe.com>, John Nelson <jmn@rmnjmn.co.uk>, 
+	"w3sz@comcast.net" <w3sz@comcast.net>, Charles Suckling <g3wdg1@gmail.com>, 
+	Steven Franke <s.j.franke@icloud.com>
+Content-Type: multipart/alternative; boundary="0000000000008bf28e064f2f1d2c"
+
+--0000000000008bf28e064f2f1d2c
+Content-Type: text/plain; charset="UTF-8"
+
+Sorry, it's been a hectic week, and will continue to be hectic until
+probably the 20th.
+
+This is really great, Terrel. The progress you've made toward automation is
+simply fantastic. The docs are comprehensive and I'm assuming that they
+can/will be updated as necessary; will they be living in a repo themselves?
+
+A few questions/comments:
+0) Which of these documents should be shared with potential external
+contributors? Where do the documents live?
+1) Hamlib - maybe a courtesy check to know whether there's a newer version
+of hamlib than we're using of a particular hamlib series (e.g. warn if
+4.8.0 is available when we're shipping against 4.7.0; not sure whether we
+should mention v5 if we're using v4. Some versioning things (e.g. gemfiles)
+use a nomenclature that specifies how to handle version checks).
+2) mention "gh" is github CLI.
+3) nice to haves include earlier base targets for mac 10.12 with x86 (or
+universal?) AND later targets 15.x? for mac arm64
+4) even if we're not using it, I *think* I recall we can built against qt6.
+If we have an (optional) qt6 targeted build, we can understand when we
+check in code not compatible with it
+5) for the testing step, I think we'll be using ctest AND pfUnit to test
+C++ code and Fortran code respectively. I think we can do that now!
+6) when we do a source release, could we make that a target, too?
+
+The last document - hygiene things we should be doing -- is really
+important, I think we could resolve some issues per that document :-) and
+then immediately file new ones to take care of some of those things :-).
+
+-bkm
+
+--0000000000008bf28e064f2f1d2c
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+
+<div dir=3D"ltr">Sorry, it&#39;s been a hectic week, and will continue to b=
+e hectic until probably the 20th.<div><br></div><div>This is really great, =
+Terrel. The progress you&#39;ve made toward automation is simply fantastic.=
+ The docs are comprehensive and I&#39;m assuming that they can/will be upda=
+ted as necessary; will they be living in a repo themselves?=C2=A0</div><div=
+><br></div><div>A few questions/comments:</div><div>0) Which of these docum=
+ents should be shared with potential external contributors? Where do the do=
+cuments live?</div><div>1) Hamlib - maybe a courtesy check to know whether =
+there&#39;s a newer version of hamlib than we&#39;re using of a particular =
+hamlib series (e.g. warn if 4.8.0 is available when we&#39;re shipping agai=
+nst 4.7.0; not sure whether we should mention v5 if we&#39;re using v4. Som=
+e versioning things (e.g. gemfiles) use a nomenclature that specifies how t=
+o handle version checks).</div><div>2) mention &quot;gh&quot; is github CLI=
+.=C2=A0</div><div>3) nice to haves include earlier base targets for mac 10.=
+12 with x86 (or universal?) AND later targets 15.x? for mac arm64=C2=A0</di=
+v><div>4) even if we&#39;re not using it, I *think* I recall we can built a=
+gainst qt6. If we have an (optional) qt6 targeted build, we can understand =
+when we check in code not compatible with it=C2=A0</div><div>5) for the tes=
+ting step, I think we&#39;ll be using ctest AND pfUnit to test C++ code and=
+ Fortran code respectively. I think we can do that now!</div><div>6) when w=
+e do a source release, could we make that a target, too?=C2=A0</div><div><b=
+r></div><div>The last document - hygiene things we should be doing -- is re=
+ally important, I think we could resolve some issues per that document :-) =
+and then immediately file new ones to take care of some of those things :-)=
+.</div><div><br></div><div>-bkm</div><br></div>
+
+--0000000000008bf28e064f2f1d2c--
+
+From joe@princeton.edu Fri Apr 10 23:38:22 2026
+Delivered-To: terrell@deppe.com
+Received: by 2002:a05:622a:2a12:b0:502:af54:50e2 with SMTP id hc18csp826418qtb;
+        Fri, 10 Apr 2026 16:38:22 -0700 (PDT)
+X-Received: by 2002:a05:690e:d58:b0:64e:c1fb:c2de with SMTP id 956f58d0204a3-65198ba0e9fmr2609870d50.6.1775864302617;
+        Fri, 10 Apr 2026 16:38:22 -0700 (PDT)
+ARC-Seal: i=2; a=rsa-sha256; t=1775864302; cv=pass;
+        d=google.com; s=arc-20240605;
+        b=OLNBDAYBPnha3sGpHwCa8/nxujEqjWceRIrll/KBBlMLULF8fkcS+zKW4RfdrkoGan
+         cBW81O3BUtHFRXHG3GQjADguS5oZJw/WtWfxs8D9KlycZOKnHvXg+ibpvRXGUQg4Xe9C
+         +XfcqmzICXXzwZ0kDF6cS+i4N3fXsRA3QgCTBAJQbMoeRZ63gaipSE5lKEpQqaGo7CaO
+         fzLfueZnqGTNFy4XJHDxNNhQg/8vFteFm44Tp2+WPb9WE19DgUDNDnmexlrQXuTz+dHR
+         EEReOmcU+j5HL1nHMIRJNrB75gle51HsUiyoC+PZoWVFgRJLTHqzcjqgC87dO7pTZdif
+         jaIA==
+ARC-Message-Signature: i=2; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=mime-version:in-reply-to:from:content-language:references:cc:to
+         :subject:user-agent:date:message-id:dkim-signature;
+        bh=1KSaQfKWr/CiKY1/wWdK+b69/6Rk689ycha2UqHdoso=;
+        fh=HS3E2D0JpEVfz35fUzqeHqUE96Yn54fKzebVbTPPb7c=;
+        b=J19fDDk6+WtACZL1D1PONLM/n6cM31zoYMfxjN3b7KE6pE+mrhc5O1gUUs1nXpnvBL
+         /9aBerb1jwZ9n05uYaKgdR94aBjQjtHABDKRbWHdMygR5QOpuOyrhhx1X3jJXhvS1Y9j
+         Rd+7hL9vtqLNOhbVfUmgEnHp5lcUv3D5EZzf1PsKKAAwa1br8uOODASsJMkqwARECCLd
+         HTeJdsdUqiJwN+8TZJ7pxv/eGu2YuN9zfrXongEeb3BQqigwAqQQJkD+eGWOAigbSmDn
+         7nTUCZK6xna17R0NaRQpPlm5Jnu2+coMTw7JQypffCcpc26e+wQKgW6ip5CW6h5un/6R
+         EpeQ==;
+        dara=google.com
+ARC-Authentication-Results: i=2; mx.google.com;
+       dkim=pass header.i=@princeton.edu header.s=selector2 header.b=WjXIQQvY;
+       arc=pass (i=1 spf=pass spfdomain=princeton.edu dkim=pass dkdomain=princeton.edu dmarc=pass fromdomain=princeton.edu);
+       spf=pass (google.com: domain of joe@princeton.edu designates 2a01:111:f403:c112::7 as permitted sender) smtp.mailfrom=joe@princeton.edu;
+       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=princeton.edu
+Return-Path: <joe@princeton.edu>
+Received: from CY3PR05CU001.outbound.protection.outlook.com (mail-westcentralusazlp170130007.outbound.protection.outlook.com. [2a01:111:f403:c112::7])
+        by mx.google.com with ESMTPS id 956f58d0204a3-65197a596f0si3770055d50.56.2026.04.10.16.38.22
+        for <terrell@deppe.com>
+        (version=TLS1_3 cipher=TLS_AES_256_GCM_SHA384 bits=256/256);
+        Fri, 10 Apr 2026 16:38:22 -0700 (PDT)
+Received-SPF: pass (google.com: domain of joe@princeton.edu designates 2a01:111:f403:c112::7 as permitted sender) client-ip=2a01:111:f403:c112::7;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@princeton.edu header.s=selector2 header.b=WjXIQQvY;
+       arc=pass (i=1 spf=pass spfdomain=princeton.edu dkim=pass dkdomain=princeton.edu dmarc=pass fromdomain=princeton.edu);
+       spf=pass (google.com: domain of joe@princeton.edu designates 2a01:111:f403:c112::7 as permitted sender) smtp.mailfrom=joe@princeton.edu;
+       dmarc=pass (p=REJECT sp=REJECT dis=NONE) header.from=princeton.edu
+ARC-Seal: i=1; a=rsa-sha256; s=arcselector10001; d=microsoft.com; cv=none;
+ b=MEmoU0y416xTBh08oK9mpMr93nsROXolH5+LaNz37mW1QhUK1FJwAWFCEsbhf1PhBLo0/IhIMygtO7E6kZxn6RwqUaCFObipOFh/1QA8MDVQcHBkmAREFtCRVKPZMiCnARJX8/rnEG5Srh2kryGfojnrup8nMb7ZcLEkiT+61ilt62uRjjftiGZberHK0wNBZ34eGj0w3kmdZ6z9JiLAmDQIXSOzu9PsxjpSo4WPFy64M6SGmjzhFaVbDIrHJ5EfY15L1UimDslcpUe7jMM3mzJ7eYrBDuXbjttYUgyY+fFB7BiOAVmHxqkkvz80mdzy51BXZkiJTTYPrUh+3mKJ+w==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=microsoft.com;
+ s=arcselector10001;
+ h=From:Date:Subject:Message-ID:Content-Type:MIME-Version:X-MS-Exchange-AntiSpam-MessageData-ChunkCount:X-MS-Exchange-AntiSpam-MessageData-0:X-MS-Exchange-AntiSpam-MessageData-1;
+ bh=1KSaQfKWr/CiKY1/wWdK+b69/6Rk689ycha2UqHdoso=;
+ b=Zg3eabMr6yAWi2rzFrUu9ZazCETtgoArNb/HO2Zk5NO4mErHjrCh6sRg06wDQJ1ZCI8B67tl7inFH1iQKW2OAo76NOrfpaQ6CTBhVC7j7+xWyn2xDZSxwMx8038wM88+B2G/F9a4m/+ruLxUH8mPp1MRonSVfNDPXeS1LIwgehkYQ2osupPMh5Ny1ihC5ossrS1N2UdBHOlVJrL9B2/eKNszJNr/whkpS4ae4Xz2bqzwReWbfoPtZtVVd/paBSisBq1l+3S9o25mI9kjD7ooFnRjnlOxkCs5UPmRfX8hGcyPhmtVotDjWtQqEVt9gzuFpHXaUPXScufQ1IG7bUcbyA==
+ARC-Authentication-Results: i=1; mx.microsoft.com 1; spf=pass
+ smtp.mailfrom=princeton.edu; dmarc=pass action=none
+ header.from=princeton.edu; dkim=pass header.d=princeton.edu; arc=none
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=princeton.edu;
+ s=selector2;
+ h=From:Date:Subject:Message-ID:Content-Type:MIME-Version:X-MS-Exchange-SenderADCheck;
+ bh=1KSaQfKWr/CiKY1/wWdK+b69/6Rk689ycha2UqHdoso=;
+ b=WjXIQQvY4c+rlfU8WhOlD0IzL3F6Z33KXU6fluZZf2XMcaoVECm7ixOw3OrAsk/mUn8vR18f4ohdlEktk027uBa0PFHifs/XSkJildgWaScN3HWSAElEZP7dmmSYsSznZp0wgIHstlgmlfNwZUk1mo0ziS3Nuv+aeZ9nsBWxKD3RvkS6nT7pJM3K6HK2fm3UGbZAjMpGYkAZUOxi9Mv2xTwgshv8i1z7vcUIPPVVOVwd+LqzimYLersGXIx4FAzjLcCRWWo9G5tPdYOi/gnSm3O8Au3DsIbbgzY7xFhkhFClXqQDSV8lVLVFrLMNXQv7Iog18cYx8WYS+5qkPVk4+g==
+Authentication-Results: dkim=none (message not signed)
+ header.d=none;dmarc=none action=none header.from=princeton.edu;
+Received: from CO6PR04MB7730.namprd04.prod.outlook.com (2603:10b6:303:a6::9)
+ by CH0PR04MB8164.namprd04.prod.outlook.com (2603:10b6:610:f0::7) with
+ Microsoft SMTP Server (version=TLS1_2,
+ cipher=TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384) id 15.20.9769.44; Fri, 10 Apr
+ 2026 23:38:17 +0000
+Received: from CO6PR04MB7730.namprd04.prod.outlook.com
+ ([fe80::15d6:f459:160c:ca64]) by CO6PR04MB7730.namprd04.prod.outlook.com
+ ([fe80::15d6:f459:160c:ca64%2]) with mapi id 15.20.9769.043; Fri, 10 Apr 2026
+ 23:38:17 +0000
+Content-Type: multipart/alternative;
+ boundary="------------1eiV5HFP8edkYrI7WQwF3EoE"
+Message-ID: <487121c7-9e40-4086-bc83-e304b9f3dc99@princeton.edu>
+Date: Fri, 10 Apr 2026 19:37:57 -0400
+User-Agent: Mozilla Thunderbird
+Subject: Re: CI/CD Success!
+To: Terrell Deppe <terrell@deppe.com>, John Nelson <jmn@rmnjmn.co.uk>
+Cc: "w3sz@comcast.net" <w3sz@comcast.net>, Brian Moran
+ <brian.moran@gmail.com>, Charles Suckling <g3wdg1@gmail.com>,
+ Steven Franke <s.j.franke@icloud.com>
+References: <c1a98987-e7ad-48c2-b8a4-457aa54db3e4@princeton.edu>
+ <a1284102-9e0e-4b69-b9e8-ccba839e6505@princeton.edu>
+ <f32808f5-4dfd-4e31-80fe-2cf7451649e4@princeton.edu>
+ <392247E5-6D7F-4B8C-9B0C-3C87869A6D11@rmnjmn.co.uk>
+ <57288fe4-5314-4bcd-b630-3679f292be37@princeton.edu>
+ <8bac2c5c-ff6a-4730-bc5d-f07e13bb3f93@princeton.edu>
+ <0660d387-889c-4157-82d0-4d5731da8f84@princeton.edu>
+ <25cf5993-b691-4944-b884-a8c05590de94@comcast.net>
+ <e08db730-5942-4d63-ae2a-a360928f5e5f@princeton.edu>
+ <2d317be7-c0a8-4094-ae65-42d4699204c0@comcast.net>
+ <f35e094a-6c51-4fd7-9cea-31eac13663f5@comcast.net>
+ <17913254-c42b-4468-af8f-e9c953e5969c@comcast.net>
+ <7f48e85c-12f0-4de2-a18f-c0ef722d5001@comcast.net>
+ <b7d3f3ab-3fd2-4f91-bfb2-f5e7472686e0@princeton.edu>
+ <C4961317-838F-4B2F-9915-443C8FBA4FB2@rmnjmn.co.uk>
+ <4e454259-44a7-4da4-ad60-fe7b8256954e@princeton.edu>
+ <0DA2CFD4-CE7A-4541-9F67-AD29F789AC0E@rmnjmn.co.uk>
+ <883BFAF8-A5E3-4556-99E2-F0FFAA9ECEDD@deppe.com>
+Content-Language: en-US
+From: Joe Taylor <joe@princeton.edu>
+In-Reply-To: <883BFAF8-A5E3-4556-99E2-F0FFAA9ECEDD@deppe.com>
+X-ClientProxiedBy: MN2PR11CA0021.namprd11.prod.outlook.com
+ (2603:10b6:208:23b::26) To CO6PR04MB7730.namprd04.prod.outlook.com
+ (2603:10b6:303:a6::9)
+Return-Path: joe@princeton.edu
+MIME-Version: 1.0
+X-MS-PublicTrafficType: Email
+X-MS-TrafficTypeDiagnostic: CO6PR04MB7730:EE_|CH0PR04MB8164:EE_
+X-MS-Office365-Filtering-Correlation-Id: 33a47e3b-751f-4fb9-3e64-08de975a3d9b
+X-MS-Exchange-SenderADCheck: 1
+X-MS-Exchange-AntiSpam-Relay: 0
+X-Microsoft-Antispam:
+	BCL:0;ARA:13230040|10070799003|1800799024|366016|786006|376014|8096899003|56012099003|22082099003|18002099003;
+X-Microsoft-Antispam-Message-Info:
+	qrIV2e4d6ZHIUaM89Q719b6S4w6/uh2weHnKZxGObwmCrTKfdYsZ/RPIEP5cmttEFmgq4Uy9475aLzVCzMY2zrJ4kownp291dRMTT1218PhkxVfQ11G3xeVbY+HgRB4l0AFRyRsarGoMmT+F6ZODxp1TF+cX+uvVQTdnJa6qB/W4TWNsEX8Cv75VuT1xeimkKgfSfJbrnLE+Wv9AdjUo4W2IXQMD4tO+xj+PB1tQBWqLMPAjnyXH3HI/dcxgHOLs2avBcAMaI4kHQdP6ol2EIMxRSxoTmrQqw3dcMxMxfqMrQTICKzqg5bMyyL5S6y2dUCKC0h7JJtVI0B9Prx1cQzPUztLBzeEG3l+BBjah+B+iMM3aQbVyuVBFnLoCjnMUUbesFlaYaPEctjhKygqyP0Aie1QEqadqubZEIYCwxeblOJB0YIKJH0pcOoEBsk59aiXKxTyBpExmrKRsS8oYmZ6vLwwI5fz+/pHy3umC+pnt8GcJkx5iGkEOQUFY9PQY5vKkiyooT9QWC9Muzk8ZjRumvD2zFO9QCTMK7fUdQ+SiCqR64sdkmw9vxUyucvzG6bIlvKhRH1GJQ2beL9Zs/sAeRFRKS4ap8jHRFfEmP+x2BiGQCuG2okIuEOB4kyMBJ8nWHbrAPW5PwFbrtRyrmt5BqAatsrLWgrNGhMLrB7k20fVBSMmVGrPdBpczDhK0EKB8CrPD1HY4LNHH8dy4GM8CuSzIQQOtMZ6jI7znIEU=
+X-Forefront-Antispam-Report:
+	CIP:255.255.255.255;CTRY:;LANG:en;SCL:1;SRV:;IPV:NLI;SFV:NSPM;H:CO6PR04MB7730.namprd04.prod.outlook.com;PTR:;CAT:NONE;SFS:(13230040)(10070799003)(1800799024)(366016)(786006)(376014)(8096899003)(56012099003)(22082099003)(18002099003);DIR:OUT;SFP:1102;
+X-MS-Exchange-AntiSpam-MessageData-ChunkCount: 1
+X-MS-Exchange-AntiSpam-MessageData-0:
+	=?utf-8?B?TlBNS0pXTGJabWE5Ni9Hd0N6NW5tV0FXYlVWZVc0Y0hWRERQSWtKbDhaQnNN?=
+ =?utf-8?B?MU8zZnFhTmViUUFIZmJxenVYNkVRRHU5cHltYVpSNGZpYlV6VEVydEtERGlr?=
+ =?utf-8?B?eGZTNndZdHFDWFZwZEU1VXh0ckxEcGV3K1VFRXRNTU4yc013TURBeXJleU0v?=
+ =?utf-8?B?aGpNUXBYN1JURlpPM0FjTlNrWGVoQWNLcTVBeGNVY0pUdHVmdjJ0eHJBTkR2?=
+ =?utf-8?B?Zm1DZW1UdmRRQzkwOFFGOENneFZaNzhUZHFDZXF3RFNnTUFjQS9mOVlGWjRw?=
+ =?utf-8?B?UnhUNkc4Rzk0Um9hWUZLZ3Z2c3A0U25KVHhNeDhqM0cwTGdhR3YrS2pNUzJW?=
+ =?utf-8?B?bXNpSHJYUVEza2pQVUhMYm9Xd2pXZ2NKT1FMMndvSTNkMjBkZGhxSVMwcXRT?=
+ =?utf-8?B?Mm1QRXp1YjgvTWk2MkRnRzhYdTFpd1BJeWxiczZCTUtJTzVzN0c1Q21OWVJi?=
+ =?utf-8?B?Zjk1cFp4SXJ5YXd0eWZNVzMzT3lBTmNUWVJCdGVhOE9yT3BYYWVWcWV5d2Za?=
+ =?utf-8?B?WFVDT2FaUURXVURpdmZsYklvSWN2QXF0d0VWYjdaRGlZbEVrUWsvQTJsMVR4?=
+ =?utf-8?B?YW9SSHZHNmJDeUhsVGNXcEhXY0VaUmdNOG5Ha1lwbUR2Y212YVlJUE05WUtw?=
+ =?utf-8?B?VGNtNFRFdE9GWDBpbFRhWWJOVHVmZi9ndWJDQlVCM04xclRqMnk5NHl1ckp2?=
+ =?utf-8?B?a21ybkh0YzVaakZXK1RrZTlMWGY1K2d0dTJ3WHZIL25BN1hXejlmVlp1c3FB?=
+ =?utf-8?B?VVZtelJyNGdvd2lnSUd5cnA4K1FMRmJjditFT291K056SDE5M2d2cFhaa0NV?=
+ =?utf-8?B?OUxZMFg5MXBiVFRnVmplRVRSMDdNOEpmMFcrWXJVNVJXcTljaGxIbzU5OFNp?=
+ =?utf-8?B?RzlqV1kxS2VCY2ltZTNlN1Zla2NJRkVMcDlRN3FSYkduS0t3dFNSYVYyZHVh?=
+ =?utf-8?B?RVZPM0pUcmlPWUJ1UFpFTmdRbDJacXRtVDU4OURGVGpyNkI1eHVtRkhrQ3Ju?=
+ =?utf-8?B?blhTMWNraEQ4YVRFNVgyajJaMnRQREV4OEF6bUxtQVlWbFJCN0RPSTV3MWR6?=
+ =?utf-8?B?akNlVnk0TStMTVE0QkRFUENxM29mTlpCdWVGTHlmQmFpSm9CK2RJVW1VejFt?=
+ =?utf-8?B?L0lLOVdCQWN3c3VkZ2pMRUNpaWVaSXFZUHpueEFwWkdtNHBZTC9sc3F0MjVF?=
+ =?utf-8?B?TG9xN05HMmFUNERmdUtaNWNPSnJHcklMME5FMlZTLzNwb2lDNTVVWUY2bjJ0?=
+ =?utf-8?B?NzUzRWVRSWdtRmJneXo4MHFhMjdBNFZnUWJHeTdBVlFxNkc4WnBpRXBOTE9B?=
+ =?utf-8?B?bmhFTWUzdERoaVJOYUNLTjd3UFBZZ0xOK0pNdTA5a01hV2RPUytkN2ViMEdi?=
+ =?utf-8?B?OTBXdHN1YWJOZDZ6YzZrQjVVWHhSRFRRM1ZnalZnd1Mrdk5tbUE0eGZSUjBG?=
+ =?utf-8?B?cmlIRjc0K3lmejAvc1FLYXZnU0tWSEtJSlRGQTZ5UGhZWUsvTXduT3kwamRX?=
+ =?utf-8?B?RlowRkpISTh4dTJ2azlZeWFIbXp4MExNKzhRVkdlUTVjZmdxaFB2U2dNQ0cv?=
+ =?utf-8?B?dUFHeGl4ZUMvNnJmWS9lcVk2Sk0wekxpU2h4L0xrZ2FlcGN0eHpOMklPT2VF?=
+ =?utf-8?B?THNXdC9Jb2UxTlZWOGtVeWFiOFcvb2hEdW1PZGhaWENOZElzSjNXV0ttUkNI?=
+ =?utf-8?B?VEdWK1A0L3EvTmNXYlZRQTJmblkzdXJwL2JxdkVQcVpZL3d4UkJZem1DWngy?=
+ =?utf-8?B?Y0lBcW5kQkliN3FKMjFyV3l0c0M4aFJmTmMvK0gzdVdnNXNyS0ROUFZodUhx?=
+ =?utf-8?B?a0NkdzQyVmV4SW5EQ29EemFIZDB5aE5wcWwydXU3TmhpRHM4MEhDSFg3bTly?=
+ =?utf-8?B?Q1c4SXFKL1pnOEJtSTFOTFVodW9LN29pTEVJT20rSERuaTdrQS9MdEhXWFFT?=
+ =?utf-8?B?bmt0VVc4QkdjN3hNQU10TlpjRXE1NCt1c1dyQ1JocjJiRVU5YmtmVFVRS2Ur?=
+ =?utf-8?B?alpua2dza2hzb1pad0hoTHh2amlSOG5rUTJxaXRrZFNvU0tUMlNCTSt1dWw2?=
+ =?utf-8?B?OGJBUUJWR2tlQjdqcnB6aEQ2ZU9RYTRyNDVaKzErR0lzQkF2NzRWS3NOcitY?=
+ =?utf-8?B?MGN6VFZySThTZnA2V0FGNVVvNkJzRXAyVW9DSk54azBGbmlBQnp3OVJMWVhS?=
+ =?utf-8?B?VVBhMkwxMGZ5bFR4R1FmZTA4YXlwUDdRLzdTMmlZc3NvUkRMa3gyZWdDTnFU?=
+ =?utf-8?B?WFJVbXJzZEJqd00wNm5oTHJGelQ3VzE2eGFMRnVlbGtRdWp5K3ZFQnc1elZi?=
+ =?utf-8?B?VG9iM3dGRnFpdkRDUElFSEJsUHB6N0pGdzZLWHZKSXBiM281TGZDa2taSWVk?=
+ =?utf-8?Q?8mFHfbdaUkufoCO0GX7mfSyUykz6ULUUG+yuj?=
+X-OriginatorOrg: princeton.edu
+X-MS-Exchange-CrossTenant-Network-Message-Id: 33a47e3b-751f-4fb9-3e64-08de975a3d9b
+X-MS-Exchange-CrossTenant-AuthSource: CO6PR04MB7730.namprd04.prod.outlook.com
+X-MS-Exchange-CrossTenant-AuthAs: Internal
+X-MS-Exchange-CrossTenant-OriginalArrivalTime: 10 Apr 2026 23:38:17.0891
+ (UTC)
+X-MS-Exchange-CrossTenant-FromEntityHeader: Hosted
+X-MS-Exchange-CrossTenant-Id: 2ff60116-7431-425d-b5af-077d7791bda4
+X-MS-Exchange-CrossTenant-MailboxType: HOSTED
+X-MS-Exchange-CrossTenant-UserPrincipalName: 9/BgfGuz1FZjpPCJD80o8eWuuQ4vYfJL2ZIbpWABMLanyThoQBoAL720CpJT06viyTQ7aLqqrAqdRgul00F9sQ==
+X-MS-Exchange-Transport-CrossTenantHeadersStamped: CH0PR04MB8164
+
+--------------1eiV5HFP8edkYrI7WQwF3EoE
+Content-Type: text/plain; charset=UTF-8; format=flowed
+Content-Transfer-Encoding: 8bit
+
+Hi Terrell and all,
+
+I've been busy with non-ham things most of today, but have now had time 
+to read your five pdf docs. Your CI/CD pipeline is a *major* 
+contribution to the WSJT project. I can't thank you enough for all the 
+effort that went into it -- and for the clear way your documentation 
+describes it for us. I can't wait to see it in action!
+
+In no particular order, here are a few things that occurred to me as I 
+read through your files.
+
+  - It should be fairly easy to add some execution tests to add to the 
+pipeline, especially after the effort Steve has already put into a 
+script that tests the decoders for each of our supported modes.
+
+  - We still use Qt5 so we can still support users with Windows 7. For 
+the same reason, we probably want to maintain support for macOS 10.13 
+and later on x86 hardware. Can those builds be added to the pipeline?
+
+  - You made an excellent first cut at reasonable assignments of tasks 
+and responsibilities. Group members should feel free to volunteer for 
+other or additional tasks, and I will surely need to add Admin 
+privileges to several others in our group.
+
+  - Your scheme does not mention a way of dealing with "release 
+candidates." We have used "-rc#" releases to let brave users experiment 
+with and test new ideas. Should we keep such a capability? Or maybe 
+handle it differently, in future?
+
+  - About deploying your scheme for general use: I could grant full 
+Admin privileges to Brian and Terrell, at least, and the two of you 
+could bring it into a state for full use by all of us. You, Terrell, 
+could surely do it quickest by yourself, but bringing Brian fully up to 
+speed would also be advantageous. Does this approach make sense?
+
+  - We have been planning to do a hotfix release of v3.0.1 soon, maybe 
+even next week. Should we plan to use the pipeline for this purpose?
+
+  - Right now, I believe wsjtx-internal/develop has JTTY code in it. So 
+v3.0.1 should be based on wsjtx-internal/v3.0.0_test, rather 
+than wsjtx-internal/develop.
+
+  - Am I right that the contents of your pdf #4 would become the public 
+file CONTRIBUTING.md ?
+
+I'll probably have more thoughts/questions after thinking further on 
+what you've sent us. I look forward to hearing what others think of it all!
+
+     -- Joe
+
+On 4/10/26 02:29, Terrell Deppe wrote:
+> I’ve never really considered myself a DevOps guy, but looking back at 
+> my approach to CI/CD starting about 20 years ago, I guess I am at some 
+> level. My CI/CD sandbox passed all tests. Windows was a pain (as 
+> usual), but I think I found a work around for the OmniRig problem. 
+> That will need some evaluation by someone who doesn’t yet hate Windows.
+>
+> Attached is a spewing of information gathered over the last week or 
+> so. The documents are numbered from course to fine grain, in terms of 
+> detail, followed by a document of recommendations. It is a short term 
+> treatment for insomnia if nothing else. #3 is in the weeds. #2 and #4 
+> are probably the most relevant to most of you followed by #5.
+>
+> My secretary, Claudia, wrote all these from my dictation. I talk 
+> funny, and she is deaf so pardon any mistakes in the material. I asked 
+> her go over it more than once, but my sign language is generally 
+> limited to one finger, and I can never seem to remember which one is 
+> appropriate in any given situation.
+>
+> --
+>
+> *Terrell Deppe*
+> (What is the difference between peas and boogers? Kids don’t always 
+> eat their peas.)
+>
+--------------1eiV5HFP8edkYrI7WQwF3EoE
+Content-Type: text/html; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+<!DOCTYPE html><html><head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  </head>
+  <body>
+    <p>Hi Terrell and all,</p>
+    <p>I've been busy with non-ham things most of today, but have now
+      had time to read your five pdf docs. Your CI/CD pipeline is a
+      *major* contribution to the WSJT project. I can't thank you enough
+      for all the effort that went into it -- and for the clear way your
+      documentation describes it for us. I can't wait to see it in
+      action!</p>
+    <p>In no particular order, here are a few things that occurred to me
+      as I read through your files.</p>
+    <p>&nbsp;- It should be fairly easy to add some execution tests to add to
+      the pipeline, especially after the effort Steve has already put
+      into a script that tests the decoders for each of our supported
+      modes.</p>
+    <p>&nbsp;- We still use Qt5 so we can still support users with Windows 7.
+      For the same reason, we probably want to maintain support for
+      macOS 10.13 and later on x86 hardware. Can those builds be added
+      to the pipeline?</p>
+    <p>&nbsp;- You made an excellent first cut at reasonable assignments of
+      tasks and responsibilities. Group members should feel free to
+      volunteer for other or additional tasks, and I will surely need to
+      add Admin privileges to several others in our group.</p>
+    <p>&nbsp;- Your scheme does not mention a way of dealing with &quot;release
+      candidates.&quot; We have used &quot;-rc#&quot; releases to let brave users
+      experiment with and test new ideas. Should we keep such a
+      capability? Or maybe handle it differently, in future?</p>
+    <p>&nbsp;- About deploying your scheme for general use: I could grant
+      full Admin privileges to Brian and Terrell, at least, and the two
+      of you could bring it into a state for full use by all of us. You,
+      Terrell, could surely do it quickest by yourself, but bringing
+      Brian fully up to speed would also be advantageous.&nbsp;Does this
+      approach make sense?&nbsp;</p>
+    <p>&nbsp;- We have been planning to do a hotfix release of v3.0.1 soon,
+      maybe even next week. Should we plan to use the pipeline for this
+      purpose?</p>
+    <p>&nbsp;- Right now, I believe wsjtx-internal/develop has JTTY code in
+      it. So v3.0.1 should be based on wsjtx-internal/v3.0.0_test,
+      rather than&nbsp;wsjtx-internal/develop.</p>
+    <p>&nbsp;- Am I right that the contents of your pdf #4 would become the
+      public file CONTRIBUTING.md ?</p>
+    <p>I'll probably have more thoughts/questions after thinking further
+      on what you've sent us. I look forward to hearing what others
+      think of it all!</p>
+    <p>&nbsp; &nbsp; -- Joe</p>
+    <div class="moz-cite-prefix">On 4/10/26 02:29, Terrell Deppe wrote:<br>
+    </div>
+    <blockquote type="cite" cite="mid:883BFAF8-A5E3-4556-99E2-F0FFAA9ECEDD@deppe.com">
+      
+      <div style="line-break:after-white-space">I’ve never really
+        considered myself a DevOps guy, but looking back at my approach
+        to CI/CD starting about 20 years ago, I guess I am at some
+        level. My CI/CD sandbox passed all tests. Windows was a pain (as
+        usual), but I think I found a work around for the OmniRig
+        problem. That will need some evaluation by someone who doesn’t
+        yet hate Windows.
+        <div><br>
+        </div>
+        <div>Attached is a spewing of information gathered over the last
+          week or so. The documents are numbered from course to fine
+          grain, in terms of detail, followed by a document of
+          recommendations. It is a short term treatment for insomnia if
+          nothing else. #3 is in the weeds. #2 and #4 are probably the
+          most relevant to most of you followed by #5.</div>
+        <div><br>
+        </div>
+        <div>My secretary, Claudia, wrote all these from my dictation. I
+          talk funny, and she is deaf so pardon any mistakes in the
+          material. I asked her go over it more than once, but my sign
+          language is generally limited to one finger, and I can never
+          seem to remember which one is appropriate in any given
+          situation.</div>
+      </div>
+      <div style="line-break:after-white-space">
+        <div>
+        </div>
+      </div>
+      <div style="line-break:after-white-space">
+        <div>
+        </div>
+      </div>
+      <div style="line-break:after-white-space">
+        <div>
+        </div>
+      </div>
+      <div style="line-break:after-white-space">
+        <div>
+        </div>
+      </div>
+      <div style="line-break:after-white-space">
+        <div>
+          <div>
+            <div>
+              <div style="color:rgb(0,0,0); font-family:Helvetica; font-style:normal; font-variant-ligatures:normal; font-variant-numeric:normal; font-variant-caps:normal; font-variant-alternates:normal; font-variant-east-asian:normal; font-weight:normal; letter-spacing:normal; line-height:normal; orphans:2; text-indent:0px; text-transform:none; white-space:normal; widows:2; word-spacing:0px; line-break:after-white-space"><br>
+                --<br>
+                <br>
+                <b>Terrell Deppe</b></div>
+              <div style="color:rgb(0,0,0); font-family:Helvetica; font-style:normal; font-variant-ligatures:normal; font-variant-numeric:normal; font-variant-caps:normal; font-variant-alternates:normal; font-variant-east-asian:normal; font-weight:normal; letter-spacing:normal; line-height:normal; orphans:2; text-indent:0px; text-transform:none; white-space:normal; widows:2; word-spacing:0px; line-break:after-white-space">
+                (What is the difference between peas and boogers? Kids
+                don’t always eat their peas.)</div>
+            </div>
+          </div>
+        </div>
+        <div style="color:rgb(0,0,0); font-family:Helvetica; font-style:normal; font-variant-ligatures:normal; font-variant-numeric:normal; font-variant-caps:normal; font-variant-alternates:normal; font-variant-east-asian:normal; font-weight:normal; letter-spacing:normal; line-height:normal; orphans:2; text-indent:0px; text-transform:none; white-space:normal; widows:2; word-spacing:0px; line-break:after-white-space">
+          <br>
+        </div>
+      </div>
+    </blockquote>
+  </body>
+</html>
+
+--------------1eiV5HFP8edkYrI7WQwF3EoE--
+
+From g3wdg1@gmail.com Fri Apr 10 06:47:05 2026
+Delivered-To: terrell@deppe.com
+Received: by 2002:a05:622a:2a12:b0:502:af54:50e2 with SMTP id hc18csp289573qtb;
+        Thu, 9 Apr 2026 23:47:05 -0700 (PDT)
+X-Received: by 2002:a05:6402:26ce:b0:66c:5b58:eb67 with SMTP id 4fb4d7f45d1cf-6707a471b14mr338633a12.3.1775803625581;
+        Thu, 09 Apr 2026 23:47:05 -0700 (PDT)
+ARC-Seal: i=2; a=rsa-sha256; t=1775803625; cv=pass;
+        d=google.com; s=arc-20240605;
+        b=fHTxQP3l1RNAwKzwUCA6JLpiM7dGkTjN8AlzqV2O2ZwISIeIs6UoyCcxklb2gK+7ly
+         cYqvRwyh139xU0YQRXyFMuTZNgREQDu11wXl40P6QTgEbuDLUuu74TBkNz6ak58edPm1
+         Qd0aH1aOkZ5pczCrCDAukFrQkiBryMNkYOqHDoASz5soIlKKqCPs0qZ8OGPUWd6i6tQw
+         T/vKRKCWrBkqOboWCo8Nu1BTNlxr4d8v83fIOlM3bJwAiT4Llay5+ewHst719hn2rGPz
+         U73yUR0H0m3MIPCKWHkR38lTHqI6PQa5zewESru7KHhGqmQ6mi0qX/LUH8b0HEPRJfFL
+         rEyA==
+ARC-Message-Signature: i=2; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=cc:to:subject:message-id:date:from:in-reply-to:references
+         :mime-version:dkim-signature;
+        bh=+ZN3HSxIvlLXYL73lLhGHpNJ3UXZOwod9wsxV8+JFc8=;
+        fh=oKpsiITZdaCWzzwrG/cwT4FN7EKiM9N1bh4sbz0aHGs=;
+        b=Ff5bKWH+VrcckaTpEnDiftAn7r+BhCZQtt/LCumXzV4JpqAa8TYtl7FbXEyqlOzgxR
+         NMjyetBRO21seoxKteaoqx0+FiFnegSMnyyTKqiOIY8/wFi4wnsARCBY+mNs1earS+En
+         jfVnQPnKRMbyeLfnvP6cnFbl3XB6A/1K8Ee55qySttkf8S+WBYSQ7kRHVieMsVDybLjO
+         KYwXCDB81ghZrc6qvDOR9hstjvluC6qJCYJopxaTTa4UHKmc6I0tcfMT/KDX4gq425I2
+         Gd9Npe5y9Eq9UNr2L+hr+nNBDE709uiQeY1FgK12vbbIozrPGSId5vpdZ6KcBmSrXf5O
+         wrZA==;
+        dara=google.com
+ARC-Authentication-Results: i=2; mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20251104 header.b=L63S5d8U;
+       arc=pass (i=1);
+       spf=pass (google.com: domain of g3wdg1@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=g3wdg1@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=neutral header.i=@deppe.com
+Return-Path: <g3wdg1@gmail.com>
+Received: from mail-sor-f41.google.com (mail-sor-f41.google.com. [209.85.220.41])
+        by mx.google.com with SMTPS id 4fb4d7f45d1cf-670708136d5sor445832a12.7.2026.04.09.23.47.05
+        for <terrell@deppe.com>
+        (Google Transport Security);
+        Thu, 09 Apr 2026 23:47:05 -0700 (PDT)
+Received-SPF: pass (google.com: domain of g3wdg1@gmail.com designates 209.85.220.41 as permitted sender) client-ip=209.85.220.41;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@gmail.com header.s=20251104 header.b=L63S5d8U;
+       arc=pass (i=1);
+       spf=pass (google.com: domain of g3wdg1@gmail.com designates 209.85.220.41 as permitted sender) smtp.mailfrom=g3wdg1@gmail.com;
+       dmarc=pass (p=NONE sp=QUARANTINE dis=NONE) header.from=gmail.com;
+       dara=neutral header.i=@deppe.com
+ARC-Seal: i=1; a=rsa-sha256; t=1775803625; cv=none;
+        d=google.com; s=arc-20240605;
+        b=LNleBfDUzUX2+kVBGhy5YrexxYtyjgRvgSClSvwme7lmBae6pJ9D7+w1hmk/g50aXT
+         zgY5622edG/y0cUdD0sTDbMe8G/OHs0FwiqUcQBKa8ROnAz4h8eIcSUvxTIA+hO5k1le
+         hTHkBumQnDOUmFNruOXXDI1ZuJ3rJXkJDUjE9CJG6YUxpla+naYLPTeB4orN4XKk0E/J
+         57cNQlfqgwZcEm4ybJ7EqaGpVRkh8rG0Vs2uCNcojLC2FY0/ZpmQgoTW78035E1xxACv
+         1y0nDeDv4g5vNJnHao7FpOCnBVkxZZkmNnZtFsT1b9Zz0wvJNPQPBwcX6nGaayBAvPe9
+         A04A==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=cc:to:subject:message-id:date:from:in-reply-to:references
+         :mime-version:dkim-signature;
+        bh=+ZN3HSxIvlLXYL73lLhGHpNJ3UXZOwod9wsxV8+JFc8=;
+        fh=oKpsiITZdaCWzzwrG/cwT4FN7EKiM9N1bh4sbz0aHGs=;
+        b=AWqxpwaKufJ8vnn80x2atWq7YWU48p/4+NB/SEBBa4w+DQMSalafh3RMBOorODXfau
+         c3V4BBvRHHSzBepMNsilpiNzuKNrvYiuCAq1wZhX5PC4RZE6N8rblPmklvwhjxmQ97W5
+         5j/6gZ6QKgyfTU2xM8fVYBxSd7Pb6c0kzurU0HbaS2M9rOI5ufqat8oQkeTfzxSaT4po
+         DAgMmibP7ZuCyEC+MzRtLS2rA/Rw7dEo8KQRHfBDQWo5QovhPptflurqf3VCcPpclIue
+         jbI8f5W7JPTEv7lblOscXGETobp4oxn9RknbRY8Kzs96hfZ7wfx2QdL1U2l5JNAjqBx4
+         R6Jg==;
+        darn=deppe.com
+ARC-Authentication-Results: i=1; mx.google.com; arc=none
+DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=gmail.com; s=20251104; t=1775803625; x=1776408425; darn=deppe.com;
+        h=cc:to:subject:message-id:date:from:in-reply-to:references
+         :mime-version:from:to:cc:subject:date:message-id:reply-to;
+        bh=+ZN3HSxIvlLXYL73lLhGHpNJ3UXZOwod9wsxV8+JFc8=;
+        b=L63S5d8UxAydNhJXWh9aOBzPPvgXGqtlRiZJZWwhk14Axm29e1yOgSzfDeU6soiXW/
+         LKjxF9tnbc43Y3UtFeJBlL55q003gMgS/uWA+lTrtsQbq/WSURPzII3Lqoh+8Q7gbBa+
+         8tiuJfntWIKWaaNbatrWyR+1jiKRa62B/X/rsOUexUTrg5JCmq5X50djfzg8+dmD+tmB
+         VUuCeHqAmeO70qUg8n2EU9Hvdlz0Rghuk8m4e+PomDteqkDlvqPBENgVJlE7gq/8b1kD
+         elb78QFtBluKQLj+qoQdU7lfTtIG9O5tz2o9qA7Iwt6MTjDEY9pFhXBtohAHGuqoy27g
+         8sZg==
+X-Google-DKIM-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed;
+        d=1e100.net; s=20251104; t=1775803625; x=1776408425;
+        h=cc:to:subject:message-id:date:from:in-reply-to:references
+         :mime-version:x-gm-gg:x-gm-message-state:from:to:cc:subject:date
+         :message-id:reply-to;
+        bh=+ZN3HSxIvlLXYL73lLhGHpNJ3UXZOwod9wsxV8+JFc8=;
+        b=Z9N2QF933PSTOLt9A+I7Vzb35WIZuDFHEEhHTLMCfPNGqAz1TTzVPnsA2gsW5iKPi2
+         bcjbVCj8kH4jMDmvkUHvNThBFrzIwoTNf6+zetYZHjEnLhyVaw4bhcwuvQNSLjPwc1cQ
+         T3p6//32BDiAahgj25u/321hjIgSG4IRXLIO4eeFMRXRM1o29H2sMinAgNbC22UOJxbF
+         CM36QKaCDX4c/0A8DZLbHwFTXAvMHlZWLwd0+KaHWRxkxy6IXbpDEukWusJGcGbykk07
+         td8nGBufvLyspyLvaosQNeklv97dm3ozFZ86s3rghIHY4BPgqKBMqpRyWEgrYr5PpJRV
+         RMVQ==
+X-Gm-Message-State: AOJu0YycftD+Sfxq50od4btDowFFj5gpcwlUgWiMk4BSKxwLWJFS/2xF
+	XjBut8tDXNeVKhZ1Y2oP8xhZyldJGCb4UNVJr7uZIk5WgQThpPuQaxiOKMqfPtREJoImAeAPb8k
+	Yl0mnDDlGuvrAUmUste+QBXi5uVLrPyvK9g==
+X-Gm-Gg: AeBDietunyGC4jcReYdZxckN4WYuXYQyRrXC3R36+Efxthwg6UFFUSnSMfO0gsz68cf
+	qL4ZBJ/K1cDT90Sjtuv/7/W81ac1Pa58DkLJdCR2WIQF74vfbFseIDaCz7oZo5vixT+6eo5GMGk
+	C5MMkXWx5aiBUQJDais4s57PNS9VBvrii6bjHEuxGQJaMqiEweX9bkWkXp+NaOWnliGPWfGZ4Ay
+	tSDXRXcgQQy2BKs4YfdxdB4aBpda03Ahbrb4O/aPQqSvIC6pM6t147Cs2/Y/WOf4VuYlo92ScXB
+	dFBw8HZwGZi1T+Q6mnA3gRD2C7kVtAmYUorMq5Ce4GONhi40zwx4PVpMRKP3YcTMHp6aVFw6gOK
+	whL2CxQ==
+X-Received: by 2002:aa7:c644:0:b0:670:8b38:623f with SMTP id
+ 4fb4d7f45d1cf-6708b386706mr409189a12.2.1775803624737; Thu, 09 Apr 2026
+ 23:47:04 -0700 (PDT)
+MIME-Version: 1.0
+References: <c1a98987-e7ad-48c2-b8a4-457aa54db3e4@princeton.edu>
+ <db23f9a3-148a-4fc7-94f4-4941bef7e8c1@comcast.net> <45bc8add-b0f8-47d1-9b86-9dc248b01d5a@princeton.edu>
+ <46D4F0CC-BE09-42F0-824E-637FE9E35D8E@rmnjmn.co.uk> <a1284102-9e0e-4b69-b9e8-ccba839e6505@princeton.edu>
+ <f32808f5-4dfd-4e31-80fe-2cf7451649e4@princeton.edu> <392247E5-6D7F-4B8C-9B0C-3C87869A6D11@rmnjmn.co.uk>
+ <57288fe4-5314-4bcd-b630-3679f292be37@princeton.edu> <8bac2c5c-ff6a-4730-bc5d-f07e13bb3f93@princeton.edu>
+ <0660d387-889c-4157-82d0-4d5731da8f84@princeton.edu> <25cf5993-b691-4944-b884-a8c05590de94@comcast.net>
+ <e08db730-5942-4d63-ae2a-a360928f5e5f@princeton.edu> <2d317be7-c0a8-4094-ae65-42d4699204c0@comcast.net>
+ <f35e094a-6c51-4fd7-9cea-31eac13663f5@comcast.net> <17913254-c42b-4468-af8f-e9c953e5969c@comcast.net>
+ <7f48e85c-12f0-4de2-a18f-c0ef722d5001@comcast.net> <b7d3f3ab-3fd2-4f91-bfb2-f5e7472686e0@princeton.edu>
+ <C4961317-838F-4B2F-9915-443C8FBA4FB2@rmnjmn.co.uk> <4e454259-44a7-4da4-ad60-fe7b8256954e@princeton.edu>
+ <0DA2CFD4-CE7A-4541-9F67-AD29F789AC0E@rmnjmn.co.uk> <883BFAF8-A5E3-4556-99E2-F0FFAA9ECEDD@deppe.com>
+In-Reply-To: <883BFAF8-A5E3-4556-99E2-F0FFAA9ECEDD@deppe.com>
+From: Charles Suckling <g3wdg1@gmail.com>
+Date: Fri, 10 Apr 2026 08:46:46 +0200
+X-Gm-Features: AQROBzCShg2JwnCJAZ6eInZs4Pc8TurlkQALo0xyo5tsDOtRDa79mq20apOKfP8
+Message-ID: <CA+30ZEk9t4m6qv1ztsE3F7dViKzOR5aM44xbb2pjMPPEFrgiHw@mail.gmail.com>
+Subject: Re: CI/CD Success!
+To: Terrell Deppe <terrell@deppe.com>
+Cc: John Nelson <jmn@rmnjmn.co.uk>, Joe Taylor <joe@princeton.edu>, 
+	"w3sz@comcast.net" <w3sz@comcast.net>, Brian Moran <brian.moran@gmail.com>, 
+	Steven Franke <s.j.franke@icloud.com>
+Content-Type: multipart/alternative; boundary="0000000000003e52d2064f158087"
+
+--0000000000003e52d2064f158087
+Content-Type: text/plain; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+
+improved is NOT by DL3WDG :-(
+
+On Fri, 10 Apr 2026 at 08:30, Terrell Deppe <terrell@deppe.com> wrote:
+
+> I=E2=80=99ve never really considered myself a DevOps guy, but looking bac=
+k at my
+> approach to CI/CD starting about 20 years ago, I guess I am at some level=
+.
+> My CI/CD sandbox passed all tests. Windows was a pain (as usual), but I
+> think I found a work around for the OmniRig problem. That will need some
+> evaluation by someone who doesn=E2=80=99t yet hate Windows.
+>
+> Attached is a spewing of information gathered over the last week or so.
+> The documents are numbered from course to fine grain, in terms of detail,
+> followed by a document of recommendations. It is a short term treatment f=
+or
+> insomnia if nothing else. #3 is in the weeds. #2 and #4 are probably the
+> most relevant to most of you followed by #5.
+>
+> My secretary, Claudia, wrote all these from my dictation. I talk funny,
+> and she is deaf so pardon any mistakes in the material. I asked her go ov=
+er
+> it more than once, but my sign language is generally limited to one finge=
+r,
+> and I can never seem to remember which one is appropriate in any given
+> situation.
+>
+>
+>
+>
+> --
+>
+> *Terrell Deppe*
+> (What is the difference between peas and boogers? Kids don=E2=80=99t alwa=
+ys eat
+> their peas.)
+>
+>
+
+--0000000000003e52d2064f158087
+Content-Type: text/html; charset="UTF-8"
+Content-Transfer-Encoding: quoted-printable
+
+<div dir=3D"ltr"><div class=3D"gmail_default" style=3D"font-size:large">imp=
+roved is NOT by DL3WDG :-(</div></div><br><div class=3D"gmail_quote gmail_q=
+uote_container"><div dir=3D"ltr" class=3D"gmail_attr">On Fri, 10 Apr 2026 a=
+t 08:30, Terrell Deppe &lt;<a href=3D"mailto:terrell@deppe.com">terrell@dep=
+pe.com</a>&gt; wrote:<br></div><blockquote class=3D"gmail_quote" style=3D"m=
+argin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left=
+:1ex"><div>I=E2=80=99ve never really considered myself a DevOps guy, but lo=
+oking back at my approach to CI/CD starting about 20 years ago, I guess I a=
+m at some level. My CI/CD sandbox passed all tests. Windows was a pain (as =
+usual), but I think I found a work around for the OmniRig problem. That wil=
+l need some evaluation by someone who doesn=E2=80=99t yet hate Windows.<div=
+><br></div><div>Attached is a spewing of information gathered over the last=
+ week or so. The documents are numbered from course to fine grain, in terms=
+ of detail, followed by a document of recommendations. It is a short term t=
+reatment for insomnia if nothing else. #3 is in the weeds. #2 and #4 are pr=
+obably the most relevant to most of you followed by #5.</div><div><br></div=
+><div>My secretary, Claudia, wrote all these from my dictation. I talk funn=
+y, and she is deaf so pardon any mistakes in the material. I asked her go o=
+ver it more than once, but my sign language is generally limited to one fin=
+ger, and I can never seem to remember which one is appropriate in any given=
+ situation.<br><div><br></div><div><br></div><div></div></div></div><div><d=
+iv><div></div></div></div><div><div><div></div></div></div><div><div><div><=
+/div></div></div><div><div><div></div></div></div><div><div><div><br id=3D"=
+m_-488398012117322980lineBreakAtBeginningOfMessage"><div>
+<div style=3D"color:rgb(0,0,0);font-family:Helvetica;font-style:normal;font=
+-variant-ligatures:normal;font-variant-numeric:normal;font-variant-caps:nor=
+mal;font-variant-alternates:normal;font-variant-east-asian:normal;font-weig=
+ht:normal;letter-spacing:normal;line-height:normal;text-align:-webkit-auto;=
+text-indent:0px;text-transform:none;white-space:normal;word-spacing:0px"><b=
+r>--<br><br><b>Terrell Deppe</b></div><div style=3D"color:rgb(0,0,0);font-f=
+amily:Helvetica;font-style:normal;font-variant-ligatures:normal;font-varian=
+t-numeric:normal;font-variant-caps:normal;font-variant-alternates:normal;fo=
+nt-variant-east-asian:normal;font-weight:normal;letter-spacing:normal;line-=
+height:normal;text-align:-webkit-auto;text-indent:0px;text-transform:none;w=
+hite-space:normal;word-spacing:0px">(What is the difference between peas an=
+d boogers? Kids don=E2=80=99t always eat their peas.)</div></div></div></di=
+v><div style=3D"color:rgb(0,0,0);font-family:Helvetica;font-style:normal;fo=
+nt-variant-ligatures:normal;font-variant-numeric:normal;font-variant-caps:n=
+ormal;font-variant-alternates:normal;font-variant-east-asian:normal;font-we=
+ight:normal;letter-spacing:normal;line-height:normal;text-align:-webkit-aut=
+o;text-indent:0px;text-transform:none;white-space:normal;word-spacing:0px">=
+<br></div></div></blockquote></div>
+
+--0000000000003e52d2064f158087--
+
