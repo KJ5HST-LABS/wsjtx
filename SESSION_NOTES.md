@@ -1,11 +1,19 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Issue #12 — `v*-rc*` prerelease flag on `release.yml` + document RC process in contributor docs — COMPLETE
-**Status:** Issue closed. Commit `7aa784dd0` pushed to `origin/develop`.
-**Session:** 14 complete
+**Task:** Tag-on-develop residual in `2_DEVELOPMENT_WORKFLOW.md:350` (Section 6 overview ASCII diagram) — third instance of the #9 bug pattern. File follow-up issue, fix, close.
+**Status:** Session 15 claimed. Work beginning.
+**Session:** 15 in progress
 **Started:** 2026-04-15
 **Persona:** Contributor
+
+---
+
+### What Session 15 Did
+**Deliverable:** Fix the tag-on-develop residual in `2_DEVELOPMENT_WORKFLOW.md:350` (Section 6 overview ASCII diagram). Session 14 flagged this as the #1 follow-up. File a one-line issue for traceability, fix, close. (IN PROGRESS)
+**Started:** 2026-04-15
+**Persona:** Contributor
+**Status:** Session claimed. Work beginning.
 
 ---
 

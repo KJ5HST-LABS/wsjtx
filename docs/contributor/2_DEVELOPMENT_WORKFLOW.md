@@ -347,7 +347,7 @@ Releases are tag-driven. The entire process from tag to published release is aut
 Team decides to release v3.0.1
          │
          v
-  Tag v3.0.1 on develop (wsjtx-internal)
+  Tag v3.0.1 on v3.0.0_test (wsjtx-internal)
          │
          v
   ┌───────────────────────────────────────────────┐
@@ -737,7 +737,7 @@ They now have the v3.0.1 code and can branch from it for future contributions.
 | Start new work | `git checkout develop && git pull && git checkout -b feat-my-feature` |
 | Submit my changes | `git push -u origin feat-my-feature` then `gh pr create --base develop` |
 | Check CI status | Look at the PR's status checks, or `gh run list` |
-| Trigger a release | `git tag v3.0.1 && git push origin v3.0.1` |
+| Trigger a release | On the `v*_test` release branch (not `develop`): `git tag v3.0.1 && git push origin v3.0.1`. See [§6](#6-the-release-process). |
 | See build logs | `gh run view <RUN_ID> --log` |
 | Re-run a failed build | `gh run rerun <RUN_ID>` |
 | Manually trigger CI | `gh workflow run ci.yml --ref develop` |
