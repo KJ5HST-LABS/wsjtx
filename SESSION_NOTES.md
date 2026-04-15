@@ -1,10 +1,18 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Draft reply to WSJT-X team's feedback on CI/CD proposal — COMPLETE
-**Status:** Reply draft written, 9 follow-up issues filed in KJ5HST-LABS/wsjtx-internal. Draft is pending user review + send (not auto-sent).
-**Session:** 11 complete
+**Task:** Issue #11 — Audit and remove unnecessary macOS signing entitlements
+**Status:** IN PROGRESS (Session 12)
+**Session:** 12
 **Started:** 2026-04-15
+
+---
+
+### What Session 12 Did
+**Deliverable:** Issue #11 — audit the three permissive entitlements (`allow-jit`, `allow-unsigned-executable-memory`, `disable-executable-page-protection`) in `entitlements.plist`, produce a signed+notarized test build without them, verify codesign/spctl/launch, update the deployment playbook, and close the issue. (IN PROGRESS)
+**Started:** 2026-04-15
+**Persona:** Contributor
+**Status:** Session claimed. Work beginning.
 
 ---
 
