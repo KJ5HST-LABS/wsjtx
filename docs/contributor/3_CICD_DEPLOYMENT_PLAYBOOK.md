@@ -534,13 +534,7 @@ These files are referenced by the workflows and must exist in the repo.
 
 ### `entitlements.plist` (repo root)
 
-The macOS build uses this to set app entitlements during code signing. It must exist at the repo root. Check if the official repo already has one:
-
-```bash
-ls -la entitlements.plist
-```
-
-If it doesn't exist, copy it from the prototype. The file typically looks like:
+The macOS build passes this file to `codesign --entitlements` when signing binaries under `Contents/MacOS` and CLI tools. It must exist at the repo root — the workflow references it unconditionally. The file should contain an **empty dict**:
 
 ```xml
 <?xml version="1.0" encoding="UTF-8"?>
@@ -548,13 +542,15 @@ If it doesn't exist, copy it from the prototype. The file typically looks like:
   "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <key>com.apple.security.cs.allow-unsigned-executable-memory</key>
-    <true/>
-    <key>com.apple.security.cs.allow-jit</key>
-    <true/>
 </dict>
 </plist>
 ```
+
+WSJT-X does not need any of the permissive hardened-runtime exceptions (`allow-jit`, `allow-unsigned-executable-memory`, `disable-executable-page-protection`). The codebase is plain C++/Fortran with Qt Widgets and FFTW — no JIT, no runtime code generation, no embedded script interpreters, no `PROT_EXEC`/`mprotect`. Earlier revisions of this file inherited those entitlements from an unrelated prototype and were never audited.
+
+**Audit evidence:** Apple's notarization service accepted a signed build using this empty plist in CI run `24476420532` (`Code sign binaries`, `Build installer pkg`, `Notarize pkg`, and `Notarize CLI tools` all succeeded). Notarization fails if hardened-runtime policy is violated, so successful notarization is the authoritative verification. See `KJ5HST-LABS/wsjtx-internal#11`.
+
+If a future feature ever adds true runtime code generation, re-introduce only the minimum required entitlement and document the reason inline.
 
 ### `Darwin/com.wsjtx.sysctl.plist`
 
