@@ -382,14 +382,20 @@ Ensure `develop` is in a releasable state:
 
 #### 2. Tag the release
 
+Tag the release on the appropriate **release branch** (`v*_test`), **not on `develop`**. The `develop` branch is the integration trunk and may contain work in progress — for example, v3.0.1 must be cut from `v3.0.0_test`, because `develop` currently contains JTTY work that should not ship in a v3.0.1 patch release.
+
 ```bash
-git checkout develop
-git pull origin develop
+# Check out the release branch the tag should live on.
+# For v3.0.1, that's the v3.0.0_test branch (patches of the 3.0 line).
+git checkout v3.0.0_test
+git pull origin v3.0.0_test
 git tag v3.0.1
 git push origin v3.0.1
 ```
 
 The `v*` tag pattern triggers `release.yml`.
+
+See [Branch Strategy](#7-branch-strategy) for the `v*_test` release-branch convention.
 
 #### 3. Monitor the release
 
@@ -592,17 +598,18 @@ Here's the complete flow for releasing version 3.0.1.
 
 ### 1. Release decision
 
-The team agrees (via email) that `develop` is ready for a point release. All planned fixes are merged and CI is green.
+The team agrees (via email) that the `v3.0.0_test` release branch is ready for a point release — all backported fixes are in, and CI is green on the branch. (For a patch release like v3.0.1, the base is the existing release branch — **not `develop`**, which may contain later features, e.g., JTTY, that aren't part of this release.)
 
 ### 2. Version preparation
 
 If version strings need updating:
 
 ```bash
-git checkout develop
+git checkout v3.0.0_test
+git pull origin v3.0.0_test
 # Update version in CMakeLists.txt, Versions.cmake, etc.
 git commit -m "chore: bump version to 3.0.1"
-git push
+git push origin v3.0.0_test
 ```
 
 Wait for CI to go green on this commit.
@@ -610,6 +617,7 @@ Wait for CI to go green on this commit.
 ### 3. Tag and push
 
 ```bash
+# Still on v3.0.0_test after the version bump.
 git tag v3.0.1
 git push origin v3.0.1
 ```
