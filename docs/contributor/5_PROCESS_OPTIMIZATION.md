@@ -105,7 +105,7 @@ Release notes are manual. GitHub can auto-generate them from PR titles grouped b
 
 ### Release Candidate Process
 
-The branch naming convention includes `v*_test` for release candidates, but the workflow isn't documented. When to cut an RC branch, testing criteria, how RCs become final releases — worth writing down.
+**Resolved (issue #12).** The RC workflow is now documented in [`2_DEVELOPMENT_WORKFLOW.md` § Release candidates](2_DEVELOPMENT_WORKFLOW.md#release-candidates), and `release.yml` flags any hyphenated tag (`v3.0.1-rc1`, `v3.0.1-beta1`, etc.) as a GitHub pre-release. The `v*_test` naming is the release *branch*; the hyphenated tag on that branch triggers a pre-release run.
 
 ### SourceForge Distribution
 

@@ -424,6 +424,56 @@ gh api repos/WSJTX/wsjtx/tags --jq '.[0].name'
 - Upload artifacts to SourceForge if that's still the primary distribution channel
 - External contributors can now `git pull upstream master` to get the new code
 
+### Release candidates
+
+Before cutting a final release, cut one or more release candidates (RCs) and let the team exercise them. The workflow is identical to a final release, with two exceptions:
+
+1. **The tag uses a SemVer pre-release suffix** — `v3.0.1-rc1`, `v3.0.1-rc2`, etc. (The hyphen is the distinguishing feature.)
+2. **`release.yml` marks the resulting GitHub Release as a pre-release.** Any tag containing a hyphen is passed through with `gh release create --prerelease`, so the RC does not appear as "latest" on the releases page.
+
+#### When to cut an RC
+
+Cut an RC whenever a release contains more than a trivial change — any feature work, non-obvious bug fixes, or changes to the build, signing, or notarization path. A pure doc or CI-config release does not need an RC.
+
+#### Tagging an RC
+
+RCs are tagged on the **same release branch** that the final release will be tagged on — never on `develop`. For a v3.0.1 patch release that, for example, cuts from `v3.0.0_test`:
+
+```bash
+git checkout v3.0.0_test
+git pull origin v3.0.0_test
+git tag v3.0.1-rc1
+git push origin v3.0.1-rc1
+```
+
+This triggers a full pipeline run. Because the tag contains a hyphen, the resulting GitHub Release on wsjtx-internal is flagged `prerelease: true`.
+
+#### Testing an RC
+
+Before promoting an RC to GA, confirm:
+
+- All three platform jobs in the `Release` workflow ran green
+- The macOS `.pkg` installs without Gatekeeper warnings (notarization is live)
+- At least one volunteer on each supported platform (macOS ARM64, Linux x86_64, Windows x86_64) has installed the RC and exercised the workflow they care about
+- No critical issue has been filed against the RC for a reasonable soak period (typically 48 hours after the platform volunteers confirm)
+
+If an RC fails testing, push a fix to the release branch and tag `-rc2`, `-rc3`, etc. Each RC is an independent pipeline run and an independent GitHub Release — the earlier RCs remain in the release history as pre-releases for reference.
+
+#### Promoting an RC to GA
+
+Once an RC has been exercised and is ready to ship, tag the final release on the same release branch:
+
+```bash
+git checkout v3.0.0_test
+git pull origin v3.0.0_test
+git tag v3.0.1
+git push origin v3.0.1
+```
+
+There is no separate "promote the RC" command — the `v3.0.1` tag triggers a new full pipeline run, which re-builds from the same source (the same commit the last RC built from, assuming no changes landed on the release branch after the last RC). The new GitHub Release is created without the pre-release flag, so it becomes the "latest" release. Earlier RCs remain in the release history.
+
+If new changes landed on the release branch between the last RC and the GA tag, consider cutting one more RC first — the GA build should be bit-for-bit the same as an RC that the team has already exercised.
+
 ### What the release produces
 
 | Artifact | Platform | Signed | Notes |

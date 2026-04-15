@@ -1,9 +1,16 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Issues #9 + #10 — fix tag-on-develop instruction + name Apple Developer account owner in contributor docs — COMPLETE
-**Status:** Both issues closed. Commits `147fc2be2` (#9) and `10add4086` (#10) pushed to `origin/develop`.
-**Session:** 13 complete
+**Task:** Issue #12 — add `v*-rc*` prerelease handling to `release.yml` + document RC process in contributor docs (IN PROGRESS)
+**Status:** Session claimed. Work beginning.
+**Session:** 14
+**Started:** 2026-04-15
+**Persona:** Contributor
+
+---
+
+### What Session 14 Did
+**Deliverable:** Close issue #12 — RC prerelease flag on `release.yml` + RC process documentation. IN PROGRESS.
 **Started:** 2026-04-15
 **Persona:** Contributor
 
