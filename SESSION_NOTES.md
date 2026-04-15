@@ -1,9 +1,16 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Issue #17 — tag-on-develop residuals in `2_DEVELOPMENT_WORKFLOW.md` — COMPLETE
-**Status:** Issue closed. Commit `523bad4be` pushed to `origin/develop`.
-**Session:** 15 complete
+**Task:** Issue #13 — add source tarball as release artifact in `release.yml`
+**Status:** Session 16 claimed. Work beginning.
+**Session:** 16 IN PROGRESS
+**Started:** 2026-04-15
+**Persona:** Contributor
+
+---
+
+### What Session 16 Did
+**Deliverable:** Close issue #13 — add `git archive` step to `release.yml` so `wsjtx-<version>-src.tar.gz` is uploaded as a release asset alongside the binaries. IN PROGRESS.
 **Started:** 2026-04-15
 **Persona:** Contributor
 

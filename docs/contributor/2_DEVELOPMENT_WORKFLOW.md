@@ -482,6 +482,7 @@ If new changes landed on the release branch between the last RC and the GA tag, 
 | `wsjtx-3.0.1-linux-x86_64/` | Linux x86_64 | No | GPG signing can be added |
 | `wsjtx-3.0.1-windows-x86_64/` | Windows x86_64 | Yes | Authenticode-signed executables |
 | Individual binary `.tar.gz` archives | macOS ARM64 | Yes | Signed and notarized |
+| `wsjtx-3.0.1-src.tar.gz` | Source | N/A | `git archive` of the tagged commit; top-level repo only (no submodules) |
 
 ### Who can trigger a release?
 

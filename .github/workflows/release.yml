@@ -44,6 +44,23 @@ jobs:
         with:
           path: artifacts
 
+      - name: Build source tarball
+        run: |
+          # Strip leading "v" from the tag for the version string.
+          # RC suffixes (e.g. v3.0.1-rc1 → 3.0.1-rc1) are preserved so
+          # pre-release source archives are distinguishable from GA.
+          VERSION="${GITHUB_REF_NAME#v}"
+          # This repo has no git submodules, so git archive's default
+          # single-tree output captures the full source. If submodules
+          # are ever added, this step must be revisited — git archive
+          # does not recurse into submodules on its own.
+          git archive \
+            --format=tar.gz \
+            --prefix="wsjtx-${VERSION}/" \
+            -o "artifacts/wsjtx-${VERSION}-src.tar.gz" \
+            "${GITHUB_REF_NAME}"
+          ls -lh "artifacts/wsjtx-${VERSION}-src.tar.gz"
+
       - name: List artifacts
         run: find artifacts -type f | sort
 
