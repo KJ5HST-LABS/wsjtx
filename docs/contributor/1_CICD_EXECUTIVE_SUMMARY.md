@@ -46,6 +46,8 @@ The Deployment Playbook covers how to export the existing certificates as CI sec
 
 **Ten repository secrets** — Apple signing certificates (4), Apple notarization credentials (3), Windows Authenticode certificate and password (2), and a GitHub token for public repo sync (1). The team's existing signing credentials are used directly — they just need to be exported as base64-encoded secrets. Set once via `gh secret set`.
 
+The Apple Developer account is currently held by **John G4KLA**, who produces the team's existing signed/notarized macOS releases. Adopting this pipeline does not require transferring the account — John exports his existing Developer ID certificates as `.p12` files and they become CI secrets. See the [Deployment Playbook](3_CICD_DEPLOYMENT_PLAYBOOK.md#secrets-2-5-macos-code-signing-certificates) for the handoff workflow.
+
 **One prerequisite** — GitHub Actions must be enabled at the WSJTX org level (an admin setting).
 
 No changes to the build system are required. One optional CMake change (`OMNIRIG_TYPE_LIB` variable) makes the Windows CI cleaner and is backward-compatible with local builds.

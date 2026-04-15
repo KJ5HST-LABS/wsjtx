@@ -1,10 +1,21 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Issue #11 — Audit and remove unnecessary macOS signing entitlements — COMPLETE
-**Status:** Closed. All three permissive entitlements removed; signed+notarized build verified via CI run `24476420532`; playbook updated; issue closed.
-**Session:** 12 complete
+**Task:** Issues #9 + #10 — fix tag-on-develop instruction + name Apple Developer account owner in contributor docs
+**Status:** Session 13 claimed. Work beginning.
+**Session:** 13
 **Started:** 2026-04-15
+**Persona:** Contributor
+
+---
+
+### What Session 13 Did
+**Deliverable:** Fix two small contributor-doc issues in one session (per Session 12's pairing recommendation):
+- **#9** — Rewrite `2_DEVELOPMENT_WORKFLOW.md:383-392` tag-on-develop instruction; tag must live on a `v*_test` release branch, not `develop` (which may contain WIP like JTTY). Cross-reference the branch-type table at line 445.
+- **#10** — Name John G4KLA as the current Apple Developer account owner in `3_CICD_DEPLOYMENT_PLAYBOOK.md` Phase 3 Secrets section; describe the handoff workflow (John exports his existing Developer ID certs → base64 → GitHub secrets; no account transfer). Cross-reference in `1_CICD_EXECUTIVE_SUMMARY.md`.
+**Started:** 2026-04-15
+**Persona:** Contributor
+**Status:** IN PROGRESS
 
 ---
 

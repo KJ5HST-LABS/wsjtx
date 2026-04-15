@@ -310,13 +310,26 @@ gh secret set CROSS_REPO_TOKEN --repo WSJTX/wsjtx-internal
 
 These four secrets allow the macOS build to sign and package the app with a Developer ID certificate, which is required for macOS Gatekeeper to accept the binary.
 
+#### Who holds the Apple Developer account?
+
+The WSJT-X team's Apple Developer account is currently held by **John G4KLA**. He has produced the team's existing signed, notarized macOS releases using the Developer ID certificates in his own Keychain.
+
+**No transfer of the underlying Apple account is required** to adopt this CI/CD pipeline. The handoff is certificate-level, not account-level:
+
+1. John exports his existing **Developer ID Application** and **Developer ID Installer** certificates from Keychain Access as `.p12` files (see next subsection).
+2. John (or a team member John shares the `.p12` files with) base64-encodes them and loads them as GitHub secrets via `gh secret set`.
+3. The pipeline uses those secrets on each build to sign and notarize as "Developer ID: [John's team]".
+4. John retains sole ownership of the Apple Developer account. Notarization runs under his Apple ID + app-specific password (see `APPLE_ID` / `APPLE_APP_SPECIFIC_PASSWORD` below).
+
+If John ever steps down or the account owner changes, only the four Apple-related secrets need to be re-set — no workflow-file changes.
+
 #### Preparing the .p12 files
 
 You need two certificates from the Apple Developer portal:
 - **Developer ID Application** — signs the app binary and dylibs
 - **Developer ID Installer** — signs the `.pkg` installer
 
-If you already have `.p12` files exported from Keychain Access, skip to the base64 step.
+If you already have `.p12` files exported from Keychain Access (John's existing certificates, for example), skip to the base64 step.
 
 **To export from Keychain Access (on a Mac):**
 
@@ -374,7 +387,7 @@ Notarization sends the signed binary to Apple's servers for malware scanning. Wi
 
 #### `APPLE_ID`
 
-The email address of the Apple Developer account:
+The email address of the Apple Developer account — **John G4KLA's** Apple ID, since he holds the team's Developer account (see [Who holds the Apple Developer account?](#who-holds-the-apple-developer-account) above).
 
 ```bash
 gh secret set APPLE_ID --repo WSJTX/wsjtx-internal
