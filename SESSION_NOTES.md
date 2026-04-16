@@ -1,11 +1,89 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Verify #8 complete + close it.
+**Task:** Write plan document for #16 (ctest + pfUnit integration).
 **Status:** COMPLETE
-**Session:** 29 complete
+**Session:** 30 complete
 **Started:** 2026-04-16
 **Persona:** Contributor
+
+---
+
+### What Session 30 Did
+**Deliverable:** Plan document at `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md` for #16, with evidence-based inventory of existing test infrastructure and per-phase completion criteria. COMPLETE.
+**Started:** 2026-04-16
+**Persona:** Contributor
+
+**Session 29 Handoff Evaluation (by Session 30):**
+- **Score: 9/10.** Session 29's handoff was accurate, concise, and correctly labeled #16 as a planning-session candidate rather than implementation.
+- **What helped:** (1) "What's next" explicitly flagged #16 as "medium-large, needs a planning session" — this pre-empted Failure Mode #19 (plan-mode bypass) and made the deliverable (plan document, not code) obvious from the start. (2) Gotcha about `gh` defaulting to upstream `WSJTX/wsjtx` saved an immediate re-run — I hit it on orientation (`gh issue list` returned 2 upstream issues instead of 8 internal) but corrected within one command. (3) Branch-state warning (`develop` 3 commits ahead) was accurate.
+- **What was missing:** No reference to where existing test infrastructure lives in the tree. Inventory was from scratch. Not really a gap — planning sessions require fresh inventory, and Session 29 wasn't expected to have that data.
+- **What was wrong:** Nothing. All claims verified.
+- **ROI:** High. The planning-workstream signposting alone was worth the read — that's the failure mode that has historically cost the most time.
+
+**What happened:**
+1. Oriented from project directory. Read SAFEGUARDS.md (full), SESSION_RUNNER.md (full), SESSION_NOTES.md (top ~200 lines — file is 279KB, full read blocked). `git status` clean on `develop`, 3 commits ahead of origin. No ghost sessions — HEAD `adc094842` matches Session 29 close-out. Dashboard: 86/100 health, medium risk, active.
+2. User selected #16. Confirmed persona: Contributor. Confirmed session scope: **plan document only, not implementation**.
+3. Wrote Session 30 claim stub to SESSION_NOTES.md.
+4. Read `ARCHITECTURE_WORKSTREAM.md` and exemplar plan `INTEL_MACOS_BUILD_PLAN.md` for structure.
+5. Evidence-based inventory:
+   - `grep "enable_testing\|add_test"` across entire repo → one hit at `tests/CMakeLists.txt:23`. **`enable_testing()` appears zero times** — critical gap.
+   - `grep "pfunit\|pFUnit\|PFUNIT"` → zero hits outside this plan. Greenfield.
+   - Found 13+ Fortran `test_*.f90` / `*_test.f90` sources across `lib/` — standalone utilities, not registered.
+   - Found 30+ `.wav` samples across 10 modes in `samples/` (manifest at `samples/CMakeLists.txt:1-37`). Purpose is web upload, not testing; reusable as fixtures.
+   - Steve Franke's decoder test script: not in sandbox. Only references are in the email thread.
+   - Current "Verify binary" steps in build workflows are file-format / architecture checks only (no ctest, no decoder execution).
+6. Wrote `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md` — 7 phases across ~7 sessions, with per-phase DONE criteria, verification commands, session boundaries, risks, and 5 open questions for the team.
+
+**Proof:**
+- Plan committed at `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md`.
+- Grep-based inventory traceable: every "what exists" claim in the plan has a file:line reference.
+- Phase structure: 1 (ctest foothold) → 2 (decoder smoke) + 4a (pfUnit mac/linux) in parallel → 3 (Steve's script), 4b (pfUnit Windows), 5 (Fortran pfUnit tests) → 6 (result surfacing).
+
+**What's next (Session 31 priorities):**
+1. **Push `develop` to origin.** Now 4 commits ahead: Session 28's 2 + Session 29's 1 + Session 30's 1. Ask user first — this publishes Session 28/29/30 work to the team.
+2. **Implement Phase 1 of CTEST_PFUNIT_INTEGRATION_PLAN.md** — one-session scope: add `enable_testing()` to root `CMakeLists.txt` (around line 1260), add a "Run tests" step after Build in all three `build-*.yml` workflows, verify the existing `test_qt_helpers` runs and passes on all four CI platforms. Total ~13 lines changed across 4 files. Cheap, high-leverage foothold.
+3. **Block Phase 3** (Steve Franke's script integration) until the script is acquired. Open question for the team: who is emailing Steve, or is it already staged somewhere?
+4. **#3 (v3.0.0 GA rebuild)** — still pending.
+
+**Hygiene items (unchanged — do not act on mid-issue):**
+- `ci.yml:14,21,28` version `"3.0.0"` drift — ask user.
+- `actions/checkout@v4` → `v5` deprecation — hard deadline 2026-09-16.
+- `/releases/latest` gating for `hamlib-upstream-check.yml`.
+- `release.yml:13` stale "three platform artifacts cannot disagree" comment.
+- Residual "three platform" strings in `MIGRATION_PLAN.md:275` and `drafts/email_cicd_proposal.md:5,11`.
+- `macos-15-intel` sunset: Fall 2027.
+- Email thread report-back — TWENTY sessions pending.
+- Untracked files (`.p12`, `.DS_Store`, `OUTREACH.md`, `.claude/`, `jt9_wisdom.dat`, `timer.out`) — TWENTY sessions.
+
+**Key files (for next session):**
+- **Plan doc:** `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md` — Phase 1 section has exact files and line numbers.
+- **Phase 1 targets (4 files):**
+  - `CMakeLists.txt` — add `enable_testing()` before line 1261 (before the `add_subdirectory(tests)` block at 1261-1263).
+  - `.github/workflows/build-linux.yml` — add "Run tests" step after line 68 (current "Build" step).
+  - `.github/workflows/build-macos.yml` — add "Run tests" step after line 87 ("Build"), before line 89 ("Verify architecture").
+  - `.github/workflows/build-windows.yml` — add "Run tests" step after line 119 ("Build").
+
+**Gotchas for next session:**
+- **`gh` defaults to upstream `WSJTX/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. **TWENTIETH session running.** Hit it myself this session during orientation.
+- **Commit-trailer auto-close fires on MERGE (or push to default branch), not on commit.** **EIGHTEENTH session running.**
+- **`develop` is 4 commits ahead of `origin/develop`** after this close-out. Not pushed.
+- **SESSION_NOTES.md is 279KB** — too large for a single Read. Use `limit=200` to read the top, then targeted reads for older sessions if needed.
+- **Windows MSYS2 `ctest`** — the Phase 1 plan assumes ctest is available in the MSYS2 environment. Verify with `which ctest` in a warm-up step before relying on it — plan notes this but confirm first.
+- **Phase 1 deliberately does NOT add new tests.** Resist scope creep to "while I'm at it, let's register `test_q65` too" — those Fortran utilities are NOT CI-ready (bespoke exit codes, likely human-readable stdout). Phase 5 writes NEW pfUnit tests; does not adopt legacy executables.
+
+**Self-assessment:**
+- (+) **Wrote claim stub before technical work.** Ninth consecutive session.
+- (+) **Oriented from project directory on first try.** Memory from prior sessions paid off.
+- (+) **Correctly recognized planning-workstream signal.** #16's "larger workstream — probably multiple sessions" framing matched Failure Mode #19. Confirmed scope with user before writing code.
+- (+) **Grep-based evidence throughout.** Every "what exists" claim in the plan has a file:line reference. Found the critical gap (no `enable_testing()`) via actual grep, not assumption.
+- (+) **Per-phase completion criteria + verification commands + session boundaries.** Each phase explicitly sized for one session.
+- (+) **Named what's NOT in scope.** "Scope Boundary" section lists explicit exclusions (GUI testing, hardware, porting legacy test_*.f90 utilities) to prevent scope creep in future sessions.
+- (+) **Five open questions surfaced for team decision** rather than assumed. Especially: Steve Franke's script acquisition (not in tree), Windows pfUnit fallback, CI minute budget, failure policy, pfUnit version pinning.
+- (+) **Persona-correct throughout.** Twentieth session running. No mention of rad-con, consumer, or AI tooling.
+- (-) **Plan is longer than the exemplar.** INTEL_MACOS_BUILD_PLAN was ~275 lines; this one is ~280+. Size is roughly matched to scope (7 phases vs. 3), so acceptable — but any reviewer expecting a short plan will see density.
+- (-) **Did not run a dry build to confirm `enable_testing()` placement wouldn't break configure.** The plan's Phase 1 verification commands cover this, but a local sanity test would have been stronger. Weighed against "plan is the deliverable, not code" I chose to defer; flagging as Phase 1's first step.
+- **Score: 9/10** — Evidence-based, phased correctly, honest about unknowns. Deducted for unverified `enable_testing()` placement (phases's concern, not planning's, but still).
 
 ---
 
