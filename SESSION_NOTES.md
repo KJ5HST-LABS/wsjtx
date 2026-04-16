@@ -1,11 +1,84 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Merge PR #20 (Hamlib 4.7.1 bump) after CI green. Verify #19 auto-close.
-**Status:** COMPLETE. PR #20 merged (`a331a523`). Issue #19 auto-closed (COMPLETED).
-**Session:** 21 complete
-**Started:** 2026-04-15
+**Task:** Issue #15 — Docs polish: gh glossary notes + audience labels on contributor docs.
+**Status:** COMPLETE. Committed `091037d55`. Push to origin needed to trigger #15 auto-close.
+**Session:** 22 complete
+**Started:** 2026-04-16
 **Persona:** Contributor
+
+---
+
+### What Session 22 Did
+**Deliverable:** Issue #15 — add `gh` (GitHub CLI) glossary notes on first use and explicit `**Audience:**` labels (public-facing vs. team-internal) to contributor docs. COMPLETE.
+**Started:** 2026-04-16
+**Persona:** Contributor
+
+**Session 21 Handoff Evaluation (by Session 22):**
+- **Score: 9/10.** Session 21's priority list had #15 as "small doc polish. No CI dependencies. Good quick win." — exactly right. The task was self-contained, completed in one pass. The issue itself was well-written with exact file refs.
+- **What helped:** (1) The priority ordering — #15 first as a quick win — made task selection instant. (2) The `--repo KJ5HST-LABS/wsjtx-internal` reminder (eleventh session) applied on `gh issue view 15`. (3) Commit-trailer auto-close discipline (ninth session) informed the `Closes KJ5HST-LABS/wsjtx-internal#15` trailer. (4) Gotcha about working from `develop` (not the merged `bump-hamlib-4.7.1` branch) was correct.
+- **What was missing:** The handoff didn't summarize what #15 actually requires — had to read the issue fresh. Minor, because the issue was self-contained and well-structured.
+- **What was wrong:** Nothing. All claims were accurate.
+- **ROI:** High. Orientation ~5 minutes, task ~15 minutes.
+
+**What happened:**
+1. Oriented: read SAFEGUARDS (full), SESSION_RUNNER (full), SESSION_NOTES.md Session 21 in full. Dashboard refreshed. `git status` clean on `develop`. `git log --oneline -10` shows HEAD `0ec0a558e` matching Session 21's close-out — no ghost session. `gh issue list --repo KJ5HST-LABS/wsjtx-internal` returned 10 open issues.
+2. User confirmed Contributor persona, said "go." Read issue #15 via `gh issue view`.
+3. Wrote Session 22 claim stub to SESSION_NOTES.md (Phase 1B).
+4. Read all five referenced docs in full. Grepped each for `\bgh\b` to find exact first-use line numbers. Confirmed doc 4 doesn't exist (future CONTRIBUTING.md). Confirmed doc 5 has zero `gh` CLI usage.
+5. Edits applied (4 files, +10/−4 lines):
+   - **Doc 1** (`1_CICD_EXECUTIVE_SUMMARY.md`): Added `**Audience:** Team-internal.` after title. Added `gh` glossary parenthetical at first use (line 47, `gh secret set`).
+   - **Doc 2** (`2_DEVELOPMENT_WORKFLOW.md`): Enhanced audience line with "Public-facing." prefix. Added `gh` glossary line before first code block (line 170, `gh pr create`).
+   - **Doc 3** (`3_CICD_DEPLOYMENT_PLAYBOOK.md`): Enhanced audience line with "Team-internal." prefix and expanded scope description. Added `gh` glossary link in Tools list (line 52).
+   - **Doc 5** (`5_PROCESS_OPTIMIZATION.md`): Added `**Audience:** Team-internal.` after title. No `gh` glossary needed (no `gh` usage in doc).
+6. Reviewed `git diff` — all changes minimal and correct. No scope creep.
+7. Committed as `091037d55` with `Closes KJ5HST-LABS/wsjtx-internal#15` trailer.
+8. **Not pushed.** Commit is local on `develop`. Push needed to trigger #15 auto-close.
+
+**Proof:**
+- Commit: `091037d55` — `docs: add gh glossary and audience labels to contributor docs` — 4 files, +10/−4.
+- Issue #15: Will auto-close when commit reaches the default branch on origin.
+
+**What's next (Session 23 priorities):**
+1. **Push `develop` to origin.** `git push origin develop` — delivers `091037d55` and auto-closes #15. Verify via `gh issue view 15 --repo KJ5HST-LABS/wsjtx-internal --json state,stateReason`.
+2. **#8 (Intel macOS x86_64 build job)** — Plan Mode recommended (FM #19 risk). The new job must include `needs: prepare` and `version: ${{ needs.prepare.outputs.version }}` in `release.yml` (reference: `release.yml:14-20`). In `ci.yml`, the new Intel job needs `hamlib_branch: "4.7.1"` (current on develop).
+3. **#16 (ctest + pfUnit integration)** — medium-large.
+4. **#3 (Rebuild for WSJT-X v3.0.0 GA)** — milestone tracker, may need status review.
+
+**Hygiene items (unchanged — do not act on mid-issue):**
+- `ci.yml:14,21,28` version `"3.0.0"` drift — separate concern, ask user.
+- `actions/checkout@v4` → `v5` deprecation — hard deadline 2026-09-16.
+- `/releases/latest` gating for `hamlib-upstream-check.yml` — design question.
+- Email thread report-back — TWELVE sessions pending.
+- Untracked files (`.p12`, `.DS_Store`, `OUTREACH.md`, etc.) — TWELVE sessions.
+
+**Key files (for next session):**
+- `docs/contributor/1_CICD_EXECUTIVE_SUMMARY.md:3` — new audience line.
+- `docs/contributor/2_DEVELOPMENT_WORKFLOW.md:5,170` — enhanced audience + gh glossary.
+- `docs/contributor/3_CICD_DEPLOYMENT_PLAYBOOK.md:5,52` — enhanced audience + gh glossary.
+- `docs/contributor/5_PROCESS_OPTIMIZATION.md:3` — new audience line.
+- `.github/workflows/release.yml:14-20` — `prepare` job (for #8).
+- `.github/workflows/ci.yml:15,22,29` — `hamlib_branch: "4.7.1"` (for #8).
+
+**Gotchas for next session:**
+- **Commit `091037d55` is NOT pushed.** Must `git push origin develop` before #15 will auto-close. Do this first.
+- **`gh` defaults to upstream `WSJTX/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. **TWELFTH session running.**
+- **Commit-trailer auto-close fires on MERGE (or push to default branch), not on commit.** **TENTH session running.**
+- **Doc 4 doesn't exist yet.** Issue #15 references it as future CONTRIBUTING.md. No action needed for #15.
+- **Email draft (`docs/contributor/drafts/email_cicd_reply.md`) not modified.** It uses `gh` in prose (line 16) but is a draft email, not a formal doc — glossary notes don't apply.
+
+**Self-assessment:**
+- (+) **Wrote claim stub (Phase 1B) before technical work.** Session 21 noted skipping this as a gap — corrected.
+- (+) **Read all five target docs in full before editing.** Evidence-based: grepped for `\bgh\b` to find exact first-use line numbers rather than assuming from memory.
+- (+) **Minimal, focused edits.** Four files, +10/−4 lines. No scope creep. Did not touch email draft (judgment call — it's not a formal doc).
+- (+) **Persona-correct throughout.** Twelfth session running. No mention of rad-con, consumer, or AI tooling.
+- (+) **`gh --repo KJ5HST-LABS/wsjtx-internal` on every call.** Twelfth session running.
+- (-) **Did not push.** The commit is local. #15 won't auto-close until pushed. Deliberate: pushing affects shared state, so deferred to user confirmation. But this means the deliverable is "locally complete, not deployed."
+- **Score: 9/10** (−0.5 for not pushing; −0.5 for not explicitly noting the email draft judgment call to the user during execution).
+
+**Learnings:**
+1. **Doc 5 has zero `gh` CLI usage.** Grep-before-edit prevents unnecessary changes. The issue listed it as a target, but only the audience label was needed, not the glossary.
+2. **Doc 3 already had an audience line.** The issue said "docs 1, 3, and 5 don't say who they're for" — but doc 3 did have one at line 5. The gap was the team-internal/public-facing distinction, not the presence of the line. Reading the actual files before editing caught this nuance vs. trusting the issue description literally.
 
 ---
 
