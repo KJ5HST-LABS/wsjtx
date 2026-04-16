@@ -67,6 +67,33 @@ These phrases signal a mode switch is happening. The correct response is: **comm
 
 ---
 
+## Artifact Integrity
+
+### Read Before Edit
+
+**Re-read any file immediately before modifying it.** Do not edit from memory of a prior read. Memory degrades across long sessions — especially after context compaction. If you haven't read the target section in the last 5 minutes, read it now. This applies to code, documents, configuration files, and any other artifact.
+
+### Preserve User Edits
+
+The user may modify files outside your session — in another editor, between sessions, or through manual intervention. **Never overwrite user-modified content without confirmation.** Check `git blame` or system-reminders to determine if a file has been modified by the user. When in doubt, ask before regenerating.
+
+### Verify the Build Equivalent
+
+Every project has a "build equivalent" — the command that confirms the deliverable is not broken:
+
+| Project Type | Build Equivalent | Verification |
+|---|---|---|
+| Software | `make`, `npm run build`, `cargo build` | Compilation succeeds |
+| Documentation (Quarto, LaTeX) | `quarto render`, `pdflatex` | Document renders without errors |
+| Data pipeline | Pipeline execution | Output data are produced correctly |
+| Configuration | Linting, schema validation | Config passes validation |
+
+**Identify your project's build equivalent during setup and run it after every substantive change.** A deliverable that doesn't pass its build equivalent is broken, regardless of how correct it looks in the source.
+
+For documentation projects, rendering also verifies cross-references, citations, and figure generation — failures in any of these indicate broken content that must be fixed before committing.
+
+---
+
 ## Session Recovery Protocol
 
 **After any session crash, model upgrade, or fresh start, follow this checklist IN ORDER before taking any action:**
@@ -74,7 +101,7 @@ These phrases signal a mode switch is happening. The correct response is: **comm
 ### Step 1: Orient (Read Only — Change Nothing)
 ```
 1. Read SESSION_NOTES.md          — What was the last session doing?
-2. Check GitHub Issues (`gh issue list`) — What are the current priorities? (Fall back to BACKLOG.md if no repo)
+2. Check GitHub Issues (`gh issue list`) — What are the current priorities? (Fall back to BACKLOG.md if no repo. BACKLOG.md should contain only open work items — for history see `CHANGELOG.md`, for feature inventory see `ROADMAP.md`.)
 3. Read SAFEGUARDS.md             — Refresh the rules (this file)
 4. git status                     — What's committed? What's not?
 5. git log --oneline -10          — What were the recent commits?

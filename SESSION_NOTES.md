@@ -1,11 +1,78 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Implement Phase 1 of INTEL_MACOS_BUILD_PLAN.md (#8) — parameterize `build-macos.yml`.
-**Status:** COMPLETE. All three CI platforms green (run 24513850007).
-**Session:** 25 complete
+**Task:** Adopt latest methodology starter-kit into SESSION_RUNNER.md and SAFEGUARDS.md.
+**Status:** COMPLETE
+**Session:** 26 complete
 **Started:** 2026-04-16
 **Persona:** Contributor
+
+---
+
+### What Session 26 Did
+**Deliverable:** Sync SESSION_RUNNER.md and SAFEGUARDS.md with latest methodology starter-kit, preserving project-local customizations. COMPLETE.
+**Started:** 2026-04-16
+**Persona:** Contributor
+
+**Session 25 Handoff Evaluation (by Session 26):**
+- **Score: 8/10.** Session 25's handoff was thorough for its primary deliverable (Phase 1 parameterization) with excellent key files, gotchas, and next steps for Phase 2.
+- **What helped:** The priority list was clear and actionable. Key files with line numbers were accurate. Gotchas were well-documented.
+- **What was missing:** This session's deliverable (methodology sync) wasn't anticipated by Session 25, so no handoff context existed for it — but that's expected since it was user-directed, not backlog-driven.
+- **What was wrong:** Nothing. All claims verified.
+- **ROI:** High for Phase 2 continuation (not used this session). The handoff was well-structured for its intended successor.
+
+**What happened:**
+1. Oriented: read SAFEGUARDS.md (full), SESSION_NOTES.md Session 25 section (full), SESSION_RUNNER.md (full). `git status` clean on `develop`. No ghost sessions — HEAD `19e164f86` matches Session 25's close-out commit. Dashboard refreshed. `gh issue list --repo KJ5HST-LABS/wsjtx-internal` returned 9 open issues.
+2. User corrected orientation — was running from portfolio level instead of project-level `SESSION_RUNNER.md`. Re-read SESSION_RUNNER.md and completed Phase 0 properly.
+3. User directed: "Adopt the latest version of the methodology." Persona: Contributor.
+4. Wrote Session 26 claim stub to SESSION_NOTES.md.
+5. Diffed all 3 starter-kit files against project copies:
+   - `SESSION_RUNNER.md`: starter-kit adds FM 20-23 + degradation detection rows + step 3 wording tweak.
+   - `SAFEGUARDS.md`: starter-kit adds "Artifact Integrity" section + step 2 wording tweak.
+   - `SESSION_NOTES.md`: no sync needed (session history, not methodology).
+6. Stated scope: "SAFEGUARDS.md and SESSION_RUNNER.md. Nothing else."
+7. Applied 5 edits:
+   - `SAFEGUARDS.md`: added "Artifact Integrity" section (Read Before Edit, Preserve User Edits, Verify the Build Equivalent). Updated Session Recovery Protocol step 2 wording.
+   - `SESSION_RUNNER.md`: updated step 3 wording (BACKLOG.md/CHANGELOG.md/ROADMAP.md note). Added failure modes 20-23 (edit from memory, greenfield assumption, overwrite user edits, question-as-instruction). Added 4 degradation detection rows.
+8. Verified: diff against starter-kit shows SAFEGUARDS.md identical (zero diff). SESSION_RUNNER.md diff shows only project-local customizations (persona steps, `docs/contributor/` paths, "9 steps" reference).
+
+**Proof:**
+- `diff starter-kit/SAFEGUARDS.md SAFEGUARDS.md` — empty (identical).
+- `diff starter-kit/SESSION_RUNNER.md SESSION_RUNNER.md` — only persona steps 8-9, `docs/contributor/` or `docs/consumer/` paths (4 occurrences), and "9 steps" reference remain.
+
+**What's next (Session 27 priorities):**
+1. **Implement Phase 2 of INTEL_MACOS_BUILD_PLAN.md** (#8) — Add `macos-intel:` job to `ci.yml` and `release.yml` calling `build-macos.yml` with `arch: "x86_64"`, `runner: "macos-13"`, `deployment_target: "10.13"`. Update `release.yml` `needs:` list. Push, verify Intel CI build. See plan doc Phase 2 section for exact changes.
+2. **#16 (ctest + pfUnit integration)** — medium-large, separate planning session.
+3. **#3 (v3.0.0 GA rebuild)** — pending.
+
+**Hygiene items (unchanged — do not act on mid-issue):**
+- `ci.yml:14,21,28` version `"3.0.0"` drift — separate concern, ask user.
+- `actions/checkout@v4` → `v5` deprecation — hard deadline 2026-09-16. CI annotations now warn about Node.js 20.
+- `/releases/latest` gating for `hamlib-upstream-check.yml` — design question.
+- Email thread report-back — SIXTEEN sessions pending.
+- Untracked files (`.p12`, `.DS_Store`, `OUTREACH.md`, etc.) — SIXTEEN sessions.
+
+**Key files (for next session):**
+- `docs/contributor/INTEL_MACOS_BUILD_PLAN.md` — Phase 2 section has exact changes.
+- `.github/workflows/ci.yml` — add `macos-intel:` job block (~15 lines).
+- `.github/workflows/release.yml` — add `macos-intel:` job block + update `needs:` on line 52.
+- `.github/workflows/build-macos.yml` — now parameterized, no changes needed for Phase 2.
+
+**Gotchas for next session:**
+- **`gh` defaults to upstream `WSJTX/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. **SIXTEENTH session running.**
+- **Commit-trailer auto-close fires on MERGE (or push to default branch), not on commit.** **FOURTEENTH session running.**
+- **Phase 2 may fail on first Intel CI run.** Common failure points: Qt5 availability on `macos-13`, gfortran version differences, dylib bundling path issues. The arm64 build must remain green throughout.
+- **`macos-13` billing multiplier.** Verify whether Intel runners use the same 10x multiplier as `macos-15`.
+- **Methodology is now synced with starter-kit.** New failure modes 20-23 and "Artifact Integrity" section in SAFEGUARDS.md are active. Future sessions should be aware of these.
+
+**Self-assessment:**
+- (+) **Wrote claim stub before technical work.** Fifth consecutive session.
+- (+) **Stated scope explicitly.** "SAFEGUARDS.md and SESSION_RUNNER.md. Nothing else." Matched exactly.
+- (+) **Verified deliverable.** Diffed both files against starter-kit to confirm correctness.
+- (+) **Preserved project-local customizations.** Persona steps, docs paths all intact.
+- (+) **Persona-correct throughout.** Sixteenth session running. No mention of rad-con, consumer, or AI tooling.
+- (-) **Orientation needed correction.** Started from portfolio-level CLAUDE.md instead of project-level SESSION_RUNNER.md. User had to redirect. Cost: one extra exchange.
+- **Score: 8/10** — Clean execution of a straightforward sync task. Deducted for the orientation misstep that required user correction.
 
 ---
 

@@ -12,7 +12,7 @@ Every session has exactly ONE deliverable. When it's done, you close out. You do
 
 1. Read `SAFEGUARDS.md` — **in full, not skimmed. Every section.**
 2. Read `SESSION_NOTES.md` — focus on the ACTIVE TASK section at the top
-3. Check GitHub Issues (`gh issue list`) — understand current milestone and priorities. If the project has no GitHub repo, fall back to `BACKLOG.md`.
+3. Check GitHub Issues (`gh issue list`) if the project has a repo — understand current priorities. Fall back to `BACKLOG.md` if no repo exists. (BACKLOG.md should contain only open work items — for history see `CHANGELOG.md`, for feature inventory see `ROADMAP.md`.)
 4. Run: `git status`, `git log --oneline -5`, `git diff --stat`
 5. Run: `python3 methodology_dashboard.py` — refresh the project health dashboard. Leave `dashboard.html` open in a browser; it auto-refreshes every 60 seconds.
 6. **Check for ghost sessions:** Compare the session number in SESSION_NOTES.md against `git log`. If there are commits between the last documented session and now that don't correspond to any session notes, report: "Detected [N] undocumented session(s) between Session [X] and now. Commits: [list]. No session notes exist for this work."
@@ -240,6 +240,10 @@ These are documented tendencies. The agent must actively guard against them.
 | 17 | **Protocol erosion** | Each session shaves off "just one" protocol step. Individually minor. Over 5-10 sessions, the whole protocol collapses. Scores drift from 9/10 to 1/10. | The protocol is not optional, advisory, or improvable-by-subtraction during a session. Every step exists because a previous session failed without it. If you think a step is unnecessary, that's the erosion happening. Do the step. |
 | 18 | **Planning-to-implementation bleed** | A session produces a plan, then immediately begins implementing it. Or the next session bundles multiple phases because "the plan is done, implementation is easy." | A planning session's deliverable IS the plan. Close out after the plan. The next session implements ONE phase. If a plan has N phases, expect N+1 sessions minimum (1 planning + N implementation). If a session's commit history shows both "docs: plan" and "feat: implement," it bundled. |
 | 19 | **Plan-mode bypass** | Plan-mode output arrives in the prompt with "implement." Session treats it as an implementation task and starts coding, skipping the planning workstream entirely. The plan hasn't been evidence-verified. | Plan-mode output is a DRAFT. The first session writes it to `docs/contributor/` or `docs/consumer/` with evidence-based inventory. Implementation is a separate session. If the prompt contains a multi-phase plan and says "implement," the deliverable is the plan document, not code. |
+| 20 | **Edit from memory** | Modify a file based on memory of what it contains rather than re-reading it. Memory degrades over long sessions; edits silently corrupt content. | Re-read the target section immediately before editing. If you haven't read the file in the last 5 minutes, read it now. This applies to code AND documents. |
+| 21 | **Greenfield assumption** | Write as if the project has no existing capabilities, infrastructure, or history. Destroys credibility with stakeholders who know what they already have. | Assume existing capabilities unless told otherwise. Read the project's baseline/current-state documentation during Orient. Frame work as extending, standardizing, or automating what exists — not building from scratch. |
+| 22 | **Overwrite user edits** | Regenerate or modify content the user edited outside the agent's control (between sessions, in another editor, or manually). Destroys the user's work. | Check git blame or system-reminders before modifying any artifact that might have been user-edited. When in doubt, ask. Never regenerate generated artifacts (figures, tables, templates) without confirming the user hasn't customized them. |
+| 23 | **Question-as-instruction** | User asks a question or makes an observation; agent treats it as an instruction to modify files. | Present options and wait for direction. A question is not a go-ahead. "How could we improve X?" means discuss, not implement. |
 
 ---
 
@@ -258,6 +262,10 @@ These are documented tendencies. The agent must actively guard against them.
 | "This step doesn't apply to my session" | Failure mode #17 (protocol erosion) is active | The step applies. Do it. Every step exists because a session failed without it. |
 | Plan commit + implementation commit in same session | Failure mode #18 (planning-to-implementation bleed) is active | The plan was the deliverable. Close out. Implementation is a separate session. |
 | Session starts coding from plan-mode output | Failure mode #19 (plan-mode bypass) is active | The plan is a draft. Write it to `docs/contributor/` or `docs/consumer/` with evidence-based inventory first. |
+| File edited without re-reading it first | Failure mode #20 (edit from memory) is active | Re-read the file now. Do not edit from memory. |
+| Document describes a blank-slate starting point when existing infrastructure exists | Failure mode #21 (greenfield assumption) is active | Re-read the project's baseline documentation. Rewrite to acknowledge what exists. |
+| User says "I edited X" and the agent regenerates X | Failure mode #22 (overwrite user edits) is active | Check git blame. Preserve user modifications. |
+| User asks a question and the agent starts modifying files | Failure mode #23 (question-as-instruction) is active | Stop modifying. Present options. Wait for explicit direction. |
 
 **If you detect 2+ warning signs: STOP.** Re-read this document from the top. Do not continue until you've re-internalized the protocol. The cost of pausing to re-read is 2 minutes. The cost of a ghost session or failed delivery is the user's trust.
 
