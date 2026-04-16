@@ -286,6 +286,15 @@ cmake -S . -B wsjtx-build -DCMAKE_PREFIX_PATH=...:/usr/local/pFUnit/PFUNIT-4.x
 **Risks:**
 - Build time: pfUnit from source adds ~3-5 min per first-time CI run. Cache aggressively (key on pfUnit release tag + compiler version).
 - Fortran compiler match: pfUnit must be built with the same gfortran used by WSJT-X. gfortran version drift between pfUnit and WSJT-X will cause link errors.
+- **CMake 4.x policy vs. pFUnit transitive submodules:** `gFTL-shared` uses `cmake_minimum_required` below 3.5. Pass `-DCMAKE_POLICY_VERSION_MINIMUM=3.5` to the pFUnit configure. (Same workaround WSJT-X itself uses.)
+- **OpenMP find_dependency at consumer time:** pFUnit bakes `SKIP_OPENMP` into its installed `PFUNITConfig.cmake`. If pFUnit is built with OpenMP enabled, consumers calling `find_package(PFUNIT)` will trigger `find_dependency(OpenMP)` — which fails on macOS AppleClang (no OpenMP ships). Build pFUnit with `-DSKIP_OPENMP=YES` unless you specifically need OpenMP-aware Fortran tests.
+
+**Phase 4a implementation (landed):**
+- Commits: `c281e8e20` (initial), `bdcd0cdca` (CMAKE_POLICY_VERSION_MINIMUM=3.5), `b31e97154` (SKIP_OPENMP=YES)
+- pFUnit v4.9.0 pinned, `--recursive` clone required (submodules: fArgParse, gFTL-shared, gFTL)
+- Installs to `${INSTALL_PREFIX}/PFUNIT-4.9/cmake/PFUNITConfig.cmake` — path is version-dependent; located via `find ... -name PFUNITConfig.cmake` for resilience
+- `WSJT_BUILD_TESTS` option (default OFF) added in root `CMakeLists.txt:158`, guards the `find_package(PFUNIT REQUIRED)` call near `enable_testing()` (line 1262-1265)
+- CI run `24535967403` — all four platforms green, `find_package` succeeded on macos/macos-intel/linux, `100% tests passed, 0 tests failed out of 3` (Phase 2 tests preserved)
 
 ---
 
@@ -317,6 +326,7 @@ git clone ... pFUnit && cmake -B build -G "MSYS Makefiles" && cmake --build buil
 
 **Risks:**
 - Unknown-unknowns in MSYS2 Fortran + pfUnit combo. Timebox: if blocked after one session of debugging, take the documented-gap path.
+- **Carry Phase 4a's flags:** `-DCMAKE_POLICY_VERSION_MINIMUM=3.5` and `-DSKIP_OPENMP=YES` are almost certainly needed on MSYS2 too (same CMake 4.x, same consumer-find OpenMP behavior). Start with Phase 4a's exact flag set plus `-DSKIP_MPI=YES`.
 
 ---
 

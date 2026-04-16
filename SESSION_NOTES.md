@@ -1,11 +1,100 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Phase 2 of CTEST_PFUNIT_INTEGRATION_PLAN.md (#16) — decoder smoke tests for jt9 (FT8) and wsprd (WSPR), green on all four CI platforms.
+**Task:** Phase 4a of CTEST_PFUNIT_INTEGRATION_PLAN.md (#16) — install pfUnit on macOS + Linux CI runners. `find_package(PFUNIT)` succeeds on three runners; no Fortran tests registered yet.
 **Status:** COMPLETE
-**Session:** 32 complete
+**Session:** 33 complete
 **Started:** 2026-04-16
 **Persona:** Contributor
+
+---
+
+### What Session 33 Did
+**Deliverable:** Phase 4a of `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md` — pFUnit v4.9.0 builds from source on macOS ARM64, macOS Intel, and Linux CI runners; cached; `find_package(PFUNIT REQUIRED)` succeeds on all three; existing 3 ctests still pass on all four platforms. Guarded by new `WSJT_BUILD_TESTS` option (default OFF). No Fortran tests registered yet — infrastructure only. COMPLETE.
+**Started:** 2026-04-16
+**Persona:** Contributor
+
+**Session 32 Handoff Evaluation (by Session 33):**
+- **Score: 8/10.** Handoff was precise on routing (file paths, insertion points, precedent patterns) but didn't anticipate the two pFUnit-build gotchas that cost two CI iterations.
+- **What helped:** (1) "Phase 4a touch points" listed `build-macos.yml` insertion-after-Qt5-setup and `build-linux.yml` strategy — exactly right; both insertion points matched reality. (2) "Precedent pattern from Phase 2" (Phase 2's `tests/decoders/` layout) wasn't directly used but reinforced the discipline to verify plan's file-list claims at implementation time, which I did for the CMakeLists.txt option placement. (3) "Superbuild local divergence" warning kept me from wasting time running local pFUnit verification against the stale superbuild. (4) "SESSION_NOTES.md ~305KB, use limit=200" was spot-on. (5) Portfolio-orientation hook + memory: I ran `python3 /Users/terrell/Documents/code/methodology_dashboard.py` initially (the portfolio one); user caught it. Updated the memory to point to the project-local script specifically. Hook blocks `cd` but absolute-path invocations were slipping through.
+- **What was missing:** Neither Session 32's handoff nor the plan doc itself warned about (a) pFUnit's transitive submodule `gFTL-shared` using `cmake_minimum_required` below 3.5 (same CMake 4.x issue WSJT-X itself works around), and (b) pFUnit's `PFUNITConfig.cmake` calling `find_dependency(OpenMP)` at consumer-find time, which fails on macOS AppleClang. Both issues surfaced only in CI logs; each triggered one cancel-and-fix cycle. The plan's Phase 4a "Risks" section listed gfortran drift and build time, but not these two.
+- **What was wrong:** Nothing materially wrong. Gaps, not errors.
+- **ROI:** High for routing, low-medium for risk anticipation. Two CI iterations ate ~10 minutes of runner time and maybe 15 minutes of diagnosis; avoidable with complete risk inventory in the plan.
+
+**What happened:**
+1. Oriented from project directory. Read SAFEGUARDS.md + SESSION_RUNNER.md + SESSION_NOTES.md top 200 lines. `git status` clean on `develop`, 1 commit ahead of origin (Session 32 close-out not yet pushed). **Repeated the portfolio-dashboard mistake despite the hook** — invoked `/Users/terrell/Documents/code/methodology_dashboard.py` by absolute path; user rejected. Found the project-local `methodology_dashboard.py` exists at `/Users/terrell/Documents/code/wsjtx-arm/methodology_dashboard.py` and the memory was wrong. **Rewrote `feedback_orient_from_project.md`** to require the project-local script specifically (previous memory incorrectly recommended the portfolio one).
+2. Ran project-local dashboard: 86/100 health, medium risk. Read `gh issue list --repo KJ5HST-LABS/wsjtx-internal` — 8 open. No ghost sessions; HEAD matched Session 32's close-out.
+3. User: "Contributor" → "4a". Confirmed persona + scope (Phase 4a only).
+4. Wrote Session 33 claim stub to SESSION_NOTES.md.
+5. Read `CTEST_PFUNIT_INTEGRATION_PLAN.md:260-289` for Phase 4a scope. Read both workflow files at target insertion points. Grep'd for existing `WSJT_BUILD_TESTS` option (doesn't exist; needed creation) and existing `FindPFUNIT.cmake` modules (none; confirmed pFUnit 4.x ships its own `PFUNITConfig.cmake`).
+6. **Pre-implementation research:** `git ls-remote --tags` against pFUnit repo — latest stable is **v4.9.0** (not v4.12.0 as I initially assumed from memory). Cloned pFUnit to `/tmp` and inspected its `CMakeLists.txt` + `PFUNITConfig.cmake.in` to confirm install layout (`${prefix}/PFUNIT-4.9/`) and submodule requirements (`fArgParse`, `gFTL`, `gFTL-shared` — `--recursive` clone required).
+7. **Implementation (commit `c281e8e20`):**
+   - `CMakeLists.txt:158` — added `option (WSJT_BUILD_TESTS "Build Fortran unit tests (requires pFUnit)." OFF)` alongside existing `WSJT_*` options.
+   - `CMakeLists.txt:1262-1265` — added guarded `find_package(PFUNIT REQUIRED)` + `message(STATUS "PFUNIT found: ${PFUNIT_DIR}")` after `enable_testing()`.
+   - `build-macos.yml` — three new steps after Qt5 fix: `Cache pFUnit`, `Build pFUnit` (guarded on cache miss), `Locate pFUnit config` (dynamic `find ... -name PFUNITConfig.cmake` to set `PFUNIT_DIR` output — robust against version drift). Configure step gets `-DWSJT_BUILD_TESTS=ON -DPFUNIT_DIR="${{ steps.pfunit.outputs.dir }}"`.
+   - `build-linux.yml` — same three steps after Install dependencies, same Configure additions.
+   - Windows workflow untouched (Phase 4b scope).
+8. **CI iteration 1 (run `24534601407`, commit `c281e8e20`):** macOS ARM64 failed at step 8 "Build pFUnit" — `CMake Error at extern/fArgParse/extern/gFTL-shared/CMakeLists.txt:1 (cmake_minimum_required): Compatibility with CMake < 3.5 has been removed from CMake`. Fetched the job log via `gh api .../jobs/<id>/logs` (run still in progress, but per-job logs available). Diagnosis: pFUnit's transitive submodule `gFTL-shared` uses `cmake_minimum_required` below 3.5 — same class of issue WSJT-X itself works around with `-DCMAKE_POLICY_VERSION_MINIMUM=3.5`. Cancelled run (both macOS failing, linux about to hit same).
+9. **CI iteration 2 (run `24535571730`, commit `bdcd0cdca` — "ci: set CMAKE_POLICY_VERSION_MINIMUM=3.5 for pFUnit build"):** macOS ARM64 failed at step 12 "Configure" — now pFUnit built and installed OK (`PFUNITConfig.cmake` located at `pfunit-prefix/PFUNIT-4.9/cmake/`), but WSJT-X's `find_package(PFUNIT REQUIRED)` failed: `Could NOT find OpenMP_C (missing: OpenMP_C_FLAGS OpenMP_C_LIB_NAMES)`. Call stack: `PFUNITConfig.cmake:74 find_dependency(OpenMP)` → `FindOpenMP.cmake` → failure. Root cause: pFUnit was built with OpenMP enabled (per its CMake log `-- OpenMP enabled`), so its config calls `find_dependency(OpenMP)` at consumer-find time; macOS AppleClang doesn't ship OpenMP. Verified in pFUnit's `PFUNITConfig.cmake.in`: `if (NOT PFUNIT_SKIP_OPENMP) find_dependency(OpenMP) endif()` — so passing `-DSKIP_OPENMP=YES` at pFUnit build time bakes the skip into the installed config. Cancelled run.
+10. **CI iteration 3 (run `24535967403`, commit `b31e97154` — "ci: build pFUnit with SKIP_OPENMP=YES"):** All four jobs success. Verified in logs: `-- PFUNIT found: /…/pfunit-prefix/PFUNIT-4.9/cmake` on all three pFUnit-building jobs (macos/macos-intel/linux). `ctest --output-on-failure` reports `100% tests passed, 0 tests failed out of 3` on all four platforms (Phase 2 tests preserved).
+11. Updated `CTEST_PFUNIT_INTEGRATION_PLAN.md`: (a) appended the two gotchas (CMAKE_POLICY + OpenMP-find_dependency) to Phase 4a's Risks, (b) added "Phase 4a implementation (landed)" section summarizing the three commits + pFUnit version + install path, (c) added a risk note in Phase 4b: "Carry Phase 4a's flags — Windows MSYS2 will almost certainly need the same SKIP_OPENMP + CMAKE_POLICY_VERSION_MINIMUM."
+
+**Proof:**
+- CI run `24535967403` — all four jobs conclusion=success. `macos / build`: pFUnit found at `pfunit-prefix/PFUNIT-4.9/cmake`, 3/3 tests passed. `macos-intel / build`: same. `linux / build`: pFUnit found at `pfunit-prefix/PFUNIT-4.9/cmake`, 3/3 tests passed. `windows / build`: no pFUnit (Phase 4b), 3/3 tests passed.
+- Commits: `c281e8e20` (Phase 4a implementation), `bdcd0cdca` (CMAKE_POLICY fix), `b31e97154` (SKIP_OPENMP fix). All pushed to `develop`.
+
+**What's next (Session 34 priorities):**
+1. **Phase 4b — pFUnit on Windows MSYS2.** Plan lines 292-319. Start from Phase 4a's workflow pattern + flags (`-DSKIP_MPI=YES -DSKIP_OPENMP=YES -DCMAKE_POLICY_VERSION_MINIMUM=3.5`). pfunit-cache pattern, pfunit-build step, locate step. Timebox: one session. If blocked, take the documented-gap path per plan (skip Fortran tests on Windows, continue-on-error). Edit `build-windows.yml` only.
+2. **Phase 3 (Steve Franke's script)** — still blocked on script acquisition. Before starting, ask user if Steve's script is in hand.
+3. **Phase 5 (register pfUnit tests with `add_pfunit_ctest`)** — now unblocked by Phase 4a, but should wait for Phase 4b resolution to know whether tests run on Windows or not. Plan lines 323-357.
+4. **#3 v3.0.1 rebuild** — pending. Issue title still says v3.0.0.
+
+**Hygiene items (unchanged — do not act on mid-issue):**
+- `ci.yml:14,21,28` version `"3.0.0"` drift, compounded by v3.0.1 drop imminent.
+- `actions/checkout@v4` → `v5` deprecation — hard deadline 2026-09-16. Re-surfaced in this session's CI runs as well.
+- `/releases/latest` gating for `hamlib-upstream-check.yml`.
+- `release.yml:13` stale "three platform artifacts cannot disagree" comment.
+- Residual "three platform" strings in `MIGRATION_PLAN.md:275` and `drafts/email_cicd_proposal.md:5,11`.
+- `macos-15-intel` sunset: Fall 2027.
+- Email thread report-back — TWENTY-THREE sessions pending.
+- Untracked files (`.p12`, `.DS_Store`, `OUTREACH.md`, `.claude/`, `jt9_wisdom.dat`, `timer.out`) — TWENTY-THREE sessions.
+
+**Key files (for next session):**
+- **Plan doc:** `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md` — Phase 4b at lines 292-321 (line numbers shifted after this session's insertions in Phase 4a section).
+- **Phase 4a precedent (this session):**
+  - `build-macos.yml:54-86` — Cache pFUnit, Build pFUnit, Locate pFUnit config steps. Cache key: `pfunit-macos-<arch>-v4.9.0-<workflow-hash>`.
+  - `build-linux.yml:34-65` — same pattern.
+  - `CMakeLists.txt:158` — `WSJT_BUILD_TESTS` option.
+  - `CMakeLists.txt:1262-1265` — guarded `find_package(PFUNIT REQUIRED)`.
+- **For Phase 4b, copy-and-adapt from `build-macos.yml`** — Windows needs MSYS2 shell, `-G "MSYS Makefiles"` or Ninja, `$(nproc)` or equivalent. pFUnit v4.9.0 pinned.
+
+**Gotchas for next session:**
+- **pFUnit build requires two CMake flags beyond the plan's original list:** `-DCMAKE_POLICY_VERSION_MINIMUM=3.5` (for `gFTL-shared`'s old `cmake_minimum_required`) and `-DSKIP_OPENMP=YES` (to avoid consumer-time `find_dependency(OpenMP)`). Both now documented in the plan's Phase 4b Risks.
+- **`PFUNITConfig.cmake` install path is version-dependent** — `${prefix}/PFUNIT-<MAJOR>.<MINOR>/cmake/`. Locate dynamically via `find ... -name PFUNITConfig.cmake | head -1` and pass `-DPFUNIT_DIR="$(dirname "$CONFIG")"` to the consumer CMake. This is resilient against version bumps.
+- **pFUnit requires `--recursive` clone** — submodules: `fArgParse`, `gFTL-shared`, `gFTL` (nested).
+- **Cancel-and-fix is cheaper than wait-and-fix.** Both failed runs were cancelled after first failure surfaced; new run went green on third attempt in ~6.5 min. Saving runner minutes is low-value, but clearer causal chain is high-value (know what the fix addresses before the next push).
+- **Per-job logs available via `gh api .../actions/jobs/<id>/logs` even while overall run is `in_progress`.** `gh run view --log-failed` waits for run completion; the API endpoint doesn't. Use it when diagnosing a failure mid-run.
+- **Memory `feedback_orient_from_project.md` was wrong.** Previous revision told me to run `python3 /Users/terrell/Documents/code/methodology_dashboard.py` (portfolio script) from project dir. Correct invocation is the project-local copy: `python3 /Users/terrell/Documents/code/wsjtx-arm/methodology_dashboard.py`. Rewritten this session. The PreToolUse hook (Session 32) blocks `cd` to portfolio, but absolute-path invocations of the portfolio script slipped through — memory now explicitly forbids them.
+- **`gh` defaults to upstream `WSJTX/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. Didn't hit it this session (internalized).
+- **Commit-trailer auto-close fires on MERGE**, not commit or push-to-develop. #16 won't close automatically; Phase 6 author closes it manually.
+- **SESSION_NOTES.md is ~320KB.** Use `limit=200` for top; targeted offsets for older sessions.
+- **`develop` is now up to date with `origin/develop`** after this close-out commit (pending). Current session pushed `c281e8e20`, `bdcd0cdca`, `b31e97154` live.
+- **Session 32's close-out commit (`5d6bf1cb6`) was unpushed at session start** — pushed along with this session's first implementation commit.
+
+**Self-assessment:**
+- (+) **Wrote claim stub before technical work.** Twelfth consecutive session.
+- (+) **Caught and fixed a wrong memory.** `feedback_orient_from_project.md` was directing me to the portfolio dashboard script; found the project-local copy exists; rewrote the memory to name the project-local path explicitly. Prior remediation (the PreToolUse hook from Session 32) was necessary but not sufficient — it blocked `cd` but not absolute-path invocations. Layered fix now in place.
+- (+) **Evidence-based pre-implementation research.** Before editing, ran `git ls-remote --tags` to get actual latest pFUnit version (v4.9.0, not my memory's v4.12.0). Cloned pFUnit to /tmp to inspect its CMakeLists install layout (`${prefix}/PFUNIT-${MAJOR}.${MINOR}/`). Confirmed submodule structure (`--recursive` required). Saved multiple rounds of guessing.
+- (+) **Chose dynamic locate over hardcoded path.** `find ... -name PFUNITConfig.cmake` + `dirname` is resilient against pFUnit version bumps. Worked first try, same pattern works across platforms.
+- (+) **Semantic reuse of WSJT-X's workaround.** When pFUnit's gFTL-shared hit the CMake 4.x policy issue, recognized immediately that it was the same class of problem WSJT-X itself works around with `-DCMAKE_POLICY_VERSION_MINIMUM=3.5`. Applied the same flag to pFUnit's build without rediscovering.
+- (+) **Root-caused each CI failure before the next push.** No debugging spirals. Each iteration was one-line fix after log diagnosis.
+- (+) **Cancel-and-fix on first failure.** Both failed runs were cancelled as soon as the root cause was confirmed; new push went in within ~5 min. Saved runner minutes, kept feedback loop tight.
+- (+) **Updated the plan document with findings.** Phase 4b's Risks section now warns about both gotchas so the next session doesn't rediscover them. Phase 4a's Risks expanded with the same two entries. Compounding mechanism — Session 34 benefits directly.
+- (+) **Persona-correct throughout.** TWENTY-THIRD session running. No rad-con, consumer, or AI references in docs, code, or commit messages.
+- (-) **Repeated portfolio-orientation mistake on orientation.** Fifth session this has happened in various forms. The hook blocked `cd`, but I invoked the portfolio script by absolute path. Memory was wrong (named the portfolio path as the "correct" answer). Rewriting the memory is structural; this is now two layers of remediation (hook + correct memory). Half-deduction because the rewrite should prevent recurrence.
+- (-) **Plan's Risks section didn't surface the two pFUnit gotchas.** Two CI iterations could have been one if the plan had mentioned `CMAKE_POLICY_VERSION_MINIMUM` (WSJT-X's own workaround) and `SKIP_OPENMP` (widely known pFUnit-on-macOS issue). Session 30 (plan author) didn't have this context; Session 32 (Phase 2) wasn't expected to. Me updating the plan during this session closes the gap for Session 34.
+- (-) **Initial pFUnit version assumption was wrong.** Memory said v4.12.0; actual latest is v4.9.0. `git ls-remote --tags` corrected me before any work lost. Cost: zero.
+- **Score: 8/10.** Deliverable complete, all four platforms green, plan document updated with findings, memory corrected. Two deductions: repeated orientation mistake (now structurally addressed), plan-Risks gap (now closed for Phase 4b). Three CI iterations is above Session 32's one-shot but below Session 27's three-push cycle; each iteration had a clear single-line fix, so the cost was runner minutes + ~5 min of diagnosis per round.
 
 ---
 
