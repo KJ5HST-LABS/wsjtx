@@ -1,11 +1,104 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Phase 1 of CTEST_PFUNIT_INTEGRATION_PLAN.md (#16) — add `enable_testing()` and wire ctest into all four CI workflows.
+**Task:** Phase 2 of CTEST_PFUNIT_INTEGRATION_PLAN.md (#16) — decoder smoke tests for jt9 (FT8) and wsprd (WSPR), green on all four CI platforms.
 **Status:** COMPLETE
-**Session:** 31 complete
+**Session:** 32 complete
 **Started:** 2026-04-16
 **Persona:** Contributor
+
+---
+
+### What Session 32 Did
+**Deliverable:** Phase 2 of `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md` — `decoder_ft8_smoke` and `decoder_wspr_smoke` registered via ctest. Each drives its CLI decoder on an in-tree `.wav` and asserts a stable callsign appears in decoded output. All four CI platforms report `3/3 tests passed` (test_qt_helpers + 2 new smoke tests). COMPLETE.
+**Started:** 2026-04-16
+**Persona:** Contributor
+
+**Session 31 Handoff Evaluation (by Session 32):**
+- **Score: 8/10.** Handoff was precise on priorities, gave concrete next-steps for Phase 2 OR Phase 4a, and pre-emptively flagged the first-run-calibration step. The structural portfolio-orientation mistake finally got addressed this session (via hook), not a Session 31 gap.
+- **What helped:** (1) "Precondition: first-run calibration — run each decoder manually against its sample locally to capture a stable expected-output string (callsigns/grids only, not timestamps)" was exactly right — I ran jt9/wsprd manually before writing assertions, picked `K1JT` and `ND6P` as cross-platform-stable tokens, no iteration needed on CI. (2) "Phase 2 OR Phase 4a — independent per the plan's dependency graph" gave clean scope-selection confidence. (3) Gotchas about `gh` upstream default, `QT_QPA_PLATFORM`, and superbuild nuances were forwarded accurately. (4) Self-critique on repeated portfolio-orientation mistake ("structural fix needed — either stronger memory phrasing, a hook, or an alias") named the remediation path that this session took.
+- **What was missing:** The plan doc (Session 30) listed `tests/CMakeLists.txt` as the edit target for Phase 2 — but the existing `add_subdirectory(tests)` at root `CMakeLists.txt:1263` runs BEFORE `jt9` (line 1592) and `wsprd` (line 1432) are defined, so `if (TARGET jt9)` would always be false there. Session 31 forwarded the plan's file list without catching this. I caught it at implementation time (via grep on add_executable + re-read of CMakeLists). This is a PLAN bug inherited through the handoff; not Session 31's error per se, but a verification the handoff could have added.
+- **What was wrong:** Nothing materially wrong; the "Phase 2 targets" were pointing at the plan doc which had the file-list bug.
+- **ROI:** High. First-run-calibration preconditions saved at least one CI iteration. The "two options for next session" framing let me choose Phase 2 immediately.
+
+**What happened:**
+1. Oriented from project directory — BUT ran `cd /Users/terrell/Documents/code && python3 methodology_dashboard.py` first, as the memory warned against. User caught it: "You are doing it again". **Fourth session this has happened.** This time I installed a **PreToolUse hook** in `.claude/settings.local.json` that denies any Bash command matching `cd[[:space:]]+/Users/terrell/Documents/code/?([[:space:]]|&|;|$)` (i.e., `cd` to exactly the portfolio dir; subpaths like `.../code/wsjtx-arm` pass through). Pipe-tested 7 cases (3 should-block, 4 should-allow) before writing — all correct. `jq -e` validated the schema. Hook is now live in the harness — the guard moves from memory-based to enforcement-based.
+2. User: "Contributor. do phase 2". Persona confirmed.
+3. Wrote Session 32 claim stub to SESSION_NOTES.md.
+4. Read `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md` — Phase 2 section (lines 179-220). Scope: one ctest per decoder (jt9 FT8, wsprd WSPR) driving in-tree `.wav` samples, asserting a stable token appears in stdout.
+5. **First-run calibration:** ran `./jt9 -8 samples/FT8/210703_133430.wav` → 15 FT8 decodes, `K1JT` appears twice (K1JT HA0DU KN07, K1JT EA3AGB -15). Ran `./wsprd samples/WSPR/150426_0918.wav` → 9 WSPR decodes, `ND6P DM04 30` is the first. Picked `K1JT` and `ND6P` as stable single-token assertions (callsigns only — SNR/timing/freq columns are excluded).
+6. **Caught plan bug:** grepped `add_executable.*jt9` → line 1592. `add_subdirectory.*tests` → line 1263. Plan said "modify tests/CMakeLists.txt" but `TARGET jt9` would be false there. Flagged to user before implementing.
+7. **Fix:** Put Phase 2 tests in a NEW `tests/decoders/` subdirectory, added via a NEW `add_subdirectory (tests/decoders)` call near the end of root `CMakeLists.txt` (line 2021-2024, just before `include (CPack)`). Existing `tests/CMakeLists.txt` untouched — it still registers only `test_qt_helpers`.
+8. **Three new files:**
+   - `tests/decoders/run_decoder_test.cmake` — generic `cmake -P` driver. Takes `DECODER`, `SAMPLE`, `EXPECTED`, optional `MODE_FLAG`. Runs the decoder, captures stdout, uses `string(FIND)` to assert EXPECTED appears. `message(FATAL_ERROR)` with full stdout/stderr on miss.
+   - `tests/decoders/CMakeLists.txt` — two `add_test` registrations using `$<TARGET_FILE:jt9>` / `$<TARGET_FILE:wsprd>` generator expressions (so paths resolve at generation time, including `.exe` suffix on Windows). Each gated on `if (TARGET <decoder> AND EXISTS <sample>)` plus `WORKING_DIRECTORY ${CMAKE_BINARY_DIR}` (so wisdom/hashtable don't pollute source tree).
+   - `CMakeLists.txt` — single 4-line block: conditional `add_subdirectory (tests/decoders)` near the end.
+9. **Local verification (partial):** ran the driver directly with real binaries. Positive test (EXPECTED=K1JT): exit 0. Negative test (EXPECTED=NOTAREALSTRINGXYZ): exit 1 with full diagnostic stdout in the error. WSPR positive: exit 0. Could NOT run `ctest` end-to-end locally because the existing local build tree is from the `wsjtx-3.0.0-rc1/` superbuild (ExternalProject_Add pulls wsjtx source from bitbucket — stale, last synced Sep 2025), not from root. CI builds from root (`.github/workflows/build-macos.yml:77-91` confirms `cmake -S . -B wsjtx-build` then `ctest --output-on-failure`), so CI is the canonical verification.
+10. Committed `6e6349d3d` (`test: add decoder smoke tests for jt9 (FT8) and wsprd (WSPR) (#16)`). User approved push.
+11. **CI run 24532100878: 4/4 green on first push.** All four platforms report `100% tests passed, 0 tests failed out of 3`. Timings:
+    - macos ARM64: test_qt_helpers 0.86s, decoder_ft8_smoke 1.79s, decoder_wspr_smoke 2.62s
+    - macos-intel: 0.43s, 3.69s, 2.74s
+    - linux: 0.04s, 1.92s, 2.31s
+    - windows: 0.46s, 2.34s, 2.32s
+    No Qt display issue (new tests don't link Qt). No shell-quoting issue on Windows (cmake `-P` path is portable). No cross-platform decoder-output divergence for the chosen tokens.
+
+**Proof:**
+- CI run `24532100878` — conclusion=success on all four jobs.
+- Implementation commit: `6e6349d3d` (3 files, +76 lines).
+- `gh run view 24532100878 --repo KJ5HST-LABS/wsjtx-internal --log | grep "Test #"` shows 3 passing tests on each of 4 platforms = 12 Passed lines, 0 Failed.
+
+**What's next (Session 33 priorities):**
+1. **Phase 4a of CTEST_PFUNIT_INTEGRATION_PLAN.md** — install pfUnit on macOS + Linux runners. Plan lines 260-289. Independent of Phase 2 per dependency graph. Scope: `find_package(PFUNIT)` succeeds on three runners, no Fortran tests registered yet. Adds ~3-5 min per first-time CI run; cache key on pfUnit release tag + compiler version.
+2. **Phase 3 (Steve Franke's script)** — still blocked on script acquisition. Plan lines 224-257. Before starting: ask user if Steve's script is in hand or if someone needs to email him. Do NOT start Phase 3 without the script.
+3. **#3 v3.0.1 rebuild** — still pending. Session 31 noted v3.0.0 → v3.0.1 drift; the issue title still says v3.0.0 GA. May need retitling or close+reopen with v3.0.1 scope.
+4. **Open Questions from plan** (section "Open Questions for the Team") — worth raising on the email thread before Phases 3/4b land: Franke-script acquisition, failure-policy on develop, Windows pfUnit fallback, CI-minute budget, pfUnit version pin.
+
+**Hygiene items (unchanged — do not act on mid-issue):**
+- `ci.yml:14,21,28` version `"3.0.0"` drift, now compounded by v3.0.1 drop imminent.
+- `actions/checkout@v4` → `v5` deprecation — **re-surfaced again** in CI run 24532100878. Hard deadline 2026-09-16.
+- `/releases/latest` gating for `hamlib-upstream-check.yml`.
+- `release.yml:13` stale "three platform artifacts cannot disagree" comment.
+- Residual "three platform" strings in `MIGRATION_PLAN.md:275` and `drafts/email_cicd_proposal.md:5,11`.
+- `macos-15-intel` sunset: Fall 2027.
+- Email thread report-back — TWENTY-TWO sessions pending.
+- Untracked files (`.p12`, `.DS_Store`, `OUTREACH.md`, `.claude/`, `jt9_wisdom.dat`, `timer.out`) — TWENTY-TWO sessions.
+
+**Key files (for next session):**
+- **Plan doc:** `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md` — Phase 4a at lines 260-289. Scope: `find_package(PFUNIT)` succeeds; no Fortran tests yet.
+- **Phase 4a touch points:**
+  - `.github/workflows/build-macos.yml` — add "Install pfUnit" step after Qt5 setup (~line 54), before Configure. Either Homebrew tap or `git clone Goddard-Fortran-Ecosystem/pFUnit && cmake --build && cmake --install`.
+  - `.github/workflows/build-linux.yml` — same strategy. No apt package; build from source.
+  - `CMake/Modules/FindPFUNIT.cmake` — vendor minimal one if pfUnit doesn't ship a module.
+  - `CMakeLists.txt` — optional `find_package(PFUNIT)` guarded by `WSJT_BUILD_TESTS` option.
+- **Precedent pattern from Phase 2 (this session):**
+  - Driver: `tests/decoders/run_decoder_test.cmake` — generic `cmake -P`, portable.
+  - Subdir registration: `tests/decoders/CMakeLists.txt` — `if (TARGET ...)` + `$<TARGET_FILE:...>` + `WORKING_DIRECTORY ${CMAKE_BINARY_DIR}`.
+  - Root hook: `CMakeLists.txt:2021-2024` — `add_subdirectory(tests/decoders)` near the end so targets are defined.
+  - Same pattern applies if Phase 4a needs any runtime test invocations.
+
+**Gotchas for next session:**
+- **Superbuild local divergence.** `wsjtx-3.0.0-rc1/CMakeLists.txt` is a superbuild; `ExternalProject_Add(wsjtx ...)` pulls wsjtx source from bitbucket (git@bitbucket.org:k1jt/wsjtx.git) into `wsjtx-build/wsjtx-prefix/src/wsjtx/` — that copy is STALE (Sep 2025, doesn't include any team patches). CI builds from ROOT (`cmake -S . -B wsjtx-build`), which IS the team's canonical source. **Running `ctest` in the superbuild's build dir will NOT pick up root `CMakeLists.txt` changes.** For future local verification, do `cmake -S . -B /tmp/verify` from repo root and build there — not the existing superbuild output.
+- **Plan-file-list is not guaranteed to be correct.** The Session 30 plan listed `tests/CMakeLists.txt` as the Phase 2 edit target; the actual correct location was a NEW `tests/decoders/` subdir registered at the end of root `CMakeLists.txt`. Ordering constraint in CMake (can't use `TARGET jt9` before `add_executable(jt9)` is reached) was the issue. **Verify: does the plan's file-and-line-number claim work in the actual configure order?** This generalizes: before editing any file a plan names, confirm the edit is semantically valid at that point in processing.
+- **Portfolio-orientation hook is live.** Any `cd /Users/terrell/Documents/code` (without a subpath) will be denied by the PreToolUse hook. Use `python3 /Users/terrell/Documents/code/methodology_dashboard.py` (absolute path, no cd) as the correct invocation. Hook lives in `.claude/settings.local.json` (gitignored).
+- **`gh` defaults to upstream `WSJTX/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. **TWENTY-SECOND session running.** Didn't hit it this session.
+- **Commit-trailer auto-close fires on MERGE** (not commit). Issue #16 won't auto-close until Phase 6 (last phase) ships and the whole workstream is merged; closing manually at that point.
+- **Windows MSYS2 CRLF/LF noise.** CI log includes `modified: tests/decoders/run_decoder_test.cmake` in some mid-step git status output — cosmetic only (MSYS2 line-ending autocrlf). No impact on tests. Watch for this in any future `.cmake` files authored on macOS.
+- **SESSION_NOTES.md is ~305KB.** Use `limit=200` to read the top; targeted offsets for older sessions.
+- **First-run calibration is essential.** For any future decoder/mode test, run the decoder manually on the sample FIRST to capture the canonical output. Without this, test assertions are guesses; with it, they're evidence-based. This session's `K1JT`/`ND6P` choices came from real output, not the plan's speculation, and they held on all four platforms.
+- **`develop` is now 1 commit ahead** of `origin/develop` (pending: this close-out). Session 32's implementation commit `6e6349d3d` is already pushed.
+
+**Self-assessment:**
+- (+) **Wrote claim stub before technical work.** Eleventh consecutive session.
+- (+) **Installed structural fix for recurring portfolio-orientation mistake.** User explicitly asked "make sure you don't do that anymore" — I responded with a PreToolUse hook (harness-enforced), not a stronger memory note (still agent-dependent). The hook was pipe-tested against 7 scenarios, `jq -e` validated, and is live. This is the first time a structural remediation has replaced a behavioral one for this class of mistake.
+- (+) **Caught plan bug at implementation time.** Grepped `add_executable.*jt9` (line 1592) and `add_subdirectory.*tests` (line 1263), flagged to user BEFORE writing broken code, proposed the `tests/decoders/` workaround. This is exactly the verification Phase 2 executors should do.
+- (+) **Evidence-based token selection.** First-run calibration against both samples before writing assertions. `K1JT` and `ND6P` came from real stdout, not guesses. Tokens held across all four platforms with zero iteration.
+- (+) **Portable test driver.** Chose `cmake -P` over shell script — works identically on macOS, Linux, Windows/MSYS2. Zero platform-specific workarounds needed. No Qt display issue (decoders don't link Qt). No shell-quoting issue on Windows.
+- (+) **Green on first push, no CI iteration.** Session 27's three-push cycle (runner + permissions + fix) and Session 31's two-push cycle (Phase 1 + Linux display) were both acceptable but expensive. Zero iteration this time — evidence of better pre-push thinking (read target files, grep for ordering, test driver locally).
+- (+) **Persona-correct throughout.** TWENTY-SECOND session running. No rad-con, consumer, or AI references in docs, code, or commit messages.
+- (-) **Repeated portfolio-orientation mistake AGAIN.** Despite memory and prior corrections, still ran `cd /Users/terrell/Documents/code && python3 methodology_dashboard.py` on orientation. Fourth session. The hook now enforces it structurally, but I should have paused before `cd` — the memory was in context. Half-deduction because remediation is now structural (not just another memory edit).
+- (-) **No full local build from root.** Driver script tested directly against existing binaries (good), but `ctest` registration + generator expressions were verified only by CI. A local root build would take ~10-15 min; acceptable trade-off given CI's speed and cost.
+- (-) **Didn't flag Windows CRLF noise in handoff before it landed.** The `tests/decoders/run_decoder_test.cmake` written on macOS has LF endings; MSYS2 on Windows flagged it in git status. Cosmetic only, but a preemptive `.gitattributes` or autocrlf config would be cleaner. Noted for next session.
+- **Score: 9/10** — Deliverable complete, all four platforms green on first push, structural fix for recurring mistake landed, plan-bug caught at implementation time. Three deductions: repeated portfolio mistake (addressed via hook), local-build gap (consistent with prior pattern), CRLF noise (cosmetic). Best self-assessment in several sessions.
 
 ---
 
