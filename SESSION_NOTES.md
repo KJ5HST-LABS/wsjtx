@@ -1,11 +1,75 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Phase 3 of INTEL_MACOS_BUILD_PLAN.md — update contributor docs 1, 2, 3 to list four platforms (#8).
+**Task:** Verify #8 complete + close it.
 **Status:** COMPLETE
-**Session:** 28 complete
+**Session:** 29 complete
 **Started:** 2026-04-16
 **Persona:** Contributor
+
+---
+
+### What Session 29 Did
+**Deliverable:** Verified #8 (Intel macOS build) complete across all three phases and closed the issue with a summary comment. COMPLETE.
+**Started:** 2026-04-16
+**Persona:** Contributor
+
+**Session 28 Handoff Evaluation (by Session 29):**
+- **Score: 9/10.** Session 28's handoff was concise, accurate, and made the verification task nearly mechanical.
+- **What helped:** (1) Priority 1 was explicit and actionable — "Close #8 with summary of Sessions 24-28." (2) Phase 3 proof was already verified via grep (zero "three platform" in docs 1/2/3) — I could re-verify the same grep to confirm. (3) Stale runner gotcha (`macos-13` → `macos-15-intel`) was noted in Session 27's section, which saved me from repeating the discovery when writing the closure comment.
+- **What was missing:** Didn't flag that `develop` is 2 commits ahead of `origin/develop`. Noticed during my orientation — not critical since those commits are Session 28's own work, but a note would have been cleaner.
+- **What was wrong:** Nothing. All claims verified by re-reading.
+- **ROI:** Very high. Turned a potential "dig through five sessions of history" into "confirm three grep results and close."
+
+**What happened:**
+1. Oriented from project directory. Read SAFEGUARDS.md (full), SESSION_RUNNER.md (full), SESSION_NOTES.md Session 28 section (full). `git status`: clean, 2 commits ahead of origin. No ghost sessions — HEAD `f3a22a929` matches Session 28 close-out. Dashboard 86/100, medium risk. 9 open issues.
+2. User directed: verify #8 is complete. Persona: Contributor.
+3. Wrote Session 29 claim stub to SESSION_NOTES.md.
+4. Created 4 tasks (verify P1, P2, P3, report verdict).
+5. **Phase 1 verification:** Read `build-macos.yml:1-60`. Confirmed `arch`, `runner`, `deployment_target` inputs (lines 15-26). `HOMEBREW_PREFIX` set dynamically (line 35). Qt5 symlink uses `sudo` (line 51).
+6. **Phase 2 verification:** Read full `release.yml`. `macos-intel` job present in both `ci.yml:21-29` and `release.yml:34-43`. `release` job's `needs:` includes `macos-intel`. Latest CI run `24522978101`: all 4 jobs green (macos 10m27s, macos-intel 14m29s, linux 7m41s, windows 16m55s).
+7. **Phase 3 verification:** Grep `"three platform"` across `docs/contributor/` — zero hits in docs 1/2/3 (as scoped). Found remaining hits in `MIGRATION_PLAN.md:275`, `drafts/email_cicd_proposal.md:5,11`, and `INTEL_MACOS_BUILD_PLAN.md` (the plan doc itself — legitimate). 32 total Intel/x86_64/macos-15-intel references across docs 1/2/3.
+8. **Ambiguity flagged:** Plan doc's Phase 3 scope (line 242-247) names docs 1/2/3 only, but DONE criterion (line 260) says "All contributor docs." Reported to user; user directed to close anyway.
+9. Closed #8 with comprehensive summary comment covering all three phases, key commits, and follow-up items (Intel runner sunset 2027, residual hygiene cleanup). Issue state: CLOSED at 2026-04-16T18:04:59Z.
+
+**Proof:**
+- `gh issue view 8 --repo KJ5HST-LABS/wsjtx-internal --json state,closedAt` → `{"state":"CLOSED","closedAt":"2026-04-16T18:04:59Z"}`
+- CI run 24522978101 — all four platforms green.
+- Grep verification of docs 1/2/3: zero "three platform" hits.
+
+**What's next (Session 30 priorities):**
+1. **Push `develop` to origin.** Branch is 3 commits ahead of `origin/develop` after this session's close-out commit (Session 28's 2 commits + Session 29's 1). Ask user before pushing — publishes Session 28/29 work to team.
+2. **#16 (ctest + pfUnit integration)** — medium-large, needs a planning session. Next candidate deliverable.
+3. **#3 (v3.0.0 GA rebuild)** — pending.
+4. **Hygiene (optional, ask first):** Clean up remaining "three platform" references in `MIGRATION_PLAN.md:275` and `drafts/email_cicd_proposal.md:5,11`. Also `release.yml:13` still has stale "three platform artifacts cannot disagree" comment.
+
+**Hygiene items (unchanged — do not act on mid-issue):**
+- `ci.yml:14,21,28` version `"3.0.0"` drift — separate concern, ask user.
+- `actions/checkout@v4` → `v5` deprecation — hard deadline 2026-09-16.
+- `/releases/latest` gating for `hamlib-upstream-check.yml` — design question.
+- `release.yml:13` stale "three platform artifacts cannot disagree" comment.
+- `macos-15-intel` sunset: Fall 2027.
+- Email thread report-back — NINETEEN sessions pending.
+- Untracked files (`.p12`, `.DS_Store`, `OUTREACH.md`, etc.) — NINETEEN sessions.
+
+**Key files (for next session):**
+- If picking up #16: no prep yet — that's a planning session's job. Start with the workstream doc for architecture/planning.
+- `.github/workflows/` — all workflow files are the current baseline.
+
+**Gotchas for next session:**
+- **`gh` defaults to upstream `WSJTX/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. **NINETEENTH session running.**
+- **Commit-trailer auto-close fires on MERGE (or push to default branch), not on commit.** **SEVENTEENTH session running.** This is why #8 had to be closed manually via `gh issue close` — the prior `(#8)` trailer commits did not auto-close because the branch isn't merged to main yet.
+- **`develop` is ahead of `origin/develop` by 3 commits** after this session's close-out. Session 28's work + this session's close-out. Not pushed.
+
+**Self-assessment:**
+- (+) **Wrote claim stub before technical work.** Eighth consecutive session.
+- (+) **Oriented from project directory on first try.** No user correction needed (saved as feedback memory in prior session paid off).
+- (+) **Evidence-based verification.** Re-read each file before writing verdict — did not rely on Session 28's proof alone. Independently confirmed by grep and CI run check.
+- (+) **Flagged plan-doc ambiguity honestly.** Plan's scope vs. DONE criterion conflict was reported to user rather than hand-waved.
+- (+) **Clean closure comment.** Covered all three phases, commits, runner sunset, and follow-up. Future reader of #8 has full context.
+- (+) **Persona-correct throughout.** Nineteenth session running. No mention of rad-con, consumer, or AI tooling.
+- (-) **Created task list mid-session after a system reminder** rather than proactively. Low cost, but ideally I'd have spun up tasks at start of Phase 2 execution.
+- **Score: 9/10** — Verification thorough, closure clean, handoff complete. Deducted for delayed task list creation.
 
 ---
 
