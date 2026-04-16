@@ -2018,4 +2018,9 @@ configure_file ("${PROJECT_SOURCE_DIR}/CMakeCPackOptions.cmake.in"
   "${PROJECT_BINARY_DIR}/CMakeCPackOptions.cmake" @ONLY)
 set (CPACK_PROJECT_CONFIG_FILE "${PROJECT_BINARY_DIR}/CMakeCPackOptions.cmake")
 
+# Decoder smoke tests — registered here so that jt9 and wsprd targets exist.
+if (EXISTS ${CMAKE_SOURCE_DIR}/tests/decoders AND IS_DIRECTORY ${CMAKE_SOURCE_DIR}/tests/decoders)
+  add_subdirectory (tests/decoders)
+endif ()
+
 include (CPack)
