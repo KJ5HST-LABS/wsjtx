@@ -1,11 +1,66 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Issue #15 — Docs polish: gh glossary notes + audience labels on contributor docs.
-**Status:** COMPLETE. Committed `091037d55`. Push to origin needed to trigger #15 auto-close.
-**Session:** 22 complete
+**Task:** Push `develop` to origin — deliver #15 commits, verify auto-close.
+**Status:** COMPLETE. Pushed `02857925d`. Issue #15 auto-closed.
+**Session:** 23 complete
 **Started:** 2026-04-16
 **Persona:** Contributor
+
+---
+
+### What Session 23 Did
+**Deliverable:** Push `develop` to origin, verify issue #15 auto-closes. COMPLETE.
+**Started:** 2026-04-16
+**Persona:** Contributor
+
+**Session 22 Handoff Evaluation (by Session 23):**
+- **Score: 10/10.** Session 22's priority 1 was the exact command (`git push origin develop`) and the exact verification command (`gh issue view 15 --repo KJ5HST-LABS/wsjtx-internal --json state,stateReason`). Both used verbatim. Zero improvisation needed.
+- **What helped:** (1) Priority 1 was explicit and actionable — "push, then verify." (2) The verification command was ready to copy-paste. (3) The gotcha "commit `091037d55` is NOT pushed" made the task urgency clear. (4) `--repo KJ5HST-LABS/wsjtx-internal` reminder (twelfth session) applied.
+- **What was missing:** Nothing. This was a two-command task; the playbook was complete.
+- **What was wrong:** Nothing. All claims were accurate.
+- **ROI:** Very high. Orientation-to-done was ~5 minutes.
+
+**What happened:**
+1. Oriented: read SAFEGUARDS (full), SESSION_RUNNER (full), SESSION_NOTES.md Session 22 section in full. Dashboard refreshed (wsjtx-arm 86/100). `git status` clean on `develop`, 2 commits ahead of origin. `gh issue list --repo KJ5HST-LABS/wsjtx-internal` returned 10 open issues. No ghost sessions — HEAD `02857925d` matches Session 22's close-out.
+2. User confirmed Contributor persona, said "1" (priority 1 from handoff).
+3. Wrote Session 23 claim stub to SESSION_NOTES.md (Phase 1B).
+4. Pushed: `git push origin develop` — delivered `091037d55` and `02857925d` to origin.
+5. Verified: `gh issue view 15 --repo KJ5HST-LABS/wsjtx-internal --json state,stateReason` returned `{"state":"CLOSED","stateReason":"COMPLETED"}`.
+6. Confirmed: `gh issue list --repo KJ5HST-LABS/wsjtx-internal --state open` shows 9 issues (#15 gone).
+
+**Proof:**
+- Push: `develop` now up to date with `origin/develop` at `02857925d`.
+- Issue #15: state=CLOSED, stateReason=COMPLETED.
+
+**What's next (Session 24 priorities):**
+1. **#8 (Intel macOS x86_64 build job)** — Plan Mode recommended (FM #19 risk). The new job must include `needs: prepare` and `version: ${{ needs.prepare.outputs.version }}` in `release.yml` (reference: `release.yml:14-20`). In `ci.yml`, the new Intel job needs `hamlib_branch: "4.7.1"` (current on develop).
+2. **#16 (ctest + pfUnit integration)** — medium-large.
+3. **#3 (Rebuild for WSJT-X v3.0.0 GA)** — milestone tracker, may need status review.
+
+**Hygiene items (unchanged — do not act on mid-issue):**
+- `ci.yml:14,21,28` version `"3.0.0"` drift — separate concern, ask user.
+- `actions/checkout@v4` → `v5` deprecation — hard deadline 2026-09-16.
+- `/releases/latest` gating for `hamlib-upstream-check.yml` — design question.
+- Email thread report-back — THIRTEEN sessions pending.
+- Untracked files (`.p12`, `.DS_Store`, `OUTREACH.md`, etc.) — THIRTEEN sessions.
+
+**Key files (for next session):**
+- `.github/workflows/release.yml:14-20` — `prepare` job (for #8).
+- `.github/workflows/ci.yml:15,22,29` — `hamlib_branch: "4.7.1"` (for #8).
+
+**Gotchas for next session:**
+- **`gh` defaults to upstream `WSJTX/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. **THIRTEENTH session running.**
+- **Commit-trailer auto-close fires on MERGE (or push to default branch), not on commit.** **ELEVENTH session running.**
+
+**Self-assessment:**
+- (+) **Wrote claim stub (Phase 1B) before technical work.** Second consecutive session with this discipline.
+- (+) **Used exact commands from Session 22's handoff.** Zero improvisation — the playbook was complete.
+- (+) **Verified auto-close with JSON output.** Didn't assume the push triggered it; confirmed programmatically.
+- (+) **Persona-correct throughout.** Thirteenth session running. No mention of rad-con, consumer, or AI tooling.
+- (+) **`gh --repo KJ5HST-LABS/wsjtx-internal` on every call.** Thirteenth session running.
+- (-) **Tiny session.** This was a two-command deliverable. No technical complexity. Score reflects execution quality, not difficulty.
+- **Score: 10/10** — Minimal task, executed cleanly with full protocol compliance.
 
 ---
 
