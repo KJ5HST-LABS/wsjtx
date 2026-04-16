@@ -2,10 +2,80 @@
 
 ## ACTIVE TASK
 **Task:** Implement Phase 1 of INTEL_MACOS_BUILD_PLAN.md (#8) — parameterize `build-macos.yml`.
-**Status:** IN PROGRESS
-**Session:** 25
+**Status:** COMPLETE. All three CI platforms green (run 24513850007).
+**Session:** 25 complete
 **Started:** 2026-04-16
 **Persona:** Contributor
+
+---
+
+### What Session 25 Did
+**Deliverable:** Phase 1 implementation — parameterize `build-macos.yml` for multi-arch support. COMPLETE.
+**Started:** 2026-04-16
+**Persona:** Contributor
+
+**Session 24 Handoff Evaluation (by Session 25):**
+- **Score: 10/10.** Session 24's priority 1 was "Implement Phase 1 of INTEL_MACOS_BUILD_PLAN.md" with exact file paths and line numbers for every change. Priority 2 was "Push `develop` to origin." Both executed verbatim.
+- **What helped:** (1) The plan document `INTEL_MACOS_BUILD_PLAN.md` had a complete grep-based inventory with every line number and the exact substitution needed — zero discovery work required. (2) The key files list (`build-macos.yml:4-14`, `:18`, `:29,36-37,117,121,129,164,221`, `ci.yml:11-16`, `release.yml:23-29`) was comprehensive and accurate. (3) The gotcha "Phase 1 must NOT break arm64" set the verification gate clearly: arm64 CI green = done.
+- **What was missing:** Nothing. The plan was a complete implementation recipe.
+- **What was wrong:** Nothing. All line numbers and content matched the actual files.
+- **ROI:** Very high. Session 24's planning investment paid off — Phase 1 implementation was mechanical execution against a verified inventory.
+
+**What happened:**
+1. Oriented: read SAFEGUARDS (full), SESSION_NOTES.md Session 24 section in full. Dashboard refreshed (wsjtx-arm 86/100). `git status` clean on `develop`, 2 commits ahead of origin. `gh issue list --repo KJ5HST-LABS/wsjtx-internal` returned 9 open issues. No ghost sessions — HEAD `482de666a` matches Session 24's close-out.
+2. User said "do it" — priority 1 from handoff.
+3. Pushed `develop` to origin (priority 2 — quick prerequisite, `482de666a` now up to date).
+4. Wrote Session 25 claim stub to SESSION_NOTES.md.
+5. Read plan document `INTEL_MACOS_BUILD_PLAN.md` (full) and all 3 workflow files in parallel.
+6. Stated scope: "build-macos.yml (parameterize), ci.yml (add explicit inputs), release.yml (add explicit inputs), SESSION_NOTES.md (claim stub). Nothing else."
+7. Implemented all Phase 1 changes (21 edits across 3 workflow files):
+   - `build-macos.yml`: renamed workflow, added `arch`/`runner`/`deployment_target` inputs, added "Set Homebrew prefix" step (`brew --prefix` → `$GITHUB_ENV`), replaced 8 `/opt/homebrew` hardcodes with `$HOMEBREW_PREFIX`, replaced all `arm64` references with `${{ inputs.arch }}`, parameterized `runs-on`, deployment target, cache key, stage dir, PKG ID, artifact names.
+   - `ci.yml`: added explicit `arch: "arm64"`, `runner: "macos-15"`, `deployment_target: "11.0"` to existing `macos:` job.
+   - `release.yml`: same explicit inputs added.
+8. Verified: grep for `/opt/homebrew` across `.github/workflows/` returned 0 matches. Grep for `arm64` in `build-macos.yml` returned only the input description text. Read back all modified files to confirm correctness.
+9. Committed: `ci: parameterize build-macos.yml for multi-arch support (#8)` — `685ced6cf`.
+10. Pushed `develop` to origin. CI triggered (run 24513850007).
+11. Watched CI run to completion: macOS 9m16s, Linux passed, Windows 15m56s. All three green.
+
+**Proof:**
+- Commit `685ced6cf` — 4 files changed, 45 insertions, 24 deletions.
+- CI run 24513850007 — all three platforms green. macOS job includes "Set Homebrew prefix" and "Verify architecture" steps (renamed from "Verify arm64").
+- `grep -r '/opt/homebrew' .github/workflows/` returns 0 matches.
+
+**What's next (Session 26 priorities):**
+1. **Implement Phase 2 of INTEL_MACOS_BUILD_PLAN.md** — Add `macos-intel:` job to `ci.yml` and `release.yml` calling `build-macos.yml` with `arch: "x86_64"`, `runner: "macos-13"`, `deployment_target: "10.13"`. Update `release.yml` `needs:` list. Push, verify Intel CI build produces `wsjtx-*-x86_64-macOS.pkg`. See plan doc Phase 2 section for exact changes.
+2. **#16 (ctest + pfUnit integration)** — medium-large, separate planning session.
+3. **#3 (v3.0.0 GA rebuild)** — pending.
+
+**Hygiene items (unchanged — do not act on mid-issue):**
+- `ci.yml:14,21,28` version `"3.0.0"` drift — separate concern, ask user.
+- `actions/checkout@v4` → `v5` deprecation — hard deadline 2026-09-16. CI annotations now warn about Node.js 20.
+- `/releases/latest` gating for `hamlib-upstream-check.yml` — design question.
+- Email thread report-back — FIFTEEN sessions pending.
+- Untracked files (`.p12`, `.DS_Store`, `OUTREACH.md`, etc.) — FIFTEEN sessions.
+
+**Key files (for next session):**
+- `docs/contributor/INTEL_MACOS_BUILD_PLAN.md` — Phase 2 section has exact changes.
+- `.github/workflows/ci.yml` — add `macos-intel:` job block (~15 lines).
+- `.github/workflows/release.yml` — add `macos-intel:` job block + update `needs:` on line 52.
+- `.github/workflows/build-macos.yml` — now parameterized, no changes needed for Phase 2.
+
+**Gotchas for next session:**
+- **`gh` defaults to upstream `WSJTX/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. **FIFTEENTH session running.**
+- **Commit-trailer auto-close fires on MERGE (or push to default branch), not on commit.** **THIRTEENTH session running.**
+- **Phase 2 may fail on first Intel CI run.** Common failure points: Qt5 availability on `macos-13`, gfortran version differences, dylib bundling path issues. The arm64 build must remain green throughout. Debug in the same session if possible.
+- **`macos-13` billing multiplier.** Verify whether Intel runners use the same 10x multiplier as `macos-15`.
+
+**Self-assessment:**
+- (+) **Wrote claim stub before technical work.** Fourth consecutive session.
+- (+) **Stated scope explicitly before editing.** "4 files, nothing else." Matched exactly.
+- (+) **Executed plan mechanically — no improvisation.** Every edit was prescribed by the plan's grep inventory. Zero discovery work needed.
+- (+) **Verified before committing.** Grep for `/opt/homebrew` (0 matches), grep for stray `arm64` (only description text), read-back of all 3 workflow files.
+- (+) **Watched CI to green.** Didn't declare victory until all three platforms passed.
+- (+) **Persona-correct throughout.** Fifteenth session running. No mention of rad-con, consumer, or AI tooling.
+- (+) **Pushed Session 24's pending commits** as part of the work — cleared the "ahead of origin" state.
+- (-) **No edge case testing.** Phase 1 is a refactor (no behavior change), so arm64 CI green is the correct verification. But didn't independently verify that `brew --prefix` outputs `/opt/homebrew` on `macos-15` (it does — CI proved it).
+- **Score: 10/10** — Clean mechanical execution of a well-specified plan. All verification gates met. No scope creep.
 
 ---
 
