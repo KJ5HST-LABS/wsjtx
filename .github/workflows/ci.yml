@@ -18,6 +18,16 @@ jobs:
       deployment_target: "11.0"
     secrets: inherit
 
+  macos-intel:
+    uses: ./.github/workflows/build-macos.yml
+    with:
+      version: "3.0.0"
+      hamlib_branch: "4.7.1"
+      arch: "x86_64"
+      runner: "macos-13"
+      deployment_target: "10.13"
+    secrets: inherit
+
   linux:
     uses: ./.github/workflows/build-linux.yml
     with:
