@@ -31,6 +31,37 @@ jobs:
             autoconf automake libtool pkg-config \
             texinfo
 
+      - name: Cache pFUnit
+        id: pfunit-cache
+        uses: actions/cache@v4
+        with:
+          path: pfunit-prefix
+          key: pfunit-linux-v4.9.0-${{ hashFiles('.github/workflows/build-linux.yml') }}
+
+      - name: Build pFUnit
+        if: steps.pfunit-cache.outputs.cache-hit != 'true'
+        run: |
+          git clone --depth 1 --branch v4.9.0 --recursive \
+            https://github.com/Goddard-Fortran-Ecosystem/pFUnit.git pfunit-src
+          cmake -S pfunit-src -B pfunit-build \
+            -DSKIP_MPI=YES \
+            -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/pfunit-prefix"
+          cmake --build pfunit-build -j$(nproc)
+          cmake --install pfunit-build
+
+      - name: Locate pFUnit config
+        id: pfunit
+        run: |
+          CONFIG=$(find "${GITHUB_WORKSPACE}/pfunit-prefix" -name PFUNITConfig.cmake | head -1)
+          if [ -z "$CONFIG" ]; then
+            echo "ERROR: PFUNITConfig.cmake not found under pfunit-prefix"
+            find "${GITHUB_WORKSPACE}/pfunit-prefix" -maxdepth 3 -type d
+            exit 1
+          fi
+          PFUNIT_DIR="$(dirname "$CONFIG")"
+          echo "Found PFUNITConfig.cmake at: $CONFIG"
+          echo "dir=${PFUNIT_DIR}" >> "$GITHUB_OUTPUT"
+
       - name: Cache Hamlib
         id: hamlib-cache
         uses: actions/cache@v4
@@ -61,6 +92,8 @@ jobs:
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DWSJT_GENERATE_DOCS=OFF \
             -DWSJT_SKIP_MANPAGES=ON \
+            -DWSJT_BUILD_TESTS=ON \
+            -DPFUNIT_DIR="${{ steps.pfunit.outputs.dir }}" \
             -Wno-dev
 
       - name: Build
