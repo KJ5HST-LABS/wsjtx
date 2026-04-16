@@ -48,8 +48,8 @@ jobs:
       - name: Fix Qt5 keg-only paths
         run: |
           QT5_PREFIX="$(brew --prefix qt@5)"
-          [ -e $HOMEBREW_PREFIX/mkspecs ] || ln -s "${QT5_PREFIX}/mkspecs" $HOMEBREW_PREFIX/mkspecs
-          [ -e $HOMEBREW_PREFIX/plugins ] || ln -s "${QT5_PREFIX}/plugins" $HOMEBREW_PREFIX/plugins
+          [ -e $HOMEBREW_PREFIX/mkspecs ] || sudo ln -s "${QT5_PREFIX}/mkspecs" $HOMEBREW_PREFIX/mkspecs
+          [ -e $HOMEBREW_PREFIX/plugins ] || sudo ln -s "${QT5_PREFIX}/plugins" $HOMEBREW_PREFIX/plugins
 
       - name: Cache Hamlib
         id: hamlib-cache
