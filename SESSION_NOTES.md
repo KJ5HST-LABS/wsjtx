@@ -2,17 +2,70 @@
 
 ## ACTIVE TASK
 **Task:** Phase 3 of INTEL_MACOS_BUILD_PLAN.md — update contributor docs 1, 2, 3 to list four platforms (#8).
-**Status:** IN PROGRESS
-**Session:** 28
+**Status:** COMPLETE
+**Session:** 28 complete
 **Started:** 2026-04-16
 **Persona:** Contributor
 
 ---
 
 ### What Session 28 Did
-**Deliverable:** Phase 3 of INTEL_MACOS_BUILD_PLAN.md — update contributor docs to reflect four platforms. All "three platforms" references become "four platforms." Platform tables, diagrams, and artifact lists include Intel macOS. After this, #8 can be closed.
+**Deliverable:** Phase 3 of INTEL_MACOS_BUILD_PLAN.md — update contributor docs to reflect four platforms. All "three platforms" references become "four platforms." Platform tables, diagrams, and artifact lists include Intel macOS. COMPLETE.
 **Started:** 2026-04-16
 **Persona:** Contributor
+
+**Session 27 Handoff Evaluation (by Session 28):**
+- **Score: 9/10.** Session 27's handoff was thorough with clear priority 1 (Phase 3), accurate key files with line numbers, and well-documented gotchas.
+- **What helped:** (1) Key files listed with exact doc names. (2) Gotcha about plan doc line numbers being stale was useful — verified before editing. (3) Scope was clear: docs 1, 2, 3 only.
+- **What was missing:** The handoff listed ~3/~12/~8 line changes per doc but the actual count was 6/16/12 because many "three platform" references weren't itemized in the plan doc's Phase 3 table (e.g., line 11, 16, 19 in Doc 1; lines 254, 408, 636 in Doc 2; lines 79, 92, 695, 735, 760, 976 in Doc 3). The plan's grep verification step caught these.
+- **What was wrong:** Nothing. All claims verified.
+- **ROI:** High. The handoff made Phase 3 mechanical — grep-driven find-and-replace with the plan doc's verification step as the acceptance test.
+
+**What happened:**
+1. Oriented from project directory. Read SAFEGUARDS.md (full), SESSION_NOTES.md Session 27 section (full). `git status` clean on `develop`, up to date with origin. No ghost sessions — HEAD `798e28613` matches Session 27's close-out. 9 open issues.
+2. User directed: "go" — priority 1 from handoff (Phase 3). Persona: Contributor.
+3. Wrote Session 28 claim stub to SESSION_NOTES.md.
+4. Stated scope: `docs/contributor/1_CICD_EXECUTIVE_SUMMARY.md`, `docs/contributor/2_DEVELOPMENT_WORKFLOW.md`, `docs/contributor/3_CICD_DEPLOYMENT_PLAYBOOK.md`, `SESSION_NOTES.md`. Nothing else.
+5. Grepped all three docs for `three.platform` and `macOS ARM64` to build complete inventory of every location needing changes. Found more locations than the plan doc itemized (plan listed ~23 changes, actual was ~34).
+6. Applied all changes across three docs: "three platforms" → "four platforms", added Intel macOS rows to all platform tables, updated CI diagram (4 boxes), release overview (renumbered 1-6), runner table (added `macos-15-intel`), billed time (~80 → ~110 min), RC platform list, artifact table, release flow diagrams, workflow file descriptions (parameterized), and flow diagrams in the playbook.
+7. Verified: `grep -rn "three platform" docs/contributor/{1_*,2_*,3_*}` returned zero results. `grep -n "macOS ARM64"` confirmed every ARM64 reference has corresponding Intel entry where appropriate. 18 "four platform" references across 3 docs.
+8. Committed `6e63672a8`.
+
+**Proof:**
+- `grep -rn "three platform" docs/contributor/{1_*,2_*,3_*}` returns zero results.
+- Every platform table, diagram, and artifact list includes Intel macOS.
+- Commit: `6e63672a8`.
+
+**What's next (Session 29 priorities):**
+1. **Close #8** — All three phases of INTEL_MACOS_BUILD_PLAN.md are complete. Close the issue with a summary of what was delivered across Sessions 24-28.
+2. **#16 (ctest + pfUnit integration)** — medium-large, needs planning session.
+3. **#3 (v3.0.0 GA rebuild)** — pending.
+
+**Hygiene items (unchanged — do not act on mid-issue):**
+- `ci.yml:14,21,28` version `"3.0.0"` drift — separate concern, ask user.
+- `actions/checkout@v4` → `v5` deprecation — hard deadline 2026-09-16. CI annotations warn about Node.js 20.
+- `/releases/latest` gating for `hamlib-upstream-check.yml` — design question.
+- `release.yml:13` still says "three platform artifacts cannot disagree" in the `prepare` job comment — stale, separate cleanup.
+- `macos-15-intel` sunset: Fall 2027.
+- Email thread report-back — EIGHTEEN sessions pending.
+- Untracked files (`.p12`, `.DS_Store`, `OUTREACH.md`, etc.) — EIGHTEEN sessions.
+
+**Key files (for next session):**
+- `docs/contributor/INTEL_MACOS_BUILD_PLAN.md` — reference for what was delivered; can mark as DONE.
+- `gh issue view 8 --repo KJ5HST-LABS/wsjtx-internal` — close with summary.
+
+**Gotchas for next session:**
+- **`gh` defaults to upstream `WSJTX/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. **EIGHTEENTH session running.**
+- **Commit-trailer auto-close fires on MERGE (or push to default branch), not on commit.** **SIXTEENTH session running.**
+
+**Self-assessment:**
+- (+) **Wrote claim stub before technical work.** Seventh consecutive session.
+- (+) **Stated scope explicitly.** Four files, nothing else. No scope creep.
+- (+) **Grep-driven approach caught all stale references.** Plan doc underestimated change count by ~11 locations; systematic grep found them all.
+- (+) **Verified with both negative grep (zero "three platform") and positive grep (18 "four platform", ARM64/Intel pairing).**
+- (+) **Persona-correct throughout.** Eighteenth session running. No mention of rad-con, consumer, or AI tooling.
+- (+) **Clean, fast session.** One deliverable, one commit, no CI needed (docs-only change).
+- **Score: 9/10** — Deliverable complete, thorough verification. No deductions — smooth session.
 
 ---
 
