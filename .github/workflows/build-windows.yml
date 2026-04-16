@@ -45,6 +45,42 @@ jobs:
             mingw-w64-x86_64-pkg-config
             autoconf automake libtool
 
+      - name: Cache pFUnit
+        id: pfunit-cache
+        uses: actions/cache@v4
+        with:
+          path: pfunit-prefix
+          key: pfunit-windows-v4.9.0-${{ hashFiles('.github/workflows/build-windows.yml') }}
+
+      - name: Build pFUnit
+        if: steps.pfunit-cache.outputs.cache-hit != 'true'
+        run: |
+          WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
+          git config --global core.longpaths true
+          git clone --depth 1 --branch v4.9.0 --recursive \
+            https://github.com/Goddard-Fortran-Ecosystem/pFUnit.git pfunit-src
+          cmake -S pfunit-src -B pfunit-build -G "MSYS Makefiles" \
+            -DSKIP_MPI=YES \
+            -DSKIP_OPENMP=YES \
+            -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DCMAKE_INSTALL_PREFIX="${WORKSPACE}/pfunit-prefix"
+          cmake --build pfunit-build -j$(nproc)
+          cmake --install pfunit-build
+
+      - name: Locate pFUnit config
+        id: pfunit
+        run: |
+          WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
+          CONFIG=$(find "${WORKSPACE}/pfunit-prefix" -name PFUNITConfig.cmake | head -1)
+          if [ -z "$CONFIG" ]; then
+            echo "ERROR: PFUNITConfig.cmake not found under pfunit-prefix"
+            find "${WORKSPACE}/pfunit-prefix" -maxdepth 3 -type d
+            exit 1
+          fi
+          PFUNIT_DIR="$(dirname "$CONFIG")"
+          echo "Found PFUNITConfig.cmake at: $CONFIG"
+          echo "dir=${PFUNIT_DIR}" >> "$GITHUB_OUTPUT"
+
       - name: Cache Hamlib
         id: hamlib-cache
         uses: actions/cache@v4
@@ -113,6 +149,8 @@ jobs:
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DWSJT_GENERATE_DOCS=OFF \
             -DWSJT_SKIP_MANPAGES=ON \
+            -DWSJT_BUILD_TESTS=ON \
+            -DPFUNIT_DIR="${{ steps.pfunit.outputs.dir }}" \
             -Wno-dev
 
       - name: Build
