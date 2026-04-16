@@ -1,5 +1,7 @@
 # CI/CD for WSJT-X — Executive Summary
 
+**Audience:** Team-internal. Summary for team members and org leadership evaluating the CI/CD proposal.
+
 ## What We Built
 
 A fully automated build-and-release pipeline for WSJT-X that compiles the application on three platforms (macOS ARM64, Linux x86_64, Windows x86_64) every time code is pushed, and publishes signed release binaries with a single `git tag`.
@@ -44,7 +46,7 @@ The Deployment Playbook covers how to export the existing certificates as CI sec
 
 **Five workflow files** copied to `.github/workflows/` — five lines need changing across two files (the public repo URL, branch name, and version strings).
 
-**Ten repository secrets** — Apple signing certificates (4), Apple notarization credentials (3), Windows Authenticode certificate and password (2), and a GitHub token for public repo sync (1). The team's existing signing credentials are used directly — they just need to be exported as base64-encoded secrets. Set once via `gh secret set`.
+**Ten repository secrets** — Apple signing certificates (4), Apple notarization credentials (3), Windows Authenticode certificate and password (2), and a GitHub token for public repo sync (1). The team's existing signing credentials are used directly — they just need to be exported as base64-encoded secrets. Set once via `gh secret set` (`gh` is the [GitHub CLI](https://cli.github.com/)).
 
 The Apple Developer account is currently held by **John G4KLA**, who produces the team's existing signed/notarized macOS releases. Adopting this pipeline does not require transferring the account — John exports his existing Developer ID certificates as `.p12` files and they become CI secrets. See the [Deployment Playbook](3_CICD_DEPLOYMENT_PLAYBOOK.md#secrets-2-5-macos-code-signing-certificates) for the handoff workflow.
 

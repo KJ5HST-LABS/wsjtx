@@ -1,5 +1,7 @@
 # WSJT-X Process Optimization
 
+**Audience:** Team-internal. Opportunities and recommendations for maintainers planning GitHub-based project management.
+
 Opportunities for the team as the project moves toward GitHub-based project management. Organized by category, with effort estimates. Some of these are five-minute fixes; others are team decisions that need discussion first.
 
 ---

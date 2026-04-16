@@ -2,7 +2,7 @@
 
 How the WSJT-X project uses its two-repo model, how team members and external contributors participate, how CI/CD automates quality checks and releases, and how all the pieces fit together.
 
-**Audience:** Current team members, prospective contributors, and anyone evaluating the project's development practices.
+**Audience:** Public-facing. Current team members, prospective contributors, and anyone evaluating the project's development practices.
 
 ---
 
@@ -165,6 +165,8 @@ git push -u origin feat-improved-decoder
 ```
 
 #### 5. Open a pull request
+
+Use `gh` ([GitHub CLI](https://cli.github.com/)) to create the PR:
 
 ```bash
 gh pr create --base develop --title "feat: improve FT8 decoder sensitivity" \

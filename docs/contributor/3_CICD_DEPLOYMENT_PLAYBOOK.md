@@ -2,7 +2,7 @@
 
 Deploy the WSJT-X GitHub Actions CI/CD pipeline to the official WSJTX organization repos.
 
-**Audience:** Someone with moderate GitHub Actions experience.
+**Audience:** Team-internal. Someone with moderate GitHub Actions experience deploying the pipeline to the official org.
 **Time estimate:** 1-2 hours for a full deployment, assuming you have all credentials ready.
 
 ---
@@ -49,7 +49,7 @@ Before starting, confirm every item on this list. Missing any one of them will b
 
 ### Tools
 
-- `gh` CLI authenticated with an account that has admin access to the target repos
+- `gh` ([GitHub CLI](https://cli.github.com/)) authenticated with an account that has admin access to the target repos
 - `base64` command (macOS and Linux both have this)
 - Git with push access to `WSJTX/wsjtx-internal`
 
