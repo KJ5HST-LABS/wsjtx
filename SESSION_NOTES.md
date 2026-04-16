@@ -1,9 +1,9 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Plan Intel macOS x86_64 build job (#8) — evidence-based plan document.
-**Status:** COMPLETE. Plan written to `docs/contributor/INTEL_MACOS_BUILD_PLAN.md`.
-**Session:** 24 complete
+**Task:** Implement Phase 1 of INTEL_MACOS_BUILD_PLAN.md (#8) — parameterize `build-macos.yml`.
+**Status:** IN PROGRESS
+**Session:** 25
 **Started:** 2026-04-16
 **Persona:** Contributor
 
