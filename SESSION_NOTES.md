@@ -2,18 +2,89 @@
 
 ## ACTIVE TASK
 **Task:** Phase 1 of CTEST_PFUNIT_INTEGRATION_PLAN.md (#16) — add `enable_testing()` and wire ctest into all four CI workflows.
-**Status:** IN PROGRESS
-**Session:** 31
+**Status:** COMPLETE
+**Session:** 31 complete
 **Started:** 2026-04-16
 **Persona:** Contributor
 
 ---
 
 ### What Session 31 Did
-**Deliverable:** Phase 1 of `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md` — `enable_testing()` in root `CMakeLists.txt`, "Run tests" step in `build-{macos,linux,windows}.yml`, one passing test (`test_qt_helpers`) reported on all four CI jobs. (IN PROGRESS)
+**Deliverable:** Phase 1 of `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md` — `enable_testing()` in root `CMakeLists.txt`, "Run tests" step in `build-{macos,linux,windows}.yml`, one passing test (`test_qt_helpers`) reported on all four CI jobs. COMPLETE.
 **Started:** 2026-04-16
 **Persona:** Contributor
-**Status:** Session claimed. Work beginning.
+
+**Session 30 Handoff Evaluation (by Session 31):**
+- **Score: 8/10.** Handoff was precise on files, line numbers, and scope boundary — but missed the Qt-on-Linux display risk that cost one CI iteration.
+- **What helped:** (1) "Phase 1 targets (4 files)" list with exact line numbers was accurate — every line predicted matched the edit site. (2) Explicit "Phase 1 deliberately does NOT add new tests" warning pre-empted scope creep — I could resist the pull to also register `test_q65` etc. (3) The gotcha about `gh` defaulting to upstream saved a re-run within the first minute of orientation (hit it, corrected with `--repo`). (4) Self-critique in Session 30 ("did not run a dry build to confirm `enable_testing()` placement") flagged a deferred verification that became this session's problem — good forward-looking honesty.
+- **What was missing:** Phase 1 "Risks" mentioned Windows MSYS2 ctest and path quoting, but **not Linux Qt display**. `test_qt_helpers` links `Qt5::Test` and the default Linux Qt platform plugin is `xcb`, which needs a display. Session 30 had the evidence (`tests/CMakeLists.txt:22` target_link_libraries shows Qt5::Test) but didn't connect the dots. Cost: one CI run (~17 min) then a one-line fix.
+- **What was wrong:** Nothing substantive. The plan was accurate; the gap was what wasn't said.
+- **ROI:** High. The plan turned execution into ~3 min of edits plus one iterative fix. Without the plan's evidence inventory, finding the right insertion points would have been a multi-file search.
+
+**What happened:**
+1. Oriented from project directory. Read SAFEGUARDS.md (full), SESSION_RUNNER.md (full), SESSION_NOTES.md top 300 lines (file is 290KB — Read blocks on full file). `git status` clean on `develop`, 4 commits ahead of origin. HEAD `8654620f8` matches Session 30 close-out. No ghost sessions. Dashboard 86/100, medium risk, 0 high-risk flags. User corrected an initial run from portfolio level ("STOP WORKING IN THE PORTFOLIO!") — re-ran from project directory.
+2. User: "3.0.0 was released a while ago. 3.0.1 is about to drop. We are a Contributor. work on Phase 1". Persona confirmed. Scope confirmed: Phase 1 only.
+3. Wrote Session 31 claim stub to SESSION_NOTES.md.
+4. Read all four target files at exact Session 30 line numbers — all matched. CMakeLists.txt:1261, build-linux.yml:68, build-macos.yml:88, build-windows.yml:120.
+5. Four edits in parallel:
+   - `CMakeLists.txt`: added `enable_testing ()` before the `if (EXISTS ${CMAKE_SOURCE_DIR}/tests ...)` block (line 1261).
+   - Three workflow files: inserted a `Run tests` step (3 lines each: name, run, working-directory) after "Build", before "Verify" step. Each runs `ctest --output-on-failure` from `wsjtx-build/`.
+6. **Did NOT run local build.** Session 30 called this out as its deduction. My tradeoff: full local configure takes >10 min and may fail for unrelated Qt/dep reasons; `enable_testing()` is a CMake built-in since 2.x; the workflow edits are minimal. Relied on CI as primary verification. In retrospect this was the right call — the bug (Linux display) wasn't something a local macOS build would have caught anyway.
+7. Committed `43ec99251` (`ci: enable ctest on all four build workflows (#16)`). User approved push; published Session 28/29/30/31 work (5 commits).
+8. **CI run 24527427786: 3/4 green.** macOS ARM64, macOS Intel, Windows all reported `1/1 Test #1: test_qt_helpers ... Passed`. **Linux failed** with `qt.qpa.xcb: could not connect to display`. `test_qt_helpers` aborted on subprocess init because Qt's default Linux platform plugin (xcb) needs a display.
+9. Fix: added `env: QT_QPA_PLATFORM: offscreen` to the Linux-only `Run tests` step. Two lines. macOS uses `cocoa`, Windows uses `windows` — both already headless-capable. Committed `6b6e7acdf` (`ci: use offscreen Qt platform for Linux ctest (#16)`) and pushed.
+10. **CI run 24530150634: 4/4 green.** All four platforms report `1/1 Test #1: test_qt_helpers ... Passed`. Times: Linux 0.12s, Windows 0.38s, macOS ARM64 1.09s, macOS Intel 3.33s.
+11. Housekeeping (user-directed mid-session, during CI wait): deleted 171 old workflow artifacts from 42 runs, reclaiming ~18.3 GB. Kept the currently-validating run (24530150634) and Session 27's all-green reference (24522978101). Storage now 1.7 GB / 12 artifacts.
+
+**Proof:**
+- CI run `24530150634` — all four jobs conclusion=success. `gh run view 24530150634 --repo KJ5HST-LABS/wsjtx-internal --log | grep "1/1 Test"` returns four "Passed" lines.
+- Commits: `43ec99251` (Phase 1 implementation), `6b6e7acdf` (Linux display fix).
+- Artifact inventory before cleanup: 180 artifacts / 19.6 GB. After: 12 artifacts / 1.7 GB.
+- `git diff 798e28613..HEAD --stat` covers this session's work.
+
+**What's next (Session 32 priorities):**
+1. **Phase 2 of CTEST_PFUNIT_INTEGRATION_PLAN.md** — decoder smoke tests (`jt9` on `samples/FT8/210703_133430.wav`, `wsprd` on `samples/WSPR/150426_0918.wav`). Plan details in `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md:179-220`. Precondition: first-run calibration — run each decoder manually against its sample locally to capture a stable expected-output string (callsigns/grids only, not timestamps).
+2. **OR Phase 4a (pfUnit install on macOS + Linux)** — independent of Phase 2 per the plan's dependency graph. Either session is valid next.
+3. **#3 rebuild target is now v3.0.1, not v3.0.0.** Per user on 2026-04-16: "3.0.0 was released a while ago. 3.0.1 is about to drop." The issue title still says v3.0.0 GA; consider retitling or closing + reopening with v3.0.1 scope. This also means `ci.yml:14,21,28` and `release.yml:34` version strings `"3.0.0"` will need updating — the hygiene item has a harder deadline now.
+4. **Open questions from the plan (page-section "Open Questions for the Team")** — worth raising on the thread before Phases 3/4b land: Franke-script acquisition path, failure-policy on develop, Windows pfUnit fallback, CI-minute budget, pfUnit version pin.
+
+**Hygiene items (unchanged — do not act on mid-issue):**
+- `ci.yml:14,21,28` version `"3.0.0"` drift — now compounded by v3.0.1 drop imminent. Ask user.
+- `actions/checkout@v4` → `v5` deprecation — hard deadline 2026-09-16. CI run 24530150634 re-surfaced the Node 20 deprecation warning.
+- `/releases/latest` gating for `hamlib-upstream-check.yml`.
+- `release.yml:13` stale "three platform artifacts cannot disagree" comment.
+- Residual "three platform" strings in `MIGRATION_PLAN.md:275` and `drafts/email_cicd_proposal.md:5,11`.
+- `macos-15-intel` sunset: Fall 2027.
+- Email thread report-back — TWENTY-ONE sessions pending.
+- Untracked files (`.p12`, `.DS_Store`, `OUTREACH.md`, `.claude/`, `jt9_wisdom.dat`, `timer.out`) — TWENTY-ONE sessions.
+
+**Key files (for next session):**
+- **Plan doc:** `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md` — Phase 2 section (lines 179-220) has the concrete scope: 2 smoke tests, `tests/decoders/` subdirectory, first-run calibration step.
+- **Sample fixtures in-tree:** `samples/FT8/210703_133430.wav`, `samples/WSPR/150426_0918.wav`. Full sample manifest: `samples/CMakeLists.txt:1-37`.
+- **Decoder build targets:** `CMakeLists.txt:1591` (`jt9`), `CMakeLists.txt:1431` (`wsprd`). Both already build cleanly on all four platforms.
+- **Current ctest step (precedent pattern):** `.github/workflows/build-linux.yml:69-73`, `build-macos.yml:89-92`, `build-windows.yml:121-124`. Copy-extend this pattern if Phase 2 adds more ctest invocations (probably unnecessary — new tests register via `add_test` and the existing step picks them up).
+
+**Gotchas for next session:**
+- **`gh` defaults to upstream `WSJTX/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. **TWENTY-FIRST session running.** Hit it on orientation.
+- **Commit-trailer auto-close fires on MERGE (or push to default branch), not on commit.** **NINETEENTH session running.** #16 will not auto-close on Phase 1's trailer commit because `develop` isn't `main`. Will close manually once the whole workstream is done.
+- **Qt on Linux CI needs `QT_QPA_PLATFORM=offscreen`.** Any future Qt-linking test registered via ctest will hit the same failure. Session 32 should propagate this pattern if Phase 2 tests end up linking Qt (unlikely — `jt9` and `wsprd` are CLI binaries).
+- **`develop` is up to date with `origin/develop`** after this close-out commit (pending). Not ahead.
+- **SESSION_NOTES.md is 290KB** — single Read blocks. Use `limit=300` for top or targeted offset for older sessions.
+- **Two commits this session.** Phase 1 implementation (`43ec99251`) + Linux fix (`6b6e7acdf`) + this close-out. The implementation-then-fix pattern matched Session 27's three-push cycle (runner → permissions → all green). Don't treat CI iteration as failure; it's the fastest way to surface real-environment gaps.
+- **User-directed mid-session housekeeping is fine.** Artifact cleanup wasn't on the deliverable but was discrete, bounded, and got explicit approval before destructive action. Kept it narrow ("keep 2 runs, delete the rest") and verified state after.
+
+**Self-assessment:**
+- (+) **Wrote claim stub before technical work.** Tenth consecutive session.
+- (+) **Oriented from project directory** — but only after user correction. User had to say "STOP WORKING IN THE PORTFOLIO!" because I briefly ran `python3 methodology_dashboard.py` from `/Users/terrell/Documents/code` before orientation completed. Memory `feedback_orient_from_project.md` exists; should have been enough. Half-deduction — caught quickly, but the pattern repeats.
+- (+) **Evidence-based edits.** Re-read each target file immediately before edit. No memory-of-memory-of-lines. Session 30's line numbers matched reality 1:1.
+- (+) **Resisted scope creep.** Plan said Phase 1 deliberately does not add new tests; I didn't.
+- (+) **Fast iteration on CI failure.** Read the log, identified root cause (Qt xcb without display), applied standard one-line fix, re-pushed. No debugging spiral.
+- (+) **Explicit mode-switch discipline on housekeeping.** User asked for artifact deletion mid-session. I inventoried first, proposed a conservative keep-list, asked for approval, executed, verified. No drift into the deliverable.
+- (+) **Persona-correct throughout.** Twenty-first session running. No rad-con, consumer, or AI references.
+- (-) **Initial portfolio-level orientation.** Third session this has happened. The memory exists but the trigger isn't firing reliably — the first instinct is still `cd ~/code && python3 methodology_dashboard.py`. Structural fix needed (either stronger memory phrasing, a hook, or an alias).
+- (-) **Didn't flag Qt display risk in the pre-push review.** Session 30 didn't mention it; I also didn't catch it before pushing. I read `test_qt_helpers.cpp` only AFTER the failure, not before. A read-before-push of the test source would have caught the Qt5::Test linkage and flagged "this opens QApplication — Linux CI has no display." Cost: one CI run (~17 min).
+- (-) **Monitor script failed twice** with exit 1 before succeeding. The script condition `[ "$s" = "completed" ]` was right the third time; first two had shell quoting / subshell issues. Should have tested the monitor script locally before arming.
+- **Score: 8/10** — Deliverable complete, all four platforms green, housekeeping executed cleanly. Two deductions: repeated portfolio-orientation mistake (structural), missed Qt display risk in pre-push review (tactical).
 
 ---
 
