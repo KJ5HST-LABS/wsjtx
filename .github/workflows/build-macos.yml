@@ -86,6 +86,10 @@ jobs:
       - name: Build
         run: cmake --build wsjtx-build -j$(sysctl -n hw.ncpu)
 
+      - name: Run tests
+        run: ctest --output-on-failure
+        working-directory: wsjtx-build
+
       - name: Verify architecture
         run: |
           file wsjtx-build/jt9

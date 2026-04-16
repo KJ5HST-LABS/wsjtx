@@ -66,6 +66,10 @@ jobs:
       - name: Build
         run: cmake --build wsjtx-build -j$(nproc)
 
+      - name: Run tests
+        run: ctest --output-on-failure
+        working-directory: wsjtx-build
+
       - name: Verify binary
         run: |
           file wsjtx-build/jt9
