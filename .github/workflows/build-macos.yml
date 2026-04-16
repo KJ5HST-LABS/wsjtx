@@ -1,4 +1,4 @@
-name: Build macOS arm64
+name: Build macOS
 
 on:
   workflow_call:
@@ -12,12 +12,27 @@ on:
         required: false
         type: string
         default: "4.7.0"
+      arch:
+        description: "Target architecture (arm64 or x86_64)"
+        required: true
+        type: string
+      runner:
+        description: "GitHub Actions runner label"
+        required: true
+        type: string
+      deployment_target:
+        description: "macOS deployment target version"
+        required: true
+        type: string
 
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: ${{ inputs.runner }}
     steps:
       - uses: actions/checkout@v4
+
+      - name: Set Homebrew prefix
+        run: echo "HOMEBREW_PREFIX=$(brew --prefix)" >> "$GITHUB_ENV"
 
       - name: Install dependencies
         run: brew install cmake gcc fftw boost qt@5 libusb dylibbundler autoconf automake libtool
@@ -26,22 +41,22 @@ jobs:
         id: fc
         run: |
           FC="$(brew --prefix gcc)/bin/gfortran"
-          [ -f "$FC" ] || FC="$(ls /opt/homebrew/bin/gfortran-* 2>/dev/null | sort -V | tail -1)"
+          [ -f "$FC" ] || FC="$(ls $HOMEBREW_PREFIX/bin/gfortran-* 2>/dev/null | sort -V | tail -1)"
           echo "Found gfortran: $FC"
           echo "path=$FC" >> "$GITHUB_OUTPUT"
 
       - name: Fix Qt5 keg-only paths
         run: |
           QT5_PREFIX="$(brew --prefix qt@5)"
-          [ -e /opt/homebrew/mkspecs ] || ln -s "${QT5_PREFIX}/mkspecs" /opt/homebrew/mkspecs
-          [ -e /opt/homebrew/plugins ] || ln -s "${QT5_PREFIX}/plugins" /opt/homebrew/plugins
+          [ -e $HOMEBREW_PREFIX/mkspecs ] || ln -s "${QT5_PREFIX}/mkspecs" $HOMEBREW_PREFIX/mkspecs
+          [ -e $HOMEBREW_PREFIX/plugins ] || ln -s "${QT5_PREFIX}/plugins" $HOMEBREW_PREFIX/plugins
 
       - name: Cache Hamlib
         id: hamlib-cache
         uses: actions/cache@v4
         with:
           path: hamlib-prefix
-          key: hamlib-macos-${{ inputs.hamlib_branch }}-${{ hashFiles('.github/workflows/build-macos.yml') }}
+          key: hamlib-macos-${{ inputs.arch }}-${{ inputs.hamlib_branch }}-${{ hashFiles('.github/workflows/build-macos.yml') }}
 
       - name: Build Hamlib
         if: steps.hamlib-cache.outputs.cache-hit != 'true'
@@ -62,7 +77,7 @@ jobs:
           cmake -S . -B wsjtx-build \
             -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/hamlib-prefix;$(brew --prefix qt@5);$(brew --prefix libusb);$(brew --prefix fftw);$(brew --prefix boost)" \
             -DCMAKE_Fortran_COMPILER="${{ steps.fc.outputs.path }}" \
-            -DCMAKE_OSX_DEPLOYMENT_TARGET=11.0 \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=${{ inputs.deployment_target }} \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DWSJT_GENERATE_DOCS=OFF \
             -DWSJT_SKIP_MANPAGES=ON \
@@ -71,16 +86,16 @@ jobs:
       - name: Build
         run: cmake --build wsjtx-build -j$(sysctl -n hw.ncpu)
 
-      - name: Verify arm64
+      - name: Verify architecture
         run: |
           file wsjtx-build/jt9
-          lipo -archs wsjtx-build/jt9 | grep -q arm64
+          lipo -archs wsjtx-build/jt9 | grep -q ${{ inputs.arch }}
 
       - name: Collect binaries
         id: collect
         run: |
           BUILD=wsjtx-build
-          STAGE=stage/wsjtx-${{ inputs.version }}-arm64
+          STAGE=stage/wsjtx-${{ inputs.version }}-${{ inputs.arch }}
           ASSETS=assets
 
           mkdir -p "${STAGE}" "${ASSETS}"
@@ -114,11 +129,11 @@ jobs:
 
           resolve_lib() {
             local lib="$1"
-            if [[ "$lib" == /opt/homebrew/* ]]; then
+            if [[ "$lib" == $HOMEBREW_PREFIX/* ]]; then
               echo "$lib"
             elif [[ "$lib" == @rpath/* ]]; then
               local name="${lib#@rpath/}"
-              for dir in "$GCC_LIB" /opt/homebrew/lib; do
+              for dir in "$GCC_LIB" "$HOMEBREW_PREFIX/lib"; do
                 [ -f "$dir/$name" ] && echo "$dir/$name" && return
               done
             fi
@@ -126,7 +141,7 @@ jobs:
 
           bundle_dylib() {
             local binary="$1"
-            for lib in $(otool -L "$binary" | awk '{print $1}' | grep -E '(/opt/homebrew|@rpath)' | grep -v Qt); do
+            for lib in $(otool -L "$binary" | awk '{print $1}' | grep -E "($HOMEBREW_PREFIX|@rpath)" | grep -v Qt); do
               local resolved
               resolved=$(resolve_lib "$lib")
               [ -z "$resolved" ] && continue
@@ -161,7 +176,7 @@ jobs:
           done
 
           echo "Checking for remaining external references..."
-          REMAINING=$(find "${APP}/Contents/MacOS" -type f -perm +111 -exec otool -L {} \; 2>/dev/null | grep /opt/homebrew || true)
+          REMAINING=$(find "${APP}/Contents/MacOS" -type f -perm +111 -exec otool -L {} \; 2>/dev/null | grep "$HOMEBREW_PREFIX" || true)
           if [ -n "$REMAINING" ]; then
             echo "WARNING: External paths still present:"
             echo "$REMAINING"
@@ -218,7 +233,7 @@ jobs:
           echo "Verifying CLI tools..."
           for bin in "${ASSETS}"/*; do
             [ -f "$bin" ] && [ -x "$bin" ] && [ "$(basename "$bin")" != "lib" ] && {
-              BAD=$(otool -L "$bin" | grep /opt/homebrew || true)
+              BAD=$(otool -L "$bin" | grep "$HOMEBREW_PREFIX" || true)
               if [ -n "$BAD" ]; then
                 echo "ERROR: $(basename "$bin") still has Homebrew refs:"
                 echo "$BAD"
@@ -301,7 +316,7 @@ jobs:
         run: |
           STAGE="${{ steps.collect.outputs.stage_dir }}"
           IDENTITY="${{ steps.keychain.outputs.identity }}"
-          PKG_ID="org.k1jt.wsjtx.arm64"
+          PKG_ID="org.k1jt.wsjtx.${{ inputs.arch }}"
           PKG_VERSION="${{ inputs.version }}"
 
           PAYLOAD="$RUNNER_TEMP/pkg-payload"
@@ -345,7 +360,7 @@ jobs:
           productbuild \
             --package "$RUNNER_TEMP/wsjtx-component.pkg" \
             --sign "$INST_IDENTITY" \
-            "wsjtx-${{ inputs.version }}-arm64-macOS.pkg"
+            "wsjtx-${{ inputs.version }}-${{ inputs.arch }}-macOS.pkg"
 
       - name: Notarize pkg
         env:
@@ -374,7 +389,7 @@ jobs:
             xcrun stapler staple "$file"
           }
 
-          notarize_and_staple "wsjtx-${{ inputs.version }}-arm64-macOS.pkg"
+          notarize_and_staple "wsjtx-${{ inputs.version }}-${{ inputs.arch }}-macOS.pkg"
 
       - name: Notarize CLI tools
         env:
@@ -407,8 +422,8 @@ jobs:
       - name: Upload pkg
         uses: actions/upload-artifact@v4
         with:
-          name: wsjtx-${{ inputs.version }}-arm64-macOS.pkg
-          path: wsjtx-${{ inputs.version }}-arm64-macOS.pkg
+          name: wsjtx-${{ inputs.version }}-${{ inputs.arch }}-macOS.pkg
+          path: wsjtx-${{ inputs.version }}-${{ inputs.arch }}-macOS.pkg
 
       - name: Package individual binaries
         run: |
@@ -429,5 +444,5 @@ jobs:
       - name: Upload individual binaries
         uses: actions/upload-artifact@v4
         with:
-          name: individual-binaries-macos
+          name: individual-binaries-macos-${{ inputs.arch }}
           path: packages/*.tar.gz

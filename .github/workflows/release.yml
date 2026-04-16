@@ -26,6 +26,9 @@ jobs:
     with:
       version: ${{ needs.prepare.outputs.version }}
       hamlib_branch: "4.7.1"
+      arch: "arm64"
+      runner: "macos-15"
+      deployment_target: "11.0"
     secrets: inherit
 
   linux:
