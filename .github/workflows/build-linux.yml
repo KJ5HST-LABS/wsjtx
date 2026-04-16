@@ -45,6 +45,7 @@ jobs:
             https://github.com/Goddard-Fortran-Ecosystem/pFUnit.git pfunit-src
           cmake -S pfunit-src -B pfunit-build \
             -DSKIP_MPI=YES \
+            -DSKIP_OPENMP=YES \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DCMAKE_INSTALL_PREFIX="${GITHUB_WORKSPACE}/pfunit-prefix"
           cmake --build pfunit-build -j$(nproc)
