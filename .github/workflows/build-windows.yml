@@ -143,7 +143,7 @@ jobs:
           sed -i 's/if (NOT WIN32 AND _use_threads)/if (_use_threads)/' CMake/Modules/FindFFTW3.cmake
 
           cmake -G "MSYS Makefiles" -S . -B wsjtx-build \
-            -DCMAKE_PREFIX_PATH="${WORKSPACE}/hamlib-prefix" \
+            -DCMAKE_PREFIX_PATH="${WORKSPACE}/hamlib-prefix;${WORKSPACE}/pfunit-prefix" \
             -DOMNIRIG_TYPE_LIB="${OMNIRIG}" \
             -DCMAKE_Fortran_FLAGS="-fallow-argument-mismatch -std=legacy" \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
