@@ -5,31 +5,48 @@ on:
     tags: ["v*"]
 
 jobs:
+  # ── Derive the version string once from the pushed tag ────────────
+  # Strips the leading "v" so artifacts are named "wsjtx-3.0.1-rc1-*"
+  # rather than "wsjtx-v3.0.1-rc1-*". RC/beta suffixes (e.g.
+  # v3.0.1-rc1 → 3.0.1-rc1) are preserved so pre-release artifacts
+  # are distinguishable from GA. All downstream jobs consume this
+  # single output so the three platform artifacts cannot disagree.
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - id: v
+        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+
   # ── Build all three platforms ──────────────────────────────────────
   macos:
+    needs: prepare
     uses: ./.github/workflows/build-macos.yml
     with:
-      version: "3.0.0"
+      version: ${{ needs.prepare.outputs.version }}
       hamlib_branch: "4.7.0"
     secrets: inherit
 
   linux:
+    needs: prepare
     uses: ./.github/workflows/build-linux.yml
     with:
-      version: "3.0.0"
+      version: ${{ needs.prepare.outputs.version }}
       hamlib_branch: "4.7.0"
     secrets: inherit
 
   windows:
+    needs: prepare
     uses: ./.github/workflows/build-windows.yml
     with:
-      version: "3.0.0"
+      version: ${{ needs.prepare.outputs.version }}
       hamlib_branch: "4.7.0"
     secrets: inherit
 
   # ── Publish release + sync to public repo ──────────────────────────
   release:
-    needs: [macos, linux, windows]
+    needs: [prepare, macos, linux, windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -45,11 +62,9 @@ jobs:
           path: artifacts
 
       - name: Build source tarball
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
         run: |
-          # Strip leading "v" from the tag for the version string.
-          # RC suffixes (e.g. v3.0.1-rc1 → 3.0.1-rc1) are preserved so
-          # pre-release source archives are distinguishable from GA.
-          VERSION="${GITHUB_REF_NAME#v}"
           # This repo has no git submodules, so git archive's default
           # single-tree output captures the full source. If submodules
           # are ever added, this step must be revisited — git archive
