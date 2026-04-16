@@ -1,11 +1,19 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Write plan document for #16 (ctest + pfUnit integration).
-**Status:** COMPLETE
-**Session:** 30 complete
+**Task:** Phase 1 of CTEST_PFUNIT_INTEGRATION_PLAN.md (#16) — add `enable_testing()` and wire ctest into all four CI workflows.
+**Status:** IN PROGRESS
+**Session:** 31
 **Started:** 2026-04-16
 **Persona:** Contributor
+
+---
+
+### What Session 31 Did
+**Deliverable:** Phase 1 of `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md` — `enable_testing()` in root `CMakeLists.txt`, "Run tests" step in `build-{macos,linux,windows}.yml`, one passing test (`test_qt_helpers`) reported on all four CI jobs. (IN PROGRESS)
+**Started:** 2026-04-16
+**Persona:** Contributor
+**Status:** Session claimed. Work beginning.
 
 ---
 
