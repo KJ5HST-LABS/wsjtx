@@ -1,11 +1,84 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Push `develop` to origin — deliver #15 commits, verify auto-close.
-**Status:** COMPLETE. Pushed `02857925d`. Issue #15 auto-closed.
-**Session:** 23 complete
+**Task:** Plan Intel macOS x86_64 build job (#8) — evidence-based plan document.
+**Status:** COMPLETE. Plan written to `docs/contributor/INTEL_MACOS_BUILD_PLAN.md`.
+**Session:** 24 complete
 **Started:** 2026-04-16
 **Persona:** Contributor
+
+---
+
+### What Session 24 Did
+**Deliverable:** Plan document for #8 (Intel macOS x86_64 build job). COMPLETE.
+**Started:** 2026-04-16
+**Persona:** Contributor
+
+**Session 23 Handoff Evaluation (by Session 24):**
+- **Score: 9/10.** Session 23's priority 1 was "#8 (Intel macOS x86_64 build job) — Plan Mode recommended (FM #19 risk)" with specific technical pointers: `release.yml:14-20` for the `prepare` job pattern and `ci.yml:15,22,29` for `hamlib_branch: "4.7.1"`. Both references were accurate and used during evidence gathering.
+- **What helped:** (1) The explicit "Plan Mode recommended (FM #19 risk)" prevented me from jumping straight to implementation — exactly the right call. (2) The `release.yml:14-20` reference showed me the `prepare` job pattern that the Intel job must follow. (3) The `hamlib_branch: "4.7.1"` note was correct and used in the plan. (4) The `--repo KJ5HST-LABS/wsjtx-internal` gotcha (thirteenth session) applied on `gh issue view 8`.
+- **What was missing:** The handoff didn't mention the `/opt/homebrew` hardcoding problem in `build-macos.yml` — the biggest technical challenge for the Intel port. Had to discover this during evidence gathering. Minor because the grep-based inventory would have found it regardless.
+- **What was wrong:** Nothing. All claims were accurate.
+- **ROI:** High. The FM #19 recommendation alone justified the handoff — it prevented a planning-to-implementation bleed.
+
+**What happened:**
+1. Oriented: read SAFEGUARDS (full), SESSION_RUNNER (full), SESSION_NOTES.md Session 23 in full. Dashboard refreshed (wsjtx-arm 86/100). `git status` clean on `develop`, 1 commit ahead of origin (Session 23 close-out `e21402d73`). `gh issue list --repo KJ5HST-LABS/wsjtx-internal` returned 9 open issues. No ghost sessions — HEAD `e21402d73` matches Session 23's close-out.
+2. User confirmed Contributor persona, said "1" (priority 1 — #8).
+3. Wrote Session 24 claim stub to SESSION_NOTES.md (Phase 1B).
+4. Read issue #8 via `gh issue view 8 --repo KJ5HST-LABS/wsjtx-internal`.
+5. Read all referenced files in parallel: `build-macos.yml` (434 lines, full), `release.yml` (114 lines, full), `ci.yml` (30 lines, full), docs 1/2/3 (full), `drafts/email_cicd_reply.md` (full).
+6. Ran grep-based inventory: `arm64` across all `.yml`/`.md` files, `macos-13|macos-14|macos-15`, `build-macos\.yml` references, `/opt/homebrew` in `.github/`, `macOS ARM64|Intel|x86_64` in `docs/contributor/`. Found 25 locations in `build-macos.yml` needing changes, 3 in `ci.yml`, 5 in `release.yml`, 23+ in docs.
+7. Made architecture decision: two separate `.pkg` files (not universal binary). Rationale: Homebrew doesn't ship universal bottles; building all deps twice adds massive complexity.
+8. Made implementation decision: parameterize existing `build-macos.yml` (not duplicate). Rationale: 434 lines of duplication vs. ~25 mechanical substitutions.
+9. Wrote plan document to `docs/contributor/INTEL_MACOS_BUILD_PLAN.md` with:
+   - Architecture decision (two jobs vs. universal binary)
+   - Implementation strategy (parameterize vs. duplicate)
+   - Complete grep-based inventory with line numbers
+   - 3 implementation phases with per-phase completion criteria
+   - Risk section (`macos-13` deprecation)
+   - 3 gotchas (Homebrew prefix, Qt5 on Intel, billing impact)
+
+**Proof:**
+- Plan document: `docs/contributor/INTEL_MACOS_BUILD_PLAN.md` — 240+ lines with grep-verified line numbers.
+- Evidence-based: every file/line reference was confirmed by reading the actual file this session.
+
+**What's next (Session 25 priorities):**
+1. **Implement Phase 1 of INTEL_MACOS_BUILD_PLAN.md** — Parameterize `build-macos.yml` with `arch`, `runner`, `deployment_target` inputs. Replace `/opt/homebrew` hardcodes with `$HOMEBREW_PREFIX`. Update `ci.yml` and `release.yml` to pass new required inputs. Verify arm64 CI still green. Start at `build-macos.yml:4` (inputs block).
+2. **Push `develop` to origin** — Session 23 close-out commit `e21402d73` is still 1 commit ahead. Push with Session 24's commit too.
+3. **#16 (ctest + pfUnit integration)** — medium-large, separate planning session.
+
+**Hygiene items (unchanged — do not act on mid-issue):**
+- `ci.yml:14,21,28` version `"3.0.0"` drift — separate concern, ask user.
+- `actions/checkout@v4` → `v5` deprecation — hard deadline 2026-09-16.
+- `/releases/latest` gating for `hamlib-upstream-check.yml` — design question.
+- Email thread report-back — FOURTEEN sessions pending.
+- Untracked files (`.p12`, `.DS_Store`, `OUTREACH.md`, etc.) — FOURTEEN sessions.
+
+**Key files (for next session):**
+- `docs/contributor/INTEL_MACOS_BUILD_PLAN.md` — the plan. Phase 1 section has exact line numbers and changes.
+- `.github/workflows/build-macos.yml:4-14` — inputs block to extend.
+- `.github/workflows/build-macos.yml:18` — `runs-on` to parameterize.
+- `.github/workflows/build-macos.yml:29,36-37,117,121,129,164,221` — `/opt/homebrew` hardcodes to replace.
+- `.github/workflows/ci.yml:11-16` — existing `macos:` job to add inputs to.
+- `.github/workflows/release.yml:23-29` — existing `macos:` job to add inputs to.
+
+**Gotchas for next session:**
+- **`gh` defaults to upstream `WSJTX/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. **FOURTEENTH session running.**
+- **Commit-trailer auto-close fires on MERGE (or push to default branch), not on commit.** **TWELFTH session running.**
+- **`develop` is 1+ commits ahead of origin.** Push before or after Phase 1 work.
+- **Phase 1 must NOT break arm64.** The parameterization is a refactor — existing arm64 callers must pass the new inputs explicitly. Verify arm64 CI green before starting Phase 2.
+
+**Self-assessment:**
+- (+) **Wrote claim stub (Phase 1B) before technical work.** Third consecutive session.
+- (+) **Recognized FM #19 risk — plan is the deliverable, not implementation.** Followed Session 23's recommendation.
+- (+) **Complete grep-based inventory.** 5 parallel grep searches covering arm64 references, runner versions, workflow references, Homebrew paths, and doc platform mentions. Every line number in the plan was verified against actual file content.
+- (+) **Architecture and implementation decisions documented with rationale.** Not just "what" but "why" and "why not the alternative."
+- (+) **Per-phase completion criteria with verification commands.** Each phase has explicit DONE criteria and session boundaries.
+- (+) **Identified `macos-13` deprecation risk.** Non-obvious — the runner exists today but the trend is clear.
+- (+) **Identified `/opt/homebrew` as the key technical challenge.** This was the non-obvious discovery — the hardcoded paths are what make a naive "just copy the workflow" approach fail.
+- (+) **Persona-correct throughout.** Fourteenth session running. No mention of rad-con, consumer, or AI tooling.
+- (-) **No build verification.** This was a planning session — no code changes — so no build to verify. Appropriate for the deliverable type.
+- **Score: 9/10** — Thorough evidence-based plan with complete inventory. Deducted 1 because the Homebrew billing impact estimate is approximate (didn't verify `macos-13` multiplier — assumed same 10x as `macos-15`).
 
 ---
 
