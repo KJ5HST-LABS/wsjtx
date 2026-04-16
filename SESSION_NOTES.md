@@ -1,11 +1,79 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Adopt latest methodology starter-kit into SESSION_RUNNER.md and SAFEGUARDS.md.
+**Task:** Phase 2 of INTEL_MACOS_BUILD_PLAN.md — wire Intel macOS job into CI and release workflows (#8).
 **Status:** COMPLETE
-**Session:** 26 complete
+**Session:** 27 complete
 **Started:** 2026-04-16
 **Persona:** Contributor
+
+---
+
+### What Session 27 Did
+**Deliverable:** Phase 2 of INTEL_MACOS_BUILD_PLAN.md — add Intel macOS x86_64 build job to CI and release workflows. COMPLETE.
+**Started:** 2026-04-16
+**Persona:** Contributor
+
+**Session 26 Handoff Evaluation (by Session 27):**
+- **Score: 9/10.** Session 26's handoff was thorough with accurate key files, specific next steps for Phase 2, and well-documented gotchas.
+- **What helped:** (1) Priority 1 was specific and actionable with exact inputs (`arch: "x86_64"`, `runner: "macos-13"`, `deployment_target: "10.13"`). (2) Key files list with line numbers was accurate. (3) The gotcha about Phase 2 potentially failing on first Intel CI run was prophetic — it failed twice before passing.
+- **What was missing:** The `macos-13` retirement (Dec 2025) wasn't caught during planning — the plan doc still listed `macos-13` as the Intel runner. This caused the first CI failure and required research to find `macos-15-intel` as the replacement.
+- **What was wrong:** Runner `macos-13` in the handoff was stale — it was retired Dec 2025. Not Session 26's fault (it was in the plan doc from Session 24), but it did cost a CI iteration.
+- **ROI:** High. The handoff made Phase 2 implementation mechanical — the only discovery work was debugging the runner and permissions issues.
+
+**What happened:**
+1. Oriented from project directory (user corrected initial portfolio-level attempt). Read SAFEGUARDS.md (full), SESSION_NOTES.md Session 26 section (full), SESSION_RUNNER.md (full). `git status` clean on `develop`, 1 commit ahead of origin. No ghost sessions — HEAD `0e9599bb2` matches Session 26's close-out. Dashboard: 86/100 health, medium risk, active. 9 internal issues open, 2 upstream.
+2. User directed: priority 1 from handoff (Phase 2). Persona: Contributor.
+3. Wrote Session 27 claim stub to SESSION_NOTES.md.
+4. Stated scope: "`ci.yml`, `release.yml`, `SESSION_NOTES.md`. Nothing else."
+5. Added `macos-intel:` job block to `ci.yml` (lines 21-29) and `release.yml` (lines 34-43). Updated `release.yml` `needs:` to include `macos-intel`. Updated "three platforms" comment to "four platforms." Committed `a4548feee`.
+6. **CI run 1 (24515807062): FAILED.** `macos-intel` failed immediately — `macos-13` runner retired Dec 2025. Error: "The configuration 'macos-13-us-default' is not supported." ARM64, Linux, Windows green.
+7. Researched replacement runners. Found `macos-15-intel` is the last Intel runner (available until Fall 2027). Updated both workflows. Committed `deab9f047`.
+8. **CI run 2 (24516667900): FAILED.** `macos-intel` failed at "Fix Qt5 keg-only paths" — `ln -s ... /usr/local/mkspecs` permission denied. `/usr/local` is not user-writable on `macos-15-intel` (unlike `/opt/homebrew` on ARM). ARM64, Linux, Windows green.
+9. Added `sudo` to Qt5 symlink commands in `build-macos.yml`. Committed `12ec70bb5`.
+10. **CI run 3 (24517605027): ALL GREEN.** All four jobs passed: macos (11m36s), macos-intel (17m36s), linux (7m15s), windows (17m42s). Intel artifacts produced: `wsjtx-3.0.0-x86_64-macOS.pkg` and `individual-binaries-macos-x86_64`.
+11. Updated plan doc runner reference from `macos-13` to `macos-15-intel`.
+
+**Proof:**
+- CI run 24517605027 — all four platforms green.
+- Artifacts: `wsjtx-3.0.0-x86_64-macOS.pkg` (signed, notarized Intel installer), `individual-binaries-macos-x86_64` (standalone CLI tools), plus all existing ARM64/Linux/Windows artifacts.
+- Commits: `a4548feee` (add Intel job), `deab9f047` (fix runner), `12ec70bb5` (fix Qt5 symlinks).
+
+**What's next (Session 28 priorities):**
+1. **Implement Phase 3 of INTEL_MACOS_BUILD_PLAN.md** (#8) — Update contributor docs 1, 2, 3 to list four platforms. All "three platforms" references become "four platforms." Platform tables, diagrams, and artifact lists include Intel macOS. See plan doc Phase 3 section for exact line changes. After this, #8 can be closed.
+2. **#16 (ctest + pfUnit integration)** — medium-large, separate planning session.
+3. **#3 (v3.0.0 GA rebuild)** — pending.
+
+**Hygiene items (unchanged — do not act on mid-issue):**
+- `ci.yml:14,28` version `"3.0.0"` drift — separate concern, ask user. (Note: `ci.yml:21` now also has `"3.0.0"` for Intel job.)
+- `actions/checkout@v4` → `v5` deprecation — hard deadline 2026-09-16. CI annotations warn about Node.js 20.
+- `/releases/latest` gating for `hamlib-upstream-check.yml` — design question.
+- `macos-15-intel` sunset: Fall 2027. After that, Intel macOS runners gone. Fallback options: cross-compile on ARM, self-hosted Intel runner, or drop Intel. Source: [GitHub changelog](https://github.blog/changelog/2025-09-19-github-actions-macos-13-runner-image-is-closing-down/) and [runner-images#13045](https://github.com/actions/runner-images/issues/13045).
+- Email thread report-back — SEVENTEEN sessions pending.
+- Untracked files (`.p12`, `.DS_Store`, `OUTREACH.md`, etc.) — SEVENTEEN sessions.
+
+**Key files (for next session):**
+- `docs/contributor/INTEL_MACOS_BUILD_PLAN.md` — Phase 3 section has exact doc changes with line numbers.
+- `docs/contributor/1_CICD_EXECUTIVE_SUMMARY.md` — ~3 line changes (platform count, add Intel row).
+- `docs/contributor/2_DEVELOPMENT_WORKFLOW.md` — ~12 line changes (platform lists, runner table, time estimates, release flow).
+- `docs/contributor/3_CICD_DEPLOYMENT_PLAYBOOK.md` — ~8 line changes (architecture, tables, file inventory).
+
+**Gotchas for next session:**
+- **`gh` defaults to upstream `WSJTX/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. **SEVENTEENTH session running.**
+- **Commit-trailer auto-close fires on MERGE (or push to default branch), not on commit.** **FIFTEENTH session running.**
+- **Plan doc line numbers for Phase 3 may be stale.** The plan was written by Session 24 before Phases 1 and 2 changed the workflow files. The doc file line numbers should still be accurate since doc files weren't modified, but verify before editing.
+- **`release.yml:13` still says "three platform artifacts cannot disagree"** in the `prepare` job comment. This is a stale comment but is inside the `prepare` block, not a Phase 3 doc change — note for Phase 3 or a separate cleanup.
+
+**Self-assessment:**
+- (+) **Wrote claim stub before technical work.** Sixth consecutive session.
+- (+) **Stated scope explicitly.** "`ci.yml`, `release.yml`, `SESSION_NOTES.md`. Nothing else." Scope expanded to `build-macos.yml` for the sudo fix — necessary to unblock the deliverable.
+- (+) **Debugged CI failures in-session.** Three iterations: runner retired → runner permissions → all green. Plan doc warned this was likely.
+- (+) **ARM64 build stayed green throughout.** No regression across all three CI runs.
+- (+) **Persona-correct throughout.** Seventeenth session running. No mention of rad-con, consumer, or AI tooling.
+- (+) **Researched Intel runner sunset timeline** with verified sources when user asked.
+- (-) **Orientation started from portfolio level again.** User corrected. Second consecutive session with this mistake (now saved as feedback memory).
+- (-) **Plan doc `macos-13` was stale.** Should have verified runner availability before first push. Cost: one wasted CI run (~15 min billed).
+- **Score: 8/10** — Deliverable complete, all four platforms green, good debugging. Deducted for repeated orientation mistake and not catching the stale runner before pushing.
 
 ---
 

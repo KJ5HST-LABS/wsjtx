@@ -31,7 +31,7 @@ The current `build-macos.yml` is 434 lines. The differences between arm64 and x8
 
 | Aspect | ARM64 (current) | Intel x86_64 (new) |
 |--------|-----------------|---------------------|
-| Runner | `macos-15` | `macos-13` |
+| Runner | `macos-15` | `macos-15-intel` |
 | Homebrew prefix | `/opt/homebrew` | `/usr/local` |
 | Deployment target | `11.0` | `10.13` |
 | gfortran fallback path | `/opt/homebrew/bin/gfortran-*` | `/usr/local/bin/gfortran-*` |
