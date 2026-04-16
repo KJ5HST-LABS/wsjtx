@@ -1,11 +1,95 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Session 19 closed issue #18 — `release.yml` now derives version from the pushed tag via a `prepare` job. COMPLETE.
-**Status:** Commit `bef38a263` on `develop`. Issue #18 auto-closed via commit trailer (verified `CLOSED/COMPLETED`). Verification comment added. No end-to-end validation (requires a tag push) — documented in comment and handoff.
-**Session:** 19 complete
+**Task:** Bump `hamlib_branch` from `4.7.0` → `4.7.1` across `ci.yml` and `release.yml` (6 lines). PR #20 open against `develop`. #19 will auto-close on merge.
+**Status:** PR #20 open, three-platform CI pending. Merge when green.
+**Session:** 20 complete
 **Started:** 2026-04-15
 **Persona:** Contributor
+
+---
+
+### What Session 20 Did
+**Deliverable:** Bump `hamlib_branch` `"4.7.0"` → `"4.7.1"` in all six workflow references (`ci.yml:15,22,29` and `release.yml:28,36,44`). Opened PR #20 against `develop` with `Closes #19` trailer. COMPLETE — pending CI green + merge.
+**Started:** 2026-04-15
+**Persona:** Contributor
+
+**Session 19 Handoff Evaluation (by Session 20):**
+- **Score: 9.5/10.** Session 19's priority 1 was a conditional decision tree: "Check `/releases/latest`. If `4.7.1`, proceed — six lines, six grep hits." The decision tree was exactly right. The line numbers (`ci.yml:15,22,29`, `release.yml:28,36,44`) matched grep output exactly — zero re-discovery needed. The warning "line numbers have shifted due to Session 19's `prepare` job addition; re-grep to confirm" was responsible defensive advice, and the numbers turned out correct.
+- **What helped:** (1) The exact `gh api` command for the release check was in the handoff — used verbatim, got `4.7.1` on first call. (2) The "six lines, six grep hits" framing set exact expectations — grep returned exactly six hits, all at the predicted lines. (3) The `build-*.yml` analysis ("defaults aren't used in practice, would add churn without value") saved me from a scope-creep investigation — I confirmed it with one grep and moved on. (4) The `gh --repo KJ5HST-LABS/wsjtx-internal` warning (tenth session) and the commit-trailer auto-close discipline (eighth session) were both applied preemptively. (5) The explicit "PR against `develop`, wait for three-platform CI green, merge, close #19 via commit trailer" was the complete playbook — I followed it step by step.
+- **What was missing:** Nothing material. This was a straightforward bump with a clear playbook. The handoff was calibrated to the task complexity.
+- **What was wrong:** Session 19 said `build-*.yml` files "each has `default: "4.7.0"` for `hamlib_branch` (lines 14 each)." Re-reading the files, there is no `default:` key — just the input declaration and description. The defaults are never exercised because callers always pass explicitly, so this didn't matter operationally, but the claim was technically inaccurate.
+- **ROI:** Very high. Orientation-to-PR-open was ~15 minutes including full protocol compliance.
+
+**What happened:**
+1. Oriented: read SAFEGUARDS (full), SESSION_RUNNER (full), SESSION_NOTES.md Session 19 in full. Dashboard refreshed (wsjtx-arm 86/100, medium risk, unchanged — tenth session at this score). `git status` clean. `git log --oneline -10` shows HEAD `f99ba0771` matching Session 19's close-out commit — **no ghost session.** `gh issue list --repo KJ5HST-LABS/wsjtx-internal` returned 11 open issues. `gh api /repos/Hamlib/Hamlib/releases/latest` → `tag_name: 4.7.1, published_at: 2026-04-16T01:01:34Z` — **Hamlib 4.7.1 formally released.** Decision rule satisfied: proceed with bump.
+2. User confirmed Contributor persona + "see if 4.7.1 is released and we can do 19."
+3. Wrote Session 20 claim stub to `SESSION_NOTES.md` (Phase 1B — eighth session running).
+4. Read issue #19 full body. Confirmed the "To bump" section matches: `ci.yml` (three jobs) + `release.yml` (three jobs). Grepped `hamlib_branch` across both files — six hits at `ci.yml:15,22,29` and `release.yml:28,36,44`, exactly as Session 19's handoff predicted.
+5. Read both files at the relevant line ranges to confirm context before editing.
+6. Replaced all six `hamlib_branch: "4.7.0"` → `"4.7.1"` (two `replace_all` edits, one per file).
+7. **Pre-commit validation (3 checks, all passed):**
+   - Grep confirmation: all six `hamlib_branch` lines now read `"4.7.1"`.
+   - Residual check: `grep -n '4\.7\.0' ci.yml release.yml` → **no matches.** Zero residual `4.7.0` in either file.
+   - YAML parse: `python3 -c "import yaml; ..."` loaded both files successfully.
+8. Full sweep of `hamlib_branch` across all five workflow files confirmed: `build-*.yml` have no hardcoded version (just `inputs.hamlib_branch` parameter declaration and usage via `${{ inputs.hamlib_branch }}`). No defaults to sweep.
+9. Created branch `bump-hamlib-4.7.1`, committed as `b8b48dfb8` with `Closes KJ5HST-LABS/wsjtx-internal#19` trailer. Pushed to origin. Opened PR #20 against `develop`.
+10. Three-platform CI triggered (macOS, Linux, Windows) — all pending at session close. Superbuild from source; results expected in ~30-60 minutes.
+11. Issue #19 confirmed still OPEN — expected, since commit-trailer auto-close fires on merge, not push.
+12. **Deliberate scope-outs:**
+    - **`build-*.yml` have no `default:` for `hamlib_branch`.** Session 19's handoff claimed they had `default: "4.7.0"` — inaccurate. They have no default; callers always pass explicitly. No edit needed.
+    - **`ci.yml:14,21,28` version `"3.0.0"` literals** — still present, still a separate concern from #19. Not touched.
+    - **Did NOT merge the PR.** CI is pending. Merge when green.
+
+**Proof:**
+- Commit: `b8b48dfb8` — `ci: bump hamlib_branch 4.7.0 → 4.7.1` — two files, +6/-6.
+- PR: `https://github.com/KJ5HST-LABS/wsjtx-internal/pull/20`
+- CI: run `24487201092` — three jobs pending (macOS, Linux, Windows).
+- Hamlib release state at session start: `gh api /repos/Hamlib/Hamlib/releases/latest` → `4.7.1 @ 2026-04-16T01:01:34Z`.
+- Issue #19: OPEN (closes on merge).
+
+**What's next (Session 21 priorities):**
+1. **Merge PR #20 if CI is green.** `gh pr checks 20 --repo KJ5HST-LABS/wsjtx-internal` — if all three pass, `gh pr merge 20 --repo KJ5HST-LABS/wsjtx-internal --merge`. Verify #19 auto-closed via `gh issue view 19 --repo KJ5HST-LABS/wsjtx-internal --json state,stateReason`. Add verification comment to #19.
+2. **#15 (gh glossary + audience labels)** — small doc polish. No CI dependencies.
+3. **#8 (Intel macOS x86_64 build job)** — Plan Mode recommended (FM #19 risk). The new job must include `needs: prepare` and `version: ${{ needs.prepare.outputs.version }}` in `release.yml` (reference: `release.yml:14-20`). In `ci.yml`, the new Intel job will need `hamlib_branch: "4.7.1"` (now current after PR #20).
+4. **#16 (ctest + pfUnit integration)** — medium-large.
+
+**Hygiene items (unchanged from Session 19 — do not act on mid-issue):**
+- `ci.yml:14,21,28` version `"3.0.0"` drift — separate concern, ask user.
+- `actions/checkout@v4` → `v5` deprecation — hard deadline 2026-09-16.
+- `/releases/latest` gating for `hamlib-upstream-check.yml` — design question.
+- Email thread report-back — TEN sessions pending.
+
+**Key files (for next session):**
+- `.github/workflows/release.yml:14-20` — the `prepare` job. Any new platform build job must consume `needs.prepare.outputs.version`.
+- `.github/workflows/ci.yml:15,22,29` — `hamlib_branch: "4.7.1"` (updated this session). New platform jobs in `ci.yml` need the same value.
+- `.github/workflows/release.yml:28,36,44` — `hamlib_branch: "4.7.1"` (updated this session). Same for release jobs.
+- `.github/workflows/ci.yml:14,21,28` — `version: "3.0.0"` literals (unchanged, separate concern).
+- `.github/workflows/build-macos.yml`, `build-linux.yml`, `build-windows.yml` — downstream consumers of `hamlib_branch` via `${{ inputs.hamlib_branch }}`. No defaults, no edits needed.
+
+**Gotchas for next session:**
+- **PR #20 must be merged before any other `ci.yml` or `release.yml` work.** If Session 21 starts #8 (Intel macOS) before merging, the branch will be based on stale Hamlib version.
+- **`gh` defaults to upstream `WSJTX/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. **TENTH session running.**
+- **Commit-trailer auto-close fires on MERGE, not push.** #19 will close when PR #20 merges. Do not call `gh issue close`. **EIGHTH session running.**
+- **`build-*.yml` have NO `default:` for `hamlib_branch`.** Session 19's handoff was inaccurate on this point. Corrected in this session's evaluation.
+- **Untracked files** (`.p12`, `.DS_Store`, `OUTREACH.md`, etc.) — TEN sessions. Longest-punted item.
+
+**Self-assessment:**
+- (+) **Followed Session 19's playbook exactly.** The handoff was a step-by-step recipe and I followed it: check release → grep lines → edit → validate → branch → commit → push → PR → verify CI. Zero improvisation needed.
+- (+) **Three pre-commit validations.** Grep confirmation, residual check, YAML parse. **Fifth consecutive session** with pre-commit validation.
+- (+) **Full sweep of all five workflow files** before committing — confirmed `build-*.yml` have no hardcoded defaults, so no edits needed there. Corrected Session 19's inaccurate claim.
+- (+) **PR workflow instead of direct push to develop.** The Hamlib bump changes the build dependency for all three platforms — CI validation before merge is the right gate.
+- (+) **`gh --repo KJ5HST-LABS/wsjtx-internal` on every call.** **Tenth session running.**
+- (+) **Persona-correct throughout.** **Tenth session running.**
+- (+) **Claim stub before technical work.** **Eighth session running.**
+- (+) **Task tool used throughout.** Five tasks, updated sequentially. **Fourth session running.**
+- (-) **CI not yet green at session close.** The PR is open and the builds are pending. This is inherent to superbuild-from-source CI (~30-60 min), not carelessness. The next session should check CI status as its first action.
+- (-) **Did not add a verification comment to #19.** Unlike Sessions 18/19 which commented on closed issues, #19 isn't closed yet (closes on merge). A pre-merge comment saying "bump PR is #20, waiting for CI" would have been useful context on the issue. Low cost, skipped.
+- **Score: 9.0/10** (−0.5 for CI not validated at session close — inherent timing constraint; −0.5 for no verification comment on #19).
+
+**Learnings:**
+1. **Verify predecessor claims about file contents, not just line numbers.** Session 19 claimed `build-*.yml` had `default: "4.7.0"`. They don't. The claim was non-load-bearing (no edit was needed either way), but if a future session relied on it to scope a sweep, they'd waste time. **Rule:** when a handoff claims "file X contains Y," grep to confirm before repeating the claim forward.
+2. **PR workflow is the right pattern for dependency bumps.** Direct push to develop would have been faster but skips the CI gate. A Hamlib version bump changes the build input for all three platforms — if 4.7.1 has a build regression, the CI gate catches it before it lands on develop. The 30-60 min CI wait is the cost of the gate, and it's worth it.
 
 ---
 
