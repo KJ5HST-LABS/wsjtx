@@ -1,9 +1,16 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Phase 2 of INTEL_MACOS_BUILD_PLAN.md — wire Intel macOS job into CI and release workflows (#8).
-**Status:** COMPLETE
-**Session:** 27 complete
+**Task:** Phase 3 of INTEL_MACOS_BUILD_PLAN.md — update contributor docs 1, 2, 3 to list four platforms (#8).
+**Status:** IN PROGRESS
+**Session:** 28
+**Started:** 2026-04-16
+**Persona:** Contributor
+
+---
+
+### What Session 28 Did
+**Deliverable:** Phase 3 of INTEL_MACOS_BUILD_PLAN.md — update contributor docs to reflect four platforms. All "three platforms" references become "four platforms." Platform tables, diagrams, and artifact lists include Intel macOS. After this, #8 can be closed.
 **Started:** 2026-04-16
 **Persona:** Contributor
 

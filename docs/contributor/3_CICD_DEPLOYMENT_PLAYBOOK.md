@@ -67,7 +67,7 @@ Understanding the architecture will help you debug issues during deployment.
 │                           Calls the three build workflows below.
 │
 ├── build-macos.yml      ← Reusable workflow (workflow_call).
-│                           macOS ARM64 build + sign + notarize.
+│                           macOS build (arm64 or x86_64, parameterized) + sign + notarize.
 │
 ├── build-linux.yml      ← Reusable workflow (workflow_call).
 │                           Linux x86_64 build, unsigned.
@@ -76,7 +76,7 @@ Understanding the architecture will help you debug issues during deployment.
 │                           Windows x86_64 via MSYS2/MinGW64 + Authenticode signing.
 │
 └── release.yml          ← Triggers on version tags (v*).
-                            Calls all three builds, creates a GitHub Release
+                            Calls all four platform builds, creates a GitHub Release
                             with artifacts, syncs source to the public repo.
 ```
 
@@ -86,17 +86,19 @@ Understanding the architecture will help you debug issues during deployment.
 ```
 Push to develop
   └─→ ci.yml triggers
-       ├─→ build-macos.yml  (parallel)
+       ├─→ build-macos.yml [ARM64]  (parallel)
+       ├─→ build-macos.yml [Intel]  (parallel)
        ├─→ build-linux.yml  (parallel)
        └─→ build-windows.yml (parallel)
-            └─→ All three upload artifacts
+            └─→ All four upload artifacts
 ```
 
 **On a version tag (`v*`):**
 ```
 Push tag v3.0.1
   └─→ release.yml triggers
-       ├─→ build-macos.yml  (parallel)
+       ├─→ build-macos.yml [ARM64]  (parallel)
+       ├─→ build-macos.yml [Intel]  (parallel)
        ├─→ build-linux.yml  (parallel)
        └─→ build-windows.yml (parallel)
        └─→ release job (after all builds)
@@ -630,13 +632,13 @@ cp -r /path/to/prototype/Darwin .
 
 # Commit:
 git add .github/workflows/ entitlements.plist Darwin/
-git commit -m "feat: add GitHub Actions CI/CD for three-platform builds"
+git commit -m "feat: add GitHub Actions CI/CD for four-platform builds"
 
 # Push and create PR:
 git push -u origin ci/github-actions
 gh pr create \
   --title "Add GitHub Actions CI/CD" \
-  --body "Three-platform CI (macOS ARM64, Linux x86_64, Windows x86_64) with tag-triggered releases."
+  --body "Four-platform CI (macOS ARM64, macOS Intel x86_64, Linux x86_64, Windows x86_64) with tag-triggered releases."
 ```
 
 ### Option B: PR from a Fork
@@ -656,7 +658,7 @@ git push -u origin ci/github-actions
 gh pr create \
   --repo WSJTX/wsjtx-internal \
   --title "Add GitHub Actions CI/CD" \
-  --body "Three-platform CI with tag-triggered releases."
+  --body "Four-platform CI (macOS ARM64, macOS Intel x86_64, Linux x86_64, Windows x86_64) with tag-triggered releases."
 ```
 
 **Important note about forks:** Workflow files in PRs from forks don't run automatically — this is a GitHub security feature. The PR must be merged before the workflows will trigger. This means you can't test the CI from a fork PR. If you need to test before merging, use a branch on the official repo (Option A).
@@ -692,11 +694,12 @@ gh run list --repo WSJTX/wsjtx-internal --limit 5
 
 ### Step 3: Check Each Platform
 
-All three builds should complete. Expected times (first run, no cache):
+All four builds should complete. Expected times (first run, no cache):
 
 | Platform | First Run | Cached Run |
 |----------|-----------|------------|
 | macOS ARM64 | ~12-15 min | ~8 min |
+| macOS Intel x86_64 | ~15-20 min | ~10 min |
 | Linux x86_64 | ~10-12 min | ~7 min |
 | Windows x86_64 | ~40-45 min | ~15 min |
 
@@ -732,7 +735,7 @@ git push
 
 ## 9. Phase 7: Test the Release Pipeline
 
-Only do this after CI is green on all three platforms.
+Only do this after CI is green on all four platforms.
 
 ### Step 1: Choose a Test Version
 
@@ -757,7 +760,7 @@ gh run watch --repo WSJTX/wsjtx-internal
 ```
 
 The release workflow will:
-1. Build all three platforms (same as CI)
+1. Build all four platforms (same as CI)
 2. Create a GitHub Release with downloadable artifacts
 3. Push source and the tag to the public repo
 
@@ -947,7 +950,7 @@ gh secret set CROSS_REPO_TOKEN --repo WSJTX/wsjtx-internal
 |------|---------|----------------|
 | `.github/workflows/ci.yml` | CI orchestrator | Branch name, version string |
 | `.github/workflows/release.yml` | Release pipeline | Public repo URL, branch name, version string |
-| `.github/workflows/build-macos.yml` | macOS ARM64 build | None |
+| `.github/workflows/build-macos.yml` | macOS build (parameterized arm64/x86_64) | None |
 | `.github/workflows/build-linux.yml` | Linux x86_64 build | None |
 | `.github/workflows/build-windows.yml` | Windows x86_64 build | None |
 | `entitlements.plist` | macOS app entitlements | None (if not already in repo) |
@@ -973,7 +976,7 @@ gh secret set CROSS_REPO_TOKEN --repo WSJTX/wsjtx-internal
 
 | Dependency | URL | Used By |
 |------------|-----|---------|
-| Hamlib 4.7.0 | `https://github.com/Hamlib/Hamlib.git` | All three platforms |
+| Hamlib 4.7.0 | `https://github.com/Hamlib/Hamlib.git` | All four platforms |
 | OmniRig | `https://www.dxatlas.com/OmniRig/Files/OmniRig.zip` | Windows only |
 
 ### Build-Time Patches Applied in CI

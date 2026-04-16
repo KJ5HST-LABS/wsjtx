@@ -56,7 +56,7 @@ wsjtx-internal  ──→  wsjtx
 ```
 
 When a version tag (e.g., `v3.0.1`) is pushed to wsjtx-internal:
-1. The release workflow builds all three platforms
+1. The release workflow builds all four platforms
 2. It creates a GitHub Release on wsjtx-internal with downloadable binaries
 3. It pushes the current source to `master` on wsjtx
 4. It pushes the version tag to wsjtx
@@ -177,9 +177,10 @@ Or use the GitHub web UI: go to the repo, click "Compare & pull request" on the 
 
 #### 6. CI runs automatically
 
-When the PR is opened (and on every subsequent push to the PR branch), CI builds the code on all three platforms:
+When the PR is opened (and on every subsequent push to the PR branch), CI builds the code on all four platforms:
 
 - **macOS ARM64** — builds, signs, and notarizes
+- **macOS Intel x86_64** — builds, signs, and notarizes
 - **Linux x86_64** — builds
 - **Windows x86_64** — builds and signs via MSYS2/MinGW
 
@@ -251,7 +252,7 @@ A team member reviews the PR on the public repo. If the change is accepted:
 1. The team member checks out the PR locally or cherry-picks the commits
 2. They apply the change to a branch on wsjtx-internal
 3. They open an internal PR against `develop`
-4. CI validates the change on all three platforms
+4. CI validates the change on all four platforms
 5. The change merges to `develop`
 6. At the next release, the change flows back to the public repo automatically
 
@@ -285,16 +286,16 @@ CI/CD serves two purposes: **quality gates** (does it compile?) and **release au
 ### CI: Quality Gates
 
 ```
-                    ┌──────────────────────────────────┐
-  Push to develop   │           ci.yml                 │
-  or open a PR  ──> │  ┌──────────┐ ┌───────┐ ┌──────┐ │
-                    │  │  macOS   │ │ Linux │ │ Win  │ │
-                    │  │  ARM64   │ │ x86   │ │ x86  │ │
-                    │  └────┬─────┘ └───┬───┘ └──┬───┘ │
-                    │       │           │        │     │
-                    │       v           v        v     │
-                    │    Green ✓    Green ✓   Green ✓  │
-                    └──────────────────────────────────┘
+                    ┌──────────────────────────────────────────────┐
+  Push to develop   │                  ci.yml                      │
+  or open a PR  ──> │  ┌──────────┐ ┌──────────┐ ┌───────┐ ┌──────┐ │
+                    │  │  macOS   │ │  macOS   │ │ Linux │ │ Win  │ │
+                    │  │  ARM64   │ │  Intel   │ │ x86   │ │ x86  │ │
+                    │  └────┬─────┘ └────┬─────┘ └───┬───┘ └──┬───┘ │
+                    │       │            │           │        │     │
+                    │       v            v           v        v     │
+                    │    Green ✓      Green ✓    Green ✓   Green ✓  │
+                    └──────────────────────────────────────────────┘
 ```
 
 **What triggers CI:**
@@ -303,7 +304,7 @@ CI/CD serves two purposes: **quality gates** (does it compile?) and **release au
 - Manual trigger via the Actions UI (workflow_dispatch)
 
 **What CI checks:**
-- The code compiles on all three platforms (macOS ARM64, Linux x86_64, Windows x86_64)
+- The code compiles on all four platforms (macOS ARM64, macOS Intel x86_64, Linux x86_64, Windows x86_64)
 - On macOS: the binary is correctly signed and notarized
 - On Windows: executables are signed with Authenticode
 - Build artifacts are uploaded for inspection
@@ -329,11 +330,12 @@ CI runs on GitHub-hosted runners:
 
 | Platform | Runner | Architecture | Cost |
 |----------|--------|-------------|------|
-| macOS | `macos-15` | ARM64 (Apple Silicon) | 10x multiplier on Actions minutes |
+| macOS ARM64 | `macos-15` | ARM64 (Apple Silicon) | 10x multiplier on Actions minutes |
+| macOS Intel | `macos-15-intel` | x86_64 | 10x multiplier on Actions minutes |
 | Linux | `ubuntu-24.04` | x86_64 | 1x (baseline) |
 | Windows | `windows-latest` + MSYS2 | x86_64 | 2x multiplier |
 
-**Free tier:** GitHub provides 2,000 free Actions minutes/month for private repos (with multipliers applied). A single CI run across all three platforms uses roughly 30 minutes of real time but ~80 minutes of billed time due to the macOS multiplier.
+**Free tier:** GitHub provides 2,000 free Actions minutes/month for private repos (with multipliers applied). A single CI run across all four platforms uses roughly 40 minutes of real time but ~110 minutes of billed time due to the macOS 10x multiplier (applied to both macOS jobs).
 
 **Caching:** Hamlib builds and MSYS2 packages are cached to reduce build times. First-run builds are slower; subsequent builds use the cache.
 
@@ -355,14 +357,15 @@ Team decides to release v3.0.1
   ┌───────────────────────────────────────────────┐
   │              release.yml                      │
   │                                               │
-  │  1. Build macOS ARM64 (signed + notarized)    │
-  │  2. Build Linux x86_64                        │
-  │  3. Build Windows x86_64 (signed)             │
+  │  1. Build macOS ARM64 (signed + notarized)     │
+  │  2. Build macOS Intel x86_64 (signed + notar) │
+  │  3. Build Linux x86_64                        │
+  │  4. Build Windows x86_64 (signed)             │
   │                                               │
-  │  4. Create GitHub Release on wsjtx-internal   │
+  │  5. Create GitHub Release on wsjtx-internal   │
   │     with all platform binaries attached       │
   │                                               │
-  │  5. Sync source to WSJTX/wsjtx (public)       │
+  │  6. Sync source to WSJTX/wsjtx (public)       │
   │     - Push code to master                     │
   │     - Push tag v3.0.1                         │
   └───────────────────────────────────────────────┘
@@ -405,7 +408,7 @@ See [Branch Strategy](#7-branch-strategy) for the `v*_test` release-branch conve
 gh run watch --repo WSJTX/wsjtx-internal
 ```
 
-The release workflow takes roughly 15-45 minutes depending on cache state. It builds all three platforms in parallel, then runs the release job sequentially.
+The release workflow takes roughly 20-45 minutes depending on cache state. It builds all four platforms in parallel, then runs the release job sequentially.
 
 #### 4. Verify
 
@@ -454,9 +457,9 @@ This triggers a full pipeline run. Because the tag contains a hyphen, the result
 
 Before promoting an RC to GA, confirm:
 
-- All three platform jobs in the `Release` workflow ran green
+- All four platform jobs in the `Release` workflow ran green
 - The macOS `.pkg` installs without Gatekeeper warnings (notarization is live)
-- At least one volunteer on each supported platform (macOS ARM64, Linux x86_64, Windows x86_64) has installed the RC and exercised the workflow they care about
+- At least one volunteer on each supported platform (macOS ARM64, macOS Intel x86_64, Linux x86_64, Windows x86_64) has installed the RC and exercised the workflow they care about
 - No critical issue has been filed against the RC for a reasonable soak period (typically 48 hours after the platform volunteers confirm)
 
 If an RC fails testing, push a fix to the release branch and tag `-rc2`, `-rc3`, etc. Each RC is an independent pipeline run and an independent GitHub Release — the earlier RCs remain in the release history as pre-releases for reference.
@@ -481,9 +484,10 @@ If new changes landed on the release branch between the last RC and the GA tag, 
 | Artifact | Platform | Signed | Notes |
 |----------|----------|--------|-------|
 | `wsjtx-3.0.1-arm64-macOS.pkg` | macOS ARM64 | Yes (Developer ID + Apple Notarization) | Gatekeeper-ready, no user warnings |
+| `wsjtx-3.0.1-x86_64-macOS.pkg` | macOS Intel x86_64 | Yes (Developer ID + Apple Notarization) | Gatekeeper-ready, no user warnings |
 | `wsjtx-3.0.1-linux-x86_64/` | Linux x86_64 | No | GPG signing can be added |
 | `wsjtx-3.0.1-windows-x86_64/` | Windows x86_64 | Yes | Authenticode-signed executables |
-| Individual binary `.tar.gz` archives | macOS ARM64 | Yes | Signed and notarized |
+| Individual binary `.tar.gz` archives | macOS ARM64, macOS Intel | Yes | Signed and notarized |
 | `wsjtx-3.0.1-src.tar.gz` | Source | N/A | `git archive` of the tagged commit; top-level repo only (no submodules) |
 
 ### Who can trigger a release?
@@ -633,7 +637,7 @@ gh pr create --base develop --title "fix: handle /P suffix in FT8 decoder" \
 Tested with the WA6BEV.wav reference file on macOS ARM64."
 ```
 
-CI runs. All three platforms build green.
+CI runs. All four platforms build green.
 
 ### 5. Review and merge
 
@@ -685,6 +689,9 @@ The `release.yml` workflow triggers automatically:
     ├─→ macOS ARM64 build (8 min, cached)
     │     └─→ Signed .pkg + notarized binaries
     │
+    ├─→ macOS Intel x86_64 build (10 min, cached)
+    │     └─→ Signed .pkg + notarized binaries
+    │
     ├─→ Linux x86_64 build (7 min, cached)
     │     └─→ jt9, wsprd, wsjtx binaries
     │
@@ -693,7 +700,7 @@ The `release.yml` workflow triggers automatically:
     │
     └─→ Release job (after all builds complete)
           ├─→ Creates GitHub Release "WSJT-X v3.0.1"
-          │     with macOS .pkg, Linux binaries, Windows binaries
+          │     with macOS .pkgs (ARM64 + Intel), Linux binaries, Windows binaries
           ├─→ Pushes source to WSJTX/wsjtx master
           └─→ Pushes tag v3.0.1 to WSJTX/wsjtx
 ```

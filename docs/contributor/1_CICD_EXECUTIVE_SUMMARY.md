@@ -4,19 +4,19 @@
 
 ## What We Built
 
-A fully automated build-and-release pipeline for WSJT-X that compiles the application on three platforms (macOS ARM64, Linux x86_64, Windows x86_64) every time code is pushed, and publishes signed release binaries with a single `git tag`.
+A fully automated build-and-release pipeline for WSJT-X that compiles the application on four platforms (macOS ARM64, macOS Intel x86_64, Linux x86_64, Windows x86_64) every time code is pushed, and publishes signed release binaries with a single `git tag`.
 
 ## Current State
 
-WSJT-X has no build automation. Builds are manual, releases require compiling on each platform by hand, and there's no automated way to know if a change breaks a platform. This pipeline provides per-commit build verification across all three platforms and automates the release process.
+WSJT-X has no build automation. Builds are manual, releases require compiling on each platform by hand, and there's no automated way to know if a change breaks a platform. This pipeline provides per-commit build verification across all four platforms and automates the release process.
 
 ## How It Works
 
 **On every push to `develop`:**
-Code is automatically built on all three platforms in parallel. Green check = compiles everywhere. Red X = something broke. Results appear directly on the commit or pull request in GitHub.
+Code is automatically built on all four platforms in parallel. Green check = compiles everywhere. Red X = something broke. Results appear directly on the commit or pull request in GitHub.
 
 **On a version tag (`v3.0.1`):**
-All three platforms build, a GitHub Release is created with signed, downloadable binaries, and the source is automatically synced to the public repo.
+All four platforms build, a GitHub Release is created with signed, downloadable binaries, and the source is automatically synced to the public repo.
 
 ## Test Results
 
@@ -25,10 +25,11 @@ The pipeline has been prototyped and tested end-to-end in a private fork.
 | Platform | Build Time | Signed | Notes |
 |----------|-----------|--------|-------|
 | macOS ARM64 | ~8 min | Yes | Developer ID + Apple Notarization, Gatekeeper-ready |
+| macOS Intel x86_64 | ~10 min | Yes | Developer ID + Apple Notarization, Gatekeeper-ready |
 | Linux x86_64 | ~7 min | No | GPG signing can be added for package repos |
 | Windows x86_64 | ~15 min | Yes | Authenticode via existing certificate |
 
-The release pipeline was validated: tag push triggered three-platform builds, created a GitHub Release with all artifacts, and synced source + tag to the public repo — all automatically.
+The release pipeline was validated: tag push triggered four-platform builds, created a GitHub Release with all artifacts, and synced source + tag to the public repo — all automatically.
 
 ### Code Signing in CI
 
