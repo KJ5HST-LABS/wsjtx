@@ -109,7 +109,7 @@ jobs:
       - name: Configure
         run: |
           cmake -S . -B wsjtx-build \
-            -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/hamlib-prefix;$(brew --prefix qt@5);$(brew --prefix libusb);$(brew --prefix fftw);$(brew --prefix boost)" \
+            -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/hamlib-prefix;${GITHUB_WORKSPACE}/pfunit-prefix;$(brew --prefix qt@5);$(brew --prefix libusb);$(brew --prefix fftw);$(brew --prefix boost)" \
             -DCMAKE_Fortran_COMPILER="${{ steps.fc.outputs.path }}" \
             -DCMAKE_OSX_DEPLOYMENT_TARGET=${{ inputs.deployment_target }} \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
