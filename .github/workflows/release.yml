@@ -25,7 +25,7 @@ jobs:
     uses: ./.github/workflows/build-macos.yml
     with:
       version: ${{ needs.prepare.outputs.version }}
-      hamlib_branch: "4.7.0"
+      hamlib_branch: "4.7.1"
     secrets: inherit
 
   linux:
@@ -33,7 +33,7 @@ jobs:
     uses: ./.github/workflows/build-linux.yml
     with:
       version: ${{ needs.prepare.outputs.version }}
-      hamlib_branch: "4.7.0"
+      hamlib_branch: "4.7.1"
     secrets: inherit
 
   windows:
@@ -41,7 +41,7 @@ jobs:
     uses: ./.github/workflows/build-windows.yml
     with:
       version: ${{ needs.prepare.outputs.version }}
-      hamlib_branch: "4.7.0"
+      hamlib_branch: "4.7.1"
     secrets: inherit
 
   # ── Publish release + sync to public repo ──────────────────────────
