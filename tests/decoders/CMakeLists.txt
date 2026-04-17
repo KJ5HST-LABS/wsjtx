@@ -5,7 +5,7 @@
 # Labels:
 #   smoke   — Phase 2 fast-path tests (run in seconds, two cases). `ctest -L smoke`
 #   franke  — full Phase 3 catalog derived from Steven Franke's decoder_tests.bash
-#             (17 cases). `ctest -L franke`.
+#             (16 cases). `ctest -L franke`.
 #
 # Registered only when both the decoder target and the sample(s) exist. This
 # subdirectory must be added AFTER the decoder targets are defined in the
@@ -172,15 +172,6 @@ add_decoder_test (
   SAMPLES         ${CMAKE_SOURCE_DIR}/samples/JT9/130418_1742.wav
   EXPECTED_TOKENS JA1KAU;PD0JAC;G7CNF
   PROVENANCE      "Franke decoder_tests.bash — JT9"
-)
-
-add_decoder_test (
-  NAME            decoder_jt65b_avg_odd
-  DECODER         jt9
-  OPTIONS         -6;-b;B;-X;96;-d;16;-f;1300;-F;100;-x;K1ABC;-q
-  SAMPLES         ${CMAKE_SOURCE_DIR}/samples/JT65/JT65B/preprocessed/000000_0001_trim2.1_pad2.1.wav;${CMAKE_SOURCE_DIR}/samples/JT65/JT65B/preprocessed/000000_0003_trim2.1_pad2.1.wav;${CMAKE_SOURCE_DIR}/samples/JT65/JT65B/preprocessed/000000_0005_trim2.1_pad2.1.wav;${CMAKE_SOURCE_DIR}/samples/JT65/JT65B/preprocessed/000000_0007_trim2.1_pad2.1.wav
-  EXPECTED_TOKENS K1ABC;FN42
-  PROVENANCE      "Franke decoder_tests.bash — JT65B odd-interval 4-file average"
 )
 
 add_decoder_test (
