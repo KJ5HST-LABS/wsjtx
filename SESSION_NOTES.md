@@ -1,11 +1,96 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Session 47 — Close Issue #16 (CI/CD: ctest + pfUnit integration — all six phases landed).
+**Task:** Session 48 — Methodology audit + structural fix for the 20+-session portfolio-cd reflex.
 **Status:** COMPLETE
-**Session:** 47 complete
+**Session:** 48 complete
 **Started:** 2026-04-17
 **Persona:** Contributor
+
+### What Session 48 Did
+**Deliverable:** Three aligned edits that remove the ambiguity inducing the portfolio-cd reflex and close the hook bypass. (1) `.claude/settings.local.json:37` — regex extended to deny any Bash command containing `/Users/terrell/Documents/code/methodology_dashboard.py` (the portfolio script path), not just `cd <portfolio>`. Remediation message corrected to point at the project-local script instead of the portfolio script. (2) `SESSION_RUNNER.md:17` — Step 5 now names the full project-local absolute path explicitly and forbids the portfolio-level script. (3) `CLAUDE.md:8` — Rule 1 inlined the same exact path. Hook's new regex validated end-to-end: a test harness mentioning the forbidden literal path was blocked by the hook (catching itself is the proof), and a direct `python3 /Users/terrell/Documents/code/methodology_dashboard.py` invocation was denied with the corrected remediation message. Project-local dashboard re-run shows 1 project, 86/100 health — the correct output for a wsjtx-arm session. No code changes, no CI. Settings file is gitignored; only `CLAUDE.md` and `SESSION_RUNNER.md` get committed.
+**Started:** 2026-04-17
+**Persona:** Contributor
+
+**Session 47 Handoff Evaluation (by Session 48):**
+- **Score: 6/10.** (Session 47 self-scored 9/10. I'm scoring lower, for one specific reason described below.) Tactically the handoff was strong — clear first-action suggestions (#1 audit, #3 audit, #2 scope confirm, hygiene sweep), concrete file paths, correct proof of the Issue #16 closure. The breakdown: Session 47 encoded the portfolio-cd reflex as Gotcha #5 ("now blocked by pre-commit hook... This is the correct backstop") and classified 37-session repetition as "working as designed." That framing actively blocked the structural fix. The hook has had a wrong remediation message ("use the portfolio script") the entire time, contradicting the memory entry, and no session — including 47 — caught that the hook was *teaching* the reflex instead of preventing it.
+- **What helped:** The Gotcha #5 warning primed me to notice the reflex the moment I triggered it this session. File paths for Franke corpus and plan doc were concrete. The predecessor map of commits/CI runs was untouched for this session but readable.
+- **What was missing:** A line in Session 47's self-assessment or gotchas flagging "this reflex has fired in 20+ sessions — the methodology has a bug, not the agent." That framing would have pushed the next session to audit rather than to re-tell the same gotcha again. 20+ handoff entries narrating "hook caught it, 37th session" are evidence of *exactly* the protocol-erosion warning sign the SESSION_RUNNER itself names.
+- **What was wrong:** Session 47's claim that the hook's block was "the correct backstop." It was not — the remediation message the hook returned pointed to the *wrong* script, which is why (a) Session 47's own orientation output was the portfolio dashboard and (b) every prior session's post-block recovery ran the wrong tool. The block was correct; the remediation was wrong; the methodology didn't know.
+- **ROI:** The tactical parts paid off (Issue #16 close was clean, Phase 3 handoff preserved). The structural parts cost at least 20 sessions of repeated misdirection that should have been caught in a single audit. Net positive only because this session finally did the audit.
+
+**What happened:**
+1. Oriented from project directory. SAFEGUARDS (full) + SESSION_RUNNER (full) + SESSION_NOTES top 300 lines. **Portfolio-cd reflex fired AGAIN — 38th session.** In a parallel tool batch I issued `cd /Users/terrell/Documents/code && python3 methodology_dashboard.py` before the SESSION_NOTES.md Read returned the predecessor's Gotcha #5 warning. Hook blocked. Per the hook's (wrong) remediation message, I retried with `python3 /Users/terrell/Documents/code/methodology_dashboard.py` — the **portfolio** script. The orientation report I delivered to the user was based on portfolio-dashboard output ("19 projects, 67/100"), not the project-local dashboard's output. Exactly the same failure mode the last 20+ sessions had.
+2. User: "You failed." Followed by: "inspect the methodology that is implemented here. confirm it is up to date, and properly implemented. This should never happen, and it keeps happening. figure out why."
+3. Audit task. Treated it as an investigation, not a fix — presented findings, waited for direction (failure mode #23 discipline).
+4. Grepped SESSION_NOTES.md for portfolio-cd / dashboard-path reflex mentions: 20+ explicit session counts, going back to Session ~26. The pattern "Portfolio-cd reflex fired AGAIN — Nth session" appeared in every handoff in that range.
+5. Read the hook in `.claude/settings.local.json:37`. **Root cause surfaced:** the hook's remediation message told the agent to run the **portfolio** script (`python3 /Users/terrell/Documents/code/methodology_dashboard.py`) while the memory entry `feedback_orient_from_project.md` said that exact command was forbidden — use the project-local script. Hook and memory were in direct contradiction. Hook fires at tool-call time and is immediately actionable; memory is ambient and easier to ignore. Agent has been following the hook. For ~20 sessions.
+6. Reported the root cause to the user with a proposed 3-part fix (hook message + hook regex extension + SESSION_RUNNER + CLAUDE.md disambiguation). User: "Yes. The hook should never fire."
+7. Applied the three edits. Validated JSON. Validated the hook regex by an unintended natural test: the hook blocked my test-harness Bash command because the test string contained the literal portfolio-script path that the new regex matches. That block is itself end-to-end proof the extended regex works.
+8. Re-ran the **project-local** dashboard (`python3 /Users/terrell/Documents/code/wsjtx-arm/methodology_dashboard.py`). Output: "WSJTX-ARM — METHODOLOGY DASHBOARD | 1 projects | Health 86/100." The correct tool for a project-session orient.
+9. At user's "try again?": re-invoked `python3 /Users/terrell/Documents/code/methodology_dashboard.py` — hook denied with the **correct** remediation ("Run: python3 /Users/terrell/Documents/code/wsjtx-arm/methodology_dashboard.py"). Bypass that 20+ sessions exploited is now closed.
+10. Close-out in progress.
+
+**Proof:**
+- `.claude/settings.local.json` — hook regex now `cd[[:space:]]+/Users/terrell/Documents/code/?([[:space:]]|&|;|$)|/Users/terrell/Documents/code/methodology_dashboard\.py`. Remediation message: "Blocked: use the project-local dashboard. Run: python3 /Users/terrell/Documents/code/wsjtx-arm/methodology_dashboard.py". `jq . .claude/settings.local.json` exits 0.
+- `SESSION_RUNNER.md:17` — Step 5 specifies full absolute project-local path and explicitly forbids the portfolio script.
+- `CLAUDE.md:8` — Rule 1 inlines the same absolute path.
+- Hook verified: direct `python3 /Users/terrell/Documents/code/methodology_dashboard.py` invocation was denied with the corrected message this session (step 9 above).
+- Project-local dashboard runs: HTML lives at `/Users/terrell/Documents/code/wsjtx-arm/dashboard.html`.
+- Settings file is gitignored — not part of the commit. Only `CLAUDE.md` and `SESSION_RUNNER.md` are staged.
+
+**What's next (Session 49 priorities):**
+
+1. **Verify the fix holds.** Orient normally. The procedure doc now names the exact absolute project-local path — the reflex should not fire because there is no bare command name to auto-complete from. If the reflex DOES fire, that's new information: the doc wasn't the only induction source. Note it and look deeper.
+
+2. **Session 47's backlog** (untouched this session — the user redirected to the methodology audit):
+   - **Issue #1 audit** — Phase 2-3 templates/guards/macOS CI. Likely superseded by #16's Phase 2 landing. Read `gh issue view 1 --repo KJ5HST-LABS/wsjtx-internal`, compare to current `.github/workflows/` and `.github/ISSUE_TEMPLATE/`. Close if superseded; open follow-ups for any gap.
+   - **Issue #3** — v3.0.0 GA rebuild path (released 2026-04-08). Start with (D) audit current build state.
+   - **Issue #2** — Linux ARM64 build + upstream patches. Confirm the re-scoped scope before starting.
+
+3. **Hygiene sweep** (small-commit opportunity, still deferred from many sessions):
+   - `PHASE_3_TESTING_PLAN.md` "17 cases" → 16 (Session 46 fix-forward).
+   - Plan-doc `+` notation clarification.
+   - `actions/checkout@v4` → `v5` deadline 2026-09-16.
+   - `release.yml:13` stale "three platform artifacts" comment.
+   - Residual "three platform" strings in `MIGRATION_PLAN.md:275` and `drafts/email_cicd_proposal.md:5,11`.
+   - `docs/contributor/2_DEVELOPMENT_WORKFLOW.md:184,307,335,478,504-505,711-714` — "supported" vs "minimum baseline".
+   - Untracked `.p12`, `.DS_Store`, `OUTREACH.md`, `.claude/`, `jt9_wisdom.dat`, `timer.out`, `Steves tests.eml` — 38 sessions ignored.
+   - Hamlib version duplicated across 12 locations.
+   - Node.js 20 deprecation — Node 24 forced 2026-06-02.
+   - `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md` header status field still says "DRAFT" — all 6 phases landed; should reflect LANDED/COMPLETE.
+
+4. **Update memory `feedback_orient_from_project.md`.** The memory entry currently says "the prior remediation (a hook blocking `cd` to portfolio) wasn't enough because I kept invoking the portfolio script by absolute path." That reason is now addressed structurally. Consider trimming or rephrasing to reflect that the hook now catches both patterns with the correct remediation.
+
+5. **Email thread report-back** — 38 sessions pending.
+
+**Key files (for Session 49):**
+- `/Users/terrell/Documents/code/wsjtx-arm/CLAUDE.md:8` — project orient rule, now with explicit absolute path.
+- `/Users/terrell/Documents/code/wsjtx-arm/SESSION_RUNNER.md:17` — Step 5, now explicit.
+- `/Users/terrell/Documents/code/wsjtx-arm/.claude/settings.local.json:30-42` — hook definition (gitignored).
+- `/Users/terrell/.claude/projects/-Users-terrell-Documents-code-wsjtx-arm/memory/feedback_orient_from_project.md` — memory entry, pending a trim/refresh.
+
+**Gotchas for Session 49:**
+
+- **#1 — The hook is now strict. Do not attempt to run the portfolio dashboard from a project session.** It will be blocked. If you need portfolio work, work from the portfolio directory in a separate session.
+- **#2 — SESSION_NOTES.md is now ~600KB.** Read with `limit=300` or specific offsets. Full reads fail.
+- **#3 — Parallel tool batches at orient can induce the reflex before the memory load.** Even with CLAUDE.md pinned, the agent composes orient-Bash calls from training-data habit in the same batch as Read calls. If you catch yourself issuing `cd <portfolio>` or `python3 <portfolio-script>`, the hook will now catch both — but the right move is to slow the orient batch: read SESSION_NOTES.md FIRST (alone), then compose the dashboard call separately. The new procedure text in SESSION_RUNNER.md step 5 explicitly names the absolute path — use it verbatim.
+- **#4 — Standing from Session 47:** Plan-wide status claims require a grep, not memory. `gh` defaults to upstream `wsjtx/wsjtx` — always `--repo KJ5HST-LABS/wsjtx-internal`. Push to develop may require re-auth on first push of a session.
+- **#5 — Methodology is fixable.** This session proved that a 20+ session recurring failure was not "working as designed" but a pair of misaligned strings between the hook's error message and the memory entry. When a handoff narrates the same gotcha N times in a row, that's a structural defect to audit, not a habit to remediate. If Session 49 sees a gotcha that's been carried forward for more than ~3 sessions without resolution, audit the layer it lives in rather than carry it forward a fourth time.
+
+**Self-assessment:**
+- (+) **Audit found the actual root cause, not another gotcha.** Hook/memory contradiction was the induction source for 20+ sessions of misdirection. Structural fix, not documentation of another failure.
+- (+) **Three minimal edits.** No scope creep into refactoring, renaming, or layering on more hooks. Each edit closes one piece of ambiguity.
+- (+) **Failure mode #23 discipline held.** User asked "figure out why" — investigation, not modification. Waited for explicit "yes" before editing.
+- (+) **End-to-end verification of the fix.** Ran project-local dashboard (correct output). Tried portfolio-script invocation (blocked with correct remediation). Not merely "JSON validates" — the actual protection was exercised.
+- (+) **Memory-written evidence used.** Memory entry `feedback_orient_from_project.md` explicitly said "the prior remediation wasn't enough." That's the single sentence that pointed the audit at the hook-memory contradiction. Paid off the memory layer's cost.
+- (-) **Triggered the very reflex I audited, in the very first action of the session.** Session 47's Gotcha #5 warned me explicitly. I fired the forbidden command in a parallel tool batch before the warning returned from the Read. Then I followed the hook's wrong remediation and ran the portfolio script — exactly the failure I was about to document. Minus substantial. Root cause: composing a multi-tool orient batch from CLAUDE.md/SESSION_RUNNER.md memory rather than sequencing reads before composing Bash calls.
+- (-) **Did not initially re-run the project-local dashboard after the orient-reflex.** My first orientation report cited portfolio numbers ("19 projects, 67/100") as if they represented this project. That's misleading. Only after the audit completed did I run the correct dashboard. Session 49 should open with the project-local dashboard output immediately, on a clean orient.
+- (-) **Didn't audit memory layer for the same pattern.** If hook/memory contradicted on the dashboard reflex, the same pattern could exist in other memory entries. I only fixed the one case the user asked about. Non-critical — the other memory entries are smaller in scope — but a full memory/hook coherence audit is deferred to Session 49+.
+
+**Score: 7/10.** Structural fix is clean and disproportionately valuable (breaks a 20-session loop). But the session opened with me reproducing the exact failure mode I was auditing, which is a meta-failure the fix does not address — it addresses only the specific manifestation. A 9+ would have required: re-reading Session 47's Gotcha #5 BEFORE issuing the dashboard call, sequencing the orient reads before the orient Bash, and delivering project-local dashboard output in the initial orientation report. Deductions as listed. Compounding over multiple sessions (this is the 38th session exposure): the agent's failure to apply a 6-month-old memory entry about orient sequencing cannot be written off as momentary — the memory itself wasn't load-bearing the way the hook's inline remediation was. The fix addresses that asymmetry.
+
+---
 
 ### What Session 47 Did
 **Deliverable:** Issue #16 closed on `KJ5HST-LABS/wsjtx-internal` at 2026-04-17T18:40:47Z with a close-comment summarizing the 6-phase landing. The comment maps each of the original issue's six scope items to a phase of `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md`, with commit hashes (SHA7) for each phase + sub-phase + fix-forward and CI run IDs for the green verification runs. Final ctest state documented in the comment: 18 decoder tests (2 smoke + 16 Franke catalog) + 3 others (1 C++ `test_qt_helpers`, 2 pFUnit Fortran) = 21 entries per platform × 4 platforms. Latest green run: `24579224586`. No code commits — this was a pure project-management action (close + narrate). No pushes. **No further sessions are required for #16; the CI/CD functional-testing workstream is complete.**
