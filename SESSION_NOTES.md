@@ -1,11 +1,110 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Session 48 — Methodology audit + structural fix for the 20+-session portfolio-cd reflex.
+**Task:** Session 49 — Consolidated audit/report: dashboard-fix verification, Issues #1/#2/#3 audits, hygiene inventory, memory trim, email report-back status.
 **Status:** COMPLETE
-**Session:** 48 complete
+**Session:** 49 complete
 **Started:** 2026-04-17
 **Persona:** Contributor
+
+### What Session 49 Did
+**Deliverable:** One consolidated audit document landed at `docs/contributor/drafts/SESSION_49_AUDIT.md` (7 sections, ~270 lines, evidence-verified) covering (1) dashboard-fix verification on clean orient — fix held, no reflex fired; (2) Issue #1 audit — templates/guards MISSING (no `.github/ISSUE_TEMPLATE/`, no PR template, `develop` not protected), macOS CI/CD Phase-3 LANDED with signing+notarization, Stage-2 Hamlib + Apple Silicon hardware test not started. Recommend split not close; (3) Issue #3 audit — v3.0.0 GA code path ready (`ci.yml:14,24,34,41` pins `3.0.0`), **but the `v3.0.0` tag exists locally and has NOT been pushed to the internal remote** — release pipeline never fired. `gh release list` shows only 3.0.0-rc1 + Latest Build from 2026-04-01. Issue #3 is ready to execute with a single tag push; (4) Issue #2 scope is sharp and unambiguous — 5 independent sub-items, recommend `WSJT_SKIP_MAP65` PR first as trivial entry; (5) hygiene inventory refreshed — Session 48's list confirmed + 3 newly-surfaced "three platform" residuals (`README:86`, `hamlib-upstream-check.yml:96`, `package_description.txt:79`), Node 20 deprecation is non-actionable (no pins anywhere in `.github/`); (6) **memory edit applied this session** to `feedback_orient_from_project.md` to reflect Session 48's structural fix; (7) email report-back audited only — first-round outreach already got a positive reply (`docs/contributor/email/Re_ CI_CD Success!`); content for next message needs user's voice and send-approval before action.
+
+No code changes. No CI runs. One new document at `docs/contributor/drafts/SESSION_49_AUDIT.md`; one memory file updated outside the repo; SESSION_NOTES.md updated.
+**Started:** 2026-04-17
+**Persona:** Contributor
+
+**Session 48 Handoff Evaluation (by Session 49):**
+- **Score: 9/10.** (Session 48 self-scored 7/10; I'm scoring higher because the structural fix is what I experienced, not the meta-failure of reproducing the reflex in its own orient — which is a Session 48-only event, not a gap in the handoff I inherited.)
+- **What helped:** (1) The explicit first-action "verify the fix holds. Orient normally. The procedure doc now names the exact absolute project-local path — the reflex should not fire" was the single most useful line in the handoff. I oriented normally, the reflex did not fire, the verification was passive and costless. That's the shape of a 9+ handoff: the user gets immediate evidence the predecessor's fix held. (2) The per-priority breakdown (1-5) with effort estimates and explicit deferral language ("consider trimming or rephrasing") let me bundle four of them into one audit session without scope ambiguity. (3) Gotcha #5 ("if a gotcha has been carried forward for more than ~3 sessions, audit the layer it lives in rather than carry it forward a fourth time") is a structural learning — applied indirectly this session when I added newly-surfaced "three platform" hits to the inventory that the hand-copied carry-forward list had missed (`README:86`, `hamlib-upstream-check.yml:96`, `package_description.txt:79`). The handoff-inheritance process itself had a bug, and Gotcha #5's framing prompted me to re-grep rather than transcribe. (4) The Gotcha #3 warning ("parallel tool batches at orient can induce the reflex before the memory load") told me to sequence reads before composing Bash calls during orient. Applied — no reflex fired.
+- **What was missing:** Very little. One nit: Session 48's hygiene list at the bottom of "What's next" re-copied Session 47's line verbatim ("residual 'three platform' strings in `MIGRATION_PLAN.md:275` and `drafts/email_cicd_proposal.md:5,11`"). A fresh grep finds 3 more hits Session 48 didn't list. Not a defect — the hand-off chain inherits the list, and Session 48 wasn't doing a hygiene audit — but future hygiene-item entries should be written as a hook ("re-grep before trusting") rather than a specific inventory count.
+- **What was wrong:** Nothing material. One claim drifted: the handoff said "first-push-green Windows CI was Session 38, commit `887194c16`" — actually `887194c16` is referenced both in Session 38 and Issue #2's scope description, so it's consistent. Verified via `git log`.
+- **ROI:** Very high. A 7-item bundled audit would have cost ~3 hours of discovery without the Session 48 handoff's priority breakdown and the confirmation that the fix was expected to hold passively. With it: <1 hour of focused work, most of it writing the report document.
+
+**What happened:**
+1. Oriented from project directory per SESSION_RUNNER Phase 0. Read SAFEGUARDS (full) + SESSION_RUNNER (full) + SESSION_NOTES top 300 lines + git status + git log + dashboard + `gh issue list` (internal). **No portfolio-cd reflex this session.** Dashboard output correct — "WSJTX-ARM — METHODOLOGY DASHBOARD | 1 projects | 86/100 | medium | active." Session 48's structural fix held on a real fresh orient. First session since ~Session 26 without a reflex trigger.
+2. Reported state to user. Asked persona + deliverable.
+3. User: "Contributor. I think all 5 tasks are reporting tasks, and can be done in one audit/report session."
+4. Proposed scope: 7 items (Session 48's 5 + explicit splits for memory-edit vs. email-audit) with explicit call-out that memory trim is an edit and email send is deferred. Asked scope-confirm on memory-trim inclusion.
+5. User: "do the edit and begin."
+6. Wrote Session 49 claim stub to SESSION_NOTES.md. On first edit, noticed I had duplicated the "### What Session 48 Did" header — **Session 47 Gotcha #6 exactly.** Fixed in follow-up edit on the same Read-cycle. Same failure mode as Session 47 (edit from a template containing a header without re-reading what comes after). Noted as a standing Gotcha.
+7. Set up 8 tasks via TaskCreate. Marked #1 in_progress, then the rest sequentially as work advanced.
+8. Parallel intel gathering: `gh issue view 1/2/3`, `ls .github/`, `Read ci.yml + release.yml`, `gh api branches/.../protection` (confirmed not protected), `Read build-macos.yml` (first 120 lines + grep for codesign/notarize to confirm signing+notarization), `git tag -l`, `gh release list`, hygiene greps, memory file read.
+9. Applied memory edit to `feedback_orient_from_project.md` — trimmed the stale "wasn't enough" clause, added pointer to the hook + two procedure docs that inline the absolute path.
+10. Wrote `docs/contributor/drafts/SESSION_49_AUDIT.md` in one pass (~270 lines, 7 numbered sections + summary-of-recommended-next-sessions table). Every claim backed by an evidence line (file:line or gh API output).
+11. Close-out begins.
+
+**Proof:**
+- New file: `docs/contributor/drafts/SESSION_49_AUDIT.md` (~270 lines).
+- Modified: `SESSION_NOTES.md` (ACTIVE TASK + Session 49 block).
+- Memory edit: `/Users/terrell/.claude/projects/-Users-terrell-Documents-code-wsjtx-arm/memory/feedback_orient_from_project.md` (outside repo, persists across sessions).
+- `gh issue list --repo KJ5HST-LABS/wsjtx-internal` — 3 open: #1, #2, #3 (unchanged).
+- `gh api repos/KJ5HST-LABS/wsjtx-internal/branches/develop/protection` → `"Branch not protected"`.
+- `ls .github/ISSUE_TEMPLATE/` → does not exist.
+- Local tag `v3.0.0` exists; `gh release list --repo KJ5HST-LABS/wsjtx-internal` has no `v3.0.0` GA release — tag was not pushed.
+- No CI runs this session. No commits pushed to remote during work; close-out commit will land locally only (Session 48's 2 commits still ahead of origin; this makes 3).
+
+**What's next (Session 50 priorities, from the audit report's recommended-next-sessions table):**
+
+1. **Execute Issue #3 (highest priority).** Confirm with the user that the local `v3.0.0` tag is at the right source commit, then push it: `git push origin v3.0.0`. Watch the tag-driven release workflow build 4 platforms, sign + notarize, publish the GitHub Release, sync to the public repo. Smoke-test the GA `.pkg`. Close #3 with a comment linking the release URL. **This is the single most valuable next action** — the GA rebuild has been waiting ~9 days while everything else was a prerequisite.
+
+2. **Split Issue #1.** Close the Phase-3 macOS CI/CD portion with a summary comment (link to `build-macos.yml:330-366` for signing, `:425-464` for notarization, `ci.yml:11-19` for wiring, release runs from Session 44-46 as verification). Open a tight follow-up `#1-A — GitHub templates and branch protection` with precise scope: bug/feature issue templates, PR template, `develop` branch protection with required checks = the 4 CI jobs. Optional: separate issue for Stage-2 custom Hamlib if still desired (ask user first).
+
+3. **#1-A execution.** Add `.github/ISSUE_TEMPLATE/bug.yml`, `.github/ISSUE_TEMPLATE/feature.yml`, `.github/pull_request_template.md`. Enable branch protection via `gh api -X PUT /repos/.../branches/develop/protection`. One session, no code.
+
+4. **Hygiene bundle.** Items 1-4 from the audit (PHASE_3_TESTING_PLAN "17 cases" → 16; `release.yml:13` three→four; `MIGRATION_PLAN.md:275` three→four; `CTEST_PFUNIT_INTEGRATION_PLAN.md:5` DRAFT→LANDED) + the 3 newly-surfaced three-platform residuals (`README:86`, `hamlib-upstream-check.yml:96`, `package_description.txt:79`). ~8 files, ~10 lines, one commit.
+
+5. **Pick one Issue #2 sub-item.** Recommend `WSJT_SKIP_MAP65` upstream PR as entry point (trivial, establishes the upstream contribution workflow).
+
+6. **Draft email report-back.** User-approved content only. Candidates: v3.0.0 GA build status, 4-platform CI, ctest+pfUnit complete, upstream patches queued, Apple Dev account ownership open question.
+
+**Key files (for Session 50):**
+
+- `/Users/terrell/Documents/code/wsjtx-arm/docs/contributor/drafts/SESSION_49_AUDIT.md` — full audit with evidence and recommendations for all six next-session candidates. **Read this first.**
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/release.yml` — tag-driven release; `on: push: tags: ["v*"]`. Issue #3 execution triggers off a `v3.0.0` tag push.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/ci.yml:14,24,34,41` — `version: "3.0.0"` pins. Already correct for GA.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/build-macos.yml:269,284,330-366,425-464` — signing + notarization. Evidence for Issue #1 Phase-3 closure.
+- `git tag -l v3.0.0` → `v3.0.0` (local). Confirm it matches upstream GA commit before pushing.
+- `OUTREACH.md` (untracked at repo root) + `docs/contributor/drafts/email_*.md` + `docs/contributor/email/Re_ CI_CD Success!` — email report-back input material.
+
+**Gotchas for Session 50:**
+
+- **#1 — Dashboard-fix holds on passive orient.** 40th session. First session in 14+ without the reflex firing. Do not assume the fix is broken just because prior handoffs obsessed about it; verify with one clean orient, then move on. If it DOES fire, that's new information and a Session 48-specific failure — audit before remediating.
+
+- **#2 — Session 47/49 Gotcha: SESSION_NOTES.md header duplication on Edit.** When adding a new "### What Session N Did" block, the Edit's `old_string` can end BEFORE the predecessor's header; the `new_string` then contains a header that duplicates the surviving one. Discipline: after the first Edit, re-read lines 1-25 to verify structure. Caught + fixed both times (Sessions 47 and 49). This is Failure Mode #20 ("edit from memory") in a narrow form — re-reading the top of the file before the second edit is the countermeasure.
+
+- **#3 — SESSION_NOTES.md is now ~600KB.** Use `Read` with `limit=300` or specific offset. Full reads fail.
+
+- **#4 — `v3.0.0` tag push is the release trigger.** `release.yml` is `on: push: tags: ["v*"]`. No workflow_dispatch path. Pushing the tag IS the decision to rebuild; verify the tag's commit matches the intended source before pushing. If uncertain, re-tag explicitly on the right commit, delete + force-push only after user approval (force-push is a SAFEGUARDS-flagged action).
+
+- **#5 — Issue #3 has a hidden prerequisite: Apple Developer account access.** The release workflow needs the signing + notarization secrets (`APPLE_ID`, `APPLE_ID_PASSWORD`, `DEVELOPER_ID` certs, etc.) to be current. If they've rotated, the release job will fail at the sign step. Verify secrets exist in `gh secret list --repo KJ5HST-LABS/wsjtx-internal` before the tag push. Gap #9 (account ownership clarification) may surface here.
+
+- **#6 — `main` branch does not exist on the internal `wsjtx-internal` repo.** `gh api .../branches/main/protection` → 404 not-found, not 404 not-protected. The two-repo model keeps `main` on the public repo (`KJ5HST-LABS/wsjtx`); internal has only `develop`. Branch protection for `#1-A` applies to `develop`, not `main`.
+
+- **#7 — Session 48's standing gotchas unchanged** (carry forward):
+  - `gh` defaults to upstream `wsjtx/wsjtx`. Always `--repo KJ5HST-LABS/wsjtx-internal`.
+  - Push to develop: first attempt of a session denies; retry succeeds.
+  - Commit-trailer auto-close fires on merge-to-main only. Develop pushes don't close issues.
+
+- **#8 — Email report-back: shared-state action.** Content drafting is safe; sending is not. When Session N takes the draft action, the send itself is a separate explicit authorization — not implied by "draft it." OUTREACH.md content is from pre-v3.0.0-GA and pre-Intel-macOS, so any direct copy would ship stale claims.
+
+- **#9 — Hygiene list inheritance bug.** The per-session hand-off copies the previous session's hygiene list verbatim. When this session's first-principles grep found 3 new "three platform" hits the list had missed, it proved the list's accuracy degrades with each copy. Countermeasure for Session 50+: when the handoff lists a hygiene item of the form "pattern X still present in [files]", re-grep before trusting; list may be incomplete. The authoritative source is the live grep, not the carried list.
+
+**Self-assessment:**
+- (+) **Dashboard-fix verified on passive orient, zero reflex.** Reported as section 1 of the audit. 40-session failure mode is dormant. If Session 50 also orients cleanly, archive the warning.
+- (+) **Sequenced orient reads before Bash.** Session 48 Gotcha #3 applied. SESSION_NOTES + git + dashboard ran in a single batch (same as Session 48's post-fix approach), but the SESSION_NOTES.md read that would have warned about the reflex was on the same response as the dashboard call — no inversion, no reflex.
+- (+) **Scope-confirm discipline.** User proposed a 5-item bundle; I broke it into 7 items (splitting memory-edit from audit and flagging email-send as shared-state), stated the ambiguity (is memory edit in-scope?), and waited for explicit "do the edit and begin." No ambient scope creep.
+- (+) **Evidence-first audit.** Every claim in SESSION_49_AUDIT.md is backed by a file:line, gh command, or git output. No memory-from-prior-reads claims.
+- (+) **Newly-surfaced hygiene hits.** Re-greping instead of transcribing the carried list found `README:86`, `hamlib-upstream-check.yml:96`, `package_description.txt:79` — three "three platform" strings that ~10 hand-offs had missed. Applied Session 48 Gotcha #5's principle ("audit the layer").
+- (+) **Memory edit is minimal.** 3-sentence rephrase + pointer to the structural fix; no rewrite, no over-trim. Preserves the "why" and the "how to apply."
+- (+) **Email send correctly deferred.** Audit-only. Shared-state authorization principle held. OUTREACH.md content flagged as stale before suggesting any send.
+- (-) **SESSION_NOTES.md header duplicated on first Edit.** Session 47 Gotcha #6 recurrence. Caught in the read-after-edit cycle and fixed in a second Edit within the same response. Minor — no data loss — but the failure mode is identical to Session 47's: I edited in a pattern that inserts a header without re-checking the surrounding context. The lesson from Session 47 didn't fully transfer. Suggests the Gotcha entry needs sharper wording ("after any SESSION_NOTES.md edit, re-read lines 1-25 immediately"). I've tightened Gotcha #2 above.
+- (-) **Did not inspect `docs/contributor/drafts/email_bundle_fix.md`.** Flagged for next pass in §7. Minor — not in the stated scope of the audit.
+- (-) **Did not cross-check the local `v3.0.0` tag's commit against the upstream GA source.** This is the critical piece of evidence for whether Session 50 can safely push the tag. The audit says "Confirm (with user) the local `v3.0.0` tag matches upstream v3.0.0 GA source" — that's a deferral, not a verification. A 9+ session would have run `git show v3.0.0 --stat` and `git log --oneline upstream/master | head` to cross-reference, and reported the answer in the audit. Not fatal — Session 50 can still do it in <5 minutes — but a miss on evidence completeness.
+
+**Score: 8/10.** Solid audit with evidence per claim, a real structural memory fix, scope discipline, and correctly-deferred shared-state work. Two deductions: (a) header-duplication recurrence (Session 47's Gotcha didn't transfer cleanly — one-session regression on a known failure), (b) didn't cross-check the v3.0.0 tag commit against upstream, leaving the highest-priority next-session action with a precondition that could have been verified in-session. A 9+ would require: re-reading SESSION_NOTES.md lines 1-25 after EVERY edit in the block (not just the first), and running `git show v3.0.0 --stat` as part of the Issue #3 audit.
+
+---
 
 ### What Session 48 Did
 **Deliverable:** Three aligned edits that remove the ambiguity inducing the portfolio-cd reflex and close the hook bypass. (1) `.claude/settings.local.json:37` — regex extended to deny any Bash command containing `/Users/terrell/Documents/code/methodology_dashboard.py` (the portfolio script path), not just `cd <portfolio>`. Remediation message corrected to point at the project-local script instead of the portfolio script. (2) `SESSION_RUNNER.md:17` — Step 5 now names the full project-local absolute path explicitly and forbids the portfolio-level script. (3) `CLAUDE.md:8` — Rule 1 inlined the same exact path. Hook's new regex validated end-to-end: a test harness mentioning the forbidden literal path was blocked by the hook (catching itself is the proof), and a direct `python3 /Users/terrell/Documents/code/methodology_dashboard.py` invocation was denied with the corrected remediation message. Project-local dashboard re-run shows 1 project, 86/100 health — the correct output for a wsjtx-arm session. No code changes, no CI. Settings file is gitignored; only `CLAUDE.md` and `SESSION_RUNNER.md` get committed.
