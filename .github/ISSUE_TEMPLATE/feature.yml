@@ -1,0 +1,29 @@
+name: Feature request
+description: Suggest an enhancement to the wsjtx-arm build pipeline, installer, or macOS integration
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or motivation
+      description: What are you trying to do? Why is the current behavior insufficient?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+      description: Concrete enough to implement. Describe the user-visible change, not just the outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches and why they were rejected.
+  - type: textarea
+    id: upstream
+    attributes:
+      label: Upstream relevance
+      description: Would this change belong upstream in WSJTX/wsjtx, or is it specific to the macOS ARM64 build pipeline?
