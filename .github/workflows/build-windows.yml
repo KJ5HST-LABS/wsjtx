@@ -165,8 +165,22 @@ jobs:
         run: cmake --build wsjtx-build -j$(nproc)
 
       - name: Run tests
-        run: ctest --output-on-failure
+        id: ctest
+        run: ctest --output-on-failure --output-junit ctest-results.xml
         working-directory: wsjtx-build
+
+      - name: Publish test summary
+        if: always() && steps.ctest.conclusion != 'skipped'
+        working-directory: wsjtx-build
+        run: python3 ../.github/scripts/publish-ctest-summary.py "Windows x86_64" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test results
+        if: always() && steps.ctest.conclusion != 'skipped'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ctest-results-windows
+          path: wsjtx-build/ctest-results.xml
+          if-no-files-found: ignore
 
       - name: Verify binary
         run: |
