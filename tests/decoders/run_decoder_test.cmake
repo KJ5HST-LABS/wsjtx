@@ -13,8 +13,11 @@
 #   EXPECTED         single token that must appear in decoder stdout
 #   EXPECTED_TOKENS  semicolon-separated list; pass if ANY token appears in stdout
 #
-# Optional:
-#   MODE_FLAG        single CLI flag placed before the sample(s) (e.g. "-8" for FT8)
+# Decoder arguments — at most one of:
+#   OPTIONS          semicolon-separated list of CLI args placed before the
+#                    sample(s) (e.g. "-8;-d;3;-q" for FT8 standard decoder)
+#   MODE_FLAG        single CLI flag placed before the sample(s) (legacy alias
+#                    retained for Phase 2 smoke tests)
 
 if (NOT DECODER)
   message (FATAL_ERROR "run_decoder_test.cmake requires DECODER")
@@ -34,6 +37,10 @@ if (NOT EXPECTED AND NOT EXPECTED_TOKENS)
   message (FATAL_ERROR "run_decoder_test.cmake requires EXPECTED or EXPECTED_TOKENS")
 endif ()
 
+if (OPTIONS AND MODE_FLAG)
+  message (FATAL_ERROR "run_decoder_test.cmake: specify OPTIONS or MODE_FLAG, not both")
+endif ()
+
 # Normalize single-value aliases into list form.
 set (_samples ${SAMPLES})
 if (SAMPLE)
@@ -46,7 +53,9 @@ if (EXPECTED)
 endif ()
 
 set (_cmd ${DECODER})
-if (MODE_FLAG)
+if (OPTIONS)
+  list (APPEND _cmd ${OPTIONS})
+elseif (MODE_FLAG)
   list (APPEND _cmd ${MODE_FLAG})
 endif ()
 list (APPEND _cmd ${_samples})
