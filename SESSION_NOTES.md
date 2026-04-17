@@ -1,11 +1,102 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Issue #7 — Windows CI: Hamlib `integration` branch removed from GitHub. INSTALL file at `/Users/terrell/Documents/code/wsjtx-arm/INSTALL` updated to reference Hamlib tag `4.7.1` (matching CI pin from #19) at all three command sites (lines 62, 147, 232) plus rewritten descriptive sentence (lines 235-236). Two commits: `ac0a69606` (initial 4.7.0 fix) and `ff637fec6` (corrected to 4.7.1 to match CI). Issue #7 closed; follow-up comment posted documenting both commits. Internal-only scope per user direction; upstream PR opportunity remains open.
+**Task:** Session 38 — Windows CI bundled fix. Three issues closed in one commit + one CI run: #6 (FFTW3 threads — FindFFTW3.cmake `NOT WIN32 AND` guard removed), #5 (MAP65 GCC 15 — `WSJT_SKIP_MAP65` cmake option + guard added, workflow passes `-DWSJT_SKIP_MAP65=ON`), #4 (OmniRig — verified already resolved by commit `801bf1fe5` on 2026-04-09, issue body was stale, closed with explanation). Commit `887194c16`. Run `24547862402` green on all four platforms (windows 38m cache-miss, linux 7m, macos-arm 10m, macos-intel 14m). Issues #6, #5, #4 closed.
 **Status:** COMPLETE
-**Session:** 37 complete
+**Session:** 38 complete
 **Started:** 2026-04-17
 **Persona:** Contributor
+
+### What Session 38 Did
+**Deliverable:** Windows CI bundled fix across #6, #5, #4. One repo-source commit replaced two CI-side sed patches; one investigation proved #4 was already fixed. All three issues closed. COMPLETE.
+**Started:** 2026-04-17
+**Persona:** Contributor
+
+**Session 37 Handoff Evaluation (by Session 38):**
+- **Score: 9/10.** Routing was precise: Session 37's "Session 38 priorities" listed the Windows CI backlog (#6, #5, #4) first with an explicit recommendation ("#6 is probably the cleanest entry point — FFTW3 threads is a well-defined linker fix") that turned out accurate. The "Closed-issue bodies are stale" gotcha from Session 37 saved me when I hit #4 — I verified the actual workflow against the issue body before doing any code work and caught the staleness immediately. Deduction: Session 37 didn't flag that commit `801bf1fe5` (2026-04-09) had already resolved #4 — but that commit pre-dates Session 37's work and wasn't in its scope.
+- **What helped:** (1) Backlog-with-ordering recommendation — I took it verbatim and it matched the shape of the work. (2) "Closed-issue bodies are stale — verify against repo state before acting" lesson from Session 37 applied directly to #4. Without that rule, I would have assumed a Python patch script existed and spent time looking for it. (3) Hygiene tracking (untracked files, `gh` upstream default, SESSION_NOTES.md size) — all durable reminders. Untracked count standing at 28 sessions, no action needed. (4) "Commit-trailer auto-close fires on MERGE, not push-to-develop" — used it, manually closed #6/#5/#4 via `gh issue close` after push. (5) "Bundling multiple issues is possible but each commit is a CI cycle" framing from my Phase 1 discussion with the user — led to bundling all three in one commit, one CI run.
+- **What was missing:** Nothing meaningful. Session 37 couldn't reasonably have audited closed-issue bodies for staleness ahead of time.
+- **What was wrong:** Nothing. All routing claims accurate.
+- **ROI:** Very high. Priority recommendation matched the work; stale-body rule saved the #4 investigation from a wrong-turn.
+
+**What happened:**
+1. Oriented from project directory. SAFEGUARDS (full) + SESSION_NOTES top 250 lines + recent `git log`. Ran project-local dashboard. **Initial portfolio-cd reflex (`cd /Users/terrell/Documents/code && python3 methodology_dashboard.py`) blocked by PreToolUse hook** AND initial `gh issue list` (without `--repo KJ5HST-LABS/wsjtx-internal`) was rejected by user ("again?"). Recovered with absolute-path project-local dashboard + `--repo` flag. TWENTY-EIGHTH session, both reflexes still re-surface — hook + memory catching each time.
+2. `git status` clean on `develop`; HEAD `dffdd8f48` matches Session 37 close-out. `gh run list` showed Session 37's close-out run `24547344530` completed success (15m59s cache-hit, as Session 37 predicted). Backlog: #6, #5, #4 (Windows CI), #3 (v3.0.1 rebuild), #2, #1 (older epics). No ghost sessions.
+3. User: "Contributor. Fix the windows CI nightmare." Three issues in scope — stated 1-and-done tension, offered #6-first + bundle-all + audit-first options. User: "They seem to be fairly small in scope when looked at individually." → I framed bundle vs one-at-a-time with CI-cycle cost tradeoff. User: "all in one. one build. They take FOREVER thanks to windoze."
+4. Wrote Session 38 claim stub to SESSION_NOTES.md — SEVENTEENTH consecutive session.
+5. Phase 2 research in parallel: (a) `gh issue view` on #6, #5, #4. (b) Full read of `build-windows.yml` — saw current workarounds (FindFFTW3.cmake sed, map65 sed-commenting, OmniRig install with `-DOMNIRIG_TYPE_LIB`). (c) `find /Users/terrell/Documents/code/wsjtx-arm/.github -name "*.py"` — only `publish-ctest-summary.py` from Session 36; **no OmniRig Python patch script exists**. Issue #4's body was stale.
+6. Read `CMake/Modules/FindFFTW3.cmake` — identified lines 67-74 for the `NOT WIN32 AND` removal.
+7. Read `CMakeLists.txt` OmniRig block (lines 940-966) — confirmed `if (OMNIRIG_TYPE_LIB)` path skips the `dumpcpp -getfile {CLSID}` COM registry query entirely when the path is passed. Read `add_subdirectory(map65)` block (lines 1638-1641) — inside `if (WIN32)`, so the guard only affects Windows builds.
+8. `git log -S "OMNIRIG_TYPE_LIB"` → commit `801bf1fe5` (2026-04-09) "fix: provide OmniRig type library directly instead of relying on COM registry". Commit message explicitly notes: "Removes all sed/Python/stub workarounds from Session 6." So #4's Python-patch body was accurate at time of filing (2026-04-08), then superseded by `801bf1fe5` one day later (2026-04-09). #4 simply never got closed.
+9. Presented plan to user: (a) edit FindFFTW3.cmake, (b) edit CMakeLists.txt, (c) edit build-windows.yml to remove sed patches and add `-DWSJT_SKIP_MAP65=ON`, (d) close #4 with explanation, (e) one commit + one CI run, close #6/#5 on green. User: "yes".
+10. Edits: **FindFFTW3.cmake** — removed `NOT WIN32 AND` on both the if-guard (line 68) and the closing `endif()` (line 74). Replaced the cryptic comment with a 3-line comment explaining fftw.org-prebuilt vs MSYS2 history. **CMakeLists.txt** — added `option (WSJT_SKIP_MAP65 "Skip building MAP65 EME decoder (legacy Fortran; fails on GCC 15)." OFF)` at line 163 (next to other WSJT_SKIP_* options), wrapped `add_subdirectory(map65)` with `if (NOT WSJT_SKIP_MAP65) ... endif ()` at line 1641-1643. **build-windows.yml** — removed "Patch MAP65 for GCC 15" step entirely; removed the FindFFTW3.cmake sed line from Configure step; added `-DWSJT_SKIP_MAP65=ON` to cmake configure args. YAML validated with `python3 -c "import yaml; yaml.safe_load(...)"`.
+11. `grep -rn "FindFFTW3.cmake\|add_subdirectory.*map65\|NOT WIN32 AND _use_threads\|WSJT_SKIP_MAP65"` — confirmed zero residual patches in `.github/`, option + guard in place, workflow passes the flag.
+12. Commit `887194c16`: `fix: move Windows CI workarounds from sed patches into repo source (#6, #5)`. 3 files changed, 11 insertions, 15 deletions. Pushed to `origin/develop`. Background `gh run watch 24547862402 --exit-status --interval 60` armed with 40-min timeout.
+13. While CI ran: closed #4 via `gh issue close 4 --comment "..."` referencing commit `801bf1fe5` and explaining the stale body. Drafted close-out comments for #6 and #5 in `/tmp/issue_{5,6}_close.md`.
+14. **Run `24547862402` completed success on all four platforms in 38m13s total.** Windows: 38m09s (cache-miss as predicted — workflow hash changed due to yml edits). macOS ARM: 9m56s (cache-hit). Linux: 7m36s (cache-hit). macOS Intel: 14m24s (cache-hit, slowest mac as usual).
+15. Closed #6 and #5 via `gh issue close ... --comment "..."` with the pre-drafted comments. Both comments reference commit `887194c16` and CI run `24547862402`. The #5 comment explicitly frames it as a **workaround**, not a real GCC 15 fix, with a note to remove `-DWSJT_SKIP_MAP65=ON` when upstream MAP65 gets a proper fix for the `NFFT` non-constant dimension issue.
+
+**Proof:**
+- CI run `24547862402` — all four jobs conclusion=success. windows=38m09s cache-miss, macos=9m56s, linux=7m36s, macos-intel=14m24s.
+- Commit `887194c16` — 3 files changed (FindFFTW3.cmake, CMakeLists.txt, build-windows.yml).
+- Issues #4, #5, #6 CLOSED with explanatory comments. Zero CI iterations on the fix (first push green).
+
+**What's next (Session 39 priorities):**
+1. **#3 — v3.0.1 rebuild** (oldest open Windows/release-related issue). Issue title still says v3.0.0. Retitling decision with user + actual rebuild work (version bump, tag, release-workflow trigger, artifact signing/notarization verification).
+2. **#2, #1** — older epic-level issues covering Phases 2-6 of the original migration. Likely mostly superseded by completed work; worth a sweep to close or re-scope what's actually outstanding.
+3. **Optional: upstream PR opportunities.** Three distinct ones open:
+   - **FindFFTW3.cmake** — this session's `NOT WIN32 AND` removal could be a small upstream PR to WSJTX/wsjtx (pattern: `find_library` returning NOTFOUND for a lib that isn't needed would still break find_package_handle_standard_args, so the upstream version probably needs a different approach — maybe an advisory find that's not required. Not trivial.)
+   - **`WSJT_SKIP_MAP65`** — could be upstreamed as a convenience option. Trivial PR.
+   - **`OMNIRIG_TYPE_LIB` fallback** — commit `801bf1fe5` could upstream. Adds CI-friendliness to the upstream build without breaking the normal install flow.
+   - **Hamlib INSTALL doc** — Session 37's `4.7.1` update could upstream.
+4. **MAP65 GCC 15 real fix** (upstream debt). Current workaround skips map65 entirely. Real fix: declare `NFFT` as a parameter or dummy argument in `map65/libm65/decode0.f90`. Needs MAP65-specific knowledge or coordination with upstream.
+5. **Phase 3 of CTEST_PFUNIT_INTEGRATION_PLAN** — Steve Franke's decoder script — still blocked on acquisition.
+6. **Hygiene tracker.** Hamlib version is still duplicated across 12 locations (see Session 37's notes). FFTW3 threads comment is new this session — also duplicated info (repo source + CI drop the patch). Future single-source-of-truth pattern for the Hamlib pin would also cover any similar CMake compatibility shims.
+
+**Hygiene items (unchanged — do not act on mid-issue):**
+- `ci.yml:14,21,28` version `"3.0.0"` drift, v3.0.1 drop imminent.
+- `actions/checkout@v4` → `v5` deprecation — hard deadline 2026-09-16. Re-surfaced in run `24547862402`.
+- `/releases/latest` gating for `hamlib-upstream-check.yml`.
+- `release.yml:13` stale "three platform artifacts cannot disagree" comment.
+- Residual "three platform" strings in `MIGRATION_PLAN.md:275` and `drafts/email_cicd_proposal.md:5,11`.
+- `macos-15-intel` sunset: Fall 2027.
+- Email thread report-back — TWENTY-EIGHT sessions pending.
+- Untracked files (`.p12`, `.DS_Store`, `OUTREACH.md`, `.claude/`, `jt9_wisdom.dat`, `timer.out`) — TWENTY-EIGHT sessions.
+- **New this session:** Hamlib version AND FFTW3-threads-comment both duplicated between repo source and CI workflow file. Pattern emerging — workarounds that live in both repo + CI invite drift. Single-source-of-truth refactor remains valuable future work.
+
+**Key files (for next session):**
+- **For #3 (v3.0.1 rebuild):** `CMakeLists.txt` top-level project version declaration, `.github/workflows/ci.yml:14,21,28`, `.github/workflows/release.yml` workflow_dispatch inputs, any version strings in `MIGRATION_PLAN.md` or docs.
+- **For upstream PR opportunities:** the relevant commits from recent sessions — `887194c16` (this session, #6/#5), `801bf1fe5` (OmniRig, #4 fix), `ff637fec6` (Hamlib INSTALL doc, #7).
+- **Windows-CI fix precedent (this session):**
+  - `CMake/Modules/FindFFTW3.cmake:67-77` — unconditional threads search pattern with explanatory comment.
+  - `CMakeLists.txt:163` — `WSJT_SKIP_MAP65` option declaration.
+  - `CMakeLists.txt:1641-1643` — `if (NOT WSJT_SKIP_MAP65) ... endif ()` guard pattern; applicable to any future "skip this subdirectory on some platform" case.
+  - `.github/workflows/build-windows.yml:142` — `-DWSJT_SKIP_MAP65=ON` cmake arg location (any future skip options go near here).
+
+**Gotchas for next session:**
+- **Closed-issue bodies are stale. Rule of the house.** Session 37's lesson, tested again this session on #4 — issue body described a Python patch that had been removed 5 days before the issue was even viewed. Always verify issue body claims against current repo state before acting. Cost: zero this session because I applied the rule; would have been ~30 min searching for a nonexistent script otherwise.
+- **`gh` defaults to upstream `WSJTX/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. TWENTY-EIGHTH session running. Hit by me in orientation (`gh issue list` without flag was rejected); recovered and used the flag consistently after.
+- **Project-local dashboard reflex.** `cd /Users/terrell/Documents/code && python3 methodology_dashboard.py` is still blocked by PreToolUse hook. Use `python3 /Users/terrell/Documents/code/wsjtx-arm/methodology_dashboard.py`. TWENTY-EIGHTH session of this pattern, hook + memory still catching.
+- **Workflow-file changes invalidate pFUnit cache for that platform only.** `build-windows.yml` edit → Windows pFUnit cache key flips → full pFUnit rebuild on Windows (~20 min added). macos/linux unaffected. This session's run 38m total vs ~15m cache-hit run. Plan for this when touching build-*.yml.
+- **Commit-trailer auto-close fires on MERGE**, not push-to-develop. Close issues manually via `gh issue close <n> --repo KJ5HST-LABS/wsjtx-internal --comment "..."` after push.
+- **SESSION_NOTES.md is ~378KB.** Use `limit=250` for top reads; targeted offsets for older sessions. (I used limit=250, fine.)
+- **`develop` is 1 commit ahead of origin** after this close-out push. Session 39's first push is whatever it picks from the backlog.
+- **WSJT_SKIP_MAP65 is a workaround, not a fix.** Session 39 (or whoever picks up MAP65 work) should either (a) write the upstream fix for `decode0.f90`'s `NFFT` non-constant dimension, or (b) remove the `-DWSJT_SKIP_MAP65=ON` from build-windows.yml whenever upstream MAP65 gets patched. The option stays in CMakeLists.txt permanently since it's useful anyway.
+- **FindFFTW3.cmake change assumes package-manager threads split.** Works for macOS Homebrew, Linux apt, MSYS2 Windows. Would break a JTSDK/official-FFTW-DLL path (bundled threads, no separate `libfftw3f_threads.dll`). Internal fork doesn't use that path, so this is fine internally; an upstream PR would need a different approach (advisory find with graceful fallback).
+
+**Self-assessment:**
+- (+) **Wrote claim stub before technical work.** SEVENTEENTH consecutive session.
+- (+) **First-push green on a three-issue bundle.** All four platforms went green on run `24547862402` with zero CI iterations. Achieved by: (a) YAML pre-commit validation, (b) repo-wide grep to confirm zero residual sed patches, (c) reading the actual CMakeLists.txt OmniRig block to verify `OMNIRIG_TYPE_LIB` path works without COM registration, (d) investigating #4's "Python script" claim against repo state before doing any code work. Zero wasted effort on nonexistent artifacts.
+- (+) **Applied Session 37's stale-body rule to #4.** The issue body described a Python patch; I verified against repo and found no such script; traced back to commit `801bf1fe5` proving the fix pre-dated the issue viewing. **This is exactly the discipline Session 37 wanted Session 38 to inherit, and it paid off immediately.**
+- (+) **Scoped three issues into one commit per user direction.** "all in one. one build." — bundled all three into `887194c16`. One CI cycle validates the whole cleanup. Follows the user's explicit framing ("They take FOREVER thanks to windoze") — minimizing CI wall-clock was the explicit goal.
+- (+) **Two real fixes + one verified-already-done.** Not just "close three issues" — #6 and #5 genuinely moved fixes from CI-side band-aids to repo source (durable improvement); #4 was investigated, verified, closed with traceability to the actual fix commit. Every closure is defensible.
+- (+) **Framed #5 as a workaround, not a fix.** The #5 close comment explicitly says "**workaround**, not a real fix for the GCC 15 Fortran issue" and points to the root cause. Future reader doesn't get misled into thinking MAP65 is fixed.
+- (+) **Persona-correct throughout.** TWENTY-EIGHTH session running. No rad-con / consumer / AI references in commits, comments, or doc edits.
+- (+) **Layered guard caught portfolio-orientation reflex twice.** Hook + memory caught `cd /Users/terrell/Documents/code && python3 ...` AND `gh issue list` (no `--repo`). Both pivoted to correct invocation on user prompt ("again?"). TWENTY-EIGHTH session of this pattern — the reflex persists, but layered guard also persists.
+- (-) **Two orientation reflexes in one session.** Portfolio-cd AND missing `--repo` flag. Memory has both documented; neither triggered prevention on first attempt. User had to intervene with "again?" to shake me out of the pattern. This session's 28-session running counter should probably just be a persistent marker of "these reflexes NEVER go away; hook/memory/user-catch is permanent scaffolding." Internalize: **assume you will reflex — structure your tools to absorb the reflex, not to wait for me to remember not to reflex.**
+- (-) **Didn't eyeball rendered ctest summaries in CI UI.** Session 36's Phase 6 step-summary + artifact landed; I could have clicked into the Actions run to confirm the test tables render cleanly in GitHub's UI. Didn't — relied on "all platforms green" as sufficient proof. Minor; the underlying validation is machine-readable.
+- (-) **No local build verification.** Hamlib not installed locally, same constraint as prior sessions. Layered-local-verify pattern wasn't applicable — couldn't stand up even a minimal standalone project because FindFFTW3.cmake's real usage is inside a wsjt_* target with actual FFTW linkage. The YAML+grep+file-read validation was the best I could do locally. Acceptable given the constraint, but a layered-local pattern for CMake-module changes would be cheap future infrastructure.
+- **Score: 9/10.** Three-issue bundle, first-push green, zero CI iterations, all three issues closed with defensible traceability. Two real source-level fixes (not band-aids) + one verified-already-done. Deductions: two orientation reflexes needing user intervention (pattern still not self-breaking at 28 sessions); no visual UI check on ctest summaries; no local build verification (structural constraint). The orientation-reflex count is starting to feel like a feature not a bug — 28 sessions of consistent hook-catch means the system works even when I don't.
 
 ---
 
