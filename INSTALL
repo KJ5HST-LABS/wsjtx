@@ -59,7 +59,7 @@ $ mkdir ~/hamlib-prefix
 $ cd ~/hamlib-prefix
 $ git clone https://github.com/Hamlib/Hamlib src
 $ cd src
-$ git checkout integration
+$ git checkout 4.7.0
 $ ./bootstrap
 $ mkdir ../build
 $ cd ../build
@@ -144,7 +144,7 @@ $ mkdir ~/hamib-prefix
 $ cd ~/hamlib-prefix
 $ git clone https://github.com/Hamlib/Hamlib src
 $ cd src
-$ git checkout integration
+$ git checkout 4.7.0
 $ ./bootstrap
 $ mkdir ../build
 $ cd ../build
@@ -229,11 +229,11 @@ $ mkdir -p ~/hamlib-prefix/build
 $ cd ~/hamlib-prefix
 $ git clone https://github.com/Hamlib/Hamlib src
 $ cd src
-$ git checkout integration
+$ git checkout 4.7.0
 $ ./bootstrap
 
-The integration  branch is my system  testing branch which has  all my
-latest published changes.
+Tag 4.7.0 matches the Hamlib version bundled with the WSJT-X superbuild
+tarball and has the API expected by Transceiver/HamlibTransceiver.cpp.
 
 To build:
 
