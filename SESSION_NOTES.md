@@ -1,11 +1,105 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Session 39 — State-check note for #3 (rebuild for v3.0.0 GA). User's premise "v3.0.1 released" verified FALSE against upstream: `gh release list --repo wsjtx/wsjtx` shows only `v3.0.0` (tagged 2026-04-06), no v3.0.1 tag or release. Upstream git tag list: `v2.7.0`, `v3.0.0`. Internal fork has only `v3.0.0-rc1` (2026-04-01) as pre-release plus rolling `latest` (2026-04-01) — **no v3.0.0 GA release published internally yet.** `ci.yml` version pin is already `"3.0.0"` (4 sites, correct for GA). Issue #3 title says "April 8, 2026" but actual GA was April 6 (2-day off). Issue #3 also bundles Apple Dev Account Ownership (Gap #9) governance item unrelated to the rebuild. No code changes this session — finding recorded only.
+**Task:** Session 40 — Audit + re-scope of issue #2. Audited #2 against current state: Linux x86_64 CI, Windows x86_64 CI, and release automation all landed; upstream patches never submitted. User clarified that the "four supported platforms" framing in `docs/contributor/2_DEVELOPMENT_WORKFLOW.md` is a MINIMUM, not a ceiling — Linux ARM64 was an original open item, not a descope. Issue #2 retitled to "Linux ARM64 build + upstream patches to WSJT-X" and body rewritten: completed bullets moved to reference section; open section enumerates (a) Linux ARM64 aarch64 build — prefer native `ubuntu-24.04-arm` runner over cross-compile, wire into `ci.yml` + `release.yml`, artifact `wsjtx-<version>-linux-aarch64`, and (b) four upstream PR candidates (FindFFTW3 threads `887194c16`, WSJT_SKIP_MAP65 `887194c16`, OMNIRIG_TYPE_LIB `801bf1fe5`, Hamlib INSTALL 4.7.1 `ff637fec6`). No code/workflow changes. Issue remains OPEN.
 **Status:** COMPLETE
-**Session:** 39 complete
+**Session:** 40 complete
 **Started:** 2026-04-17
 **Persona:** Contributor
+
+### What Session 40 Did
+**Deliverable:** Audit of issue #2 followed by in-place re-scope (title + body rewrite) via `gh issue edit 2 --repo KJ5HST-LABS/wsjtx-internal`. Verified with `gh issue view 2`. Session notes updated. No code changes, no workflow changes, no new commits to `develop`. COMPLETE.
+**Started:** 2026-04-17
+**Persona:** Contributor
+
+**Session 39 Handoff Evaluation (by Session 40):**
+- **Score: 8/10.** Session 39's priority list for Session 40 was "issue hygiene first" as option (C) for #3 — but Session 40 actually ran hygiene on a different issue (#2), so the routing doesn't match 1:1. HOWEVER, Session 39's general framing that older epic-level issues (#1, #2) are "likely mostly superseded; worth a sweep to close or re-scope" is EXACTLY what this session did for #2. Credit. What helped most: Session 39's **"closed-issue bodies are stale — rule of the house"** lesson applied perfectly here — I verified each Phase 4-6 bullet against current repo state (`.github/workflows/*.yml`, `docs/contributor/2_DEVELOPMENT_WORKFLOW.md`) rather than trusting the issue body's framing. Deduction: Session 39 didn't flag that `2_DEVELOPMENT_WORKFLOW.md` documents "four supported platforms" as if it were final scope — that documented framing is what I initially treated as a descope of Linux ARM64, and the user had to correct me ("four stated builds was not intended to be all inclusive, but a minimum"). A handoff note like "documented platform list may be narrower than actual intent — verify with user before treating a platform as descoped" would have made this cleaner.
+- **What helped:** (1) Stale-body rule generalized from Sessions 37/38/39 — applied to #2's Phase 4/5/6 bullets by cross-checking each against actual workflow files. Saved me from the trap of assuming "the issue says X so X is true." (2) The scope-options framing from Session 39 (a/b/c/d style) — I used the same shape for my own audit output (close / re-scope / leave) which landed well with the user. (3) Hygiene tracker continuity — untracked files at 30 sessions, no action.
+- **What was missing:** Flagged above — documented scope-vs-intent delta for Linux ARM64. Would have saved one user correction.
+- **What was wrong:** Nothing factual. The scope-routing gap is framing, not fact.
+- **ROI:** High. Framework carried over cleanly; only the implicit-scope-is-final assumption bit me once.
+
+**What happened:**
+1. Oriented from project directory. SAFEGUARDS (full) + SESSION_NOTES top 200 lines + recent `git log`. Project-local dashboard via absolute path. **`gh issue list` initial call WITHOUT `--repo` flag again — 30th session of this reflex.** Caught on second reading when two issues numbered #5/#6 appeared OPEN (they had been closed upstream in Session 38). Recovered with `--repo KJ5HST-LABS/wsjtx-internal`. Portfolio-cd reflex did NOT fire this session (hook would have caught it anyway).
+2. Reported: branch clean on `develop`, HEAD `2532b8e89`, three open issues (#1, #2, #3), no ghost sessions, dashboard 86/100.
+3. User: "Contributor. confirm issue #2."
+4. Wrote Session 40 claim stub — NINETEENTH consecutive session.
+5. Read #2 body (Phase 4-6 epic). Audited each phase against current state: listed `.github/workflows/*.yml`, read key workflow files (`release.yml` in full, `ci.yml:1-60`, `build-linux.yml:1-30`, `build-windows.yml:1-30`), checked releases (`gh release list`), searched `docs/contributor/` for ARM64 scope statements, checked for CHANGELOG (none — release `--generate-notes` substitutes).
+6. Findings: Phase 4 DONE as Linux x86_64 (original ask said ARM64); Phase 5 DONE as Windows x86_64 (original ask said "evaluate ARM64 feasibility"); Phase 6 mostly DONE (release automation + signing + notarization + `--generate-notes`) with only "upstream patches" bullet truly open.
+7. Initially interpreted the ARM64→x86_64 delta as a deliberate scope narrowing (based on `docs/contributor/2_DEVELOPMENT_WORKFLOW.md:184,307,335` listing four platforms as "supported"). Presented three options to user: (A) close #2 + new upstream-PRs issue, (B) close + track in notes, (C) re-scope #2 in place.
+8. User: "Rescope, but keep linux arm64 build. four stated builds was not intended to be all inclusive, but a minimum. The prior list was too restrictive." — **Corrected my framing**: docs were under-scoped relative to intent, not representing final scope. Linux ARM64 remains a real open item.
+9. Drafted new title + body. Presented to user for approval (shared-state change visible to any collaborators). User: "go ahead."
+10. `gh issue edit 2 --repo KJ5HST-LABS/wsjtx-internal --title "Linux ARM64 build + upstream patches to WSJT-X" --body "..."`. Verified with `gh issue view 2`.
+11. Phase 3 close-out: updated SESSION_NOTES.md. Commit via git (handoff only — no code changes).
+
+**Proof:**
+- Issue #2 state (verified 2026-04-17 via `gh issue view 2`): title="Linux ARM64 build + upstream patches to WSJT-X", state=OPEN, body rewritten per the approved draft, 0 comments (clean edit — no comment trail needed).
+- `gh workflow list` shows all 6 workflows active (build-linux, build-macos, build-windows, ci, hamlib-upstream-check, release).
+- `release.yml` review confirmed: tag-driven `tags: ["v*"]`, 4-platform matrix (`macos`, `macos-intel`, `linux`, `windows`), `--generate-notes` changelog, pre-release flag for `v*-*` tags, public repo sync via `CROSS_REPO_TOKEN`.
+- Zero code/workflow changes this session. `git status` unchanged except for SESSION_NOTES.md edit.
+
+**What's next (Session 41 priorities):**
+
+1. **Issue #1 audit** — matching pattern to this session. "Phase 2-3: GitHub templates, guards, and macOS CI/CD". Almost certainly mostly superseded (macOS CI is the project's foundational capability, shipped long ago). Audit → re-scope or close. Expected format similar to Session 40's output: what's done, what's open, re-scope proposal.
+
+2. **#3 — v3.0.0 GA rebuild path** (Session 39 recommendation still valid now that #2 is cleaner):
+   - **(D) Audit first:** diff `wsjtx-3.0.0-rc1/` tarball against upstream `v3.0.0` tag (`ab976b1b4b72a96aaa3259591f68ad772af7d7f9`). If identical → promote-to-GA is a tag push + `release.yml` trigger. If not → fresh build.
+   - **(C) Issue hygiene:** retitle #3 to "Rebuild for v3.0.0 GA (2026-04-06)" (date is off by 2 days); split Apple Dev Account Ownership (Gap #9) into its own governance issue.
+   - **(A) Plan:** `docs/contributor/V3_0_0_GA_RELEASE_PLAN.md` with rc1-vs-GA diff summary, release-workflow invocation, signing verification, smoke-test protocol, release notes draft.
+
+3. **Upstream PRs** — now scoped inside re-scoped #2. Four trivial→medium-risk candidates enumerated in the issue body. Lowest risk to start: Hamlib INSTALL doc (`ff637fec6`) and `WSJT_SKIP_MAP65` option. FindFFTW3 needs reformulation work (not a direct transplant). OMNIRIG_TYPE_LIB is mid-risk.
+
+4. **Linux ARM64 build** — now scoped inside re-scoped #2. `ubuntu-24.04-arm` GitHub-hosted runner availability needs verification (may still be in limited preview for some orgs); fall back to cross-compile or self-hosted if unavailable.
+
+5. **MAP65 GCC 15 real fix** — upstream debt. Workaround (`-DWSJT_SKIP_MAP65=ON`) still in place.
+
+6. **Phase 3 of CTEST_PFUNIT_INTEGRATION_PLAN.md** — blocked on Steve Franke decoder script.
+
+**Hygiene items (unchanged — do not act on mid-issue):**
+- `ci.yml:14,21,28,34,41` version `"3.0.0"` — CORRECT for GA (per Session 39 verification).
+- `actions/checkout@v4` → `v5` — hard deadline 2026-09-16.
+- `/releases/latest` gating for `hamlib-upstream-check.yml`.
+- `release.yml:13` stale "three platform artifacts cannot disagree" comment (should say four).
+- Residual "three platform" strings in `MIGRATION_PLAN.md:275` and `drafts/email_cicd_proposal.md:5,11`.
+- Documented platform list in `docs/contributor/2_DEVELOPMENT_WORKFLOW.md:184,307,335,478,504-505,711-714` lists four platforms as "supported" — per user intent this session, should be framed as **minimum baseline**, not final scope. Not a bug today, but consider a doc-hygiene pass at some point.
+- `macos-15-intel` sunset: Fall 2027.
+- Email thread report-back — 30 sessions pending.
+- Untracked files (`.p12`, `.DS_Store`, `OUTREACH.md`, `.claude/`, `jt9_wisdom.dat`, `timer.out`) — 30 sessions.
+- Hamlib version duplicated across 12 locations (Session 37 tracker) + FFTW3-threads comment duplicated between repo source and CI workflow (Session 38). Single-source-of-truth refactor still valuable future work.
+
+**Key files (for Session 41):**
+- **For #1 audit (next session's likely task):** `.github/workflows/build-macos.yml`, `ci.yml` (macOS matrix lines 11-29), `.github/` dir for PR/issue templates (grep for existence), `CODEOWNERS` / `CONTRIBUTING.md` / `SECURITY.md` as "guards" candidates.
+- **For re-scoped #2 Linux ARM64 work:** `.github/workflows/build-linux.yml` (current ubuntu-24.04 x86_64 template to copy/adapt), `ci.yml:31-36` (where to wire in a second Linux matrix entry), `release.yml:45-51` (same in release flow). Check `ubuntu-24.04-arm` runner availability via GitHub Actions runner docs.
+- **For re-scoped #2 upstream PRs:** the four commits enumerated in the issue body — `887194c16`, `801bf1fe5`, `ff637fec6`. Upstream target is `https://github.com/wsjtx/wsjtx.git`. Session 38's "FindFFTW3 needs reformulation" warning stands.
+
+**Gotchas for Session 41:**
+- **Documented scope ≠ intended scope.** This session's key learning: `docs/contributor/2_DEVELOPMENT_WORKFLOW.md` frames "four supported platforms" as if exhaustive, but the user's intent was "minimum baseline." When auditing or planning scope, treat documented lists as inputs to verify with the user, not as final specs — especially for lists that could constrain future work.
+- **`ubuntu-24.04-arm` runner availability is NOT universal.** GitHub-hosted Linux ARM64 runners rolled out to public repos in stages. Verify the KJ5HST-LABS org has access before writing a workflow that assumes it. Fallback options: cross-compile via qemu, self-hosted runner, or defer ARM64 until runner is available.
+- **`gh` defaults to upstream `wsjtx/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. 30th session running. This session's reflex hit: `gh issue list` returned upstream issues #5/#6 as if they were ours (they looked familiar-but-wrong, caught on second reading).
+- **Project-local dashboard reflex.** `cd /Users/terrell/Documents/code && python3 methodology_dashboard.py` still blocked by PreToolUse hook. Use absolute path. 30 sessions.
+- **Closed/stale issue bodies rule generalizes to OPEN issue bodies too.** This session: #2's body described Phase 4-6 as if all three were equally open. Only one item was truly open. Even OPEN issues can be ~90% done without anyone updating the body. Verify against repo state, don't trust the body as current.
+- **Shared-state edits need confirmation.** `gh issue edit` is soft-reversible but visible to any collaborator. Showing the draft to user before executing adds 30 seconds; skipping it risks publishing something the user would have edited. This session did it right; keep the pattern.
+- **Commit-trailer auto-close fires on MERGE**, not push-to-develop. Not relevant this session (no code commits, no closing trailers).
+- **SESSION_NOTES.md is ~431KB+ after this close-out.** Use `limit=200` for top reads; targeted offsets for older sessions.
+- **`develop` is clean.** Only SESSION_NOTES.md change; commit-only close-out. No CI cycle triggered (docs-only commit to develop will still trigger the full 4-platform build, though — watch wall-clock if tight).
+
+**Self-assessment:**
+- (+) **Wrote claim stub before technical work.** 19th consecutive session.
+- (+) **Audit was evidence-based, not vibes.** Read `release.yml` in full, read key portions of `ci.yml`, `build-linux.yml`, `build-windows.yml`, checked `gh workflow list`, `gh release list`, searched `docs/contributor/` for platform scope statements. Each "DONE" claim tied to a specific file and line range. Each "OPEN" claim tied to absence of evidence.
+- (+) **Applied stale-body rule to an OPEN issue** (new extension of the Sessions 37-39 pattern). Previously the rule was "closed-issue bodies are stale"; this session generalizes it: OPEN issues can also be stale if their framing is outdated. Added to Gotchas for Session 41.
+- (+) **Presented three clean options to user for disposition** (close / re-scope / leave). User picked re-scope with a scope correction I hadn't anticipated. Put the decision on the user; accepted the correction cleanly.
+- (+) **Drafted the new issue body and previewed it to the user before `gh issue edit`.** Shared-state edit; confirmation pattern preserved. User approved without changes.
+- (+) **Correctly resisted scope creep.** User's "prior list was too restrictive" arguably implies `docs/contributor/2_DEVELOPMENT_WORKFLOW.md` should be updated to reflect the minimum-baseline framing. I did NOT update those docs this session — noted in Hygiene items for future hygiene pass. Failure Mode #2 (keep going) and #8 (redesign during implementation) both guarded. One deliverable: re-scope #2. Done. Stop.
+- (+) **Persona-correct throughout.** 30th session running. No rad-con / consumer / AI references.
+- (-) **`gh` flag reflex still firing at 30 sessions.** Caught by me on second reading of `gh issue list` output. Memory-documented reflex; layered guard (user + memory + self-catch) still working but initial reach is still wrong. Memory notes this is a persistent feature, not a bug.
+- (-) **Initial scope framing treated documented list as final.** User had to correct me with "four stated builds was not intended to be all inclusive, but a minimum." The ARM64 descope read from `2_DEVELOPMENT_WORKFLOW.md` was the wrong interpretation. A better Phase 1 would have asked the user "does the docs' four-platform list represent final scope, or a baseline?" before presenting scope options. One user correction; could have been zero.
+- (-) **No local verification possible.** Audit was doc/workflow-read only. No local build, no artifact inspection. Acceptable for an audit session — no code changed — but noted for next time: if audit leads to plan (like the Linux ARM64 work in re-scoped #2), next session should include a dry-run of `ubuntu-24.04-arm` runner availability check.
+- **Score: 8/10.** Evidence-based audit with three clean options; re-scope drafted and approved-before-execute; one user correction on scope framing that a sharper Phase 1 would have caught; scope creep correctly guarded. The session's chief value to Session 41 is a clean #2 (one scoped open-items issue, not a stale epic) and a documented pattern for auditing the remaining epic #1.
+
+---
+
+### What Session 39 Did (prior)
+**Task:** State-check note for #3 (rebuild for v3.0.0 GA). User's premise "v3.0.1 released" verified FALSE against upstream.
 
 ### What Session 39 Did
 **Deliverable:** Recorded state-check finding for issue #3. User noted they had thought v3.0.1 was released; verified against upstream and corrected. No code, no issue comment, no version bumps — just the correction recorded for future sessions. COMPLETE.
