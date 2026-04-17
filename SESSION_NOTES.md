@@ -1,15 +1,97 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Phase 6 of CTEST_PFUNIT_INTEGRATION_PLAN.md (#16) — test result surfacing and failure policy. Run `24545229157` all four platforms success in ~36 min (cache-miss on pFUnit because workflow-hash changed in all three build-*.yml files). First-push green, zero CI iterations. Four `ctest-results-*` artifacts attached to the run; all three new steps (Run tests with `--output-junit`, Publish test summary, Upload test results) succeeded on every job.
+**Task:** Issue #7 — Windows CI: Hamlib `integration` branch removed from GitHub. INSTALL file at `/Users/terrell/Documents/code/wsjtx-arm/INSTALL` updated to reference Hamlib tag `4.7.1` (matching CI pin from #19) at all three command sites (lines 62, 147, 232) plus rewritten descriptive sentence (lines 235-236). Two commits: `ac0a69606` (initial 4.7.0 fix) and `ff637fec6` (corrected to 4.7.1 to match CI). Issue #7 closed; follow-up comment posted documenting both commits. Internal-only scope per user direction; upstream PR opportunity remains open.
 **Status:** COMPLETE
-**Session:** 36 complete
+**Session:** 37 complete
 **Started:** 2026-04-17
 **Persona:** Contributor
 
 ---
 
-### What Session 36 Did
+### What Session 37 Did
+**Deliverable:** Issue #7 — Hamlib `integration` branch INSTALL fix. All four `integration` references in `/Users/terrell/Documents/code/wsjtx-arm/INSTALL` (3 `git checkout` commands + 1 descriptive sentence) replaced with tag `4.7.1` to match the version pinned in `.github/workflows/ci.yml` and `release.yml`. Two commits because the version pin claimed in #7's original body (`4.7.0`) was stale — issue #19 (closed earlier today) had bumped CI to `4.7.1`. Caught the mismatch by grepping CI before close-out, issued follow-up commit. Issue #7 closed via `gh issue close` (commit-trailer auto-close fires on merge, not push-to-develop). COMPLETE.
+**Started:** 2026-04-17
+**Persona:** Contributor
+
+**Session 36 Handoff Evaluation (by Session 37):**
+- **Score: 8/10.** The handoff routed me well to the Windows CI backlog (#7, #6, #5, #4 listed) and the user picked #7 directly. Hygiene items, gotchas, and the "26 sessions standing" tracking on untracked files were all useful baseline. The Phase 6 implementation details (shared script, `if: always()` gate) were not relevant to a doc fix but cost zero to skip. Deduction: **Session 36 didn't flag that Hamlib was bumped from 4.7.0 to 4.7.1** during the Session 35-36 timeframe via issue #19 (closed 2026-04-16). #7's body still says CI uses 4.7.0 — that stale claim trapped my first commit. Session 36 had no obligation to audit closed-issue bodies, but a "Hamlib pin is now 4.7.1, not 4.7.0 — heads up if you touch INSTALL or any version doc" line in the hygiene-items section would have saved my follow-up commit.
+- **What helped:** (1) Windows CI backlog list with all four issue numbers — direct match for user's pick. (2) "Untracked files standing 26 sessions" tracker — still 27 this session, no action taken (correct; not in scope). (3) "Commit-trailer auto-close fires on MERGE, not push-to-develop" reminder — used it correctly, ran `gh issue close 7` manually after push. (4) `gh` upstream-default warning: TWENTY-SEVENTH session running, no hit. (5) "SESSION_NOTES.md ~365KB use limit=300" — used limit=200, fine.
+- **What was missing:** (a) Hamlib pin bump (4.7.0 → 4.7.1 via #19) not flagged. Cost: one follow-up commit. (b) No mention that `wsjtx-3.0.0-rc1/INSTALL` exists as a second copy — I noticed it independently in Phase 0 and correctly identified it as an extracted tarball not to touch, but a "yes, it's an upstream tarball, leave alone" note would have shaved a few seconds of judgment. Minor.
+- **What was wrong:** Nothing material. The handoff's routing claims were accurate; only the staleness of the closed-issue list was a gap.
+- **ROI:** High. Routing was good, hygiene tracking helped, only missed the Hamlib version delta.
+
+**What happened:**
+1. Oriented from project directory. SAFEGUARDS (full) + SESSION_RUNNER (full) + SESSION_NOTES top 200 lines. Ran project-local dashboard via absolute path. **Initial reflex `cd /Users/terrell/Documents/code && python3 methodology_dashboard.py` was blocked by PreToolUse hook** — pivoted to the absolute-path project-local invocation. TWENTY-SEVENTH session, hook + memory still working. (User cut my orientation short with "fail" because I tried to read the entire 365KB SESSION_NOTES.md without limit; recovered with limit=200.)
+2. `git status` clean on `develop`; HEAD `486d6b53a` matches Session 36 close-out. `gh run list` showed Session 36's close-out run `24546383301` in_progress (it completed success at 15m54s during this session — cache-hit confirmed as Session 36 predicted). Backlog: #7, #6, #5, #4 (Windows CI), #3 (v3.0.1 rebuild), #2, #1 (older epics). #16 confirmed CLOSED. No ghost sessions.
+3. User: "#7" then "contributor". Read issue #7 body — Hamlib `integration` branch is defunct, CI workaround in place at "tag 4.7.0", fix INSTALL.
+4. Located affected file: `/Users/terrell/Documents/code/wsjtx-arm/INSTALL` (4 references — lines 62, 147, 232 are `git checkout` commands, line 235 is a descriptive sentence). Also found `wsjtx-3.0.0-rc1/INSTALL` (extracted upstream tarball — explicitly NOT touched).
+5. Wrote Session 37 claim stub (SIXTEENTH consecutive session writing claim before technical work).
+6. Stated three scope options to user: (a) internal only, (b) internal + draft upstream PR, (c) investigate upstream first. **User picked (a).**
+7. Read affected sections of INSTALL at lines 55-75, 140-160, 220-250 to understand context. Edited the three `git checkout integration` commands to `git checkout 4.7.0`. Rewrote line 235's "The integration branch is my system testing branch" sentence to "Tag 4.7.0 matches the Hamlib version bundled with the WSJT-X superbuild tarball...".
+8. Verified: `grep integration INSTALL` → no matches. `git diff INSTALL` → 5 insertions, 5 deletions, surgical.
+9. Commit `ac0a69606`: `docs: update Hamlib build instructions to use 4.7.0 tag (#7)`. Pushed to origin/develop. Closed issue #7 via `gh issue close 7 --comment "..."`.
+10. **Pre-close-out verification caught a correctness bug.** Ran `grep -i 'hamlib.*4\.7|HAMLIB_VERSION' .github/` to confirm CI actually uses 4.7.0 — it does NOT, it uses **4.7.1** (8 references across `ci.yml` and `release.yml`). Issue #7's body was written before #19's bump landed.
+11. Verified #19 context: `gh issue view 19` → confirmed CI was bumped 4.7.0 → 4.7.1 (#19 closed 2026-04-16).
+12. Follow-up commit `ff637fec6`: `docs: bump Hamlib build instructions to 4.7.1 to match CI (#7)`. `git diff` shows clean 4.7.0 → 4.7.1 swap on three command lines + descriptive sentence rewrite. Pushed.
+13. Posted comment on closed issue #7 documenting both commits and the staleness root cause.
+
+**Proof:**
+- Commits `ac0a69606` (initial fix) + `ff637fec6` (version correction) on develop. Final INSTALL state: `grep integration INSTALL` = no matches; `grep 4.7.1 INSTALL` = 3 command refs + 1 descriptive sentence reference.
+- Issue #7 CLOSED with explanatory comment chain.
+- CI run `24547192373` started for first commit (in_progress at handoff time — docs-only, expected cache-hit ~15 min). Second commit also docs-only.
+- Session 36 close-out run `24546383301` completed success during this session: 15m54s, cache-hit confirmed.
+
+**What's next (Session 38 priorities):**
+1. **Windows CI backlog continues:** #6 (FFTW3 threads — MSYS2 splits threads into separate lib), #5 (MAP65 fails to compile with GCC 15 in decode0.f90), #4 (OmniRig COM registration on GitHub Actions runners). All three are real Windows-specific bugs, not docs. Pick whichever the user wants. **#6 is probably the cleanest entry point** — FFTW3 threads is a well-defined linker fix; #5 needs Fortran-Fortran/GCC interaction debugging; #4 is COM-registration black-magic on a hosted runner.
+2. **#3 — v3.0.1 rebuild.** Issue title still says v3.0.0. Retitling decision with user. Pending action.
+3. **Optional follow-up to #7:** Draft an upstream documentation PR against `WSJTX/wsjtx` updating their `INSTALL` file the same way. Internal scope was chosen this session; upstream remains a single-commit, low-risk contribution opportunity that builds standing in the upstream community. Could be done by a dedicated session or bundled into a "small upstream contributions" sweep.
+4. **Hygiene:** Hamlib version is now duplicated across `INSTALL` (3 places + 1 descriptive sentence), `ci.yml` (4 places), `release.yml` (4 places). No automation links them. Future Hamlib bump (4.7.2, 4.8.x, etc.) needs to touch all 12 occurrences. **A future session might add a single-source-of-truth pattern** — e.g., a top-level `HAMLIB_VERSION.txt` consumed by both CI and a doc-render step. Not urgent.
+5. **Phase 3 of CTEST_PFUNIT_INTEGRATION_PLAN** — Steve Franke's decoder script — still blocked on acquisition.
+
+**Hygiene items (unchanged — do not act on mid-issue):**
+- `ci.yml:14,21,28` version `"3.0.0"` drift, v3.0.1 drop imminent.
+- `actions/checkout@v4` → `v5` deprecation — hard deadline 2026-09-16.
+- `/releases/latest` gating for `hamlib-upstream-check.yml`.
+- `release.yml:13` stale "three platform artifacts cannot disagree" comment.
+- Residual "three platform" strings in `MIGRATION_PLAN.md:275` and `drafts/email_cicd_proposal.md:5,11`.
+- `macos-15-intel` sunset: Fall 2027.
+- Email thread report-back — TWENTY-SEVEN sessions pending.
+- Untracked files (`.p12`, `.DS_Store`, `OUTREACH.md`, `.claude/`, `jt9_wisdom.dat`, `timer.out`) — TWENTY-SEVEN sessions.
+
+**Key files (for next session):**
+- **For #6/#5/#4 (Windows CI backlog):** `.github/workflows/build-windows.yml` is the entry point. Per Session 33-34 lessons, MSYS2 + multi-entry CMAKE_PREFIX_PATH interacts poorly with `pkg_check_modules` — consult those sessions before debugging.
+- **For Hamlib pin updates (any future bump):** 12 occurrences total across:
+  - `INSTALL:62,147,232` (commands) + `INSTALL:235-236` (descriptive sentence)
+  - `.github/workflows/ci.yml:15,25,35,42` (`hamlib_branch`)
+  - `.github/workflows/release.yml:28,39,50,58` (`hamlib_branch`)
+- **For upstream `WSJTX/wsjtx` Hamlib INSTALL PR (if Session 38 takes it on):** the four-site fix in this session's commits `ac0a69606` + `ff637fec6` is the template. Patch on the upstream INSTALL would need `4.7.1` (or whatever version Joe Taylor/Brian Moran agree on for upstream tracking).
+
+**Gotchas for next session:**
+- **Closed-issue bodies are stale.** Issue #7's body said "CI uses 4.7.0" — that was true when filed, not when executed. Always verify version pins/file paths claimed in issue bodies against the current repo state. **Cost me one follow-up commit this session.** Apply this rule to ANY issue: the body is a snapshot, not the current spec.
+- **Hamlib version is now triple-duplicated.** Bump #19 → bump CI (was done) → bump INSTALL (done this session). Future bumps need all three. Consider single-source-of-truth refactor (low priority but real maintenance debt).
+- **`wsjtx-3.0.0-rc1/INSTALL` is an extracted upstream tarball.** Do not edit. It will be regenerated whenever the v3.0.1 rebuild (#3) lands.
+- **`gh` defaults to upstream `WSJTX/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. TWENTY-SEVENTH session, no hit.
+- **Commit-trailer auto-close fires on MERGE**, not push-to-develop. Direct push closes nothing. Used `gh issue close 7 --comment "..."` manually after push this session — pattern works.
+- **SESSION_NOTES.md is now ~378KB.** Use `limit=200` for top of file. Targeted offsets for older sessions. (Initial Read without limit failed at 26K tokens.)
+- **Project-local dashboard reflex.** `cd /Users/terrell/Documents/code && python3 methodology_dashboard.py` is blocked by PreToolUse hook. Use `python3 /Users/terrell/Documents/code/wsjtx-arm/methodology_dashboard.py` (absolute path, project-local script). TWENTY-SEVENTH session, hook + memory still doing the catch.
+- **`develop` is now 2 commits ahead of Session 36's push** (`ac0a69606` initial + `ff637fec6` correction + this close-out commit will make it 3). All docs-only. Session 38's first non-docs push will be a cache-hit on pFUnit (workflow files unchanged) → ~15 min build.
+
+**Self-assessment:**
+- (+) **Wrote claim stub before technical work.** SIXTEENTH consecutive session.
+- (+) **Asked for scope clarification rather than assuming.** Three options (internal-only, internal+upstream, investigate-first) put the scope decision back on the user. They picked (a). Good Phase 1 discipline.
+- (+) **Read INSTALL sections before editing.** Failure mode #20 (edit from memory) avoided. Verified surrounding context before each of the four edits.
+- (+) **Caught my own correctness bug pre-session-end.** The stale-issue-body trap (4.7.0 claim, actual CI is 4.7.1) was caught by grepping CI before writing close-out. Two-commit cleanup (initial fix + version correction) is better discipline than leaving a wrong deliverable for next session. **This is the "verify-before-claim" rule applied to my own just-shipped work.**
+- (+) **Posted explanatory comment on closed issue #7** documenting both commits and the root cause (stale body). Future readers of #7 see the actual story without having to dig through git log.
+- (+) **Persona-correct throughout.** TWENTY-SEVENTH session running. No rad-con / consumer / AI references in commits, comments, or doc edits.
+- (+) **Layered guard caught portfolio-orientation reflex.** Hook + memory caught my `cd /Users/terrell/Documents/code && ...` reflex on the first try. TWENTY-SEVENTH session of this pattern.
+- (+) **Did not touch out-of-scope files.** `wsjtx-3.0.0-rc1/INSTALL` (extracted upstream tarball) explicitly identified and left alone. Untracked hygiene files (`.p12`, etc.) untouched.
+- (-) **Trusted issue body's version claim without pre-verification.** The first commit used 4.7.0 from the issue body. Should have grepped CI BEFORE choosing the version, not after committing. Cost: one follow-up commit (~5 min). Recovery was correct discipline; the avoidable cost is the lesson. New gotcha for Session 38: **closed-issue bodies are snapshots, not specs.**
+- (-) **User had to interrupt my orientation with "fail".** Initial Read of SESSION_NOTES.md without limit hit the 26K token cap. Recovered with limit=200, but cost a turn. Should have used `limit=200` from the first read attempt — Session 36's handoff explicitly said "SESSION_NOTES.md is ~365KB. Use `limit=300` for top." I read that note in Session 36's notes BUT did not apply it on my first attempt because I was in parallel-tool-call mode and didn't think about size. **Internalize: ALWAYS use `limit` on SESSION_NOTES.md from the first read.**
+- (-) **Internal-only scope leaves an upstream contribution opportunity on the table.** User chose (a) explicitly, so this is on-spec, not a process violation — but documenting it as a Session 38+ option is the compounding move (done above in Next Steps).
+- **Score: 8/10.** Deliverable complete, clean two-commit cleanup, persona-correct, hook+memory enforcement holding, claim stub written. Two real deductions: the stale-body trap (avoidable with pre-verification) and the limit-less Read (avoidable by applying Session 36's explicit guidance). Recovery from both was correct — caught in-session, not deferred. The catch-and-correct pattern on the version mismatch is the kind of discipline I want to see in every session, but the real win would have been to never need it.
+
+---
 **Deliverable:** Phase 6 of `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md` — ctest results surfaced via (a) `$GITHUB_STEP_SUMMARY` PASS/FAIL table per platform emitted by shared Python parser `.github/scripts/publish-ctest-summary.py`, (b) JUnit XML (`ctest-results-<platform>`) uploaded as a run artifact, (c) failure policy documented in `2_DEVELOPMENT_WORKFLOW.md` §5 under new "Test Failure Policy" subsection. No changes to `ci.yml` or `release.yml` — release-blocking is automatic via existing `needs:` in `release.yml`. Hard-fail policy on every platform for v1. Phase 6 is the LAST implementation phase of the plan; only Phase 3 (Steve Franke's decoder script, blocked on acquisition) remains. COMPLETE.
 **Started:** 2026-04-17
 **Persona:** Contributor
