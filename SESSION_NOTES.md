@@ -1,11 +1,98 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Session 38 — Windows CI bundled fix. Three issues closed in one commit + one CI run: #6 (FFTW3 threads — FindFFTW3.cmake `NOT WIN32 AND` guard removed), #5 (MAP65 GCC 15 — `WSJT_SKIP_MAP65` cmake option + guard added, workflow passes `-DWSJT_SKIP_MAP65=ON`), #4 (OmniRig — verified already resolved by commit `801bf1fe5` on 2026-04-09, issue body was stale, closed with explanation). Commit `887194c16`. Run `24547862402` green on all four platforms (windows 38m cache-miss, linux 7m, macos-arm 10m, macos-intel 14m). Issues #6, #5, #4 closed.
+**Task:** Session 39 — State-check note for #3 (rebuild for v3.0.0 GA). User's premise "v3.0.1 released" verified FALSE against upstream: `gh release list --repo wsjtx/wsjtx` shows only `v3.0.0` (tagged 2026-04-06), no v3.0.1 tag or release. Upstream git tag list: `v2.7.0`, `v3.0.0`. Internal fork has only `v3.0.0-rc1` (2026-04-01) as pre-release plus rolling `latest` (2026-04-01) — **no v3.0.0 GA release published internally yet.** `ci.yml` version pin is already `"3.0.0"` (4 sites, correct for GA). Issue #3 title says "April 8, 2026" but actual GA was April 6 (2-day off). Issue #3 also bundles Apple Dev Account Ownership (Gap #9) governance item unrelated to the rebuild. No code changes this session — finding recorded only.
 **Status:** COMPLETE
-**Session:** 38 complete
+**Session:** 39 complete
 **Started:** 2026-04-17
 **Persona:** Contributor
+
+### What Session 39 Did
+**Deliverable:** Recorded state-check finding for issue #3. User noted they had thought v3.0.1 was released; verified against upstream and corrected. No code, no issue comment, no version bumps — just the correction recorded for future sessions. COMPLETE.
+**Started:** 2026-04-17
+**Persona:** Contributor
+
+**Session 38 Handoff Evaluation (by Session 39):**
+- **Score: 8/10.** Session 38's priority ordering routed me correctly — #3 was listed first as "v3.0.1 rebuild" with "Issue title still says v3.0.0. Retitling decision with user." The routing surfaced the right issue. HOWEVER, Session 38's framing introduced a factual error: both the close-out notes AND the "Next steps" referred to "v3.0.1 rebuild" and "v3.0.1 drop imminent" as if v3.0.1 existed or was about to. Upstream has only `v3.0.0` tagged (2026-04-06) with no v3.0.1 tag. The user carried that speculation into this session as a premise ("I thought 3.0.1 was released, but I guess not"). Deduction is for speculation-as-fact in handoff framing, not for the routing itself.
+- **What helped:** (1) Listing #3 as the #1 Session 39 priority — direct match. (2) "Closed-issue bodies are stale — rule of the house" from Session 38's gotchas generalizes: **any issue body or handoff claim should be verified against current state**. Applied it here and caught the v3.0.1 speculation in 2 minutes (`gh release list --repo wsjtx/wsjtx`). (3) "Issue title still says v3.0.0. Retitling decision with user" flagged the staleness on title, which was part of what I needed to check. (4) The full four-issue upstream PR opportunity list and MAP65 GCC 15 real-fix note remain valuable Session 40+ context. (5) Hygiene tracker (28 sessions on untracked files) — still at 29 now, no action, in scope.
+- **What was missing:** Session 38 could have verified upstream release state before writing "v3.0.1 drop imminent" — `gh release list --repo wsjtx/wsjtx` takes 1 second. Not a blocker this session (I verified myself in Phase 0), but the pattern is worth naming: when a future session's priorities depend on *upstream-timed* events, verify the upstream state rather than projecting.
+- **What was wrong:** "v3.0.1 drop imminent" — speculation presented as fact. Cost to this session: the user held an incorrect premise going in; corrected in Phase 0 pre-work.
+- **ROI:** High on routing (directed me to #3); dinged for the v3.0.1 speculation that needed correction.
+
+**What happened:**
+1. Oriented from project directory. SAFEGUARDS (full) + SESSION_NOTES top 250 lines + recent `git log`. Ran project-local dashboard via absolute path. **Initial `cd /Users/terrell/Documents/code && python3 ...` reflex blocked by PreToolUse hook (TWENTY-NINTH session).** Also **initial `gh issue list` (without `--repo` flag) went to upstream default** — caught during report-writing, recovered with `--repo KJ5HST-LABS/wsjtx-internal`. Both layered guards working. Reported findings to user.
+2. User: "Contributor. #3". Read issue #3 body. Bundle: (a) rebuild for v3.0.0 GA ("April 8, 2026" — title date off by 2 days, actual GA was April 6), (b) Apple Dev Account Ownership (Gap #9) governance.
+3. Verified upstream state BEFORE presenting scope options (applying Session 38's stale-body rule): `gh release list --repo wsjtx/wsjtx` → only `v3.0.0` tagged 2026-04-06. `git ls-remote --tags wsjtx/wsjtx` → only `v2.7.0` and `v3.0.0`. **No v3.0.1 exists.** `gh release list --repo KJ5HST-LABS/wsjtx-internal` → only `v3.0.0-rc1` (2026-04-01) + rolling `latest`. No internal GA yet. `grep "3\.0\.[0-9]" .github/workflows/` → `ci.yml` version pin already `"3.0.0"` in 4 sites (correct for GA, no bump needed).
+4. Presented four scope options to user: (a) plan doc, (b) execute release, (c) issue hygiene first, (d) audit first. User reply: "Note this. I thought 3.0.1 was released, but I guess not. close out when done."
+5. **Interpreted task as: record the finding, close out. No code. No issue comment.** Minimum-viable deliverable matching user's explicit close-out signal. Wrote Session 39 claim stub (EIGHTEENTH consecutive session — claim written before any file modification work).
+6. Phase 2 = Phase 3D: the note IS the session notes entry being written now.
+
+**Proof:**
+- `gh release list --repo wsjtx/wsjtx` (ran at orient time): `WSJT-X 3.0.0 Latest v3.0.0 2026-04-06T15:38:37Z`.
+- `git ls-remote --tags https://github.com/wsjtx/wsjtx.git | tail -20`: only `v2.7.0` and `v3.0.0` in the recent tail.
+- `gh release list --repo KJ5HST-LABS/wsjtx-internal`: `WSJT-X 3.0.0-rc1 Pre-release v3.0.0-rc1 2026-04-01` + `Latest Build Latest latest 2026-04-01`.
+- SESSION_NOTES.md updated; no other files changed.
+
+**What's next (Session 40 priorities):**
+1. **#3 decision point — four real options now that the v3.0.1 premise is cleared:**
+   - **(A) Plan the v3.0.0 GA release** — write `docs/contributor/V3_0_0_GA_RELEASE_PLAN.md` with: rc1-vs-GA source diff audit (tarball in `wsjtx-3.0.0-rc1/` vs upstream `v3.0.0` tag `ab976b1b4b72...`), files to touch, release-workflow invocation, signing/notarization verification, artifact smoke-test protocol, release notes draft. Implementation separate session.
+   - **(B) Execute directly** — only viable if rc1-vs-GA delta is small/nil. Verify first: upstream `v3.0.0` tag vs `wsjtx-3.0.0-rc1/` directory contents.
+   - **(C) Issue hygiene first** — retitle #3 to "Rebuild for v3.0.0 GA (2026-04-06)"; split Apple Dev Account Ownership (Gap #9) into its own governance issue so #3 is a clean release task.
+   - **(D) Audit first** — check whether `wsjtx-3.0.0-rc1/` tarball corresponds to the final GA commit on upstream `v3.0.0`. If yes → promote-to-GA is a workflow-dispatch. If no → fresh build needed. This audit shapes A vs B.
+   
+   **My recommendation for Session 40:** (D) → (C) → (A) in sequence, because (D) determines whether the plan (A) is "trigger workflow + publish" or "full rebuild + publish". 30-minute audit upfront saves mis-scoped planning.
+
+2. **Optional upstream PR opportunities** (carried from Session 38): FindFFTW3.cmake threads fix, WSJT_SKIP_MAP65 option, OMNIRIG_TYPE_LIB fallback (commit `801bf1fe5`), Hamlib INSTALL doc (commit `ff637fec6`). Low-risk standing contributions.
+
+3. **#2, #1 (older epics).** Likely mostly superseded; sweep to close or re-scope.
+
+4. **MAP65 GCC 15 real fix** (upstream debt; current `WSJT_SKIP_MAP65=ON` is a workaround).
+
+5. **Phase 3 of `CTEST_PFUNIT_INTEGRATION_PLAN.md`** (Steve Franke's decoder script — blocked on acquisition).
+
+**Hygiene items (unchanged — do not act on mid-issue):**
+- `ci.yml:14,24,34,41` version `"3.0.0"` — CORRECT for GA (verified this session, not drift). No bump until v3.0.1 actually tags.
+- `actions/checkout@v4` → `v5` deprecation — hard deadline 2026-09-16.
+- `/releases/latest` gating for `hamlib-upstream-check.yml`.
+- `release.yml:13` stale "three platform artifacts cannot disagree" comment.
+- Residual "three platform" strings in `MIGRATION_PLAN.md:275` and `drafts/email_cicd_proposal.md:5,11`.
+- `macos-15-intel` sunset: Fall 2027.
+- Email thread report-back — TWENTY-NINE sessions pending.
+- Untracked files (`.p12`, `.DS_Store`, `OUTREACH.md`, `.claude/`, `jt9_wisdom.dat`, `timer.out`) — TWENTY-NINE sessions.
+- Hamlib version duplicated across 12 locations (Session 37 tracker) + FFTW3-threads-comment duplicated between repo source and CI workflow (Session 38 note). Single-source-of-truth refactor still valuable future work.
+
+**Key files (for Session 40):**
+- **For #3 option (D) audit:** `wsjtx-3.0.0-rc1/` directory (extracted upstream tarball, DO NOT edit per Session 37 note); compare against upstream `v3.0.0` commit `ab976b1b4b72a96aaa3259591f68ad772af7d7f9`. Use `git ls-remote` or clone upstream at the tag for diff.
+- **For #3 option (A) plan:** `.github/workflows/release.yml` — workflow_dispatch inputs, tag-driven triggers, signing/notarization steps. `CMakeLists.txt` top-level project version declaration. `MIGRATION_PLAN.md` if it has release-process docs.
+- **For #3 option (B) execute:** same release.yml workflow_dispatch path. Version pin sites in `ci.yml:14,24,34,41`.
+- **For issue hygiene (C):** `gh issue edit 3 --repo KJ5HST-LABS/wsjtx-internal --title "..."`; `gh issue create --repo KJ5HST-LABS/wsjtx-internal` for Gap #9 split.
+
+**Gotchas for Session 40:**
+- **Upstream release state is verifiable in 1 second — don't carry speculation.** Session 38's "v3.0.1 drop imminent" was a guess that the user carried into this session as a premise. Before writing any handoff claim about upstream *timing* ("X is about to drop", "Y will ship soon"), run `gh release list --repo wsjtx/wsjtx` and state what's actually there. Future handoffs should distinguish "upstream state (verified 2026-04-17: v3.0.0 latest)" from "expected upstream activity (speculation)" or omit the speculation.
+- **Issue #3 title is stale** (date off by 2 days: says "April 8", actual GA was April 6). Non-blocking but worth retitling if option (C) path taken.
+- **Issue #3 bundles two unrelated items.** Apple Dev Account Ownership (Gap #9) is governance/communication, not rebuild work. Splitting into separate issue cleans #3.
+- **`wsjtx-3.0.0-rc1/` is an extracted upstream tarball — DO NOT edit** (Session 37 rule). It'll be regenerated when v3.0.0 GA or v3.0.1 rebuild lands.
+- **Closed-issue bodies are stale — rule of the house.** Session 37 lesson, Session 38 reinforced, Session 39 applied. Generalize to: **any prior-session claim about external state needs verification.** Upstream release state, issue body claims, CI version pins, documented file paths — all verifiable, all can drift.
+- **`gh` defaults to upstream `WSJTX/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. TWENTY-NINTH session running — reflex caught me again in Phase 0 this session.
+- **Project-local dashboard reflex.** `cd /Users/terrell/Documents/code && python3 methodology_dashboard.py` still blocked by PreToolUse hook. Use `python3 /Users/terrell/Documents/code/wsjtx-arm/methodology_dashboard.py`. TWENTY-NINTH session of this pattern — hook + memory still catching.
+- **Commit-trailer auto-close fires on MERGE**, not push-to-develop. Not relevant this session (no commits touching issues), but standing rule.
+- **SESSION_NOTES.md is ~414KB now.** Use `limit=250` for top reads; targeted offsets for older sessions.
+- **`develop` is clean — no commits this session except SESSION_NOTES.md close-out.** No CI cycle triggered. Session 40's first push determines cache behavior.
+
+**Self-assessment:**
+- (+) **Wrote claim stub before technical work.** EIGHTEENTH consecutive session. (Technically, this session's stub and close-out are near-simultaneous because the deliverable was the note itself.)
+- (+) **Verified upstream state before presenting scope options.** Ran `gh release list --repo wsjtx/wsjtx` + `git ls-remote --tags` in Phase 1 research rather than assuming Session 38's "v3.0.1 imminent" framing. Caught the error before the user had to. This is the stale-body rule generalized — Sessions 37 and 38 both emphasized it; I carried the discipline forward.
+- (+) **Presented four clean scope options with a recommended ordering.** (a) plan, (b) execute, (c) hygiene, (d) audit. Put the scope decision back on the user. They picked a fifth option (close out with just the note), which is on-spec — the point of presenting options is to invite redirection, not to force one of them.
+- (+) **Correctly interpreted "note this, close out when done."** Resisted the pull to expand scope (comment on issue, split the bundled item into separate issue, start auditing rc1-vs-GA). User explicitly signaled close-out; did not start a second deliverable. This is Failure Mode #2 (keep going) successfully guarded.
+- (+) **Did not write to auto-memory.** Upstream release state is project-state that will change; derivable from `gh release list`. Per memory doctrine, not memory-worthy. Handoff notes and issue comments are the durable places for this kind of state fact.
+- (+) **Persona-correct throughout.** TWENTY-NINTH session running. No rad-con / consumer / AI references.
+- (+) **Layered guard caught BOTH orientation reflexes this session** — portfolio-cd (hook) AND `gh` upstream-default (caught in my own reading of the `gh issue list` output). Memory-documented reflexes persist; scaffolding compensates. Same pattern as Session 38's report.
+- (-) **Initial `gh issue list` call was missing `--repo`.** Caught by me before the user had to, but still a reflex-hit. The call returned 2 upstream WSJTX/wsjtx issues as if they were ours, which was obvious from the issue numbers being out of our range — but only on second reading of the output. I should add a `--repo` fallback to my `gh` invocations by default (memory check during Phase 0).
+- (-) **Session 39's deliverable is small.** One "note this" + close-out. By volume, this is the smallest deliverable in ~38 sessions. HOWEVER: the user's direction was explicit, the deliverable matches their intent precisely, and Failure Mode #13 (Literal minimum) is guarded by matching underlying intent — which was "correct my premise, record it, stop." I did that. Sometimes the right answer is small.
+- (-) **Did not audit Session 38's handoff for other speculation.** I caught the v3.0.1 error because the user surfaced it. A more thorough Phase 3A would sweep Session 38's "Next steps" section for other unverified claims (e.g., "v3.0.1 drop imminent" was one; are there others like it?). A general practice: the first thing in a session's 3A should be to verify any factual claims in the predecessor's next-steps list. I only partially did that — caught v3.0.1 because user surfaced it; didn't run a comprehensive sweep.
+- **Score: 7/10.** Deliverable matches user direction exactly; small scope appropriately executed; predecessor's speculation corrected. Deductions: `gh` flag reflex still firing at 29 sessions; incomplete sweep of predecessor's unverified claims (caught one, didn't look for more). The session's chief value to Session 40 is a cleaner premise going into #3 work — option (D) audit first is now the principled next step.
+
+---
 
 ### What Session 38 Did
 **Deliverable:** Windows CI bundled fix across #6, #5, #4. One repo-source commit replaced two CI-side sed patches; one investigation proved #4 was already fixed. All three issues closed. COMPLETE.
