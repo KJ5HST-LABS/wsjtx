@@ -1,0 +1,47 @@
+module test_chkcall
+  use funit
+  implicit none
+
+  interface
+    subroutine chkcall(w, bc, cok)
+      character(len=13) :: w
+      character(len=6)  :: bc
+      logical           :: cok
+    end subroutine chkcall
+  end interface
+
+contains
+
+  @test
+  subroutine test_chkcall_standard_call()
+    character(len=13) :: w
+    character(len=6)  :: bc
+    logical           :: cok
+    w = 'K1JT         '
+    call chkcall(w, bc, cok)
+    @assertTrue(cok)
+    @assertEqual('K1JT  ', bc)
+  end subroutine test_chkcall_standard_call
+
+  @test
+  subroutine test_chkcall_no_digit_invalid()
+    character(len=13) :: w
+    character(len=6)  :: bc
+    logical           :: cok
+    w = 'KJZZZ        '
+    call chkcall(w, bc, cok)
+    @assertFalse(cok)
+  end subroutine test_chkcall_no_digit_invalid
+
+  @test
+  subroutine test_chkcall_compound_slash_suffix()
+    character(len=13) :: w
+    character(len=6)  :: bc
+    logical           :: cok
+    w = 'K1JT/P       '
+    call chkcall(w, bc, cok)
+    @assertTrue(cok)
+    @assertEqual('K1JT  ', bc)
+  end subroutine test_chkcall_compound_slash_suffix
+
+end module test_chkcall

@@ -378,6 +378,16 @@ ctest --output-on-failure -R "pfunit_"
 **Risks:**
 - Scope creep — resist the urge to convert every `lib/test_*.f90` file. The phase goal is "prove pfUnit works in CI with real Fortran tests." 2-3 tests is enough.
 
+**Phase 5 implementation (landed):**
+- Two `.pf` modules in `tests/fortran/`:
+  - `test_chkcall.pf` — 3 @test subroutines (valid standard call, invalid no-digit, compound-slash suffix) against `lib/chkcall.f90`.
+  - `test_grid2deg.pf` — 2 @test subroutines (FN20 default-to-center, AA00 SW-corner) against `lib/grid2deg.f90`.
+- `tests/fortran/CMakeLists.txt` calls `add_pfunit_ctest` twice (one ctest per `.pf` module, so a failure in one doesn't hide the other).
+- Each `add_pfunit_ctest` uses `OTHER_SOURCES ${CMAKE_SOURCE_DIR}/lib/<file>.f90` (compile the unit-under-test directly into the test executable) rather than `LINK_LIBRARIES wsjt_fort` — the two library files are self-contained (no `use` statements, no FFTW/OpenMP deps), so hermetic compilation is simpler than pulling in the full static library's transitive link chain.
+- Root `CMakeLists.txt:1267-1269` — `add_subdirectory(tests/fortran)` added inside the existing `if (WSJT_BUILD_TESTS)` block, keeping pFUnit-dependent logic together.
+- Interface blocks in each `.pf` declare the unit-under-test's signature (these are `external` subroutines without a module), so no `use` statement is needed on the wsjt_fort side.
+- Final ctest count: 5 per platform (`test_qt_helpers` + `decoder_ft8_smoke` + `decoder_wspr_smoke` + `pfunit_chkcall` + `pfunit_grid2deg`).
+
 ---
 
 ### Phase 6: Test result surfacing and failure policy
