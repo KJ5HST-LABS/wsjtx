@@ -1,11 +1,119 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Session 41 — Reopened issue #16 for Phase 3 (`CTEST_PFUNIT_INTEGRATION_PLAN.md`). Steve Franke's decoder test script arrived by email on 2026-04-17 and landed at `docs/contributor/email/Steves tests.eml` (42KB). The script was the one explicit blocker on Phase 3; that blocker is now cleared. Reopen chosen over new-issue (against Session 36's close-comment recommendation) per maintainer direction — preserves thread continuity from Phases 1-6. Reopen comment enumerates Phase 3 execution items: extract from .eml, vendor to `tests/decoders/franke/`, wire `add_test()` per mode, MSYS2 bash on Windows, attribution/licensing check with Steve, `v3.0.1` baseline tag clarification. `gh issue reopen 16 --repo KJ5HST-LABS/wsjtx-internal --comment "..."`. State now OPEN (verified). No code changes, no workflow changes, no source commits to `develop` — only SESSION_NOTES.md update + commit.
+**Task:** Session 42 — Planning session for Phase 3 of `CTEST_PFUNIT_INTEGRATION_PLAN.md`. After thorough review of Steve Franke's `decoder_tests.bash`, reframed Phase 3 from "port the script" to "translate the coverage into a data-driven ctest catalog." Deliverables: new plan doc `docs/contributor/PHASE_3_TESTING_PLAN.md` (architecture + 4 implementation sub-phases) + email draft `docs/contributor/drafts/steve_attribution_request.md` (GPLv3 vendoring consent request). No code changes. Script vendoring deferred to Phase 3d pending Steve's written consent.
 **Status:** COMPLETE
-**Session:** 41 complete
+**Session:** 42 complete
 **Started:** 2026-04-17
 **Persona:** Contributor
+
+### What Session 42 Did
+**Deliverable:** Two docs committed — (1) `docs/contributor/PHASE_3_TESTING_PLAN.md` supplementing `CTEST_PFUNIT_INTEGRATION_PLAN.md` §Phase 3 with a concrete architecture (data-driven test catalog, extended Phase-2 CMake driver, commit-time sample pre-processing, no runtime sox/bash, no CI workflow changes); (2) `docs/contributor/drafts/steve_attribution_request.md` — email draft requesting GPLv3 vendoring consent + preferred attribution. Plan decomposes Phase 3 into four session-scoped sub-phases (3a driver, 3b samples, 3c catalog, 3d attribution+close).
+**Started:** 2026-04-17
+**Persona:** Contributor
+
+**Session 41 Handoff Evaluation (by Session 42):**
+- **Score: 9/10.** Session 41's priority list put Phase 3 at the top — exact match to what the user asked for. The "Gotchas for Session 42" list in the handoff was the most valuable section: the `.eml` is-a-format-not-a-file warning, Python `email` stdlib pointer, v3.0.1-vs-v3.0.0 baseline-mismatch flag, Windows-ctest-bash concern, Phase-2-deprecation decision flagged as in-session for 42. Every single one of those points surfaced during the actual work. The "FIRST step before any vendoring is read the script end-to-end" gotcha was the single most load-bearing line — it was what led me to discover the Linux case-sensitivity bug and the CWD collision risk, which in turn drove the reframing of Phase 3 from "port" to "translate."
+- **What helped:** (1) Phase-3-specific gotchas (eml-format, v3.0.1 baseline, Windows-bash, Phase-2-decision) — each saved real investigation time. (2) Explicit pointer to `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md:224-257` for Phase 3 spec — let me jump directly. (3) The closed-comment-vs-user-direction precedent from Session 41 reinforced the "surface conflicts explicitly" discipline, which I applied when the user redirected mid-session from "execute Phase 3" to "plan Phase 3 properly." (4) Standing gotchas carried forward (SESSION_NOTES.md size, `gh --repo`, dashboard path). (5) The explicit "one deliverable, cleanly scoped" pattern from Session 41's self-assessment — reinforced the close-out discipline when the user's "step back" arrived and the deliverable pivoted to a plan doc.
+- **What was missing:** The handoff didn't flag that **two JT4 samples are `.WAV` (uppercase)** — a Linux case-sensitivity bug I only caught because I ran `ls samples/JT4/JT4A/`. Session 41 didn't touch the script, so this is not a Session 41 omission — noting it here for any future "vendor a cross-platform test" handoff as a class of gotcha: verify filename case on Linux.
+- **What was wrong:** Nothing factual.
+- **ROI:** Very high. Phase-3-specific gotchas drove the session's entire thought process; generic project gotchas (dashboard path, `gh --repo`) caught two reflex-fires this session. Handoff was load-bearing.
+
+**What happened:**
+1. Oriented from project directory. SAFEGUARDS (full read) + SESSION_NOTES.md top 300 lines + recent `git log`. **Portfolio-cd reflex fired (32nd session)** — hook blocked. **`gh issue list` without `--repo` fired (32nd session)** — returned upstream issues, caught on second reading. **Dashboard-path reflex** — used portfolio path instead of project-local; user rejected the call twice ("fail", "incorrect again") before I recalled the Session 39/40/41 guidance that project-local is the correct path. Layered guards working but reflexes stubborn.
+2. Reported state. User: "Contributor. phase 3".
+3. Wrote Session 42 claim stub to SESSION_NOTES.md (TWENTY-FIRST consecutive session).
+4. Read `CTEST_PFUNIT_INTEGRATION_PLAN.md:200-300` for Phase 2 context + Phase 3 spec. Read Phase 2's `tests/decoders/CMakeLists.txt` + `run_decoder_test.cmake` in full. Listed `samples/**` contents by mode.
+5. Extracted `decoder_tests.bash` and `decoder_test_results_v3.0.1.txt` from `docs/contributor/email/Steves tests.eml` using Python `email` stdlib to `/tmp/wsjtx-phase3/`. Email body contained valuable thread context: Joe Taylor's 2026-04-10 note that v3.0.1 is tagged against `wsjtx-internal/v3.0.0_test`, not `develop`.
+6. Read the script end-to-end (7420 bytes, 17 cases). Discovered: (a) script is diagnostic not assertive — no automated pass/fail; (b) 2 JT4 samples are `.WAV` (Linux-case-fails); (c) sox dependency for resample/trim/pad on JT4, JT65B, Q65-60A, Q65-60D; (d) CWD-relative temp files (parallel-ctest collision risk); (e) hard-coded Steve-specific paths; (f) baseline was captured against internal v3.0.1 build, not against develop.
+7. Presented thorough review + six decision-point table to user. User's response: **"step back and think about this. These tests are the result of bug busting. Continuing to do these tests help limit regression potential so they should be kept, but there is no requirement to do the tests the same way Steve did them. use plan mode to identify the proper way to do testing and provide coverage for these tests and future tests."** — Pivot from execution to planning.
+8. Entered plan mode. Launched one Explore agent to verify no hidden test infrastructure existed (confirmed: upstream has no tests; Phase 2 pattern is the only prior art; sox not in any CI workflow; ctest is wired in all 4 workflows). Wrote plan to `/Users/terrell/.claude/plans/starry-foraging-lighthouse.md`. Exited plan mode — user approved.
+9. Auto mode: wrote `docs/contributor/PHASE_3_TESTING_PLAN.md` (the committed permanent plan) + `docs/contributor/drafts/steve_attribution_request.md` (email draft). Updated SESSION_NOTES.md with close-out. Committing now.
+
+**Proof:**
+- `docs/contributor/PHASE_3_TESTING_PLAN.md` exists with architecture, approach, out-of-scope, evidence-based file inventory, and four per-phase DONE/verification/STOP blocks.
+- `docs/contributor/drafts/steve_attribution_request.md` exists with consent request, attribution header draft, and explanation of the catalog-vs-port approach.
+- `/tmp/wsjtx-phase3/decoder_tests.bash` and `decoder_test_results_v3.0.1.txt` extracted (not committed; staging area for the analysis).
+- Issue #16 remains OPEN (from Session 41) for Phase 3 tracking; no state change this session.
+- Zero code/workflow changes. `git status` will show only the 2 new docs + SESSION_NOTES.md.
+
+**What's next (Session 43 priorities):**
+
+1. **Phase 3a — Driver extension.** Extend `tests/decoders/run_decoder_test.cmake` to support `SAMPLES` (multi-arg list passed to decoder) and `EXPECTED_TOKENS` (any-of grep match), preserving `SAMPLE`/`EXPECTED` as single-value aliases. Verify Phase 2 smoke tests pass unchanged. Spec in `docs/contributor/PHASE_3_TESTING_PLAN.md` §"Phase 3a." Expected scope: one session, one commit, one CI cycle.
+
+2. **Phase 3b — Sample pre-processing + case rename.** User runs sox locally against the six samples listed in the plan (JT4A, JT4F, JT65B ×8, Q65-60A, Q65-60D). Commits pre-processed WAVs to `samples/<mode>/preprocessed/`, plus `samples/PREPROCESSING.md` documenting the sox commands. Rename `samples/JT4/JT4A/DF2ZC_070926_040700.WAV` → `.wav` and `samples/JT4/JT4F/OK1KIR_141105_175700.WAV` → `.wav`. Requires sox on user's machine; not a CI dependency.
+
+3. **Phase 3c — Populate catalog.** Add `add_decoder_test()` helper macro + 17 entries to `tests/decoders/CMakeLists.txt`. Each entry gets 2-3 top-SNR expected tokens drawn from `/tmp/wsjtx-phase3/decoder_test_results_v3.0.1.txt` (or re-extracted if the file is gone by then — it's not committed, only the email .eml is). Label Phase 2 tests as `smoke`, new tests as `franke`. Green on all four platforms via `ctest -L franke`.
+
+4. **Phase 3d — Steve attribution + Phase 3 close.** Send `docs/contributor/drafts/steve_attribution_request.md` to Steve via the existing email thread. After his reply with GPLv3 consent + preferred attribution: vendor `tests/decoders/franke/reference/{decoder_tests.bash,decoder_test_results_v3.0.1.txt}` with the agreed attribution header; write `tests/decoders/franke/README.md` with origin, methodology, and new-bug-case walkthrough; mark `CTEST_PFUNIT_INTEGRATION_PLAN.md` §Phase 3 DONE.
+
+5. **Issue #1 audit** — carried forward from Session 41. Phase 2-3 templates/guards/macOS CI. Likely mostly superseded.
+
+6. **#3 — v3.0.0 GA rebuild path** — (D) audit → (C) hygiene → (A) plan, per Sessions 39/40.
+
+7. **Upstream PRs** + **Linux ARM64 build** — scoped inside re-scoped #2.
+
+8. **MAP65 GCC 15 real fix** — upstream debt.
+
+**Hygiene items (unchanged — do not act on mid-issue):**
+- `ci.yml:14,21,28,34,41` version `"3.0.0"` — CORRECT for GA.
+- `actions/checkout@v4` → `v5` deadline 2026-09-16.
+- `/releases/latest` gating for `hamlib-upstream-check.yml`.
+- `release.yml:13` stale "three platform artifacts cannot disagree" comment (should say four).
+- Residual "three platform" strings in `MIGRATION_PLAN.md:275` and `drafts/email_cicd_proposal.md:5,11`.
+- `docs/contributor/2_DEVELOPMENT_WORKFLOW.md:184,307,335,478,504-505,711-714` — four-platform list framed as "supported"; user intent is "minimum baseline."
+- `macos-15-intel` sunset: Fall 2027.
+- Email thread report-back — 32 sessions pending.
+- Untracked files (`.p12`, `.DS_Store`, `OUTREACH.md`, `.claude/`, `jt9_wisdom.dat`, `timer.out`) — 32 sessions.
+- Hamlib version duplicated across 12 locations (Session 37 tracker) + FFTW3-threads comment duplicated (Session 38). Single-source-of-truth refactor still valuable.
+- `docs/contributor/email/` directory still untracked (Session 41 flagged). `Steves tests.eml` is the source-of-truth for the script + baseline; if it gets deleted or moved before Phase 3c, the expected-token extraction source is lost. **Recommend tracking in git** — provenance for the catalog. Decision pending; flagging for Session 43's start.
+- **NEW this session:** The two JT4 `.WAV` samples are a Linux case-sensitivity bug even BEFORE Phase 3 — if anyone adds a Linux-side test referring to `.wav`, it would fail. Filed under Phase 3b.
+
+**Key files (for Session 43):**
+- **For Phase 3a (driver extension):**
+  - `/Users/terrell/Documents/code/wsjtx-arm/tests/decoders/run_decoder_test.cmake` — current Phase 2 driver, 41 lines. Extension target. Backwards compat required.
+  - `/Users/terrell/Documents/code/wsjtx-arm/tests/decoders/CMakeLists.txt` — current 31 lines, 2 `add_test()` calls.
+  - `/Users/terrell/Documents/code/wsjtx-arm/docs/contributor/PHASE_3_TESTING_PLAN.md` — plan spec + verification commands.
+- **For Phase 3b (samples):**
+  - `/Users/terrell/Documents/code/wsjtx-arm/samples/JT4/JT4A/DF2ZC_070926_040700.WAV` — rename target.
+  - `/Users/terrell/Documents/code/wsjtx-arm/samples/JT4/JT4F/OK1KIR_141105_175700.WAV` — rename target.
+  - Full pre-processing table in `PHASE_3_TESTING_PLAN.md` §"Pre-processed samples."
+- **For Phase 3c (catalog):**
+  - `/Users/terrell/Documents/code/wsjtx-arm/docs/contributor/email/Steves tests.eml` — source for the bash script + baseline. Extraction: `python3 -c "import email,email.policy; msg=email.message_from_binary_file(open('...','rb'),policy=email.policy.default); [open('/tmp/'+p.get_filename(),'wb').write(p.get_payload(decode=True)) for p in msg.walk() if p.get_filename()]"`
+  - Expected-token methodology in `PHASE_3_TESTING_PLAN.md` §"Expected-token extraction methodology."
+- **For Phase 3d (attribution):**
+  - `/Users/terrell/Documents/code/wsjtx-arm/docs/contributor/drafts/steve_attribution_request.md` — email draft to send.
+
+**Gotchas for Session 43:**
+- **The user redirects architecture decisions deliberately.** Session 42 started with "phase 3" (execute); user stepped in after my thorough-review report and pivoted to "plan properly" — that's a teaching moment about stepping back, not a correction for a missed step. When user feedback reshapes scope, acknowledge the pivot and re-plan; don't cling to the original framing.
+- **Dashboard path reflex is TWO reflexes.** (a) `cd /Users/terrell/Documents/code && python3 methodology_dashboard.py` — hook catches. (b) `python3 /Users/terrell/Documents/code/methodology_dashboard.py` (portfolio dashboard, absolute path) — hook does NOT catch, but user rejects. The correct path is `/Users/terrell/Documents/code/wsjtx-arm/methodology_dashboard.py` (PROJECT-local). Session 39/40/41 noted this; Session 42 fired the reflex twice before getting it right. Add layered guard: memory rule now says "project-local absolute path only."
+- **`.eml` extraction is non-destructive.** Extracted to `/tmp/wsjtx-phase3/` and NOT committed. If `/tmp/` is cleaned between sessions, re-extract from `docs/contributor/email/Steves tests.eml`. The source-of-truth is the .eml file.
+- **Expected-token extraction is in-session work for Phase 3c.** The baseline file has 17 blocks of decoder output; picking 2-3 top-SNR tokens per block is a careful read-and-extract task, not mechanical. Budget at least 15 minutes of Phase 3c for this.
+- **Phase 3d depends on Steve's reply.** If Steve doesn't reply promptly, Phase 3d is blocked; Phases 3a-3c can proceed independently. Plan sequencing: 3a → 3b → 3c → (wait for Steve) → 3d.
+- **`gh` defaults to upstream `wsjtx/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. 32nd session. Fired again this session.
+- **Project-local dashboard** is `python3 /Users/terrell/Documents/code/wsjtx-arm/methodology_dashboard.py`, NOT the portfolio one. 32nd session of this reflex. Re-reflexed this session.
+- **SESSION_NOTES.md is ~450KB+ after this close-out.** Use `limit=300` for top reads.
+- **`develop` gets 1 commit ahead after this close-out.** Docs-only → full 4-platform CI cycle will trigger.
+- **Commit-trailer auto-close fires on MERGE**, not push-to-develop. Not relevant this session — no issue-closing commits; #16 remains open for Phase 3 tracking across sub-phases 3a-3d.
+
+**Self-assessment:**
+- (+) **Wrote claim stub before technical work.** TWENTY-FIRST consecutive session. No ghost-session risk.
+- (+) **Thorough review before any code proposal.** User asked for "not a rubberstamp" — I read the script end-to-end, verified all 30+ sample files in-tree, checked CI workflows for sox, extracted baseline to read structure, cross-referenced the plan doc, checked upstream for test infrastructure (via Explore agent). Six-decision-point table surfaced to user BEFORE proposing any code or action.
+- (+) **Accepted the user's "step back" pivot cleanly.** User redirected from execute to plan; I entered plan mode, wrote the plan, exited mode on approval, then wrote the permanent plan doc. No resistance, no attempted bundling.
+- (+) **The architectural reframing is load-bearing.** Recognized that the script is a bug-bust corpus (coverage, not form). That framing drove every subsequent design decision: data-driven catalog, commit-time pre-processing, any-of token matching, reference-only vendor for Steve's materials. Each decision in the plan traces back to the principle.
+- (+) **Evidence-based inventory.** Every "files to change" entry in the plan is backed by prior reads/greps. No speculation. Root `CMakeLists.txt:2034` already has `add_subdirectory(tests/decoders)` — confirmed via Explore agent. Workflows already have ctest wired — confirmed via Explore agent. Sox not in any workflow — confirmed via grep.
+- (+) **Session boundary respected.** Plan is the deliverable. Did NOT start Phase 3a (driver extension) in the same session. Failure Mode #18 (planning-to-implementation bleed) successfully guarded.
+- (+) **Per-phase completion criteria and STOP points** in every sub-phase of the plan. Failure Mode #18 preempted for the executor sessions.
+- (+) **Grep-based inventory complete.** Per SESSION_RUNNER §"Planning Sessions" §"Evidence-Based Inventory" — I verified file paths by grep/ls/Read before writing the inventory.
+- (+) **Steve attribution handled as a pre-commit step.** Plan explicitly gates vendoring on written consent. Email draft written, not sent (user controls sending). This avoids the "vendor first, apologize later" failure mode.
+- (+) **Persona-correct throughout.** 32nd session. No rad-con / consumer / AI references in plan doc, email draft, or session notes.
+- (+) **Portfolio-cd reflex caught by hook (one call); project-local dashboard reflex fired twice (user rejected twice) before I recalled the correct path.** Logged for Session 43.
+- (-) **Initial dashboard-path reflex cost user two rejections.** Session 39/40/41 notes clearly say "project-local absolute path." I used portfolio-absolute twice before recovering. This is a reflex-erosion signal; adding explicit line to the Gotchas block for Session 43 to carry forward. Memory update may be warranted — `feedback_orient_from_project.md` or a new memory entry covering dashboard-path-specifically.
+- (-) **Did not ask about `docs/contributor/email/` git-tracking decision** (Session 41 flagged this; I carried it forward as a Hygiene item but didn't resolve). The source-of-truth for the Phase 3 bash script and baseline lives in that untracked `.eml` file. If the file goes missing before Phase 3c, the expected-token extraction source is lost. **Real decision for Session 43's start.**
+- (-) **Plan architecture choice was presented as a recommendation, not as options.** The plan recommends data-driven catalog + commit-time pre-processing. I didn't offer alternatives (Python rewrite, runtime sox, full baseline-diff) for user comparison — those are in §"Out of scope" with brief reasons, but the user sees one path. Defense: Failure Mode #23 (question-as-instruction) was already addressed by the earlier six-option decision table; at plan-mode entry the user's instruction was explicit ("identify the proper way to do testing"), so a single recommendation was on-spec.
+- **Score: 9/10.** Planning session with clean architecture, evidence-based inventory, per-phase STOP points, attribution handled pre-vendor, persona-correct, scope-boundary respected. Deductions: dashboard-path reflex cost two user rejections; `docs/contributor/email/` git-tracking question deferred a second session running. The session's chief value to Session 43 is a plan doc that reduces Phase 3a (driver extension) to a narrow, verifiable, one-session unit.
+
+---
 
 ### What Session 41 Did
 **Deliverable:** Shared-state reopen of issue #16 with Phase-3-scope comment. Verified via `gh issue view 16` (state=OPEN, comments=2). No code, no workflow, no plan-doc edits. COMPLETE.
