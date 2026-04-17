@@ -1,11 +1,124 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Session 42 — Planning session for Phase 3 of `CTEST_PFUNIT_INTEGRATION_PLAN.md`. After thorough review of Steve Franke's `decoder_tests.bash`, reframed Phase 3 from "port the script" to "translate the coverage into a data-driven ctest catalog." Deliverables: new plan doc `docs/contributor/PHASE_3_TESTING_PLAN.md` (architecture + 4 implementation sub-phases) + email draft `docs/contributor/drafts/steve_attribution_request.md` (GPLv3 vendoring consent request). No code changes. Script vendoring deferred to Phase 3d pending Steve's written consent.
+**Task:** Session 43 — Phase 3a of `PHASE_3_TESTING_PLAN.md`. Extend `tests/decoders/run_decoder_test.cmake` to accept `SAMPLES` (multi-arg list passed positionally to decoder) and `EXPECTED_TOKENS` (any-of grep match), preserving `SAMPLE`/`EXPECTED` as single-value aliases and `MODE_FLAG` unchanged.
 **Status:** COMPLETE
-**Session:** 42 complete
+**Session:** 43 complete
 **Started:** 2026-04-17
 **Persona:** Contributor
+
+### What Session 43 Did
+**Deliverable:** Extended `tests/decoders/run_decoder_test.cmake` (56 insertions, 13 deletions) to accept `SAMPLES` (semicolon-separated multi-arg list passed positionally to decoder) and `EXPECTED_TOKENS` (semicolon-separated, any-of match). `SAMPLE`/`EXPECTED` remain as single-value aliases; `MODE_FLAG` unchanged. Mutually exclusive validation (both SAMPLE+SAMPLES or both EXPECTED+EXPECTED_TOKENS → FATAL_ERROR with clear message). Failure diagnostics include all tokens, full command, stdout, stderr. Commit `ad7bced93`. CI green on all four platforms (run `24570345721`). Phase 2 smoke tests pass unchanged on Linux, macOS arm64, Windows (verified in job logs); macos-intel green at job level. No catalog, no samples, no workflow edits — Phase 3a scope respected.
+**Started:** 2026-04-17
+**Persona:** Contributor
+
+**Session 42 Handoff Evaluation (by Session 43):**
+- **Score: 9/10.** Session 42's plan doc (`PHASE_3_TESTING_PLAN.md`) + sub-phase decomposition with explicit DONE/verification/STOP was load-bearing. I quoted the Phase 3a manual verification command verbatim as one of my cmake -P sanity tests — zero-friction traceability from plan to validation. The "Expected scope: one session, one commit, one CI cycle" line set expectations and prevented any "while I'm at it" bundling temptation. Gotchas pre-empted two reflexes (portfolio-cd caught by hook on first call, `gh --repo` reflex did NOT fire — `gh run view` used `--repo` correctly on every call). The architectural rationale ("tests are data, not scripts") made Phase 3a's scope boundary unambiguous — driver additions aligned 1:1 with plan §Phase 3a (SAMPLES + EXPECTED_TOKENS, preserve SAMPLE/EXPECTED/MODE_FLAG).
+- **What helped:** (1) Manual verification command verbatim in plan — copy-paste into sanity test. (2) Sub-phase decomposition with STOP points — clean boundary. (3) `PHASE_3_TESTING_PLAN.md` §"Files to change" evidence-based inventory — confirmed only one file to modify for 3a. (4) Standing gotchas carried forward (portfolio-cd, `gh --repo`, project-local dashboard, SESSION_NOTES.md size) — all pre-empted. (5) Explicit "MODE_FLAG unchanged" scoping — prevented me from over-designing OPTIONS extension.
+- **What was missing:** **Implicit gap in Phase 3c spec.** Plan §"Catalog helper macro" example uses `OPTIONS "-8;-d;3;-q"` (multi-value), but driver only has single-value `MODE_FLAG`. There's an implicit driver change needed in 3c (extend to multi-value options) that Session 42's handoff did not flag. Session 44 (Phase 3b) doesn't hit this; Session 45 (Phase 3c) will. Flagged in gotchas below for whichever session executes 3c.
+- **What was wrong:** Nothing factual.
+- **ROI:** Very high. Plan-doc serialization of architectural thinking + per-phase completion criteria + scope-boundary language = Session 43 executed cleanly in roughly one commit + one CI cycle, exactly as planned.
+
+**What happened:**
+1. Oriented from project directory. SAFEGUARDS (full read) + SESSION_NOTES top ~200 lines + recent `git log`. **Portfolio-cd reflex fired AGAIN — 33rd session.** Hook blocked `cd /Users/terrell/Documents/code && python3 methodology_dashboard.py`. Pivoted to project-local absolute path (`/Users/terrell/Documents/code/wsjtx-arm/methodology_dashboard.py`) — no user rejection this session (Session 42 pattern learned). `gh --repo` reflex did NOT fire.
+2. Reported state. User: "Contributor. 3a".
+3. Wrote Session 43 claim stub to SESSION_NOTES.md (TWENTY-SECOND consecutive session).
+4. Read `PHASE_3_TESTING_PLAN.md` in full, current driver (41 lines), and `tests/decoders/CMakeLists.txt` (31 lines) in parallel.
+5. Wrote updated driver (`Write` tool). Preserved `SAMPLE`/`EXPECTED`/`MODE_FLAG` aliases via normalize-then-branch pattern; added mutually-exclusive validation; expanded error messages.
+6. Ran 13 sanity tests via `cmake -P` with `/bin/echo` as fake decoder: 6 positive (Phase 2 compat with/without MODE_FLAG, SAMPLES multi-arg, EXPECTED_TOKENS any-of with match at position 0/1/2, combined SAMPLES+EXPECTED_TOKENS) + 7 negative (no tokens match, both SAMPLE+SAMPLES, both EXPECTED+EXPECTED_TOKENS, neither sample form, neither token form, no DECODER, decoder nonzero RC). All produced expected behavior. Plan's manual verification command was one of the sanity tests.
+7. Staged driver file only (SESSION_NOTES.md claim stub left unstaged per two-commit pattern — Session 38 precedent). Committed `ad7bced93`: `test: extend decoder driver for multi-sample + any-of token matching (#16)`.
+8. Push blocked by permission rule (push is shared-state, "3a" didn't authorize). Asked user. User: "yes". Pushed.
+9. CI run `24570345721` started. `gh run watch --exit-status` in background. Exit 0 after ~17 min.
+10. Verified green on all four platforms. Grepped Linux/macOS-arm64/Windows job logs for `decoder_ft8_smoke` + `decoder_wspr_smoke` — all pass (Linux 1.75s/2.31s, macOS 1.51s/2.81s, Windows 3.32s/2.84s). macos-intel green at job level (job ✓).
+11. Close-out in progress: this handoff + docs commit.
+
+**Proof:**
+- Commit `ad7bced93` on `origin/develop`. Driver file diff: 56 insertions / 13 deletions; zero changes to `tests/decoders/CMakeLists.txt`; zero changes to workflows.
+- CI run `24570345721` green on all four platforms:
+  - windows / build in 16m19s
+  - macos / build in 10m3s
+  - macos-intel / build in 12m58s
+  - linux / build in 7m36s
+- Phase 2 smoke tests still pass (no regression): verified in job logs for Linux, macOS arm64, Windows.
+- Issue #16 remains OPEN (Phase 3 tracking across 3a-3d); no state change this session.
+- `git status` after close-out commit: only standing untracked-file hygiene items.
+
+**What's next (Session 44 priorities):**
+
+1. **Phase 3b — Sample pre-processing + case-sensitivity rename.** User (Terrell) runs sox locally against 6 samples listed in `PHASE_3_TESTING_PLAN.md` §"Pre-processed samples": JT4A, JT4F, JT65B even-avg (3 files), JT65B odd-avg (4 files), JT65B DL7UAE single, Q65-60A, Q65-60D. Commits pre-processed WAVs under `samples/<mode>/preprocessed/` + writes `samples/PREPROCESSING.md` documenting sox invocations. Renames two `.WAV` → `.wav` (see case-sensitivity note below). No CI dependency on sox. Scope: one session, one commit, one CI cycle. Tests don't reference these samples until Phase 3c, so CI should stay green.
+
+2. **Phase 3c — Populate catalog** *(IMPLICIT DRIVER GAP — see gotcha #1 below).* Add `add_decoder_test()` helper macro + 17 catalog entries in `tests/decoders/CMakeLists.txt`. Attach label `smoke` to Phase 2 tests and `franke` to new entries. Pick 2-3 highest-SNR expected tokens per case from `/tmp/wsjtx-phase3/decoder_test_results_v3.0.1.txt` (re-extract from `docs/contributor/email/Steves tests.eml` if /tmp is clean). Expect a small additional driver change (OPTIONS multi-value) as part of this phase.
+
+3. **Phase 3d — Steve attribution + Phase 3 close.** Send `docs/contributor/drafts/steve_attribution_request.md`. After Steve's reply with GPLv3 consent + preferred attribution: vendor `tests/decoders/franke/reference/{decoder_tests.bash,decoder_test_results_v3.0.1.txt}`, write `tests/decoders/franke/README.md`, mark `CTEST_PFUNIT_INTEGRATION_PLAN.md` §Phase 3 DONE.
+
+4. **Issue #1 audit** — Phase 2-3 templates/guards/macOS CI. Likely mostly superseded.
+
+5. **#3 — v3.0.0 GA rebuild path** — (D) audit → (C) hygiene → (A) plan.
+
+6. **Upstream PRs** + **Linux ARM64 build** — scoped inside re-scoped #2.
+
+7. **MAP65 GCC 15 real fix** — upstream debt.
+
+**Hygiene items (unchanged — do not act on mid-issue):**
+- `ci.yml:14,21,28,34,41` version `"3.0.0"` — CORRECT for GA.
+- `actions/checkout@v4` → `v5` deadline 2026-09-16. Deprecation warning fired again on this run.
+- `/releases/latest` gating for `hamlib-upstream-check.yml`.
+- `release.yml:13` stale "three platform artifacts cannot disagree" comment (should say four).
+- Residual "three platform" strings in `MIGRATION_PLAN.md:275` and `drafts/email_cicd_proposal.md:5,11`.
+- `docs/contributor/2_DEVELOPMENT_WORKFLOW.md:184,307,335,478,504-505,711-714` — four-platform list framed as "supported"; user intent is "minimum baseline."
+- `macos-15-intel` sunset: Fall 2027.
+- Email thread report-back — 33 sessions pending.
+- Untracked files (`.p12`, `.DS_Store`, `OUTREACH.md`, `.claude/`, `jt9_wisdom.dat`, `timer.out`) — 33 sessions.
+- Hamlib version duplicated across 12 locations (Session 37 tracker) + FFTW3-threads comment duplicated (Session 38). Single-source-of-truth refactor still valuable.
+- `docs/contributor/email/` directory still untracked. `Steves tests.eml` is source-of-truth for the script + baseline. **Decision pending for Session 44/45 at start of 3c** — Phase 3c expected-token extraction depends on the baseline file in the .eml. If the `.eml` is deleted/moved, re-extraction source is lost. Recommend tracking in git.
+- The two JT4 `.WAV` samples still uppercase — rename happens in 3b.
+
+**Key files (for Session 44 / Phase 3b):**
+- `/Users/terrell/Documents/code/wsjtx-arm/samples/JT4/JT4A/DF2ZC_070926_040700.WAV` — rename + pre-process target (sox: `-b 16 rate 12000` + `pad 0 1.0`).
+- `/Users/terrell/Documents/code/wsjtx-arm/samples/JT4/JT4F/OK1KIR_141105_175700.WAV` — rename + pre-process target (same sox invocation).
+- `/Users/terrell/Documents/code/wsjtx-arm/samples/JT65/JT65B/` — 8 files to pre-process (trim/pad/rate per plan table).
+- `/Users/terrell/Documents/code/wsjtx-arm/samples/Q65/60A_EME_6m/210106_1621.wav` — trim 2.5 + pad 0 2.5.
+- `/Users/terrell/Documents/code/wsjtx-arm/samples/Q65/60D_EME_10GHz/201212_1838.wav` — trim 2.5 + pad 0 2.5.
+- `docs/contributor/PHASE_3_TESTING_PLAN.md` §"Pre-processed samples" — canonical command table.
+- Target output tree: `samples/<mode>/preprocessed/`.
+
+**Gotchas for Session 44:**
+
+- **#1 — Phase 3c DRIVER GAP (flag when Session 44 shifts to 3c, OR whenever 3c begins):** `PHASE_3_TESTING_PLAN.md` §"Catalog helper macro" uses `OPTIONS "-8;-d;3;-q"` (multi-value list). Phase 3a driver only has `MODE_FLAG` (single-value). Three options: (a) extend driver to multi-value OPTIONS, deprecate MODE_FLAG → breaks Phase 2 CMakeLists.txt, requires update; (b) extend driver to accept BOTH (OPTIONS wins if set, MODE_FLAG still works) → Phase 2 untouched, cleanest; (c) macro-layer workaround → infeasible cleanly. Recommend (b). Estimate: ~20 lines of driver changes + parallel sanity-check pattern to Session 43's 13-case test harness. Land as part of 3c commit, not a separate sub-phase. **This gap was not flagged in Session 42's Phase 3c spec** — Session 43 noticed it while writing Phase 3a driver with strict "MODE_FLAG unchanged" scope. Update PHASE_3_TESTING_PLAN.md §"Driver extension" if Session 45 confirms path (b) during 3c.
+
+- **#2 — `git mv` on case-only rename on macOS.** macOS default filesystem (APFS) is case-insensitive-preserving. `git mv foo.WAV foo.wav` may be a no-op or fail silently on HFS+/APFS-default-case-insensitive. Workaround: two-step rename through a temp name — `git mv foo.WAV foo_tmp.wav && git mv foo_tmp.wav foo.wav`. Verify `git status` shows the rename before commit. Linux CI will confirm (if the rename didn't actually land, Linux file-not-found would surface later).
+
+- **#3 — Sample blob size.** Phase 3b adds ~8-9 pre-processed WAVs, low-single-digit MB total. Repo is already >500MB; small addition is acceptable. If total addition >20MB, flag for LFS consideration.
+
+- **#4 — `sox` is user-local.** CI does NOT install sox. If Phase 3b commit includes ONLY pre-processed files + PREPROCESSING.md + renames, CI will pass (sample layout doesn't affect build). If catalog additions leak in, CI may fail because decoder tests reference files not yet preprocessed.
+
+- **Standing gotchas from Session 42 (unchanged):**
+  - **Dashboard path reflex** — 33rd session. Portfolio-cd reflex fired; hook caught. Correct path: `/Users/terrell/Documents/code/wsjtx-arm/methodology_dashboard.py`. Did NOT make project-local-vs-portfolio mistake this session (learned).
+  - **`gh` defaults to upstream `wsjtx/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. 33 sessions running. Reflex did NOT fire this session — used `--repo` on every `gh run *` call.
+  - **SESSION_NOTES.md is >470KB.** Use `sed -n '1,250p'` or `Read` with small `limit`.
+  - **Commit-trailer auto-close fires on MERGE to main**, not push-to-develop. Not relevant this session — no issue-closing commits; #16 remains OPEN.
+  - **`.eml` extraction is non-destructive.** Source file lives in `docs/contributor/email/Steves tests.eml` (untracked). Phase 3c depends on the baseline file inside — if it disappears from disk, re-extract, but if the .eml itself disappears, we lose the source. Decision pending on git-tracking.
+
+**Self-assessment:**
+- (+) **Plan-doc scope respected.** Phase 3a deliverable was "driver only — SAMPLES + EXPECTED_TOKENS + preserve aliases." Exactly what landed. Did not bundle 3b renames, did not add label changes, did not start on catalog entries. Failure Mode #18 (planning-to-implementation bleed) pre-empted; Failure Mode #2 (keep going) pre-empted.
+- (+) **Pre-commit local validation was thorough.** 13 cmake -P sanity cases (6 positive + 7 negative) using `/bin/echo` as a fake decoder. Caught nothing — because I implemented it carefully — but this is the verification form a future contributor can re-run, and it's the form that would catch a regression. Plan's own manual verification command was one of the 13.
+- (+) **Backwards compat verified THREE ways.** (a) local cmake -P with Phase 2 parameters (SAMPLE + EXPECTED + optional MODE_FLAG) → pass. (b) CI smoke tests on three platforms directly in CI logs: Linux 1.75s+2.31s, macOS 1.51s+2.81s, Windows 3.32s+2.84s. (c) CI green on macos-intel at job level (no direct log dive, but the job-level ✓ confirms the tests ran without failure).
+- (+) **Clean commit boundaries.** Driver commit is `#16`-tagged, contains only the driver file change. SESSION_NOTES.md claim stub left unstaged → will be in the close-out commit. Two-commit pattern matches Session 38 / precedent.
+- (+) **Clean one-cycle execution.** One commit, one CI cycle, ~17 minutes CI time. Plan's "Expected scope" met exactly.
+- (+) **Mutually-exclusive validation + clear FATAL_ERROR diagnostics.** Future contributor hitting the "both SAMPLE and SAMPLES" mistake gets a precise error instead of "decoder output didn't contain X." Lowers the Phase 3c / future-bug-bust learning curve.
+- (+) **Asked before pushing.** "yes 3a" was task authorization; push was a new shared-state action. Surfacing the block was correct discipline.
+- (+) **Identified Phase 3c driver gap.** Noticed implicit OPTIONS multi-value vs MODE_FLAG single-value mismatch between plan example and driver state. Documented in Session 44 gotchas. Preempts a 3c-executor-time discovery.
+- (+) **Persona-correct throughout.** 33rd session. No rad-con / consumer / AI references in driver, commit message, or session notes.
+- (+) **Claim stub before technical work.** 22nd consecutive session.
+- (+) **Dashboard-path reflex resolved on first use.** Session 42 required two user rejections before settling on project-local; this session I went straight to project-local. Reflex extinction progressing.
+- (-) **Portfolio-cd reflex still firing at orient-time.** 33rd session running. Hook catches. Did not escalate to user rejection this session, but reflex persistence is a signal that the initial `cd ../..` habit is entrenched. No memory update — project memory `feedback_orient_from_project.md` already covers it; the reflex just hasn't extinguished after 33 sessions of hook catches.
+- (-) **Did not update `PHASE_3_TESTING_PLAN.md` to flag the OPTIONS / MODE_FLAG gap.** Documented in Session 44 gotchas only. Rationale: updating the plan doc mid-Phase-3a would expand the commit scope beyond the deliverable boundary; more appropriate to update it during Phase 3c once the resolution is confirmed. But this does mean a 3c executor needs to read the session notes, not just the plan doc. Weaker-than-ideal documentation path.
+- (-) **Did not add labels `smoke` to Phase 2 tests.** Plan §"Phase 2 disposition" says Phase 2 tests should carry label `smoke` and Phase 3 catalog carries `franke`. Adding `smoke` labels is mentioned in the §"Files to change" block as part of the same `tests/decoders/CMakeLists.txt` change that adds the catalog entries — so it's correctly scoped to 3c, not 3a. Defense: scope boundary respected; but this is a judgment call the executor should flag explicitly rather than assume.
+
+**Score: 9/10.** Plan-executed cleanly in one commit + one CI cycle, backwards compat verified on all four platforms, 13-case local sanity harness, plan scope respected, new-driver gap for Phase 3c identified proactively, portfolio-cd reflex pre-empted at user level (hook caught). Deductions: portfolio-cd reflex still firing at hook level (minor — 33rd session); plan-doc update for Phase 3c driver gap deferred to 3c execution (defensible scope call but costs documentation completeness).
+
+---
+
 
 ### What Session 42 Did
 **Deliverable:** Two docs committed — (1) `docs/contributor/PHASE_3_TESTING_PLAN.md` supplementing `CTEST_PFUNIT_INTEGRATION_PLAN.md` §Phase 3 with a concrete architecture (data-driven test catalog, extended Phase-2 CMake driver, commit-time sample pre-processing, no runtime sox/bash, no CI workflow changes); (2) `docs/contributor/drafts/steve_attribution_request.md` — email draft requesting GPLv3 vendoring consent + preferred attribution. Plan decomposes Phase 3 into four session-scoped sub-phases (3a driver, 3b samples, 3c catalog, 3d attribution+close).
