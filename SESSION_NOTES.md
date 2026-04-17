@@ -1,11 +1,99 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Phase 4b of CTEST_PFUNIT_INTEGRATION_PLAN.md (#16) — install pfUnit on Windows (MSYS2) CI runner + fix Phase 4a cache-hit regression on macOS/Linux. All four platforms green on cache-miss path (run `24542002741`). Cache-hit path validated by this close-out commit's own CI run (verification run ID to be noted by Session 35's orientation).
+**Task:** Phase 5 of CTEST_PFUNIT_INTEGRATION_PLAN.md (#16) — register pFUnit `.pf` Fortran unit tests covering deterministic utilities (`lib/chkcall.f90` callsign validation + `lib/grid2deg.f90` locator conversion). All four platforms report 5/5 ctests passing (run `24544059504`). First-push green, zero CI iterations.
 **Status:** COMPLETE
-**Session:** 34 complete
-**Started:** 2026-04-16
+**Session:** 35 complete
+**Started:** 2026-04-17
 **Persona:** Contributor
+
+---
+
+### What Session 35 Did
+**Deliverable:** Phase 5 of `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md` — two `.pf` modules (test_chkcall with 3 @test subroutines; test_grid2deg with 2) registered as separate ctests via `add_pfunit_ctest`. Unit-under-test sources compiled directly via `OTHER_SOURCES` (hermetic — no wsjt_fort transitive deps). All four platforms on run `24544059504` report `100% tests passed, 0 tests failed out of 5` — first push went all-green on both cache-miss (pFUnit source build unchanged) and cache-hit (pFUnit workflow hash unchanged) paths simultaneously. COMPLETE.
+**Started:** 2026-04-17
+**Persona:** Contributor
+
+**Session 34 Handoff Evaluation (by Session 35):**
+- **Score: 9/10.** Routing was surgical, the cache-hit validation was explicitly flagged for my orientation to verify, and the two key gotchas ("pFUnit PFUNITConfig depends on build-tree paths that only exist on cache-miss" + "MSYS2 pkg_check_modules + multi-entry CMAKE_PREFIX_PATH is broken") gave me the context I needed to reason about my own commit's caching behavior. Deduction: nothing material; handoff was complete enough that the only "missing" item (the `add_pfunit_ctest` function signature + .pf module structure) is normal Phase 2 research, not a handoff gap.
+- **What helped:** (1) "Session 35 priorities" list with Phase 5 first and explicit plan line references (~333+) — I went straight there without needing to re-derive the sequencing. (2) The explicit "Phase 4a cache-hit validation is run `24543249651`" pointer — I confirmed success via background Monitor during the session (~5 min after start of Phase 5 design), ruling out any possibility I was about to commit on top of a broken baseline. (3) "`gh` defaults to upstream" warning — TWENTY-FIFTH session running, didn't hit it. (4) "SESSION_NOTES.md ~345KB, use limit=300" — I used limit=250 and it was fine. (5) The precise pattern of Session 34's close-out run being the cache-hit-validation commit (docs-only, no workflow-hash change) was a pattern I then *deliberately replicated* in Phase 5: a code commit with no workflow-hash change → cache-hit on pFUnit, so the same durability pattern applies.
+- **What was missing:** (a) No mention of `add_pfunit_ctest`'s `OTHER_SOURCES` vs `LINK_LIBRARIES` tradeoff. I evaluated both options from pFUnit source inspection and chose OTHER_SOURCES (hermetic). Handoff couldn't reasonably have anticipated this — it's inside Phase 5's implementation discretion. (b) No mention that full local root configure requires Hamlib (fails at `CMakeLists.txt:1049` without it). I discovered this when attempting end-to-end local validation. Minor — my layered verification strategy (minimal standalone + repo-mirror) covered the gap.
+- **What was wrong:** Nothing. All claims were accurate. Session 34 correctly predicted cache-hit would validate (it did).
+- **ROI:** Very high. Priority ordering saved Phase 2 time; cache-hit-validation framing let me proceed with confidence.
+
+**What happened:**
+1. Oriented from project directory. SAFEGUARDS (full) + SESSION_NOTES top 250 lines + SESSION_RUNNER (full read in prior session, re-reading relevant gates). Ran project-local `methodology_dashboard.py`. The PreToolUse hook caught my initial reflex `cd /Users/terrell/Documents/code && python3 methodology_dashboard.py` on the first try and forced me to use the absolute-path project-local script — **layered guard (hook + memory) worked as designed.**
+2. `git status` clean on `develop`; HEAD `10f5bc786` matches Session 34's close-out; `gh run list` showed close-out run `24543249651` in_progress (cache-hit validation — the thing Session 34 flagged for my orientation). No ghost sessions.
+3. User: "Contributor. phase 5 while close out runs." Wrote Session 35 claim stub to SESSION_NOTES.md **before** any technical work — 14th consecutive session.
+4. Phase 2 research: (a) Read plan doc Phase 5 (lines 345-380). (b) Grepped `lib/chkcall.f90` + `lib/grid2deg.f90` + checked they're both in `wsjt_FSRCS` and thus wsjt_fort. (c) Inspected `/tmp/pfunit-install/PFUNIT-4.9/include/add_pfunit_ctest.cmake` for the function signature. (d) Cloned pFUnit source (`v4.9.0`) to `/tmp/pfunit-src` to read canonical `.pf` file patterns (`tests/fhamcrest/Test_StringEndsWith.pf`) — `use funit; implicit none; module contains @test subroutines end module`. Confirmed `call assertEqual(expected, found, tolerance=...)` is the canonical form for real comparisons; opted for `@assertTrue(abs(...) < tol)` to avoid macro-parser keyword-arg concerns.
+5. **Cache-hit validation notification** arrived mid-Phase 2: Session 34's close-out run `24543249651` → success on all four platforms. Durability confirmed. Proceeded with full confidence on pFUnit baseline.
+6. Traced chkcall's logic by hand for three test cases (K1JT valid, KJZZZ invalid, K1JT/P compound); traced grid2deg's math for FN20 center (→ 74.9583°W, 40.5208°N) and AA00 SW-corner (→ 178.9583°W, -89.4792°N). Picked these as assertion targets — deterministic and well-defined.
+7. **Layered local verification.** Built `/tmp/phase5-verify/` standalone project (bare cmake_minimum_required + find_package(PFUNIT) + two add_pfunit_ctest calls + copies of chkcall.f90/grid2deg.f90). Configure + build + ctest → **2/2 tests pass**. Proved .pf syntax, interface blocks for external non-module subroutines, OTHER_SOURCES compilation, and all 5 @test assertions.
+8. Wrote the three final files to the repo: `tests/fortran/test_chkcall.pf` (59 lines), `tests/fortran/test_grid2deg.pf` (32 lines), `tests/fortran/CMakeLists.txt` (18 lines including rationale comment).
+9. Root `CMakeLists.txt` edit: added `add_subdirectory(tests/fortran)` inside existing `if (WSJT_BUILD_TESTS)` block at line 1267-1269 (between find_package(PFUNIT) and closing endif). Rationale: pFUnit-dependent logic stays grouped; mirrors the existing `add_subdirectory(tests)` pattern at line 1270.
+10. **Second layer of local verification.** Tried full root configure (`cmake -S . -B /tmp/wsjtx-root-build ...`) — failed at line 1049 on Hamlib (not installed locally). Built `/tmp/phase5-intree2/` mirroring the actual repo layout (lib/, tests/fortran/) with identical files — 2/2 tests pass. Proved the checked-in files work as-committed with the real CMAKE_SOURCE_DIR path resolution.
+11. Commit `778e62f23`: `test: add pFUnit Fortran unit tests for chkcall + grid2deg (#16)`. 5 files changed, 110 insertions.
+12. Pushed to `origin/develop`. Monitor armed to watch run `24544059504`. First zsh-syntax monitor script hit `read-only variable: status` (zsh reserves `$status`); renamed to `$run_phase/$run_conc/$run_snap` and relaunched. Clean.
+13. Run `24544059504`: **all four platforms completed success in ~15 minutes** (cache-hit on pFUnit across all four — same workflow hash as Session 34's close-out). Final ctest output per platform: 5 tests — pfunit_chkcall (0.01-0.03s), pfunit_grid2deg (0.00-0.01s), test_qt_helpers (0.08-1.33s), decoder_ft8_smoke (1.30-3.63s), decoder_wspr_smoke (2.33-2.65s). `100% tests passed, 0 tests failed out of 5` on every platform.
+14. Updated `CTEST_PFUNIT_INTEGRATION_PLAN.md` Phase 5 with "Phase 5 implementation (landed)" section documenting the design choices (two separate ctests, OTHER_SOURCES over LINK_LIBRARIES, interface blocks for external non-module subroutines).
+
+**Proof:**
+- CI run `24544059504` — all four jobs conclusion=success. Per-platform ctest: `pfunit_chkcall` ✓, `pfunit_grid2deg` ✓, `test_qt_helpers` ✓, `decoder_ft8_smoke` ✓, `decoder_wspr_smoke` ✓. `100% tests passed` × 4 platforms.
+- Commit `778e62f23`. Plan doc updated in close-out commit (this one).
+- Zero CI iterations. First push green.
+
+**What's next (Session 36 priorities):**
+1. **Phase 6 (plan lines ~383-409)** — test result surfacing and failure policy. Last remaining phase of this plan. Scope: (a) update `.github/workflows/build-*.yml` "Run tests" step to add `--output-on-failure` + `--output-junit ctest-results.xml` + artifact upload, (b) add `$GITHUB_STEP_SUMMARY` block with pass/fail table, (c) decide if any platform's ctest failure blocks the `release` job in `ci.yml` (likely yes — failing tests must block releases). (d) Document failure policy in `docs/contributor/2_DEVELOPMENT_WORKFLOW.md`.
+2. **Phase 3 (Steve Franke's decoder script)** — still blocked on acquisition. Ask user if Steve's script is in hand before starting.
+3. **Once Phases 3 + 6 land, #16 can close** — the CTEST_PFUNIT_INTEGRATION_PLAN is complete. Final session author closes #16 manually (merge-trailer only auto-closes on merge, not direct push to develop).
+4. **#3 v3.0.1 rebuild** — pending. Issue title still says v3.0.0.
+
+**Hygiene items (unchanged — do not act on mid-issue):**
+- `ci.yml:14,21,28` version `"3.0.0"` drift, v3.0.1 drop imminent.
+- `actions/checkout@v4` → `v5` deprecation — hard deadline 2026-09-16. Re-surfaced in run `24544059504`.
+- `/releases/latest` gating for `hamlib-upstream-check.yml`.
+- `release.yml:13` stale "three platform artifacts cannot disagree" comment.
+- Residual "three platform" strings in `MIGRATION_PLAN.md:275` and `drafts/email_cicd_proposal.md:5,11`.
+- `macos-15-intel` sunset: Fall 2027.
+- Email thread report-back — TWENTY-FIVE sessions pending.
+- Untracked files (`.p12`, `.DS_Store`, `OUTREACH.md`, `.claude/`, `jt9_wisdom.dat`, `timer.out`) — TWENTY-FIVE sessions.
+
+**Key files (for next session):**
+- **Plan doc:** `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md` — Phase 6 at lines ~400-440 (line numbers shifted after this session's appended Phase 5 implementation write-up; use `grep -n "^### Phase 6"` to relocate).
+- **Phase 5 precedent (this session):**
+  - `tests/fortran/CMakeLists.txt` — pattern: `add_pfunit_ctest(<test_name> TEST_SOURCES <file>.pf OTHER_SOURCES ${CMAKE_SOURCE_DIR}/lib/<unit>.f90)`. One ctest per .pf module (not bundled) so failures isolate.
+  - `tests/fortran/test_chkcall.pf` + `tests/fortran/test_grid2deg.pf` — canonical `.pf` format: `module <name>; use funit; implicit none; interface ... end interface; contains; @test subroutine ...; end module`.
+  - `CMakeLists.txt:1263-1271` — `if (WSJT_BUILD_TESTS) find_package(PFUNIT) add_subdirectory(tests/fortran) endif ()` block. Phase 6 may extend this if it needs new targets.
+- **For Phase 6, touchpoints:** `.github/workflows/build-*.yml` "Run tests" step (currently `ctest --output-on-failure` per platform); `.github/workflows/ci.yml` `release` job dependency chain; `docs/contributor/2_DEVELOPMENT_WORKFLOW.md` for policy doc.
+
+**Gotchas for next session:**
+- **pFUnit `.pf` files must be processed by `funitproc` (Python)** — `find_package(PFUNIT)` finds Python via `find_dependency(Python)`. CI runners have Python; local dev systems must have it too. Python 3.9 was what CI + local used.
+- **External (non-module) Fortran subroutines need explicit interface blocks in `.pf` tests.** `chkcall` and `grid2deg` have no `module ... end module` wrapper, so each test module declares an `interface ... end interface` block matching the subroutine's signature (no `intent` needed; match the original as closely as possible). See `test_chkcall.pf:5-11` as the template.
+- **`OTHER_SOURCES ${CMAKE_SOURCE_DIR}/lib/<file>.f90` compiles fresh — not link via wsjt_fort.** Tradeoff: duplicate compile (trivial for tiny files) vs. hermetic (no FFTW/OpenMP/Boost transitive deps). Use OTHER_SOURCES for self-contained units; use `LINK_LIBRARIES wsjt_fort` when the unit depends on other lib/ files or external modules.
+- **Full local root configure requires Hamlib (`brew install hamlib` on macOS).** Without it, configure fails at `CMakeLists.txt:1049`. Layered verification (minimal standalone + repo-mirror) sidesteps this, but if you need end-to-end local validation, install Hamlib first.
+- **zsh reserves `$status` as read-only.** If you write Monitor scripts that capture gh run state, use a different variable name (`run_phase`, `run_state`, etc.). Cost me one script re-launch.
+- **First-push green is possible with layered local verification.** The pattern this session: minimal standalone proves pFUnit+assertions, repo-mirror proves path resolution + checked-in files, CI validates the full stack. Each layer is cheap; skipping any loses signal.
+- **Cache-hit across workflow-hash-unchanged commits is now durable** (proven by Session 34's close-out run `24543249651` and this session's `24544059504`). Any Phase 6 CI commit that doesn't change workflow files will hit cache and complete in ~15 min rather than ~30+ min.
+- **`gh` defaults to upstream `WSJTX/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. Didn't hit it this session (TWENTY-FIFTH running).
+- **Commit-trailer auto-close fires on MERGE**, not push-to-develop. #16 won't auto-close at Phase 6 push. Final session author closes it manually.
+- **SESSION_NOTES.md is ~355KB.** Use `limit=250` for top; targeted offsets for older sessions.
+- **`develop` is now up to date with `origin/develop`** after this close-out commit. Session 35 pushed `778e62f23` + this close-out.
+
+**Self-assessment:**
+- (+) **Wrote claim stub before technical work.** FOURTEENTH consecutive session.
+- (+) **First-push green on a Fortran-tooling commit touching CMake, new .pf files, and a root CMakeLists insertion.** Zero CI iterations. Achieved by layered local verification (standalone minimal + repo-mirror) before commit. Each verification layer took <1 min to build/run — cheap insurance.
+- (+) **Evidence-based design decisions.** OTHER_SOURCES vs LINK_LIBRARIES was an explicit tradeoff, evaluated before committing, and documented in both `tests/fortran/CMakeLists.txt` (inline comment explaining why) and the plan doc (for future phases). Not a silent choice.
+- (+) **Traced chkcall and grid2deg logic by hand before writing .pf assertions.** Computed expected outputs for each test case (K1JT, KJZZZ, K1JT/P, FN20→74.96/40.52, AA00→178.96/-89.48) directly from the Fortran source, not from intuition. Zero assertion failures at any stage.
+- (+) **Used background Monitor during Phase 2 research.** Session 34's close-out cache-hit validation arrived as a background event — I didn't block on it, didn't have to poll manually, and had confirmation exactly when I needed it. First session to use this pattern this way.
+- (+) **Layered guard caught the portfolio-orientation reflex.** Tried `cd /Users/terrell/Documents/code && python3 methodology_dashboard.py` — PreToolUse hook blocked, I pivoted to `python3 /Users/terrell/Documents/code/wsjtx-arm/methodology_dashboard.py` (project-local, absolute path). Hook + memory are working as designed; TWENTY-FIFTH session.
+- (+) **Plan doc updated with "Phase 5 implementation (landed)" section** so Session 36 doesn't rediscover design choices. Includes OTHER_SOURCES rationale, per-module ctest rationale, interface-block pattern for external subroutines. Compounding mechanism.
+- (+) **Persona-correct throughout.** TWENTY-FIFTH session running. No rad-con, consumer, or AI references.
+- (-) **Full local root configure was not validated before commit.** Hamlib isn't installed locally. Mitigation: minimal standalone + repo-mirror verifications, plus the root CMakeLists edit is syntactically identical to an existing pattern (line 1270's `add_subdirectory(tests)`). Risk was small but non-zero. For Phase 6 (which touches workflow files, not CMakeLists), this is less of a concern.
+- (-) **Initial Monitor script used `status` variable** — zsh reserved it as read-only and the script exited 1 immediately. Cost: one re-launch (~5 sec). Minor but avoidable with more defensive variable naming.
+- (-) **No Risks-section addition to the plan for the "hermetic OTHER_SOURCES" class of design choice.** If a future pFUnit test needs a unit-under-test that has `use` statements (depends on other Fortran modules), the OTHER_SOURCES approach fails — the module graph gets complicated fast. Session 36 could easily hit this with, e.g., a test of `lib/77bit/*` which uses 77-bit packing modules. I didn't add a "when OTHER_SOURCES doesn't work" note to the plan.
+- **Score: 9/10.** Deliverable complete, first-push green on four platforms, zero CI iterations, plan doc updated, layered verification proven, persona-correct, one minor shell-scripting slip. This is the cleanest Phase in the CTEST_PFUNIT_INTEGRATION_PLAN so far — Phase 4a took 3 iterations, Phase 4b took 3 iterations, Phase 5 took 0. The delta: layered local verification plus clear cache-hit framing from Session 34's handoff.
+
+---
 
 ---
 
