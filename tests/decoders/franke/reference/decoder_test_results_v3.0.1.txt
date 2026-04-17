@@ -1,0 +1,195 @@
+**********************************************
+Decoder Tests Version: 26.04.15-1
+**********************************************
+
+FST4W-1800
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/FST4+FST4W/201230_0300.wav
+0300 -44  0.3 1433 `  DL0HOT JO60 30                                  
+
+FST4-60
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/FST4+FST4W/210115_0058.wav
+0058  17  0.4 1331 `  CQ K9KFR EN71                                   
+0058  -8  0.3 1101 `  CQ N5TM EL29                                    
+0058 -28  0.4 1135 `  CQ N3HSK FM28                       ? a1        
+
+FT4
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/FT4/000000_000002.wav
+000002 -10 -0.2  296 +  N1TRK N4FKH 569 VA                      
+000002  -9 -0.4  422 +  N1TRK KB7RUQ RR73                       
+000002  -7 -0.1  560 +  CQ RU AB5XS EM12                        
+000002 -12  0.1  727 +  NZ7P WA7JAY 589 CA                      
+000002  16  0.3 1149 +  KB0VHA KA1YQC R 539 MA                  
+000002  -3 -0.2 1640 +  CQ RU N9OY EN43                         
+000002 -11  0.2 1910 +  K1JT WB4HXE 559 GA                      
+000002   5  0.3 2067 +  VE3LON K7RL R 549 WA                    
+000002  -1  0.2 2310 +  WD9IGY KX1X 73                          
+000002 -17 -0.4 2413 +  W7BOB KJ7G RR73                         
+000002  -7 -0.3 2566 +  NI6G W7DRW 569 AZ                       
+000002   2 -0.3 2725 +  K4SQC VE3RX RR73                        
+000002  -6 -0.4 2813 +  CQ RU W1QA FN32                         
+000002   0  0.0 2995 +  CQ RU WS4WW FM17                        
+000002  13  0.2 3159 +  HB9BUN KG4W R 549 VA                    
+000002  -8  0.4 3337 +  W9TO KN3ILZ 529 PA                      
+000002 -10 -0.3  520 +  W9JA PY2APK RRR                         
+000002 -15  0.2 2299 +  AC6BW KR9A R 559 WI                     
+000002 -13 -0.3 2560 +  CQ RU W0FRC DM79                        
+
+FT8 - standard decoder
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/FT8/210703_133430.wav
+133430  16  0.3 2571 ~  W1FC F5BZB -08                          
+133430  12 -0.1 2157 ~  WM3PEN EA6VQ -09                        
+133430  -2 -0.8 1197 ~  CQ F5RXL IN94                           
+133430 -14  0.3 2238 ~  N1API HA6FQ -23                         
+133430 -12  0.3  641 ~  N1JFU EA6EE R-07                        
+133430  -7  0.1  723 ~  A92EE F5PSR -14                         
+133430  -3 -0.1 2695 ~  K1BZM EA3GP -09                         
+133430 -16  0.3  400 ~  W0RSJ EA3BMU RR73                       
+133430 -14  0.3  590 ~  K1JT HA0DU KN07                         
+133430  -7  0.4 2733 ~  W1DIG SV9CVY -14                        
+133430 -16  0.1 1648 ~  K1JT EA3AGB -15                         
+133430 -11  0.2 2852 ~  XE2X HA2NP RR73                         
+133430 -17  0.1 2280 ~  CQ EA2BFM IN83                          
+133430  -7  0.2 2522 ~  K1BZM EA3CJ JN01                        
+133430  -9 -0.1 2546 ~  WA2FZW DL5AXX RR73                      
+133430  -2  0.2  466 ~  N1PJT HB9CQK -10                        
+133430 -17  0.7 1513 ~  N1API F2VX 73                           
+133430 -17  0.2 2606 ~  CQ DX DL8YHR JO41                       
+133430 -20  0.5  244 ~  K1BZM DK8NE -10                         
+133430 -20  0.1 2039 ~  K1JT HA5WA 73                           
+133430  -6  0.4  472 ~  KD2UGC F6GCP R-23                       
+
+FT8 - MT decoder
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/FT8/210703_133430.wav
+133430  -7 -0.8 1196 ~  CQ F5RXL IN94                           
+133430   0 -0.1 2157 ~  WM3PEN EA6VQ -09                        
+133430   0  0.3 2571 ~  W1FC F5BZB -08                          
+133430  -9  0.1  723 ~  A92EE F5PSR -14                         
+133430 -14  0.3  641 ~  N1JFU EA6EE R-07                        
+133430 -11 -0.1 2695 ~  K1BZM EA3GP -09                         
+133430 -13  0.3  590 ~  K1JT HA0DU KN07                         
+133430  -9  0.4 2734 ~  W1DIG SV9CVY -14                        
+133430 -13  0.3 2239 ~  N1API HA6FQ -23                         
+133430 -15  0.1 2279 ~  CQ EA2BFM IN83                          
+133430 -18  0.7 1513 ~  N1API F2VX 73                           
+133430 -12  0.3  465 ~  N1PJT HB9CQK -10                        
+133430 -15  0.1 1648 ~  K1JT EA3AGB -15                         
+133430 -14  0.2 2854 ~  XE2X HA2NP RR73                         
+133430 -15  0.3  399 ~  W0RSJ EA3BMU RR73                       
+133430 -10  0.4  472 ~  KD2UGC F6GCP R-23                       
+133430 -19  0.5  244 ~  K1BZM DK8NE -10                         
+133430 -18  0.1 2039 ~  K1JT HA5WA 73                           
+133430 -12  0.2 2522 ~  K1BZM EA3CJ JN01                        
+133430 -15 -0.1 2546 ~  WA2FZW DL5AXX RR73                      
+
+JT4
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/JT4/JT4A/DF2ZC_070926_040700.wav
+0091 -22  3.9 1251 $# K1JT DF2ZC JO30        f  
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/JT4/JT4F/OK1KIR_141105_175700.wav
+0092 -14  1.8 1201 $# G3WDG OK1KIR RRR       f  
+
+JT9
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/JT9/130418_1742.wav
+1742  -5  1.2 1505 @  JA1KAU PD0JAC -23     
+1742 -25  0.0 1119 @  CQ GM7GAX IO75        
+1742 -17 -0.0 1186 @  TF3G N7MQ CN84        
+1742 -18  0.0 1224 @  K1JT KF4RWA 73        
+1742 -22  0.1 1290 @  CQ M0WAY IO82         
+1742 -13  0.0 1461 @  G7CNF N4HFA EL89      
+
+JT65B - average odd intervals
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/JT65/JT65B/000000_0001.wav
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/JT65/JT65B/000000_0003.wav
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/JT65/JT65B/000000_0005.wav
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/JT65/JT65B/000000_0007.wav
+0091 -29  0.4 1300 #*                           
+0093 -27  0.4 1300 #*                           
+0095 -28  0.4 1300 #* CQ K1ABC FN42          f3 
+0095 -28  0.4 1300 #*                           
+0097 -29  0.4 1300 #* CQ K1ABC FN42          f4 
+0097 -29  0.4 1300 #*                           
+
+JT65B - average even intervals
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/JT65/JT65B/000000_0002.wav
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/JT65/JT65B/000000_0004.wav
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/JT65/JT65B/000000_0006.wav
+0092 -29  0.4 1700 #*                           
+0094 -28  0.4 1700 #* K1ABC G4XYZ IO91       a22
+0094 -28  0.4 1700 #* K1ABC G4XYZ IO91       a6 
+0096 -27  0.4 1700 #* K1ABC G4XYZ IO91       f3 
+0096 -27  0.4 1700 #*                           
+
+JT65B - DL7UAE_040308_002400.wav
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/JT65/JT65B/DL7UAE_040308_002400.wav
+0091 -22  0.3 1494 #* K1JT DL7UAE JO62       f  
+
+Decode MSK144
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/MSK144/181211_120500.wav
+120500   8  8.7 1488 &  K1JT WA4CQG EM72                                        
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/MSK144/181211_120800.wav
+120800   7 12.2 1496 &  CQ KD9VV EN71                                           
+
+Q65-30A 3-file averages
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/Q65/30A_Ionoscatter_6m/201203_022700.wav
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/Q65/30A_Ionoscatter_6m/201203_022800.wav
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/Q65/30A_Ionoscatter_6m/201203_022900.wav
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/Q65/30A_Ionoscatter_6m/201203_024000.wav
+
+3-file averages:
+1,2,3
+1,2,4
+1,3,4
+2,3,4
+
+Single file decodes with AP:
+022800 -21  0.3 1010 :  K1JT K9AN R-16                        q3 
+024000 -18  0.3 1010 :  K1JT K9AN R-16                        q3 
+
+Q65-60A 6m EME
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/Q65/60A_EME_6m/210106_1621.wav
+0091 -20  0.4 1420 :  W7GJ W1VD FN31                        q0 
+0091 -24  0.4  697 :  W7GJ N8JX EN73                        q0 
+0091 -24  0.4  943 :  W7GJ N0TB -15                         q0 
+0091 -19  0.4 1620 :  W7GJ VE1JF RRR                        q0 
+
+Q65-60B 1296 Tropo
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/Q65/60B_1296_Troposcatter/210109_0007.wav
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/Q65/60B_1296_Troposcatter/210109_0147.wav
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/Q65/60B_1296_Troposcatter/210109_0151.wav
+
+Single file decodes with AP:
+0007 -28  0.2 1002 :  VK7MO VK7PD QE38                      q2 
+0147 -25  0.2 1002 :  VK7MO VK7PD QE38                      q2 
+0151 -25  0.1 1002 :  VK7MO VK7PD QE38                      q3 
+
+3-file average:
+
+Q65-60D EME 10GHz
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/Q65/60D_EME_10GHz/201212_1838.wav
+0091 -14  0.2  998 :  VK7MO K6QPV DM12                      q0 
+
+Q65-120D 10 GHz Rainscatter
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/Q65/120D_Rainscatter_10_GHz/210117_0920.wav
+0920 -16  0.0  996 :  VK3WE VK7MO QE37                      q0 
+
+Q65-120E 6m Ionoscatter
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/Q65/120E_Ionoscatter_6m/210130_1438.wav
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/Q65/120E_Ionoscatter_6m/210130_1442.wav
+1442 -17  0.7 1799 :  KB7IJ N0AN 73                         q3 
+
+Q65-300A Optical Scatter
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/Q65/300A_Optical_Scatter/201210_0505.wav
+0505 -34 -0.6 1002 :  VK7MO VK7PD QE38                      q0 
+
+WSPR
+/Users/sfranke/Library/Application Support/WSJT-X/save/samples/WSPR/150426_0918.wav
+0918  -9  1.1   0.001446  0  ND6P DM04 30 
+0918 -15  0.1   0.001460  0  W5BIT EL09 17 
+0918 -25  2.2   0.001465  0  G8VDQ IO91 37 
+0918  -6  0.6   0.001489  0  WD4LHT EL89 30 
+0918  -1 -0.8   0.001503  0  NM7J DM26 30 
+0918 -21  0.5   0.001517  0  KI7CI DM09 37 
+0918 -20 -1.9   0.001530  0  DJ6OL JO52 37 
+0918 -11  0.8   0.001587  0  W3HH EL89 30 
+0918 -27  0.7   0.001594  0  W3BI FN20 30 
+<DecodeFinished>
+
