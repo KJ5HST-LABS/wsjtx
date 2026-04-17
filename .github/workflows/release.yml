@@ -98,7 +98,15 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           TAG="${GITHUB_REF_NAME}"
-          FILES=$(find artifacts -type f)
+          # Filter to user-facing release assets. `find artifacts -type f`
+          # without filtering pulls in 4× ctest-results.xml (one per
+          # platform) and per-binary tarballs from individual-binaries-*
+          # that collide on basename across architectures — `gh release
+          # create` uses basenames as asset names and duplicates cause
+          # upload failures.
+          FILES=$(find artifacts -maxdepth 2 -type f \
+            \( -name "*.pkg" -o -name "*.AppImage" \
+               -o -name "*.exe" -o -name "*.tar.gz" \))
           # SemVer pre-release tags contain a hyphen after the version
           # (e.g., v3.0.1-rc1, v3.0.1-rc2, v3.0.1-beta1). Flag those as
           # GitHub pre-releases so they don't appear as the latest stable.
