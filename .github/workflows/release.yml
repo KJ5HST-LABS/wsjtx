@@ -2,13 +2,13 @@ name: Release
 
 on:
   push:
-    tags: ["v*"]
+    tags: ["build/v*"]
 
 jobs:
   # ── Derive the version string once from the pushed tag ────────────
-  # Strips the leading "v" so artifacts are named "wsjtx-3.0.1-rc1-*"
-  # rather than "wsjtx-v3.0.1-rc1-*". RC/beta suffixes (e.g.
-  # v3.0.1-rc1 → 3.0.1-rc1) are preserved so pre-release artifacts
+  # Strips the "build/v" prefix so artifacts are named "wsjtx-3.0.1-rc1-*"
+  # rather than "wsjtx-build/v3.0.1-rc1-*". RC/beta suffixes (e.g.
+  # build/v3.0.1-rc1 → 3.0.1-rc1) are preserved so pre-release artifacts
   # are distinguishable from GA. All downstream jobs consume this
   # single output so the four platform artifacts cannot disagree.
   prepare:
@@ -17,7 +17,7 @@ jobs:
       version: ${{ steps.v.outputs.version }}
     steps:
       - id: v
-        run: echo "version=${GITHUB_REF_NAME#v}" >> "$GITHUB_OUTPUT"
+        run: echo "version=${GITHUB_REF_NAME#build/v}" >> "$GITHUB_OUTPUT"
 
   # ── Build all four platforms ───────────────────────────────────────
   macos:
@@ -107,7 +107,7 @@ jobs:
             PRERELEASE_FLAG="--prerelease"
           fi
           gh release create "$TAG" \
-            --title "WSJT-X $TAG" \
+            --title "WSJT-X ${{ needs.prepare.outputs.version }}" \
             --generate-notes \
             $PRERELEASE_FLAG \
             $FILES
