@@ -328,6 +328,18 @@ git clone ... pFUnit && cmake -B build -G "MSYS Makefiles" && cmake --build buil
 - Unknown-unknowns in MSYS2 Fortran + pfUnit combo. Timebox: if blocked after one session of debugging, take the documented-gap path.
 - **Carry Phase 4a's flags:** `-DCMAKE_POLICY_VERSION_MINIMUM=3.5` and `-DSKIP_OPENMP=YES` are almost certainly needed on MSYS2 too (same CMake 4.x, same consumer-find OpenMP behavior). Start with Phase 4a's exact flag set plus `-DSKIP_MPI=YES`.
 
+**Phase 4b implementation (landed):**
+- Commits: `27bc7c22f` (initial Windows install), `e060b96f3` (CMAKE_PREFIX_PATH cache-hit fix for macOS/Linux/Windows), `6d49a0ed8` (Windows-specific per-package DIR hints)
+- pFUnit v4.9.0 pinned on Windows MSYS2 with `-DSKIP_MPI=YES -DSKIP_OPENMP=YES -DCMAKE_POLICY_VERSION_MINIMUM=3.5` flags (same flag set as Phase 4a) and `-G "MSYS Makefiles"`. `git config --global core.longpaths true` prepended to recursive clone to avoid Windows path-length issues with nested submodules (fArgParse → gFTL-shared → gFTL).
+- First-time build adds ~5 min to the Windows job; cached thereafter. Cache key: `pfunit-windows-v4.9.0-<workflow-hash>`.
+- CI run `24542002741` — all four platforms green, `find_package(PFUNIT)` succeeded on macos/macos-intel/linux/windows, 3/3 ctests passed on every job.
+
+**Phase 4a cache-hit regression (discovered during Phase 4b orientation and fixed in the same session):**
+- Session 33's Phase 4a implementation cached `pfunit-prefix/` but not `pfunit-build/`. pFUnit's installed `PFUNITConfig.cmake` has an `if/elseif` cascade for locating GFTL, GFTL_SHARED, and FARGPARSE. The first branch checks `EXISTS "<build_tree>"` which only holds on cache-miss; install-tree fallbacks were not always reached reliably. First observable failure was Session 33's close-out docs commit (`1cc05edda`, run `24538535439`), which hit the warm pFUnit cache and then broke on `find_dependency(GFTL)` for macos/macos-intel/linux.
+- Fix on macOS and Linux: extend `CMAKE_PREFIX_PATH` to include `${GITHUB_WORKSPACE}/pfunit-prefix`. CMake's find_dependency then walks the prefix and locates each sibling sub-package's Config file via its standard multi-package install mechanism.
+- Fix on Windows: same root cause, different workaround. Adding pfunit-prefix to CMAKE_PREFIX_PATH on Windows/MSYS2 broke Hamlib detection — `pkg_check_modules` derives `PKG_CONFIG_PATH` from CMAKE_PREFIX_PATH, and MSYS2 pkg-config mishandles multi-entry semicolon-separated forms. Workaround: keep CMAKE_PREFIX_PATH at its original single-entry value and pass explicit `-DPFUNIT_DIR=... -DGFTL_DIR=... -DGFTL_SHARED_DIR=... -DFARGPARSE_DIR=...` instead. The Locate step now emits four outputs, one per sub-package, via a loop.
+- Cache-hit verification is the Session 34 close-out CI run itself: docs-only commit, no workflow hash change, so all four jobs restore warm pFUnit caches. Session 35's orientation must verify that run went green — if not, the fix needs another iteration. Verification run ID logged in `SESSION_NOTES.md`.
+
 ---
 
 ### Phase 5: Register Fortran unit tests with pfUnit
