@@ -132,24 +132,14 @@ jobs:
         run: |
           ln -sf /mingw64/bin/dumpcpp-qt5.exe /mingw64/bin/dumpcpp.exe
 
-      - name: Patch MAP65 for GCC 15
-        run: |
-          # MAP65 is a standalone EME app. GCC 15 rejects its legacy Fortran.
-          # Skip it on Windows CI — it builds on macOS/Linux.
-          sed -i 's/add_subdirectory (map65)/# add_subdirectory (map65)/' CMakeLists.txt
-
       - name: Configure
         run: |
           WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
           OMNIRIG=$(cygpath "${OMNIRIG_PATH}")
-          # MSYS2 FFTW splits threads into a separate lib, but the WSJT-X
-          # FindFFTW3.cmake assumes Windows bundles threads into the main lib.
-          # Patch the module to include threads on Windows too.
-          sed -i 's/if (NOT WIN32 AND _use_threads)/if (_use_threads)/' CMake/Modules/FindFFTW3.cmake
-
           cmake -G "MSYS Makefiles" -S . -B wsjtx-build \
             -DCMAKE_PREFIX_PATH="${WORKSPACE}/hamlib-prefix" \
             -DOMNIRIG_TYPE_LIB="${OMNIRIG}" \
+            -DWSJT_SKIP_MAP65=ON \
             -DCMAKE_Fortran_FLAGS="-fallow-argument-mismatch -std=legacy" \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DWSJT_GENERATE_DOCS=OFF \
