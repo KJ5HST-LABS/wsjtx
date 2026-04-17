@@ -71,15 +71,20 @@ jobs:
         id: pfunit
         run: |
           WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
-          CONFIG=$(find "${WORKSPACE}/pfunit-prefix" -name PFUNITConfig.cmake | head -1)
-          if [ -z "$CONFIG" ]; then
-            echo "ERROR: PFUNITConfig.cmake not found under pfunit-prefix"
-            find "${WORKSPACE}/pfunit-prefix" -maxdepth 3 -type d
-            exit 1
-          fi
-          PFUNIT_DIR="$(dirname "$CONFIG")"
-          echo "Found PFUNITConfig.cmake at: $CONFIG"
-          echo "dir=${PFUNIT_DIR}" >> "$GITHUB_OUTPUT"
+          # Locate each sub-package's config directly — MSYS2 pkg-config
+          # interacts badly with multi-entry CMAKE_PREFIX_PATH, so we pass
+          # explicit <pkg>_DIR hints instead.
+          for pkg in PFUNIT GFTL GFTL_SHARED FARGPARSE; do
+            CONFIG=$(find "${WORKSPACE}/pfunit-prefix" -name ${pkg}Config.cmake | head -1)
+            if [ -z "$CONFIG" ]; then
+              echo "ERROR: ${pkg}Config.cmake not found under pfunit-prefix"
+              find "${WORKSPACE}/pfunit-prefix" -maxdepth 3 -type d
+              exit 1
+            fi
+            DIR="$(dirname "$CONFIG")"
+            echo "Found ${pkg}Config.cmake at: $CONFIG"
+            echo "$(echo $pkg | tr '[:upper:]' '[:lower:]')_dir=${DIR}" >> "$GITHUB_OUTPUT"
+          done
 
       - name: Cache Hamlib
         id: hamlib-cache
@@ -143,14 +148,17 @@ jobs:
           sed -i 's/if (NOT WIN32 AND _use_threads)/if (_use_threads)/' CMake/Modules/FindFFTW3.cmake
 
           cmake -G "MSYS Makefiles" -S . -B wsjtx-build \
-            -DCMAKE_PREFIX_PATH="${WORKSPACE}/hamlib-prefix;${WORKSPACE}/pfunit-prefix" \
+            -DCMAKE_PREFIX_PATH="${WORKSPACE}/hamlib-prefix" \
             -DOMNIRIG_TYPE_LIB="${OMNIRIG}" \
             -DCMAKE_Fortran_FLAGS="-fallow-argument-mismatch -std=legacy" \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
             -DWSJT_GENERATE_DOCS=OFF \
             -DWSJT_SKIP_MANPAGES=ON \
             -DWSJT_BUILD_TESTS=ON \
-            -DPFUNIT_DIR="${{ steps.pfunit.outputs.dir }}" \
+            -DPFUNIT_DIR="${{ steps.pfunit.outputs.pfunit_dir }}" \
+            -DGFTL_DIR="${{ steps.pfunit.outputs.gftl_dir }}" \
+            -DGFTL_SHARED_DIR="${{ steps.pfunit.outputs.gftl_shared_dir }}" \
+            -DFARGPARSE_DIR="${{ steps.pfunit.outputs.fargparse_dir }}" \
             -Wno-dev
 
       - name: Build
