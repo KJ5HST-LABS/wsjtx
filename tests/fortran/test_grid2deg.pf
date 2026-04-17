@@ -1,0 +1,30 @@
+module test_grid2deg
+  use funit
+  implicit none
+
+  interface
+    subroutine grid2deg(grid0, dlong, dlat)
+      character(len=*) :: grid0
+      real             :: dlong, dlat
+    end subroutine grid2deg
+  end interface
+
+contains
+
+  @test
+  subroutine test_grid2deg_fn20_defaults_to_center()
+    real :: dlong, dlat
+    call grid2deg('FN20', dlong, dlat)
+    @assertTrue(abs(dlong - 74.9583) < 1.0e-3)
+    @assertTrue(abs(dlat  - 40.5208) < 1.0e-3)
+  end subroutine test_grid2deg_fn20_defaults_to_center
+
+  @test
+  subroutine test_grid2deg_aa00_southwest_corner()
+    real :: dlong, dlat
+    call grid2deg('AA00', dlong, dlat)
+    @assertTrue(abs(dlong - 178.9583) < 1.0e-3)
+    @assertTrue(abs(dlat  - (-89.4792)) < 1.0e-3)
+  end subroutine test_grid2deg_aa00_southwest_corner
+
+end module test_grid2deg
