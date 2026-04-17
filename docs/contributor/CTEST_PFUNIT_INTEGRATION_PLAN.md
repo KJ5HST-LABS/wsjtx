@@ -255,6 +255,16 @@ gh run watch --repo KJ5HST-LABS/wsjtx-internal
 - License / attribution — if it's Steve's personal script, confirm he's OK with it being vendored under GPLv3 in this repo.
 - Sample file dependencies — if the script expects samples outside `samples/`, decide: vendor them, download from `~.samples` web mirror, or constrain to in-tree samples.
 
+**Phase 3 implementation (landed):**
+- Broken into four sub-phases, each one session per `PHASE_3_TESTING_PLAN.md`:
+  - **3a — Driver extension.** `tests/decoders/run_decoder_test.cmake` extended to accept multi-sample `SAMPLES` + any-of `EXPECTED_TOKENS`. Commit `ad7bced93`.
+  - **3b — Sample pre-processing.** Nine pre-processed WAVs committed under `samples/<mode>/preprocessed/`; two JT4 captures renamed `.WAV`→`.wav`; `samples/PREPROCESSING.md` documents the sox invocations and reproduction. Commit `8801d54d2`.
+  - **3c — Catalog.** `add_decoder_test()` helper + 17 catalog entries added to `tests/decoders/CMakeLists.txt`. Phase 2 smoke tests labeled `smoke`; Franke catalog labeled `franke`. Commit `275194084`.
+  - **3d — Vendor + catalog close.** Steve's `decoder_tests.bash` + `decoder_test_results_v3.0.1.txt` vendored under `tests/decoders/franke/reference/`. `tests/decoders/franke/README.md` describes the corpus and the script-to-catalog translation. Attribution draft removed (Steve confirmed not needed). See commit list below.
+- **Catalog fix-forward.** `decoder_jt65b_avg_odd` removed after Phase 3c CI showed token drift on all four platforms: Steve's v3.0.1 baseline produced 2 of 6 averaged frames with `CQ K1ABC FN42` via AP hint, but current develop-head produces only `#*` placeholder lines. The even-interval averaging case covers the same code path and is stable. Final catalog: 16 franke + 2 smoke = 18 decoder tests. Commit `8ca83974c`; CI run `24578087505` green on all four platforms.
+- Decision: Steve's `decoder_tests.bash` is NOT executed by CI (bash + sox + hard-coded paths are nonportable). Coverage is preserved by translating the script's 31 `jt9`/`wsprd` invocations into a data-driven ctest catalog. 16 cases registered; 15 script invocations excluded because their baseline decodes are empty, inconsistent per-file, or redundant (see `tests/decoders/franke/README.md` for the full exclusion table).
+- Planning provenance: `1077f7fa6` (Session 42 plan doc + attribution draft).
+
 ---
 
 ### Phase 4a: Install pfUnit on macOS + Linux runners
