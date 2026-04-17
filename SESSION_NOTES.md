@@ -1,11 +1,112 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Session 46 — Phase 3c CI verification (push + watch) + Phase 3d (vendor Steve's script + baseline; README; plan close). Both landed green on all four CI platforms. Phase 3 is complete.
+**Task:** Session 47 — Close Issue #16 (CI/CD: ctest + pfUnit integration — all six phases landed).
 **Status:** COMPLETE
-**Session:** 46 complete
+**Session:** 47 complete
 **Started:** 2026-04-17
 **Persona:** Contributor
+
+### What Session 47 Did
+**Deliverable:** Issue #16 closed on `KJ5HST-LABS/wsjtx-internal` at 2026-04-17T18:40:47Z with a close-comment summarizing the 6-phase landing. The comment maps each of the original issue's six scope items to a phase of `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md`, with commit hashes (SHA7) for each phase + sub-phase + fix-forward and CI run IDs for the green verification runs. Final ctest state documented in the comment: 18 decoder tests (2 smoke + 16 Franke catalog) + 3 others (1 C++ `test_qt_helpers`, 2 pFUnit Fortran) = 21 entries per platform × 4 platforms. Latest green run: `24579224586`. No code commits — this was a pure project-management action (close + narrate). No pushes. **No further sessions are required for #16; the CI/CD functional-testing workstream is complete.**
+**Started:** 2026-04-17
+**Persona:** Contributor
+
+**Session 46 Handoff Evaluation (by Session 47):**
+- **Score: 9/10.** Session 46's handoff was a textbook "next action" handoff: opened with an explicit, specific first action (close Issue #16 with a summary of the 6-phase landing using `gh issue close 16 --repo KJ5HST-LABS/wsjtx-internal`), with rationale ("commit-trailer auto-close only fires on merge to main, so #16 must be closed manually"). Every claim in the handoff was annotated with a commit hash, a CI run ID, or a plan-doc line reference. That's the exact shape a handoff should have.
+- **What helped:** (1) The phase-to-commit inventory in Session 46's "What Session 46 Did" block gave me the full map — Phase 1 (`6e6349d3d` for Phase 2, preceded by `43ec99251`/`6b6e7acdf` for Phase 1) and Phase 4a (`c281e8e20`/`bdcd0cdca`/`b31e97154`) and Phase 4b (`27bc7c22f`/`e060b96f3`/`6d49a0ed8`, CI `24542002741`) and Phase 5 + Phase 6 line refs. I cross-checked each via `git log --grep` but didn't have to derive. (2) Gotcha #7 ("plan-wide status claims require a full grep, not memory") directly shaped my Step 1: ran `grep -n "implementation (landed)"` against the plan doc before writing the close comment. Five hits at lines 258, 302, 341, 391, 427 — exact match to Session 46's claim. Applied the gotcha verbatim. (3) The correction commit `0dcb1bc63` that Session 46 pushed at its close (after user caught the "Phases 4b + 5 unstarted" error) is itself the single source of truth I needed — the handoff documents its own correction. (4) "Issue #16 remains OPEN" + "Commit-trailer auto-close only fires on merge to main" was the two-sentence explanation that made my close action necessary and unambiguous.
+- **What was missing:** Two nits. (a) Session 46's "22 ctest entries" count is wrong — it's 21 (18 decoder + 1 C++ `test_qt_helpers` + 2 pFUnit Fortran = 21, not 22). Session 46 may have been counting the 2 smoke tests under both "decoder" and "smoke" labels, or miscounted the pFUnit side. I recounted independently and used 21 in the close comment. Minor — the handoff narrative was still correct, just the arithmetic summary was off by one. (b) Session 46 listed "Suggested close-comment: summary of the 6-phase landing with commit hashes and a link to the final Session 46 Phase 3d commit" but did not draft the comment. If Session 46 had pre-written a 5-7 line close-comment sketch, I would've had a starting point. I drafted it fresh (~45 lines). Not a defect — pre-drafting would've been over-reach — but a time-saver.
+- **What was wrong:** The "22" count. Corrected to 21 this session.
+- **ROI:** Extremely high. Session 46 left me a fully-audited 6-phase map. Without it, I'd have spent ~15 min in `git log`/`gh api` rebuilding the map. With it, the session was ~30 min: grep, draft, post, verify, close out. Compound handoff interest Session 42 → 43 → 44 → 45 → 46 → 47, six sessions on this workstream with zero scope drift.
+
+**What happened:**
+1. Oriented from project directory. SAFEGUARDS (full read) + SESSION_RUNNER (full read) + SESSION_NOTES top 200 + `git log` + `git status` + `gh issue list --repo KJ5HST-LABS/wsjtx-internal` + dashboard. Portfolio-cd reflex — the `python3 methodology_dashboard.py` invocation attempted from the portfolio dir was BLOCKED by the pre-commit hook (correctly); retried with absolute path. 37th session. Reflex is still alive but now caught by tooling, which is the right backstop. `gh --repo` reflex did NOT fire (used `--repo KJ5HST-LABS/wsjtx-internal` on first call).
+2. Reported state. User: "close 16."
+3. Wrote Session 47 claim stub to SESSION_NOTES.md (26TH consecutive session). Minor glitch: first Edit duplicated the "What Session 46 Did" header; caught and corrected in a second Edit.
+4. **Applied Session 46 Gotcha #7 BEFORE crafting the close comment.** `grep -n "implementation (landed)" CTEST_PFUNIT_INTEGRATION_PLAN.md` → 5 hits at lines 258/302/341/391/427 (Phases 3, 4a, 4b, 5, 6). Confirmed each block contains concrete commit hashes. Then `git log --grep` for Phases 1 and 2 (which predate the landed-block convention) — Phase 1 = commits `43ec99251` + `6b6e7acdf` (Session 31), Phase 2 = `6e6349d3d` (Session 32).
+5. Drafted the close comment to `/tmp/issue16_close_comment.md` (45 lines, markdown with code fences). Writing to file first makes the content re-usable if `gh issue close` fails, and sidesteps shell-escaping fragility.
+6. Fetched `gh issue view 16 --json state,title,body` to confirm the issue was still OPEN and to align my comment's phase mapping against the issue body's 6-item scope list. Mapping check: issue scope items 1-6 map 1:1 to plan doc Phases 1-6. No rework needed.
+7. **Recounted ctest entries independently** rather than trust Session 46's "22" figure. Came out to 21 (18 decoder + 3 others). Used 21 in the close comment. Decision: do not write a correction note to Session 46's handoff — the "22" was a private count, not a user-facing claim.
+8. Closed the issue: `gh issue close 16 --repo KJ5HST-LABS/wsjtx-internal --comment "$(cat /tmp/issue16_close_comment.md)"`. Success: "✓ Closed issue KJ5HST-LABS/wsjtx-internal#16".
+9. Verified closure: `gh issue view 16 --json state,closedAt,url` → `state: CLOSED`, `closedAt: 2026-04-17T18:40:47Z`, `url: https://github.com/KJ5HST-LABS/wsjtx-internal/issues/16`.
+10. Close-out in progress.
+
+**Proof:**
+- Issue #16 state: CLOSED on KJ5HST-LABS/wsjtx-internal at 2026-04-17T18:40:47Z. Verify: `gh issue view 16 --repo KJ5HST-LABS/wsjtx-internal --json state,closedAt`.
+- Close comment on file at `/tmp/issue16_close_comment.md` (persists until reboot). Session 48 can re-fetch via `gh issue view 16 --repo KJ5HST-LABS/wsjtx-internal --comments` if needed.
+- No commits this session. `git status` still clean (untracked-only, unchanged from orient). `git log origin/develop..HEAD` empty.
+- Plan doc landed-block grep: 5 hits at `CTEST_PFUNIT_INTEGRATION_PLAN.md:258,302,341,391,427`. `grep -n "implementation (landed)" docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md`.
+- Final ctest count as stated in close comment: 21 per platform × 4 platforms. Breakdown: 2 decoder smoke + 16 Franke = 18 decoder + 1 C++ `test_qt_helpers` + 2 pFUnit Fortran = 21.
+
+**What's next (Session 48 priorities):**
+
+1. **Issue #1 audit** — "Phase 2-3: GitHub templates, guards, and macOS CI/CD." Likely mostly superseded by #16's Phase 1-2 landings (ctest + decoder smoke tests cover the "macOS CI" gap). Read the issue body + compare against current `.github/workflows/*.yml` + `.github/ISSUE_TEMPLATE/` + pre-commit hooks. If the scope is done, close with a comment similar to #16's summary. If there are residual gaps, open follow-up issues or close with "superseded by #16."
+
+2. **#3 — v3.0.0 GA rebuild path.** (D) audit current build state → (C) hygiene sweep → (A) plan. Unchanged from prior sessions. Likely a multi-session workstream; start with the audit.
+
+3. **#2 — Linux ARM64 build + upstream patches.** Scoped inside a re-scoped #2 — confirm the scope before starting.
+
+4. **MAP65 GCC 15 real fix** — upstream debt.
+
+5. **Hygiene sweep (small docs commit opportunity):**
+   - `PHASE_3_TESTING_PLAN.md` still says "17 cases" in several places; reality is 16. Banner at top pointing to master plan would resolve.
+   - Plan-doc `+` notation clarification (Session 44 gotcha #4).
+   - `docs/contributor/email/Steves tests.eml` — redundant since Phase 3d vendored the corpus. Options: (a) add under `docs/contributor/email/` with a README calling it upstream provenance; (b) leave untracked; (c) delete.
+   - `ci.yml:14,21,28,34,41` version `"3.0.0"` — CORRECT for GA.
+   - `actions/checkout@v4` → `v5` deadline 2026-09-16.
+   - `/releases/latest` gating for `hamlib-upstream-check.yml`.
+   - `release.yml:13` stale "three platform artifacts cannot disagree" comment.
+   - Residual "three platform" strings in `MIGRATION_PLAN.md:275` and `drafts/email_cicd_proposal.md:5,11`.
+   - `docs/contributor/2_DEVELOPMENT_WORKFLOW.md:184,307,335,478,504-505,711-714` — "supported" vs "minimum baseline" phrasing.
+   - `macos-15-intel` sunset: Fall 2027.
+   - Email thread report-back — **37 sessions pending.**
+   - Untracked files (`.p12`, `.DS_Store`, `OUTREACH.md`, `.claude/`, `jt9_wisdom.dat`, `timer.out`, `Steves tests.eml`) — 37 sessions.
+   - Hamlib version duplicated across 12 locations + FFTW3-threads comment duplicated.
+   - Node.js 20 deprecation warning — Node 24 forced 2026-06-02; Node 20 removed 2026-09-16.
+
+**Key files (for Session 48):**
+- `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md` — full plan doc for #16, all 6 phases marked landed. Historical reference; do not edit further.
+- `tests/decoders/franke/README.md` — 79 lines, the canonical "how to update the Franke catalog" reference.
+- `/tmp/issue16_close_comment.md` — this session's close comment (may not survive reboot).
+- Issue bodies in `gh issue view 1 --repo KJ5HST-LABS/wsjtx-internal` and `gh issue view 3 --repo KJ5HST-LABS/wsjtx-internal` — scope baseline for the next two candidate workstreams.
+- Open issue list: `gh issue list --repo KJ5HST-LABS/wsjtx-internal` → #1 (templates/guards/macOS CI), #2 (Linux ARM64), #3 (v3.0.0 GA rebuild).
+
+**Gotchas for Session 48:**
+
+- **#1 — Standing gotcha: verify before trusting inherited counts.** Session 46's handoff said "22 ctest entries"; Session 47 recount said 21. Not a defect in 46 — a private counting choice — but when Session 47 was about to write a public-facing close comment with the number in it, the right move was "don't trust; recount." The same principle applies whenever a handoff cites a number that will appear in a public artifact (issue comment, commit message, PR description, release note).
+
+- **#2 — `gh issue close --comment` accepts shell command substitution from a file.** `gh issue close N --repo ORG/REPO --comment "$(cat /path/to/file.md)"` works cleanly on multi-line markdown with backticks, bold, and lists. No escaping dance. Confirmed this session.
+
+- **#3 — Commit-trailer auto-close fires only on MERGE to main**, not push to develop. If a future issue is supposed to auto-close via a `(#N)` trailer, manual `gh issue close` is still required until main-merge is part of the workflow. (Standing gotcha from Session 46.)
+
+- **#4 — Plan-wide status claims require a full grep, not memory.** Before stating "Phase N is landed/unstarted," run `grep -n "implementation (landed)" <plan-doc>`. Takes <10s; saves a whole session of misdirected work. (Session 46 Gotcha #7; applied cleanly this session.)
+
+- **#5 — Portfolio-cd reflex now blocked by pre-commit hook.** `cd /Users/terrell/Documents/code` followed by a script invocation triggers a hook deny with guidance to use absolute paths. This is the correct backstop — the hook catches the reflex when the agent's own discipline misses. Continue using absolute paths (`python3 /Users/terrell/Documents/code/methodology_dashboard.py`).
+
+- **#6 — SESSION_NOTES.md Edit discipline.** This session's first `Edit` duplicated the "What Session 46 Did" header because the replacement string embedded a "### What Session 46 Did" line while the original file still had one. Lesson: when restructuring the ACTIVE TASK section, re-read the first ~25 lines AFTER the edit to verify structure, not just that the target block changed. Caught and fixed in one follow-up Edit — no data loss.
+
+- **Standing gotchas from Session 46 (unchanged):**
+  - **Dashboard path reflex** — 37th session. Blocked by hook this session.
+  - **`gh` defaults to upstream `wsjtx/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. Did NOT fire this session.
+  - **SESSION_NOTES.md is now ~600KB.** Use `Read` with `limit=200` or specific offset.
+  - **Push to develop re-auth pattern.** Did not apply this session (no pushes).
+
+**Self-assessment:**
+- (+) **Session 46 Gotcha #7 applied before any user-facing claim.** Grepped the plan doc for "implementation (landed)" before drafting the close comment. 5 hits, exact match to predecessor's inventory. Zero risk of Session 46's failure mode #11 repeating in the close comment.
+- (+) **Session claim stub before technical work.** 26th consecutive session.
+- (+) **File-based comment draft.** Wrote the close comment to `/tmp/issue16_close_comment.md` first, then invoked `gh issue close --comment "$(cat ...)"`. Idempotent + markdown-safe + re-usable on failure.
+- (+) **Independent recount of inherited figures.** Session 46's "22 ctest entries" → Session 47 recount → 21. Used 21 in the public close comment. "Trust but verify" applied to a predecessor's arithmetic.
+- (+) **Persona-correct.** 37th session. No rad-con / consumer / AI references. Close comment is pure Contributor voice: GPL-safe language, upstream-safe references, no commercial framing.
+- (+) **Scope discipline.** User said "close 16." One action: close Issue #16 with a summary comment. No scope creep into "while I'm at it, let me also look at #1 or hygiene items." Exactly one deliverable.
+- (+) **Verified closure via `gh issue view`.** Don't trust the CLI's "✓ Closed" message alone; fetch `state,closedAt` separately.
+- (+) **Question-as-instruction discipline unused (n/a).** User's message was an explicit imperative ("close 16"), not a question.
+- (+) **Authorization scope honored.** User said "close 16" — one specific shared-state action. Did not expand to "also close #1 and #3" or "post the close comment to the email thread" or "announce to K1JT."
+- (-) **SESSION_NOTES.md Edit duplicated a header on the first pass.** Fixed in a second Edit. Minor — no data loss, no user impact — but the root cause was editing an existing "What Session N Did" pattern without re-reading the surrounding context. Documented as Gotcha #6 for Session 48.
+- (-) **Did not verify that `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md` itself should have its top-of-file Status field updated from "DRAFT" to something like "COMPLETE" or "LANDED."** The doc header at line 5 still says "DRAFT — evidence-verified, ready for per-phase implementation." Now that all 6 phases are landed, that status is stale. Deferred to Session 48 as a hygiene item.
+
+**Score: 9/10.** Clean deliverable, disciplined protocol (stub → grep → draft → verify → close → verify close → close-out). -1 for the SESSION_NOTES.md Edit duplication on first pass (caught and fixed immediately, but a protocol-erosion warning sign per the runner's "edit from memory" rule — I should have re-read the block before editing, not during). No user-facing defects.
+
+---
 
 ### What Session 46 Did
 **Deliverable:** Three code/docs commits landed on `origin/develop` and two CI cycles verified green on all four platforms (linux, macos, macos-intel, windows). (1) Push of Phase 3c commits `275194084` + `b2b873c60` ran CI `24577382960` which failed on `decoder_jt65b_avg_odd` on all four platforms — expected-token drift (Steve's v3.0.1 baseline produced 2 of 6 averaged frames with `CQ K1ABC FN42` via AP hint; current develop-head produces only `#*` placeholders). (2) Fix-forward commit `8ca83974c` removed the flaky test; CI `24578087505` green — final catalog is 16 franke + 2 smoke = 18 decoder tests (18 tests total on top of 4 pfUnit/C++ = 22 ctest entries). (3) Phase 3d commit `ece547850` vendored `tests/decoders/franke/reference/{decoder_tests.bash,decoder_test_results_v3.0.1.txt}`, added `tests/decoders/franke/README.md` (79 lines documenting the corpus, the script-to-catalog translation, and the case-count reconciliation: 16 cases registered vs 31 script invocations), removed the attribution-request draft (user: "Steve does not need attribution"), and updated `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md` §Phase 3 with a "Phase 3 implementation (landed)" block listing commits for sub-phases 3a-3d plus the fix-forward. CI `24579224586` green. **Phase 3 of the ctest+pfUnit integration plan is closed — and with it, the ENTIRE ctest+pfUnit integration.** Caught by user-directed audit after the close-out verbal summary: the plan doc has "landed" blocks for Phases 3, 4a, 4b, 5, and 6 (`CTEST_PFUNIT_INTEGRATION_PLAN.md:258,302,341,391,427`). Phases 1 and 2 predate the landed-block convention but have been in CI since Session 32 (`6e6349d3d`). Phase 4b is landed on Windows MSYS2 with commits `27bc7c22f`/`e060b96f3`/`6d49a0ed8` (CI run `24542002741`); Phase 5 registers Fortran `.pf` tests via pfUnit (line 391 landed block). All six phases are complete — Issue #16's full scope is done. Session 47's first action should be to close Issue #16.
