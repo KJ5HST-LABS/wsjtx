@@ -308,9 +308,9 @@ CI/CD serves two purposes: **quality gates** (does it compile?) and **release au
 - On macOS: the binary is correctly signed and notarized
 - On Windows: executables are signed with Authenticode
 - Build artifacts are uploaded for inspection
+- **Tests pass on every platform** (Qt helpers, decoder smoke tests, pFUnit Fortran unit tests — registered via ctest). See [Test Failure Policy](#test-failure-policy) below.
 
 **What CI does NOT check (yet):**
-- Tests (minimal test infrastructure exists; this will improve as pFUnit and other testing is adopted)
 - Code style or linting
 - Documentation generation
 
@@ -338,6 +338,22 @@ CI runs on GitHub-hosted runners:
 **Free tier:** GitHub provides 2,000 free Actions minutes/month for private repos (with multipliers applied). A single CI run across all four platforms uses roughly 40 minutes of real time but ~110 minutes of billed time due to the macOS 10x multiplier (applied to both macOS jobs).
 
 **Caching:** Hamlib builds and MSYS2 packages are cached to reduce build times. First-run builds are slower; subsequent builds use the cache.
+
+### Test Failure Policy
+
+Tests run via ctest at the end of each platform's build job, after compilation succeeds. The policy is **hard-fail everywhere**:
+
+- Any test failure fails the platform's build job
+- A failed build job fails the entire CI run (red X on the PR or push)
+- A failed build job also blocks `release.yml` — the release job in `release.yml` declares `needs: [..., macos, macos-intel, linux, windows]`, so a tag-triggered release cannot publish unless every platform's tests pass
+
+This is the simplest possible policy for v1. If a flaky test emerges, the team can add `continue-on-error: true` to the offending test's platform as a targeted soft-warn, file an issue to triage the flake, and remove the exception once fixed. No blanket soft-warn policy on `develop`.
+
+**Where to see results:**
+
+- **GitHub Actions step summary** — each build job posts a `## Test Results — <platform> — PASS/FAIL` table with per-test status and timing. Viewable on the job summary page without downloading logs.
+- **Job log** — `ctest --output-on-failure` prints the full decoder/test output for any failing test directly into the job log.
+- **Uploaded artifact** — each build job uploads `ctest-results-<platform>.xml` (JUnit-format XML) as a run artifact. Download via `gh run download <RUN_ID> --name ctest-results-<platform>` or via the Actions UI. Useful for programmatic parsing or post-mortem.
 
 ---
 

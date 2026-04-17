@@ -414,6 +414,40 @@ ctest --output-on-failure -R "pfunit_"
 
 **Session boundary:** This phase is one session. Close out when done.
 
+#### Phase 6 implementation (landed)
+
+**Session 36** implemented Phase 6 across the three build workflows plus a shared summary script:
+
+- **Shared parser:** `.github/scripts/publish-ctest-summary.py` — stdlib-only Python 3 script that reads `ctest-results.xml` (JUnit format) and writes a markdown table to stdout. Callers redirect to `$GITHUB_STEP_SUMMARY`. Handles missing-file and malformed-XML cases with a legible notice rather than a hard fail, so the summary step is non-blocking (the ctest step is the fail gate). One file, called three times — avoids ~90 lines of duplicated inline Python.
+
+- **Three workflow edits** (`build-macos.yml`, `build-linux.yml`, `build-windows.yml`), same pattern:
+  - **Run tests** gains `id: ctest` + `--output-junit ctest-results.xml`.
+  - **Publish test summary** step: `if: always() && steps.ctest.conclusion != 'skipped'`, runs `python3 ../.github/scripts/publish-ctest-summary.py "<label>" >> "$GITHUB_STEP_SUMMARY"`. Relative path from `wsjtx-build` working directory — portable across platforms.
+  - **Upload test results** step: `if: always() && steps.ctest.conclusion != 'skipped'`, uploads `wsjtx-build/ctest-results.xml` as `ctest-results-<platform>` (macOS uses `ctest-results-macos-${{ inputs.arch }}` to disambiguate the ARM64/Intel matrix). `if-no-files-found: ignore` for safety.
+
+- **No changes to `ci.yml` or `release.yml`.** Release-blocking is automatic via existing `needs: [..., macos, macos-intel, linux, windows]` in `release.yml`'s `release` job — if any build job fails (including its ctest step), release never runs.
+
+- **Failure policy documented** in `docs/contributor/2_DEVELOPMENT_WORKFLOW.md` §5 under a new "Test Failure Policy" subsection. Policy: hard-fail everywhere for v1. If a flaky test emerges, add targeted `continue-on-error: true` on that platform; no blanket soft-warn on `develop`.
+
+**Design decisions:**
+
+- **Shared script over inline Python.** Three workflows × ~30 lines of parsing logic = 90 lines duplicated and hard to review. One file, three thin callers is easier to audit and keeps a single source of truth for the summary format.
+- **`if: always() && steps.ctest.conclusion != 'skipped'`** gate on the summary and upload steps. `always()` alone would try to run when the Build step itself failed (ctest skipped), producing a "no XML" summary that's noise. Explicit `!= 'skipped'` check suppresses that.
+- **Relative path `../.github/scripts/...`** from `working-directory: wsjtx-build`. Portable across the three workflows — no cygpath/GITHUB_WORKSPACE translation needed on Windows MSYS2.
+- **`python3`** as the invocation. On `windows-latest`, the hosted runner ships Python 3.13 with a `python3.exe` alias (alongside `python.exe`), and MSYS2's default shell inherits the Windows PATH, so `python3` resolves. If that assumption ever breaks, the fix is to add `mingw-w64-x86_64-python` to `setup-msys2`'s install list.
+- **Hard-fail policy, no `continue-on-error`.** Current `ctest --output-on-failure` already hard-fails on any test failure. No code change needed — the policy just documents existing behavior and removes the "tests not checked" language from §5.
+- **No emojis in summary.** Plain-text `PASS` / `FAIL` / `ERROR` / `SKIP` markers. Readable in raw text and rendered markdown.
+
+**Verification:**
+
+- Local validation before commit: regenerated `ctest-results.xml` in `/tmp/phase5-intree2/build` (pass case — 2 pFUnit tests green), then temporarily broke an assertion to generate a real failure XML, confirmed parser output on both, then restored the test. All three paths (success, failure, missing-file) produce the expected summary.
+- CI validation: first-push CI run after Phase 6 commit. All four platforms should produce `## Test Results — <platform> — PASS` summaries with a 5-row table (`pfunit_chkcall`, `pfunit_grid2deg`, `test_qt_helpers`, `decoder_ft8_smoke`, `decoder_wspr_smoke`), plus four `ctest-results-*` artifacts attached to the run.
+
+**Known follow-ups (out of scope for Phase 6):**
+
+- Phase 3 still blocked on Steve Franke's decoder script acquisition.
+- If a platform's `python3` invocation fails on Windows MSYS2, add `mingw-w64-x86_64-python` to the setup-msys2 install list (~20MB, one-time cache invalidation).
+
 ---
 
 ## Summary Table
