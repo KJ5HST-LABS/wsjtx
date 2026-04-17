@@ -90,10 +90,10 @@ jobs:
 
           Update \`hamlib_branch\` in:
 
-          - \`.github/workflows/ci.yml\` (three jobs)
-          - \`.github/workflows/release.yml\` (three jobs)
+          - \`.github/workflows/ci.yml\` (four jobs)
+          - \`.github/workflows/release.yml\` (four jobs)
 
-          Open a PR against \`develop\`, let CI run on all three platforms, then merge.
+          Open a PR against \`develop\`, let CI run on all four platforms, then merge.
 
           ## Notes
 

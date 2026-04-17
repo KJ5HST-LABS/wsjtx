@@ -1,0 +1,49 @@
+name: Bug report
+description: Report a bug in the wsjtx-arm build, installer, or runtime behavior
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+      description: A clear, concrete description of the bug.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: Exact commands, actions, or sequence that produces the bug.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What you expected to happen instead.
+    validations:
+      required: true
+  - type: input
+    id: wsjtx-version
+    attributes:
+      label: WSJT-X version
+      description: "e.g. 3.0.0 — visible in Help → About or on the .pkg installer filename."
+    validations:
+      required: true
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      description: "e.g. macOS 15.3.1 (24D70) — required for macOS-specific bugs."
+  - type: input
+    id: hardware
+    attributes:
+      label: Hardware
+      description: "e.g. MacBook Pro M1 Pro, 16 GB — required for Apple Silicon bugs."
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or screenshots
+      description: Console output, error messages, or screenshots. Drag files in to attach.
+      render: shell

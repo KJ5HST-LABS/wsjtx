@@ -84,7 +84,7 @@ No other samples are affected.
 
 ### Expected-token extraction methodology
 
-For each of the 17 cases, pick 2–3 highest-SNR decodes from the known-good baseline as expected tokens. Strong decodes (SNR > 0) generally don't regress with decoder tweaks; weak decodes (SNR < -20) can drift noisily. Any-of matching against 2–3 strong decodes gives robust regression signal without false alarms.
+For each of the 16 cases, pick 2–3 highest-SNR decodes from the known-good baseline as expected tokens. Strong decodes (SNR > 0) generally don't regress with decoder tweaks; weak decodes (SNR < -20) can drift noisily. Any-of matching against 2–3 strong decodes gives robust regression signal without false alarms.
 
 For the FT8 MT decoder case, expected tokens should **overlap** with the FT8 standard decoder's tokens — the two decoders should agree on strong decodes. This gives a cross-decoder consistency property at no extra cost.
 
@@ -172,7 +172,7 @@ Each phase is one session with an explicit STOP point. Do not bundle across sess
 
 ### Phase 3c — Populate test catalog
 
-**Deliverable:** All 17 cases from Steve's script mapped to `add_decoder_test()` entries in `tests/decoders/CMakeLists.txt`. Each entry carries a `PROVENANCE` comment and 2–3 expected tokens drawn from the known-good baseline. `add_decoder_test()` helper macro lands in the same commit.
+**Deliverable:** All 16 cases from Steve's script mapped to `add_decoder_test()` entries in `tests/decoders/CMakeLists.txt`. Each entry carries a `PROVENANCE` comment and 2–3 expected tokens drawn from the known-good baseline. `add_decoder_test()` helper macro lands in the same commit.
 
 **Verification:**
 - `ctest -L franke --output-on-failure` green locally.

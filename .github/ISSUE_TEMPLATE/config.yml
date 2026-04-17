@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: WSJT-X mailing list (upstream)
+    url: https://sourceforge.net/p/wsjt/mailman/
+    about: Questions about upstream WSJT-X behavior, digital-mode protocols, or general amateur-radio usage belong on the upstream mailing list, not in this repo.

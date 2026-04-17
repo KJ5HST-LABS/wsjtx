@@ -272,7 +272,7 @@ Do not touch the org repos. Prepare locally.
 
 ### Phase 5: Release Automation (June 2026)
 
-**Requires:** All three platforms building. Code signing decision made.
+**Requires:** All four platforms building. Code signing decision made.
 
 | Task | Workstream |
 |------|------------|

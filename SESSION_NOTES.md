@@ -1,11 +1,109 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Session 49 — Consolidated audit/report: dashboard-fix verification, Issues #1/#2/#3 audits, hygiene inventory, memory trim, email report-back status.
+**Task:** Session 50 — Bundle execution: push `v3.0.0` tag (Issue #3), split Issue #1 + execute #1-A (templates + branch protection), hygiene bundle, draft `WSJT_SKIP_MAP65` upstream PR (Issue #2 sub-item).
 **Status:** COMPLETE
-**Session:** 49 complete
+**Session:** 50 complete
 **Started:** 2026-04-17
 **Persona:** Contributor
+
+### What Session 50 Did
+**Deliverable:** Multi-item bundle (user-authorized).
+(1) **Issue #3:** preflight green (tag commit `ab976b1b4` exactly matches `upstream/refs/tags/v3.0.0`; all 8 signing secrets present at org level with `ALL`/`PRIVATE` visibility, `release.yml` uses `secrets: inherit`). Pushed `v3.0.0` to origin. **Workflow did NOT trigger.** Root-caused: `git ls-tree v3.0.0 .github/workflows/` is empty — tagged commit is pristine upstream with no CI/CD. GitHub resolves workflows from the tagged commit, not the default branch. Blocker documented on Issue #3 (comment `#4271028656`) with three resolution options and a recommendation (Option 3: tag pattern `build/v*` on develop side, keep `v3.0.0` pristine). Tag remains on origin as a harmless git ref.
+(2) **Issue #1 split:** closed #1 as `completed` with evidence-backed summary comment (Phase 3 LANDED, Phase 2 MISSING, Stage-2 Hamlib + hardware testing deferred). Opened **#21 — GitHub templates and branch protection** with tight scope + acceptance criteria.
+(3) **#21 executed:** created `.github/ISSUE_TEMPLATE/{bug,feature,config}.yml` + `.github/pull_request_template.md`. Enabled branch protection on `develop` via `gh api -X PUT`: 4 required checks (`macos / build`, `macos-intel / build`, `linux / build`, `windows / build`), `strict: true`, `enforce_admins: false`, `required_pull_request_reviews: null`, `allow_force_pushes: false`, `allow_deletions: false`.
+(4) **Hygiene bundle** applied to 5 of 7 audit-listed items (6 edits, 5 files). **SKIPPED** README:86 and package_description.txt:79 — both in `upstream/master` tree; editing would cause merge conflicts at next upstream import (Session 49 audit missed provenance).
+(5) **`WSJT_SKIP_MAP65` upstream PR drafted** to `docs/contributor/drafts/upstream-pr-wsjt-skip-map65.md`. 4-line diff extracted from internal commit `887194c16`, PR body + exact diff + step-list saved. Fork/push/open explicitly NOT executed — shared-state, external-org, requires explicit authorization.
+
+**Started:** 2026-04-17
+**Persona:** Contributor
+
+**Session 49 Handoff Evaluation (by Session 50):**
+- **Score: 6/10.** (Session 49 self-scored 8/10. I'm scoring lower for two specific structural misses.) The priority ranking (1-6 with effort estimates) made the bundle directly actionable — no re-derivation needed. Evidence-per-claim discipline held up under cross-reference. But two items in the audit caused real friction this session.
+- **What helped:** (1) The "recommended next sessions" table was the single most useful artifact — Session 50 executed items 1-5 in priority order from it. (2) Every factual claim was backed by a file:line, gh API output, or git commit ref. I could act on bullets without re-verifying. (3) Gotcha #4 ("verify tag's commit matches the intended source before pushing") primed me to run the tag preflight, which caught that the tag matched upstream — even though that match was verifying the wrong thing.
+- **What was missing / wrong:**
+  - **Issue #3 preflight was wrong at the structural level.** Session 49 recommended pushing `v3.0.0` as "~1 hour + CI." The push triggered NO workflow because the tagged commit has no `.github/workflows/` tree. Session 49's audit cross-checked tag-commit vs upstream (they match) but missed the separate question: does the tagged commit contain our CI/CD? Session 49 self-flagged "did not cross-check v3.0.0 tag's commit against upstream GA source" as a miss; the deeper miss is that cross-checking upstream-match wouldn't have caught this at all. The real preflight is `git ls-tree <tag> .github/workflows/`.
+  - **Hygiene list included upstream-sourced files.** `README:86` and `package_description.txt:79` are both in `upstream/master` (`git cat-file -e upstream/master:README` → yes). Editing them would cause merge conflicts at the next upstream import. Neither Session 49 nor any of the ~10 handoff-carry sessions spot-checked provenance before listing them.
+  - **"Three platform" → "four platform" in plan docs is borderline.** `MIGRATION_PLAN.md:275` is a past-tense planning-doc requirement ("Phase 5 (June 2026) Requires: All three platforms building"). Updating historical plan counts is a judgment call. I followed the audit (went to four) but flag this for future hygiene: plan docs can be let-drift.
+- **ROI:** Items 2-5 (split #1, execute #21, hygiene, WSJT_SKIP_MAP65 draft) paid off cleanly on Session 49's evidence base — ~1 hour of focused work instead of 3+ hours of re-discovery. Item 1 (Issue #3) cost the session a wrong tag push (harmless on remote but visible), partially offset by the clean diagnosis.
+
+**What happened:**
+1. Oriented per SESSION_RUNNER Phase 0. SAFEGUARDS (full) + SESSION_RUNNER (full) + SESSION_NOTES top 200 lines + git status + git log + project-local dashboard + `gh issue list --repo KJ5HST-LABS/wsjtx-internal`. No reflex fired — **second session in a row** the Session 48 fix held passively.
+2. User bundled 5 items (deferring email draft). Stated intent to stop before the tag push and before the upstream PR. User agreed.
+3. Claimed Session 50 stub. Re-read top 25 lines per Session 49 Gotcha #2 — no header duplication.
+4. **Issue #3 preflight.** Verified tag commit match (`ab976b1b4 == refs/tags/v3.0.0` upstream). Verified signing secrets at org level via `gh secret list --org KJ5HST-LABS`. Reported GREEN to user; got explicit authorization.
+5. **Pushed `v3.0.0` to origin.** Push succeeded; workflow did NOT trigger. Diagnosed: `gh api .../actions/runs?branch=v3.0.0` → `total_count: 0`; `gh workflow list` → no "Release"; `git ls-tree v3.0.0 .github/workflows/` → empty. Three-option resolution surface reported to user.
+6. User: "I agree." Deferred Issue #3 execution.
+7. **Issue #1 split.** Read issue body. Wrote close-comment mapping Phase 3 scope to evidence (file:line for signing + notarization + runner config; run IDs 24579224586 / 24580078804 / 24580704026 for four-platform green). Closed #1. Opened #21 with deliverables + acceptance. Patched close-comment to reference actual number #21 (not conceptual "#1-A").
+8. **Executed #21.** Wrote 4 template files. Queried recent run jobs API for actual status-check names (`macos / build`, etc.) Enabled branch protection via `gh api -X PUT` with JSON body. Response confirmed 4 required contexts + strict + enforce_admins=false.
+9. **Hygiene bundle.** Re-greped excluding SESSION_NOTES.md. Checked upstream provenance on README + package_description.txt → both in upstream → SKIPPED with explicit flag to user. Applied 6 edits across 5 files. `git diff --stat` at `6 files, 18+, 11-` (plus new untracked template files).
+10. **WSJT_SKIP_MAP65 draft.** Inspected `887194c16`. Confirmed no fork of `WSJTX/wsjtx` exists under KJ5HST or KJ5HST-LABS. Saved full PR body + exact diff + upstream-contribution step-list to `docs/contributor/drafts/upstream-pr-wsjt-skip-map65.md`. Stopped short of fork/push/open.
+11. Commented on Issue #3 with full blocker writeup + 3 resolution options.
+12. Close-out. Wrote evaluation + handoff + self-assessment. Committed + pushed. Closed #21 with commit-hash reference.
+
+**Proof:**
+- Tag on remote: `git push origin v3.0.0` → `[new tag] v3.0.0 -> v3.0.0`. No workflow run created.
+- `gh issue view 1 --repo KJ5HST-LABS/wsjtx-internal` → CLOSED with comment `#4270977637`.
+- `gh issue view 21` → opened this session; will close after commit push.
+- `gh api .../branches/develop/protection` → 4 contexts, strict=true, enforce_admins=false, allow_force_pushes=false.
+- `gh issue view 3` → comment `#4271028656` with blocker writeup.
+- New files: `.github/ISSUE_TEMPLATE/{bug,feature,config}.yml`, `.github/pull_request_template.md`, `docs/contributor/drafts/upstream-pr-wsjt-skip-map65.md`.
+- Modified files: `.github/workflows/release.yml`, `hamlib-upstream-check.yml`; `docs/contributor/{CTEST_PFUNIT_INTEGRATION_PLAN,MIGRATION_PLAN,PHASE_3_TESTING_PLAN}.md`; `SESSION_NOTES.md`.
+
+**What's next (Session 51 priorities):**
+
+1. **Issue #3 resolution decision** (HIGH). Three options on Issue #3 comment; recommended Option 3 (tag pattern `build/v*` on develop side, keep `v3.0.0` pristine). Option 3 execution is one session: update `release.yml:4-5` trigger, create first `build/v3.0.0` tag on an appropriate develop integration commit, verify pipeline fires, close #3 with release URL.
+
+2. **`WSJT_SKIP_MAP65` upstream PR execution.** Draft at `docs/contributor/drafts/upstream-pr-wsjt-skip-map65.md`. Steps: (a) confirm fork host with user, (b) `gh repo fork WSJTX/wsjtx`, (c) branch + apply 4-line patch + DCO sign-off, (d) push to fork, (e) `gh pr create --repo WSJTX/wsjtx --base master`.
+
+3. **Issue #2 remaining sub-items.** Once `WSJT_SKIP_MAP65` establishes the upstream workflow, repeat for `OMNIRIG_TYPE_LIB` fallback (commit `801bf1fe5`) and Hamlib INSTALL bump (commit `ff637fec6`). `FindFFTW3.cmake` reformulation is last (higher risk, needs upstream-friendly reformulation). Linux ARM64 build is a separate multi-session workstream.
+
+4. **Untracked files sweep.** Standing since Session 38+. `.DS_Store`, `.p12` (NEVER commit), `OUTREACH.md`, `.claude/`, `jt9_wisdom.dat`, `timer.out`, `Steves tests.eml`. Either `.gitignore` additions or explicit commit decision (case-by-case).
+
+5. **Email report-back** — deferred again per user direction.
+
+**Key files (for Session 51):**
+- `docs/contributor/drafts/upstream-pr-wsjt-skip-map65.md` — full PR draft. **Read first** for the upstream PR task.
+- `.github/workflows/release.yml:4-5` — tag trigger. If Issue #3 Option 3: change `["v*"]` → `["build/v*"]`.
+- `.github/workflows/ci.yml` — job names that feed branch protection context names. Any rename requires updating protection JSON.
+- Issue `#3` comment `#4271028656` — blocker writeup + 3-option decision surface.
+- `gh api repos/KJ5HST-LABS/wsjtx-internal/branches/develop/protection` — live policy.
+- Upstream: `git@github.com:WSJTX/wsjtx.git`, default branch `master`.
+
+**Gotchas for Session 51:**
+
+- **#1 — Tag push does NOT imply workflow trigger.** GitHub resolves workflows from the tagged commit's tree. Before pushing any future release tag: `git ls-tree <tag> .github/workflows/` — if empty or missing `release.yml`, push is a no-op. Applies to Session 50's `v3.0.0` (harmless on remote) and every future `v*` tag that lands on pristine upstream.
+
+- **#2 — `develop` is protected.** Admin push bypasses (`enforce_admins: false`). `allow_force_pushes: false` blocks force-push even for admins. Close-out commit push goes through cleanly as admin; `git push --force origin develop` will fail.
+
+- **#3 — Upstream files must not be edited for downstream concerns.** Check with `git cat-file -e upstream/master:<path>` before listing any file as actionable. If it exists → SKIP or plan explicit upstream PR. Session 49's audit included README + package_description.txt; Session 50 rejected them. Structural antidote to Failure Mode #21 (greenfield assumption) inverted.
+
+- **#4 — Branch-protection required-check names are GitHub status-API names.** For reusable workflows: `<caller-job> / <inner-job>` — e.g., `macos / build`. If `ci.yml` renames jobs, protection must be updated via `gh api PUT`.
+
+- **#5 — SESSION_NOTES.md is now ~630KB.** Read with `limit=200` or specific offsets.
+
+- **#6 — Dashboard-fix held (2 sessions running).** Session 48 structural fix holds on passive orient. If the reflex fires in Session 51, that's new information — investigate, don't assume "normal."
+
+- **#7 — Standing from Session 49 (carry forward):** `gh` defaults to upstream — always `--repo KJ5HST-LABS/wsjtx-internal`. Commit-trailer auto-close fires on merge-to-main only; develop pushes don't close issues (use `gh issue close`).
+
+- **#8 — Shared-state discipline held this session.** Tag push authorized; branch protection authorized; upstream PR deferred. Session 51's Issue #3 option execution (tag force-push or trigger-pattern change) and `WSJT_SKIP_MAP65` fork/push/PR all need the same explicit authorization.
+
+- **#9 — Bundled session tradeoff.** 5 sub-deliverables in one session means each got shallower close-out depth than a focused single-item session. If Session 51 finds gaps in any of the 5, dig into per-item evidence rather than re-tracing the bundle.
+
+**Self-assessment:**
+- (+) **Diagnosed Issue #3 blocker without compounding.** Push didn't trigger → ran diagnostics, found root cause (workflow tree in tagged commit), reported to user with 3 options, deferred. No retry-loop, no force-push attempt, no workflow-edit-then-retag. Recovery From Disaster §Step 1 ("Do not let the agent try to fix its own mess") discipline held. Finding captured on Issue #3 for institutional memory.
+- (+) **Caught Session 49 audit provenance error.** `git cat-file -e upstream/master:README` before editing. 5 seconds of verification that saved a merge-conflict future. Documented the check as Gotcha #3 so future sessions do it reflexively.
+- (+) **Shared-state scope discipline.** Tag push asked for explicit authorization; branch protection ASK granted by bundle authorization; upstream PR deferred for explicit auth. `WSJT_SKIP_MAP65` draft saved locally only.
+- (+) **Evidence-backed close-out comment on #1.** Mapped every scope item to file:line or run ID. Future reader knows exactly what landed vs deferred.
+- (+) **Branch protection JSON is complete.** Status-API names verified from actual green run's jobs API. `strict`, `enforce_admins`, `allow_force_pushes`, `allow_deletions` all set to the right values for this team size.
+- (+) **Session 49 Gotcha #2 held.** Re-read SESSION_NOTES.md lines 1-25 after first Edit to stub. No header duplication.
+- (-) **Bundle breadth vs. depth.** 5 sub-deliverables mean each got ~10-15 min of close-out depth rather than 45 min. If Session 51 finds a gap in hygiene (e.g., missed a `three platform` reference I should have caught) or in the #21 templates, it'll be resolvable but costs more than if they'd been separate sessions. Tradeoff accepted with user agreement, not a protocol violation.
+- (-) **Did not noop-test push path under new branch protection.** Configured protection, made edits, committed, pushed — all in sequence. If the push fails unexpectedly, recovery appears mid-close-out. A 9+ would test the push path (e.g., push a trivial branch first) before protection went live.
+- (-) **#21 close comment composed after push.** Correct timing (need commit hash) but means the closing act lives in close-out rather than in the #21-execution task proper.
+
+**Score: 7/10.** Bundle executed under user authorization. Strongest outcome: Issue #3 diagnosis closed a 40-session handoff loop that was wrong ("tag is ready to push"). Upstream-file provenance check is a genuine structural guard for future audits. Branch protection + templates landed clean. Deductions: bundle breadth vs. depth; didn't pre-test push path; minor close-out sequencing.
+
+---
 
 ### What Session 49 Did
 **Deliverable:** One consolidated audit document landed at `docs/contributor/drafts/SESSION_49_AUDIT.md` (7 sections, ~270 lines, evidence-verified) covering (1) dashboard-fix verification on clean orient — fix held, no reflex fired; (2) Issue #1 audit — templates/guards MISSING (no `.github/ISSUE_TEMPLATE/`, no PR template, `develop` not protected), macOS CI/CD Phase-3 LANDED with signing+notarization, Stage-2 Hamlib + Apple Silicon hardware test not started. Recommend split not close; (3) Issue #3 audit — v3.0.0 GA code path ready (`ci.yml:14,24,34,41` pins `3.0.0`), **but the `v3.0.0` tag exists locally and has NOT been pushed to the internal remote** — release pipeline never fired. `gh release list` shows only 3.0.0-rc1 + Latest Build from 2026-04-01. Issue #3 is ready to execute with a single tag push; (4) Issue #2 scope is sharp and unambiguous — 5 independent sub-items, recommend `WSJT_SKIP_MAP65` PR first as trivial entry; (5) hygiene inventory refreshed — Session 48's list confirmed + 3 newly-surfaced "three platform" residuals (`README:86`, `hamlib-upstream-check.yml:96`, `package_description.txt:79`), Node 20 deprecation is non-actionable (no pins anywhere in `.github/`); (6) **memory edit applied this session** to `feedback_orient_from_project.md` to reflect Session 48's structural fix; (7) email report-back audited only — first-round outreach already got a positive reply (`docs/contributor/email/Re_ CI_CD Success!`); content for next message needs user's voice and send-approval before action.

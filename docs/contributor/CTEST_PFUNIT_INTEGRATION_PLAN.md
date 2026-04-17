@@ -2,7 +2,7 @@
 
 **Issue:** KJ5HST-LABS/wsjtx-internal#16
 **Author:** Session 30
-**Status:** DRAFT — evidence-verified, ready for per-phase implementation
+**Status:** LANDED — all six phases merged, Issue #16 closed
 
 ---
 

@@ -10,7 +10,7 @@ jobs:
   # rather than "wsjtx-v3.0.1-rc1-*". RC/beta suffixes (e.g.
   # v3.0.1-rc1 → 3.0.1-rc1) are preserved so pre-release artifacts
   # are distinguishable from GA. All downstream jobs consume this
-  # single output so the three platform artifacts cannot disagree.
+  # single output so the four platform artifacts cannot disagree.
   prepare:
     runs-on: ubuntu-latest
     outputs:
