@@ -1,11 +1,115 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Session 40 — Audit + re-scope of issue #2. Audited #2 against current state: Linux x86_64 CI, Windows x86_64 CI, and release automation all landed; upstream patches never submitted. User clarified that the "four supported platforms" framing in `docs/contributor/2_DEVELOPMENT_WORKFLOW.md` is a MINIMUM, not a ceiling — Linux ARM64 was an original open item, not a descope. Issue #2 retitled to "Linux ARM64 build + upstream patches to WSJT-X" and body rewritten: completed bullets moved to reference section; open section enumerates (a) Linux ARM64 aarch64 build — prefer native `ubuntu-24.04-arm` runner over cross-compile, wire into `ci.yml` + `release.yml`, artifact `wsjtx-<version>-linux-aarch64`, and (b) four upstream PR candidates (FindFFTW3 threads `887194c16`, WSJT_SKIP_MAP65 `887194c16`, OMNIRIG_TYPE_LIB `801bf1fe5`, Hamlib INSTALL 4.7.1 `ff637fec6`). No code/workflow changes. Issue remains OPEN.
+**Task:** Session 41 — Reopened issue #16 for Phase 3 (`CTEST_PFUNIT_INTEGRATION_PLAN.md`). Steve Franke's decoder test script arrived by email on 2026-04-17 and landed at `docs/contributor/email/Steves tests.eml` (42KB). The script was the one explicit blocker on Phase 3; that blocker is now cleared. Reopen chosen over new-issue (against Session 36's close-comment recommendation) per maintainer direction — preserves thread continuity from Phases 1-6. Reopen comment enumerates Phase 3 execution items: extract from .eml, vendor to `tests/decoders/franke/`, wire `add_test()` per mode, MSYS2 bash on Windows, attribution/licensing check with Steve, `v3.0.1` baseline tag clarification. `gh issue reopen 16 --repo KJ5HST-LABS/wsjtx-internal --comment "..."`. State now OPEN (verified). No code changes, no workflow changes, no source commits to `develop` — only SESSION_NOTES.md update + commit.
 **Status:** COMPLETE
-**Session:** 40 complete
+**Session:** 41 complete
 **Started:** 2026-04-17
 **Persona:** Contributor
+
+### What Session 41 Did
+**Deliverable:** Shared-state reopen of issue #16 with Phase-3-scope comment. Verified via `gh issue view 16` (state=OPEN, comments=2). No code, no workflow, no plan-doc edits. COMPLETE.
+**Started:** 2026-04-17
+**Persona:** Contributor
+
+**Session 40 Handoff Evaluation (by Session 41):**
+- **Score: 9/10.** Session 40's "What's next" list for Session 41 put #1 audit at the top, but also carried **"Phase 3 of CTEST_PFUNIT_INTEGRATION_PLAN.md — blocked on Steve Franke decoder script"** as priority #6. The user picked that path — and the handoff's framing ("blocked on acquisition") was exactly the condition that had now been cleared. Clean routing: reading the handoff told me immediately what Phase 3 was and why it had been deferred. Gotchas carried forward verbatim (`gh --repo` flag, project-local dashboard reflex, SESSION_NOTES.md size) were all useful baseline. Deduction: Session 40's priority list suggested #1 audit first; my session ended up going to #6 per user direction — no blame, that's what priority lists are for (user chooses). What helped most: the **stale-body rule generalized from Sessions 37/38/39/40** — I applied it to #16 by re-reading the closing comment from Session 36, which explicitly said "open a fresh issue rather than reopen this one." User direction overrode that recommendation; I surfaced the conflict to the user before acting rather than silently reopening. Minor deduction for not having flagged in the handoff that "Phase 3 blocker is **acquisition of the script**, period — not also script integration or mode-coverage — so 'unblock' is a one-step event." I figured that out from the plan doc in ~2 min; a one-liner in the handoff would have saved me the lookup.
+- **What helped:** (1) Complete ordered priority list with blocker reasons — let user pick by number and gave me instant context. (2) `gh --repo` flag reminder at 30-sessions — caught by hook and by me before initial call this session (I used `--repo` on first try after orient). (3) SESSION_NOTES.md size reminder (~431KB) — used `limit=300` on first read, then targeted re-reads of small slices for handoff eval. (4) Precedent from Session 40 of "preview shared-state edits before execute" — preserved this session (previewed reopen comment, user said "do it"). (5) Hygiene tracker continuity — untracked files at 31 sessions, no action.
+- **What was missing:** A one-line restatement of what specifically blocked each deferred priority. E.g., "#6 Phase 3: blocked ONLY on script acquisition — unblocking is binary." Saved me a ~2-min plan-doc read.
+- **What was wrong:** Nothing factual.
+- **ROI:** High. Routing was precise, gotchas carried forward, stale-body discipline applied cleanly.
+
+**What happened:**
+1. Oriented from project directory. SAFEGUARDS (full) + SESSION_NOTES top 300 lines + recent `git log`. **Initial portfolio-cd reflex fired AGAIN — 31st session.** PreToolUse hook blocked `cd /Users/terrell/Documents/code && python3 methodology_dashboard.py`. Pivoted to absolute path. `gh` flag reflex did NOT fire — used `--repo KJ5HST-LABS/wsjtx-internal` on first call. Layered guard compensating; pattern persists.
+2. Reported: branch clean on `develop`, HEAD `8936a45c2`, three open issues (#1, #2, #3), no ghost sessions, dashboard 86/100. Asked persona + task.
+3. User: "contributor. reopen issue 16 for phase 3. Steves tests are in the e-mail dir."
+4. Phase 1 research in parallel: viewed #16 (CLOSED; closing comment recommended "fresh issue" when script surfaced), located `/Users/terrell/Documents/code/wsjtx-arm/docs/contributor/email/` with `Re_ CI_CD Success!` and `Steves tests.eml`.
+5. **Surfaced conflict to user:** Session 36's close comment said "open fresh issue", user said "reopen #16". Framed as explicit choice; asked to confirm reopen intent and confirm permission to peek at .eml before drafting comment. User: "yes".
+6. Wrote Session 41 claim stub to SESSION_NOTES.md (TWENTIETH consecutive session).
+7. Inspected `.eml` MIME structure — identified two attachments: `decoder_tests.bash` and `decoder_test_results_v3.0.1.txt`. Read text/plain body — Steve: "I've attached the bash shell script that Joe was referring to, and the results that it produces with the current v3.0.1 tag." Quoted Joe's original CI/CD feedback in thread.
+8. Grepped `CTEST_PFUNIT_INTEGRATION_PLAN.md` for Phase 3 scope — confirmed the plan's precondition was "Steve Franke's script is obtained" and flagged script shape (bash/python/etc.) as open; now known (bash).
+9. Drafted reopen comment to `/tmp/issue_16_reopen.md`. Previewed to user. User: "do it".
+10. `gh issue reopen 16 --repo KJ5HST-LABS/wsjtx-internal --comment "$(cat /tmp/issue_16_reopen.md)"` → success. Verified with `gh issue view 16` — state=OPEN, comments=2.
+11. Phase 3 close-out: updated SESSION_NOTES.md. Commit via git (handoff-only; no code changes).
+
+**Proof:**
+- Issue #16 state (verified 2026-04-17 via `gh issue view 16`): title unchanged, state=OPEN, comments=2 (original close + reopen).
+- `/Users/terrell/Documents/code/wsjtx-arm/docs/contributor/email/Steves tests.eml` exists, 42KB, contains both attachments as base64 MIME parts.
+- Zero code/workflow changes. `git status` shows only SESSION_NOTES.md edit this session.
+
+**What's next (Session 42 priorities):**
+
+1. **Execute Phase 3 of `CTEST_PFUNIT_INTEGRATION_PLAN.md`** — now fully unblocked. Concrete steps:
+   - **(Extract)** Pull attachments from `docs/contributor/email/Steves tests.eml`. Python's `email` stdlib module handles multipart/mixed + base64 decode cleanly. Write a small extractor (or one-shot `python3 -c "..."`) that produces `decoder_tests.bash` + `decoder_test_results_v3.0.1.txt` in a scratch location.
+   - **(Read + license check)** Read `decoder_tests.bash` first. Identify: modes covered, sample-file dependencies (likely under `~.samples` web mirror or in-tree `samples/`), external tool requirements (`jt9`, `wsprd`, others), shell idioms used. Before vendoring: message Steve to confirm attribution + GPLv3 vendoring consent. Script author → author of vendored file.
+   - **(Decide location)** Plan doc suggests `tests/decoders/franke/`. Confirm with maintainers (K1JT, Brian Moran) if there's a preferred convention. Default to the plan if no objection.
+   - **(CMake integration)** `tests/CMakeLists.txt` — one `add_test()` per mode the script validates. Use `NAME` / `COMMAND` conventions matching existing `decoder_ft8_smoke` / `decoder_wspr_smoke` (see `tests/CMakeLists.txt` for Phase 2 pattern).
+   - **(Windows portability)** bash works under MSYS2 — already installed for Hamlib. `build-windows.yml` cmake step can invoke ctest which should find bash via MSYS2 PATH, but verify. If the script shells out to `jt9` binary, confirm PATH resolution on all platforms.
+   - **(Baseline mismatch)** `decoder_test_results_v3.0.1.txt` is named against `v3.0.1` but upstream only has `v3.0.0` tagged (verified Session 39 + 40). Two options: (a) use the baseline as-is — decoder output should be stable between v3.0.0 and any v3.0.1 hotfix; (b) regenerate baseline against v3.0.0 locally. Message Steve to ask what his v3.0.1 was (pre-release build? local cut?) if it matters.
+   - **(Phase 2 cleanup)** Plan doc says if Phase 3 duplicates Phase 2's FT8/WSPR smoke tests, decide in-session whether to deprecate Phase 2 tests or keep them as faster sanity checks. Likely keep both — smoke tests pin the minimal contract; Franke's script extends coverage.
+   - **Expected scope:** one session, one commit, one CI cycle. If the script has significant dependencies or platform surprises, split into "vendor + CMake" session and "CI wire + verify" session.
+
+2. **Issue #1 audit** — unchanged from Session 40's recommendation. "Phase 2-3: GitHub templates, guards, and macOS CI/CD". Pattern match to Session 40's #2 audit. Likely mostly superseded.
+
+3. **#3 — v3.0.0 GA rebuild path** — (D) audit → (C) hygiene → (A) plan. Still Session 39/40's recommended sequence.
+
+4. **Upstream PRs** — scoped inside re-scoped #2. Four candidates.
+
+5. **Linux ARM64 build** — scoped inside re-scoped #2. `ubuntu-24.04-arm` runner availability check needed.
+
+6. **MAP65 GCC 15 real fix** — upstream debt.
+
+**Hygiene items (unchanged — do not act on mid-issue):**
+- `ci.yml:14,21,28,34,41` version `"3.0.0"` — CORRECT for GA. v3.0.1 might ship soon per Joe Taylor's 2026-04-10 note (Joe: "planning to do a hotfix release of v3.0.1 soon, maybe even next week"); still not tagged upstream as of today.
+- `actions/checkout@v4` → `v5` deadline 2026-09-16.
+- `/releases/latest` gating for `hamlib-upstream-check.yml`.
+- `release.yml:13` stale "three platform artifacts cannot disagree" comment (should say four).
+- Residual "three platform" strings in `MIGRATION_PLAN.md:275` and `drafts/email_cicd_proposal.md:5,11`.
+- Documented platform list in `docs/contributor/2_DEVELOPMENT_WORKFLOW.md:184,307,335,478,504-505,711-714` listed as "supported" — should be framed as minimum baseline per Session 40.
+- `macos-15-intel` sunset: Fall 2027.
+- Email thread report-back — 31 sessions pending.
+- Untracked files (`.p12`, `.DS_Store`, `OUTREACH.md`, `.claude/`, `jt9_wisdom.dat`, `timer.out`) — 31 sessions.
+- Hamlib version duplicated across 12 locations (Session 37 tracker) + FFTW3-threads comment duplicated between repo source and CI workflow (Session 38). Single-source-of-truth refactor still valuable.
+- **New this session:** `docs/contributor/email/` is a new sub-tree (not in git). Contains `Re_ CI_CD Success!` and `Steves tests.eml`. Both are raw `.eml` files — large (95KB + 42KB). **Decision pending:** should these be tracked in git (useful for Phase 3 execution provenance, but may contain private-ish email content — headers, PII) or stay untracked? Currently untracked. Session 42 should consider at start of Phase 3 execution.
+
+**Key files (for Session 42):**
+- **For Phase 3 execution:**
+  - `/Users/terrell/Documents/code/wsjtx-arm/docs/contributor/email/Steves tests.eml` — raw email with attachments (multipart/mixed, base64-encoded). Extract via Python `email` stdlib.
+  - `docs/contributor/CTEST_PFUNIT_INTEGRATION_PLAN.md:224-257` — Phase 3 spec (precondition now met).
+  - `tests/CMakeLists.txt` — Phase 2 `add_test()` pattern for FT8/WSPR smoke tests; copy/adapt for Franke's modes.
+  - `.github/workflows/build-macos.yml`, `build-linux.yml`, `build-windows.yml` — ctest invocation already wired in each (Phases 1-6 complete); no workflow edits expected for Phase 3 if script uses same invocation path.
+  - `samples/` directory — check what's already in-tree; Franke's script may reference `~.samples` web mirror or expect specific filenames.
+- **For #1 audit (next non-Phase-3 priority):** `.github/workflows/build-macos.yml`, `ci.yml` (macOS matrix lines 11-29), `.github/` dir for PR/issue templates, `CODEOWNERS`/`CONTRIBUTING.md`/`SECURITY.md`.
+
+**Gotchas for Session 42:**
+- **`.eml` is a format, not a file.** It's RFC 5322 mail with MIME multipart. Do NOT try to read attachments by eyeballing the file — base64 blobs won't tell you anything. Use Python's `email` module: `msg = email.message_from_file(open(path)); for part in msg.walk(): if part.get_filename(): data = part.get_payload(decode=True)`.
+- **License/attribution is a pre-integration step, not a post-commit concern.** Plan doc §Phase 3 flags this explicitly. Message Steve Franke BEFORE vendoring the script — he's the author; he's owed the courtesy of an explicit yes on GPLv3 vendoring under the repo's license. His email is on the team thread.
+- **`v3.0.1` baseline mismatch.** `decoder_test_results_v3.0.1.txt` is named against a tag that doesn't exist upstream. Steve may have a local pre-release. Two paths (don't assume): (a) use baseline as-is, trust version-stable decoder behavior; (b) regenerate locally against v3.0.0 GA. Ask Steve.
+- **Windows ctest + bash path resolution.** Phases 1-6 proved ctest works on Windows via MSYS2; but invoking a bash script from cmake on Windows may need `find_program(BASH_EXECUTABLE bash)` or similar. Test early on Windows matrix, not last.
+- **Baseline regeneration needs `jt9`/`wsprd` binaries.** If Franke's script compares decoded output against the baseline file line-by-line, byte-for-byte, then the baseline is binary-stable-assumed. If it's numerical (SNR, DT, DF), floating-point precision varies by platform — baseline may need per-platform tolerance. Read the script before assuming stability.
+- **Plan doc §Phase 3 "Phase 2 deprecation" decision is in-session for 42.** Keep smoke tests as fast sanity checks OR deprecate. I'd vote keep (layered defense, smoke tests run in <10s, Franke's will be minutes). Document the decision in a commit message or plan-doc update.
+- **`gh` defaults to upstream `wsjtx/wsjtx`.** Always `--repo KJ5HST-LABS/wsjtx-internal`. 31st session running. Reflex did NOT fire this session — partial breakthrough; may regress.
+- **Project-local dashboard reflex.** `cd /Users/terrell/Documents/code && python3 methodology_dashboard.py` still blocked by PreToolUse hook. Use absolute path. 31 sessions. Fired again this session; hook caught.
+- **Closed/stale-issue-body rule generalizes to close-comment recommendations.** Session 36's close comment for #16 said "open fresh issue when script surfaces" — user chose to reopen instead. A close recommendation is not binding; verify with current user/maintainer direction before following it. This session surfaced the conflict explicitly; that was the right move.
+- **Shared-state edits need confirmation.** Reopen is GH-visible immediately. Drafted → previewed → executed pattern preserved. Session 40 established it; carry forward.
+- **Commit-trailer auto-close fires on MERGE**, not push-to-develop. Not triggered this session (docs-only commit, no issue refs that need auto-closure).
+- **SESSION_NOTES.md is ~446KB+ after this close-out.** Use `limit=300` for top reads; targeted offsets for older sessions.
+- **`develop` will have 1 commit ahead after this close-out.** Docs-only → full 4-platform CI cycle will trigger (cache-hit expected: ~15-20 min wall-clock).
+
+**Self-assessment:**
+- (+) **Wrote claim stub before technical work.** TWENTIETH consecutive session. No ghost-session risk.
+- (+) **Surfaced the close-comment-vs-user-direction conflict.** Session 36's comment said "fresh issue"; user said "reopen". Rather than silently obeying either, I stated the conflict, explained which one I'd follow and why (user direction wins, with the documented reason preserving thread continuity). Zero user correction needed — the surfacing itself was the handoff-quality move.
+- (+) **Previewed reopen comment before executing.** Shared-state change. User: "do it" after full preview. Session 40 established the pattern; carried forward.
+- (+) **Phase 3 scope inferred from plan doc, not invented.** Read `CTEST_PFUNIT_INTEGRATION_PLAN.md:224-257` for the actual scope before writing the reopen comment. Comment references that section directly, gives the next session a clean jump point.
+- (+) **Caught baseline-name mismatch and surfaced it.** `v3.0.1` tag doesn't exist upstream (confirmed Session 39 + 40). Flagged in reopen comment as a decision point for Phase 3 execution rather than silently ignoring. Continuity with Sessions 39/40's "verify upstream state, don't carry speculation" discipline.
+- (+) **Persona-correct throughout.** 31st session. No rad-con / consumer / AI references in comment or commit.
+- (+) **Portfolio-cd reflex caught by hook; no `gh --repo` reflex fire.** Layered guard continues to work; partial improvement on `gh` flag (this session didn't fire). 31 sessions.
+- (+) **One deliverable, cleanly scoped.** Reopen #16 + comment. Did not start Phase 3 execution, did not also look at #1 or #3, did not do a hygiene sweep. Failure Mode #2 (keep going) successfully guarded.
+- (-) **`decoder_tests.bash` contents never read.** I verified structure (`.eml` has two attachments) but didn't extract + read the actual bash script. Argument for: stayed in scope (reopen only, not execute). Argument against: if the script turned out to be incompatible with ctest (e.g., requires interactive input, or depends on unavailable binaries), flagging that in the reopen comment would be higher-value. Verdict: acceptable — reading the script is Phase 3 execution work, not reopen work. But noting for Session 42: FIRST step before any vendoring is read the script end-to-end.
+- (-) **Did not ask about `docs/contributor/email/` git-tracking decision.** Both `.eml` files are untracked. This session didn't address whether they should be committed. If Phase 3 execution needs the script as provenance, tracked-in-git is the natural answer. If they're private-ish (PII in headers), they belong outside git. Left open in Hygiene for Session 42.
+- **Score: 9/10.** Clean small-scope deliverable; user direction surfaced against competing prior recommendation; preview-before-execute pattern preserved; Phase 3 blocker cleanly unblocked with a reopen comment the next session can pick up and run with. Deduction: didn't read the bash script content (stayed in scope, but could have added one-line "script looks like X" to the reopen comment); didn't resolve `.eml` tracking decision.
+
+---
 
 ### What Session 40 Did
 **Deliverable:** Audit of issue #2 followed by in-place re-scope (title + body rewrite) via `gh issue edit 2 --repo KJ5HST-LABS/wsjtx-internal`. Verified with `gh issue view 2`. Session notes updated. No code changes, no workflow changes, no new commits to `develop`. COMPLETE.
