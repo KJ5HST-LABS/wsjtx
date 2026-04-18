@@ -481,17 +481,22 @@ jobs:
 
       - name: Package individual binaries
         run: |
+          # Tarball and inner-dir names include the arch suffix so arm64
+          # and x86_64 per-binary artifacts can coexist in a single
+          # GitHub Release without ReleaseAsset.name collisions (#24).
           ASSETS="${{ steps.collect.outputs.assets_dir }}"
+          ARCH="${{ inputs.arch }}"
           PKGS=packages
           mkdir -p "${PKGS}"
           for bin in "${ASSETS}"/*; do
             [ -f "$bin" ] && [ -x "$bin" ] || continue
             name=$(basename "$bin")
-            dir="${PKGS}/${name}"
+            arch_name="${name}-${ARCH}"
+            dir="${PKGS}/${arch_name}"
             mkdir -p "${dir}"
             cp "$bin" "${dir}/"
             [ -d "${ASSETS}/lib" ] && cp -R "${ASSETS}/lib" "${dir}/lib"
-            tar -czf "${PKGS}/${name}.tar.gz" -C "${PKGS}" "${name}"
+            tar -czf "${PKGS}/${arch_name}.tar.gz" -C "${PKGS}" "${arch_name}"
             rm -rf "${dir}"
           done
 
