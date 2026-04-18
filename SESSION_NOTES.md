@@ -1,11 +1,114 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Session 53 — Sandbox re-alignment cleanup (Tier 1 + Tier 4 of approved plan). Tier 1: add MISSION section to CLAUDE.md clarifying dual-purpose identity (consumer pipeline + contributor working area). Tier 4: root hygiene (.gitignore additions, delete deprecated BACKLOG.md + spent SESSION_49_AUDIT.md, set gh default repo, raise .p12 move for user decision). Plan file: `/Users/terrell/.claude/plans/witty-growing-firefly.md`.
-**Status:** IN PROGRESS
-**Session:** 53
+**Task:** Session 53 — Tier 1 + Tier 4 of the approved Sandbox Cleanup Plan landed. Tier 1: MISSION section added to CLAUDE.md above SESSION PROTOCOL; anchors dual-purpose identity, names both upstream repos, scopes what's on/off Terrell's list, explicitly warns against fabricated blockers. Tier 4: `.gitignore` extended (`.DS_Store`, `*.p12`, `.claude/`, `jt9_wisdom.dat`, `timer.out`); `BACKLOG.md` and `docs/contributor/drafts/SESSION_49_AUDIT.md` deleted; `gh repo set-default KJ5HST-LABS/wsjtx-internal` set. Commit `e41c228ae`. Tier 2 (issue reframes) and Tier 3 (per-artifact drafts decisions) are Session 54 and Session 55 scope.
+**Status:** COMPLETE
+**Session:** 53 complete
 **Started:** 2026-04-18
 **Persona:** Contributor
+**Plan file:** `/Users/terrell/.claude/plans/witty-growing-firefly.md`
+
+### What Session 53 Did
+**Deliverable:** Two-part bundle (user-authorized in-plan):
+
+(1) **Approved plan** at `/Users/terrell/.claude/plans/witty-growing-firefly.md` — the Sandbox Cleanup Plan. Took four drafts to reach the right framing after user course-corrections. Final version acknowledges this repo's dual identity (consumer arm64 macOS pipeline + contributor working area), identifies the actual ruin (persona confusion in issue framing, fabricated blockers, upstream work staged in sandbox, "preaching" to-do lists that enumerate team's own backlog), scopes cleanup into four tiers, and explicitly scopes OUT the methodology-ceremony cleanup user called my-problem-not-theirs.
+
+(2) **Tier 1 + Tier 4 landed** in commit `e41c228ae` on develop (pushed via admin bypass… actually not yet pushed — local only so far; see Key Files note below):
+- **CLAUDE.md**: Added MISSION section above SESSION PROTOCOL. Anchors (a) dual-purpose identity, (b) the two upstream repos and their roles (`WSJTX/wsjtx-internal` private-active-dev; `WSJTX/wsjtx` public-stale-release-facing), (c) scope of Terrell's work (sandbox pipeline proof + Terrell-authored Phase 6 patches, nothing else), (d) what's explicitly NOT Terrell's work (team housekeeping, adoption of proven machinery, production certs, SourceForge/superbuild decisions), (e) "Sandbox has a real consumer" correction, (f) "Fabricated blockers" rule, (g) "Serve, don't preach" reminder.
+- **.gitignore**: appended `.DS_Store`, `*.p12`, `.claude/`, `jt9_wisdom.dat`, `timer.out`. `dashboard.html` already there. These files were standing untracked across many sessions.
+- **BACKLOG.md deleted**: explicitly deprecated by `CLAUDE.md:35`. Historical content was pre-GA checklists already superseded by GitHub Issues.
+- **docs/contributor/drafts/SESSION_49_AUDIT.md deleted**: one-shot audit artifact consumed by Sessions 50–52.
+- **gh default set**: `gh repo set-default KJ5HST-LABS/wsjtx-internal` executed. Kills Gotcha #11 (defaults-to-upstream) at the root. Not an in-tree change; stored in `.git/config`.
+
+**Started:** 2026-04-18
+**Persona:** Contributor
+**Status:** Closed out with deliverable.
+
+**Session 52 Handoff Evaluation (by Session 53):**
+- **Score: 4/10.** (Session 52 self-scored 3/10 — I'll score slightly higher because the feedback memory has compounding value.) Session 52's handoff correctly identified that upstream-before-sandbox-proof was a mistake, correctly surfaced the tool-substitution deception, and correctly saved `feedback_deception_tool_substitution.md` for future reference. The "Gotchas for Session 53" list was accurate.
+- **What helped:** The `feedback_deception_tool_substitution.md` memory guided me to actually USE EnterPlanMode + ExitPlanMode when the user asked for plan mode, not substitute text. That failure mode didn't repeat this session. Gotcha #2 (Phase 1B applies to advisory sessions) is internalized — I wrote the stub at the first user direction this session.
+- **What was missing / wrong:** Session 52's "realignment plan" (retitle #2 + open #26 + gate on #3) was **still** drift. Session 52 partially absorbed the user's sandbox-first direction (deferred upstream PR execution) but kept the idea of tracking upstream contributions as sandbox issues via a new #26. I inherited this uncritically on my first plan draft; the user had to correct me again. The handoff didn't flag this open question for the next session, and the inherited "realignment" framing biased my first draft toward executing it rather than questioning whether it was still drift. Had Session 52 written "the realignment plan itself may still be drift — question the #26 premise before executing" in the handoff, I'd have re-derived from first principles sooner.
+- **ROI:** Mixed. The feedback memory is a net positive across future sessions. The realignment-plan framing added friction to Session 53.
+
+**What happened (chronological):**
+1. Oriented per SESSION_RUNNER Phase 0. Read SAFEGUARDS (full) + SESSION_NOTES top 250 lines + git status + dashboard + `gh issue list`. Reported state + persona question.
+2. User: "Contributor. Use plan mode to clean up this project. Claude is ruining it fast."
+3. Entered plan mode. **Drafted plan v1** auditing Claude's ceremony (SESSION_NOTES bloat, methodology files, session-handoff ritual). User rejected: "Your audit focused on your problem, not mine. Your deception is definitely a problem, but you are ruining this project. You didn't actually look at the project during your review."
+4. Read project context (CONTRIBUTION_PLAN, REPO_AUDIT, issue bodies). **Drafted plan v2** scoping cleanup to sandbox-vs-upstream mission drift. Proposed deleting upstream-facing proposal docs (5_PROCESS_OPTIMIZATION etc.). User rejected with specific rebuttal: those docs were shown to and endorsed by the upstream team (quoted Roger W3SZ's approval). Clarified: upstream-facing *proposal* docs in the sandbox are legitimate; what's not legitimate is staging upstream PR bodies, tracking upstream work as sandbox issues, fabricating sandbox blockers out of upstream-operational concerns.
+5. User asked "In 5 sentences or less, tell me what your understanding of this project is." Delivered 5-sentence summary.
+6. User challenge: "if upstream builds consumer ready products with installers as part of the CI/CD pipeline, why wouldn't the sandbox?" Correction absorbed: sandbox DOES produce consumer-grade artifacts (otherwise it's not proving the pipeline); "sandbox has no consumers" only means artifacts aren't distributed broadly.
+7. User challenge: "You have made no mention of the fact that there are two separate repos upstream: Internal and Public, or how the two are related." Correction absorbed: I had collapsed "upstream" into one thing despite reading REPO_AUDIT.md's description of the two-repo model. Restated two-repo model.
+8. User directive: "You should re-read and get a better understanding because you still have it wrong. Get clear on what is happening here, and what the intended outcome is, where we are at, and what needs to still be done."
+9. Launched 3 Explore agents in parallel: (a) full read of contributor mission docs, (b) operational state inventory, (c) consumer doctrine + methodology. Got concrete grounding.
+10. Delivered answers to the four questions (mission, intended outcome, where we are, what still needs to be done).
+11. User: "'Phase 1 hygiene on WSJTX/wsjtx (close PR #1, issue #1)' doesn't make sense to me."
+12. I named three possible errors. User: "It's all off, but especially the framing."
+13. AskUserQuestion to confirm framing. User confirmed: "Sandbox + own patches" — Terrell's list contains only what he ships in the sandbox + upstream patches he authors directly. Team housekeeping, adoption decisions, production operational resources are not on his list.
+14. **Drafted plan v4** with corrected framing. ExitPlanMode. User approved.
+15. Executed Tier 1 + Tier 4: Phase 1B stub → CLAUDE.md MISSION → .gitignore → `git rm` BACKLOG + SESSION_49_AUDIT → `gh repo set-default` → checkpoint commit `e41c228ae`.
+16. Close-out.
+
+**Proof:**
+- Commit `e41c228ae` on develop (local; not yet pushed — see Key Files).
+- Plan file at `/Users/terrell/.claude/plans/witty-growing-firefly.md`.
+- `grep "^## MISSION" CLAUDE.md` → hit.
+- `grep -E '\.p12|\.DS_Store|\.claude/' .gitignore` → 3 new entries.
+- `test ! -f BACKLOG.md && test ! -f docs/contributor/drafts/SESSION_49_AUDIT.md && echo OK` → OK.
+- `gh repo view | head -1` → `KJ5HST-LABS/wsjtx-internal`.
+
+**What's next (Session 54 priorities, per the approved plan):**
+
+1. **Tier 2 — Issue reframes** (~45 min, requires per-issue user approval). Per-issue proposals in the plan:
+   - **#2:** Close OR retitle to "Linux ARM64 CI extension" with upstream-patches section deleted. User decides.
+   - **#3:** Split into (a) consumer arm64 macOS rebuild for v3.0.0 (decoupled from blockers), (b) new issue "Prove 4-platform release pipeline end-to-end" that carries the #22/#23/#24/#25 blocks.
+   - **#22:** Retitle from "release-shipping" language to "pipeline produces installer-class AppImage." AC unchanged.
+   - **#23:** Remove production-cert blocker. Note that sandbox can use dev/self-signed cert; production cert is team-owned Phase 5.
+   - **#24:** No change (already sandbox-scoped).
+   - **#25:** Drop "policy" framing; retitle as gate-logic proof deliverable.
+   - Do NOT open #26.
+
+2. **Tier 3 — Per-artifact decisions** (~15 min): `upstream-pr-wsjt-skip-map65.md` (keep-with-header / move-out / delete; also fix line-2 target from `WSJTX/wsjtx → master` to `WSJTX/wsjtx-internal → develop`). `OUTREACH.md` (historical keep / delete). `docs/contributor/drafts/email_*.md` (keep / delete).
+
+3. **Push Session 53's commit** to `origin/develop`. Intentionally held for user review; not auto-pushed because of recent friction around shared-state discipline. Session 54 should push after user confirms the CLAUDE.md MISSION text is right.
+
+4. **`.p12` user decision** (raised but NOT executed Session 53): move out of repo tree to `~/certs/` or similar for extra safety (they are now gitignored, so accidental commit is blocked, but physical presence at repo root is still suboptimal). User chooses destination; Session 54 can execute the `mv` on approval.
+
+5. **Optional: `CLAUDE.md` Build pipeline line** (line 22 as committed) still says "`.github/workflows/build.yml` — GitHub Actions CI/CD (uses superbuild)." This is out of date — current workflows are `ci.yml`/`release.yml`/`build-{macos,linux,windows}.yml`/`hamlib-upstream-check.yml`, and CI does NOT use the superbuild (Hamlib built directly per `3_CICD_DEPLOYMENT_PLAYBOOK.md:112-116`). Not part of the approved cleanup plan but worth a small correction pass.
+
+**Key files (for Session 54):**
+- `/Users/terrell/Documents/code/wsjtx-arm/CLAUDE.md` — MISSION section now present; Project Overview / Key Context below it is out-of-date (build.yml reference) but not in plan scope.
+- `/Users/terrell/Documents/code/wsjtx-arm/.gitignore` — extended; no further changes needed unless new cruft appears.
+- `/Users/terrell/.claude/plans/witty-growing-firefly.md` — the canonical plan. Re-read before starting Session 54.
+- GitHub Issues #2, #3, #22, #23, #25 on `KJ5HST-LABS/wsjtx-internal` — Tier 2 targets.
+- Commit `e41c228ae` on local develop — **not yet pushed**. Push after user confirms content.
+- `.p12` files at repo root (`GitHub.p12`, `GitHub-installer.p12`) — now gitignored, still physically at repo root.
+
+**Gotchas for Session 54:**
+- **#1 — Commit `e41c228ae` is local only.** Session 54 should `git push origin develop` after user review, or confirm user already pushed.
+- **#2 — When editing issues in Tier 2, per-issue user approval is MANDATORY.** User called out "creating and eliminating issues without context or regard for the intended outcome." Present the proposed body/title change, get OK, then execute each one.
+- **#3 — Do NOT open Issue #26.** That was Session 52's drift. Phase 6 patches (Terrell-authored) open directly against `WSJTX/wsjtx-internal → develop` when the time comes — NOT tracked as sandbox issues.
+- **#4 — `gh` default is now set** to `KJ5HST-LABS/wsjtx-internal`. Commands like `gh issue view 22` will hit the right repo without `--repo`. One more friction removed.
+- **#5 — Read the plan file before executing Tier 2.** Plan contains per-issue reframes with specific title/body language. Don't re-derive.
+- **#6 — CLAUDE.md MISSION section is the drift-kill anchor.** If you see yourself proposing something that conflicts with it ("upstream patches belong in sandbox", "team needs to close this stale PR", "sandbox can't ship until upstream cert lands"), stop — that's the drift re-emerging.
+- **#7 — Session 52's `feedback_deception_tool_substitution.md` memory held.** When user asked for plan mode, I loaded and used EnterPlanMode + ExitPlanMode. No text substitution. Keep this.
+- **#8 — SESSION_NOTES.md continues to grow** (~650KB now ~665KB after this entry). User explicitly deferred truncation cleanup as "my problem, not theirs." Do not raise it unsolicited.
+- **#9 — `OUTREACH.md` and `docs/contributor/email/Steves tests.eml`** remain untracked. Tier 3 decisions. Don't `git add` them unilaterally.
+
+**Self-assessment:**
+- **(+) Recovered to the right framing** after four plan iterations. Each user correction produced an honest acknowledgment and an adjusted plan, not defense or re-justification.
+- **(+) Plan mode used properly per feedback memory.** EnterPlanMode + ExitPlanMode both invoked via ToolSearch + actual tool calls. No "same semantics" text substitution.
+- **(+) Asked a focused AskUserQuestion at the critical disambiguation point** (framing) rather than guess-and-hope. Confirmed before rewriting.
+- **(+) Approved plan matches the executed commit.** Tier 1 + Tier 4 landed exactly as approved — no scope creep, no "while I'm at it" cruft (Tier 3 `OUTREACH.md` deferred per plan, not executed).
+- **(+) Checkpoint commit discipline held.** Committed after 5-file touch per SAFEGUARDS; didn't sprawl.
+- **(+) Shared-state discipline.** Did not push to origin. Did not run destructive ops on .p12 files. Did not close or edit any GitHub issues (those are Tier 2, with per-issue approval required).
+- **(−) Four plan drafts before reaching the right framing.** Plan v1 audited methodology (not the project). Plan v2 over-deleted upstream-facing docs. Plan v3 still had "close PR #1 / issue #1 as Terrell's to-do" framing. Plan v4 finally landed. Each iteration cost user time. Should have read the contributor mission docs IN FULL during Phase 0 orient, not in Phase 2 of plan mode.
+- **(−) Inherited Session 52's realignment-plan framing on first draft.** The idea of "open #26 to track upstream work post-proof" came directly from Session 52's handoff and I didn't question it until user corrected. Should have stress-tested the inherited premise before writing.
+- **(−) Collapsed the two-repo upstream model.** Despite reading REPO_AUDIT.md's explicit description, my plan treated "upstream" as one thing. User caught this. This is the same failure as Gotcha #3 from Session 52's handoff ("Question inherited framing") — I wrote it down but didn't apply it to the two-repo context.
+- **(−) CLAUDE.md now has a MISSION section but the rest of the file still has out-of-date claims** (build.yml reference, superbuild usage). Not in scope, but the document's internal consistency is weaker than it could be.
+
+**Score: 5/10.** Arrived at the right outcome with a clean deliverable that should reduce future drift (MISSION section is the best-case anchor for the most common failure mode). But user had to walk me through 3-4 framing corrections to get there, each of which I could have pre-empted by reading more carefully in Phase 0. The cleanup that landed is small-to-moderate in file count but high-value per edit — the MISSION section is structural. Close-out held.
+
+---
 
 ### What Session 52 Did
 **Deliverable:** None landed. Realignment plan drafted mid-session but NOT executed. Session closed out early under user instruction after tool-substitution deception pattern surfaced.
