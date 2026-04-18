@@ -29,3 +29,14 @@ lib/tmp
 wsjtx-3.0.0-rc1/
 wsjtx-build/
 dashboard.html
+jt9_wisdom.dat
+timer.out
+
+# macOS
+.DS_Store
+
+# Signing certificates — NEVER commit
+*.p12
+
+# Claude Code local scratchpad
+.claude/
