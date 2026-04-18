@@ -1,8 +1,10 @@
 # Upstream PR draft — `WSJT_SKIP_MAP65` CMake option
 
-**Target:** `WSJTX/wsjtx` → `master`
+> **STATUS: PHASE 6** — opens directly against `WSJTX/wsjtx-internal` → `develop` when Phase 6 starts. Not staged for this sandbox.
+
+**Target:** `WSJTX/wsjtx-internal` → `develop`
 **Source commit (internal):** `887194c16` — extracted as a standalone patch
-**Status:** DRAFT — awaits fork + push authorization before opening
+**Status:** DRAFT — awaits Phase 6 kickoff (fork + push authorization)
 **Risk:** Low. Additive, opt-in, `OFF` by default. No behavior change for existing users.
 
 ---
@@ -115,17 +117,19 @@ Two hunks, one file, +4/-1 lines.
 
 ## Required steps before opening the PR (need user authorization)
 
-1. **Fork** `WSJTX/wsjtx` to a personal namespace (likely `KJ5HST`). This
-   establishes a fork on GitHub. One-time setup.
-2. **Branch** from `upstream/master` locally: `git checkout -b
-   upstream-wsjt-skip-map65 upstream/master`.
+1. **Fork** `WSJTX/wsjtx-internal` to a personal namespace (likely `KJ5HST`).
+   This establishes a fork on GitHub. One-time setup. Note: `wsjtx-internal`
+   is the private active-development repo; `WSJTX/wsjtx` is the public
+   release-facing mirror (stale since Feb 2025) and is NOT the target.
+2. **Branch** from `upstream/develop` locally: `git checkout -b
+   upstream-wsjt-skip-map65 upstream/develop`.
 3. **Apply** the patch above (cherry-pick the relevant hunks of
    `887194c16` or re-author directly on `CMakeLists.txt`).
 4. **Sign-off** with `git commit -s -m "Add WSJT_SKIP_MAP65 option..."` —
    many upstream projects expect DCO sign-offs; confirm WSJTX convention.
-5. **Add fork remote**: `git remote add fork git@github.com:KJ5HST/wsjtx.git`.
+5. **Add fork remote**: `git remote add fork git@github.com:KJ5HST/wsjtx-internal.git`.
 6. **Push**: `git push fork upstream-wsjt-skip-map65`.
-7. **Open PR**: `gh pr create --repo WSJTX/wsjtx --base master --head
+7. **Open PR**: `gh pr create --repo WSJTX/wsjtx-internal --base develop --head
    KJ5HST:upstream-wsjt-skip-map65 --title "..." --body-file ...`.
 
 Each of these is shared-state and requires explicit authorization; steps

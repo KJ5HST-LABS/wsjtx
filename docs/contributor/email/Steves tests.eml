@@ -1,0 +1,946 @@
+Delivered-To: terrell@deppe.com
+Received: by 2002:ac8:6186:0:b0:502:af54:50e2 with SMTP id kq6csp120698qtb;
+        Fri, 17 Apr 2026 05:32:29 -0700 (PDT)
+X-Received: by 2002:ac8:57c5:0:b0:509:39b5:a97a with SMTP id d75a77b69052e-50e366774edmr27308191cf.0.1776429149269;
+        Fri, 17 Apr 2026 05:32:29 -0700 (PDT)
+ARC-Seal: i=1; a=rsa-sha256; t=1776429149; cv=none;
+        d=google.com; s=arc-20240605;
+        b=ewHwwY1fof4ZHeYiI/XBx4aPjaLZX8RnINCkmGHvv30AWQOJXnOzGxjy8Ptv4iyIOG
+         zrfcJh8bm8QyhXGLgNkFX1fgdwduosKZRwKSCx9ZaeA2GmQAsXx9l0iRWpuakg+40X/I
+         cOU4LnNIFPXUocLyVHg9Wag7wmHfUgyc4NIJ6CsLPuHy8pSzyGdW/PZro4GEFzZHMkPo
+         13W8enJ3LG3gNV17ok/PI0CLoL17v72DN4FR1pl+yls62zP3sfn4PEYvTlMu0W5zEXZe
+         80AWcGBVEhxEj3VEyKadE17xzjlu5zmfSAWexrB3aPGVJJru2NyZthM0D1xB6mqvWJ7T
+         uZXQ==
+ARC-Message-Signature: i=1; a=rsa-sha256; c=relaxed/relaxed; d=google.com; s=arc-20240605;
+        h=references:to:cc:in-reply-to:date:subject:mime-version:message-id
+         :from:dkim-signature;
+        bh=7ZRQuzlu5BNlv4Bzeg6qJdA89u7loj/Mga9k/9LLMPs=;
+        fh=w0Lh1Bz//HLxwHDCQg47KLnuRx5Cs2qIuDF6zqH2Cmc=;
+        b=YBherPx2Hu7JzAq4QC0awgTBveUO5sKUar5hJAceKPakqGJr4FBHYpFMmZU/yqn1R7
+         NNKObO6LJNIoO5IkHKILmUDopYUcoq7MIXiG29wN3nwfE+FsFaOhxUktq/AaqrCLLkVG
+         WIJBquy/SP40pT+jUd4W64mET25w0wSk+V/OOQSqxVe0oIygri1VIg6vZEq23D4aBRBk
+         6uY8VSDj8D56OY6BOq6MakCVLCAydelmCbryufORXh4X4dBYHgBzxXIpu1hb0udjg3X+
+         fakWfFaP5cF/eYJTJGqcyg9X3wRrjmupSE49saGpYgA0KwX6TmyFYBftVpqcKpAXZXu8
+         AySQ==;
+        dara=google.com
+ARC-Authentication-Results: i=1; mx.google.com;
+       dkim=pass header.i=@icloud.com header.s=1a1hai header.b=Fd58FvWx;
+       spf=pass (google.com: domain of s.j.franke@icloud.com designates 57.103.72.51 as permitted sender) smtp.mailfrom=s.j.franke@icloud.com;
+       dmarc=pass (p=QUARANTINE sp=QUARANTINE dis=NONE) header.from=icloud.com
+Return-Path: <s.j.franke@icloud.com>
+Received: from outbound.ms.icloud.com (p-west3-cluster5-host5-snip4-8.eps.apple.com. [57.103.72.51])
+        by mx.google.com with ESMTPS id d75a77b69052e-50e39676350si13863011cf.403.2026.04.17.05.32.28
+        for <terrell@deppe.com>
+        (version=TLS1_3 cipher=TLS_AES_256_GCM_SHA384 bits=256/256);
+        Fri, 17 Apr 2026 05:32:29 -0700 (PDT)
+Received-SPF: pass (google.com: domain of s.j.franke@icloud.com designates 57.103.72.51 as permitted sender) client-ip=57.103.72.51;
+Authentication-Results: mx.google.com;
+       dkim=pass header.i=@icloud.com header.s=1a1hai header.b=Fd58FvWx;
+       spf=pass (google.com: domain of s.j.franke@icloud.com designates 57.103.72.51 as permitted sender) smtp.mailfrom=s.j.franke@icloud.com;
+       dmarc=pass (p=QUARANTINE sp=QUARANTINE dis=NONE) header.from=icloud.com
+Received: from outbound.ms.icloud.com (unknown [127.0.0.2])
+	by p00-icloudmta-asmtp-us-west-3a-60-percent-11 (Postfix) with ESMTPS id 56D7A1800399;
+	Fri, 17 Apr 2026 12:32:26 +0000 (UTC)
+Dkim-Signature: v=1; a=rsa-sha256; c=relaxed/relaxed; d=icloud.com; s=1a1hai; t=1776429148; x=1779021148; bh=7ZRQuzlu5BNlv4Bzeg6qJdA89u7loj/Mga9k/9LLMPs=; h=From:Message-Id:Content-Type:Mime-Version:Subject:Date:To:x-icloud-hme; b=Fd58FvWxAXv4WtvGI1rpTM8cWNu0rbscb93vs/pDbJdLGsCDWALUN28DAxZkUyVqCF1xJ8NIbKCAXRTC6FACdYeZ6pCvqBx6lx03JMpNhXDIp+VxOY+H2woTAN70FAHFdec97BkPEYZkQdLbJMdOA3ENrjy/U5WhgyZGZXGpperEXwHS5BfRD4+mBxmeT79oz6yC6imbTyq+7rw8a5NJCCeXh75jWu4RwWd3GgrrRENd+vVKl7S8e9mNcMHqT1Ndmw7qtQMvDB/xY9PH/r27R7pvMAStKWHxfWoGg/IX9Y2my3mixaHgC9lhx412tqzg9JHd8n3cVh0V5QdBhRG8Qw==
+Received: from smtpclient.apple (unknown [17.57.154.37])
+	by p00-icloudmta-asmtp-us-west-3a-60-percent-11 (Postfix) with ESMTPSA id 47C411802484;
+	Fri, 17 Apr 2026 12:32:25 +0000 (UTC)
+From: Steven Franke <s.j.franke@icloud.com>
+Message-Id: <30F347C8-300D-48E6-9CC8-B3674F604F42@icloud.com>
+Content-Type: multipart/alternative;
+	boundary="Apple-Mail=_728C5823-1CFD-46D3-AFE0-06A89464FDBF"
+Mime-Version: 1.0 (Mac OS X Mail 16.0 \(3864.500.181\))
+Subject: Re: CI/CD Success!
+Date: Fri, 17 Apr 2026 07:32:13 -0500
+In-Reply-To: <DB972764-BA98-41AD-A4B5-375EB89498FC@deppe.com>
+Cc: Joe Taylor <joe@princeton.edu>
+To: Terrell Deppe <terrell@deppe.com>
+References: <c1a98987-e7ad-48c2-b8a4-457aa54db3e4@princeton.edu>
+ <a1284102-9e0e-4b69-b9e8-ccba839e6505@princeton.edu>
+ <f32808f5-4dfd-4e31-80fe-2cf7451649e4@princeton.edu>
+ <392247E5-6D7F-4B8C-9B0C-3C87869A6D11@rmnjmn.co.uk>
+ <57288fe4-5314-4bcd-b630-3679f292be37@princeton.edu>
+ <8bac2c5c-ff6a-4730-bc5d-f07e13bb3f93@princeton.edu>
+ <0660d387-889c-4157-82d0-4d5731da8f84@princeton.edu>
+ <25cf5993-b691-4944-b884-a8c05590de94@comcast.net>
+ <e08db730-5942-4d63-ae2a-a360928f5e5f@princeton.edu>
+ <2d317be7-c0a8-4094-ae65-42d4699204c0@comcast.net>
+ <f35e094a-6c51-4fd7-9cea-31eac13663f5@comcast.net>
+ <17913254-c42b-4468-af8f-e9c953e5969c@comcast.net>
+ <7f48e85c-12f0-4de2-a18f-c0ef722d5001@comcast.net>
+ <b7d3f3ab-3fd2-4f91-bfb2-f5e7472686e0@princeton.edu>
+ <C4961317-838F-4B2F-9915-443C8FBA4FB2@rmnjmn.co.uk>
+ <4e454259-44a7-4da4-ad60-fe7b8256954e@princeton.edu>
+ <0DA2CFD4-CE7A-4541-9F67-AD29F789AC0E@rmnjmn.co.uk>
+ <883BFAF8-A5E3-4556-99E2-F0FFAA9ECEDD@deppe.com>
+ <487121c7-9e40-4086-bc83-e304b9f3dc99@princeton.edu>
+ <DB972764-BA98-41AD-A4B5-375EB89498FC@deppe.com>
+X-Mailer: Apple Mail (2.3864.500.181)
+X-Proofpoint-GUID: 8FRiJVDKgJtNpj3lMXyQ4IQzhFFZXrlP
+X-Authority-Info-Out: v=2.4 cv=QuFTHFyd c=1 sm=1 tr=0 ts=69e2285a
+ cx=c_apl:c_pps:t_out a=qkKslKyYc0ctBTeLUVfTFg==:117 a=A5OVakUREuEA:10
+ a=x7bEGLp0ZPQA:10 a=tiqiNDDyf7gA:10 a=VkNPw1HP01LnGYTKEx00:22
+ a=5VZh9nQHAAAA:8 a=zm3-5zHiH5BvgLbTT5cA:9 a=QEXdDO2ut3YA:10
+ a=RyJqrLfD0568p1Z4PdIA:9 a=_W_S_7VecoQA:10 a=LSYTc7uWjaWwCJKYCJYA:9
+ a=84Ks4HgnMzgA:10 a=tclcd6dtLQvEqt9_mmAA:9 a=CjuIK1q_8ugA:10
+ a=BqWtia1YqX08BA3081YA:9 a=m-Z_27IZkzAA:10 a=C3mZjjtk7yle8O2oRGUA:9
+ a=W4ydHrmLuONSI26f:21 a=ny7soasVccRmhIXvL3TB:22
+X-Proofpoint-Spam-Details-Enc: AW1haW4tMjYwNDE3MDEyNiBTYWx0ZWRfX+NmWH/LYbE62
+ IJfmLwrT7Vqhw+EuFgmnuuKK62Xf0RhNVh3DGVSf/1IHuwUt1+xDXeNxfOHGuJ6EAKS8q7jKrJ/
+ H0DNjfyCIQHbhPWsCs70RcLvYBgnIj33FM31IQyIVyQ/m2NyE0Pkmf/Vl/Wh+X26v+r95Cg3vwD
+ lxjYEppmFKU1mdg7IfKKYOXn1CwGNC0z4JJQ0Q74NIN691EjyZH89hYWDC1wMRnTltOG2grLNAe
+ qdxRqVhdobnbN8UUblFZ7OF090KsqLusMj4/f4DVh16kNpTTPT+3bOgUKIZ2l8pRW8WRZ4wAbZB
+ EwwqZ+bme/AMwBi6V4abOl+eYjXmV5aSWBINkUK7B+NM6OPv+IuHrRvHPlleoE=
+X-Proofpoint-ORIG-GUID: 8FRiJVDKgJtNpj3lMXyQ4IQzhFFZXrlP
+X-Proofpoint-Virus-Version: vendor=baseguard
+ engine=ICAP:2.0.293,Aquarius:18.0.1143,Hydra:6.1.51,FMLib:17.12.100.49
+ definitions=2026-04-17_01,2026-04-17_02,2025-10-01_01
+X-Proofpoint-Spam-Details: rule=notspam policy=default score=0 suspectscore=0
+ lowpriorityscore=0 adultscore=0 phishscore=0 malwarescore=0 mlxscore=0
+ mlxlogscore=999 clxscore=1015 spamscore=0 bulkscore=0 classifier=spam
+ authscore=0 adjust=0 reason=mlx scancount=1 engine=8.22.0-2601150000
+ definitions=main-2604170126
+
+
+--Apple-Mail=_728C5823-1CFD-46D3-AFE0-06A89464FDBF
+Content-Transfer-Encoding: quoted-printable
+Content-Type: text/plain;
+	charset=utf-8
+
+Terrell,
+
+I=E2=80=99ve attached the bash shell script that Joe was referring to, =
+and the results that it produces with the current v3.0.1 tag. =20
+
+Steve
+=EF=BF=BC=EF=BF=BC
+
+> On Apr 16, 2026, at 3:53=E2=80=AFPM, Terrell Deppe <terrell@deppe.com> =
+wrote:
+>=20
+> Steve,
+>=20
+> Joe mentioned that you have done some test scripts when he said the =
+following:
+>=20
+>>  - It should be fairly easy to add some execution tests to add to the =
+pipeline, especially after the effort Steve has already put into a =
+script that tests the decoders for each of our supported modes.
+>>=20
+>=20
+> =E2=80=A6but I=E2=80=99m not finding any such test scripts in the =
+repo. Can you point me in the right direction?
+>=20
+> =E2=80=94
+>=20
+> Terrell Deppe
+>=20
+>=20
+>=20
+>=20
+>> On Apr 10, 2026, at 7:37=E2=80=AFPM, Joe Taylor <joe@princeton.edu> =
+wrote:
+>>=20
+>> Hi Terrell and all,
+>>=20
+>> I've been busy with non-ham things most of today, but have now had =
+time to read your five pdf docs. Your CI/CD pipeline is a *major* =
+contribution to the WSJT project. I can't thank you enough for all the =
+effort that went into it -- and for the clear way your documentation =
+describes it for us. I can't wait to see it in action!
+>>=20
+>> In no particular order, here are a few things that occurred to me as =
+I read through your files.
+>>=20
+>>  - It should be fairly easy to add some execution tests to add to the =
+pipeline, especially after the effort Steve has already put into a =
+script that tests the decoders for each of our supported modes.
+>>=20
+>>  - We still use Qt5 so we can still support users with Windows 7. For =
+the same reason, we probably want to maintain support for macOS 10.13 =
+and later on x86 hardware. Can those builds be added to the pipeline?
+>>=20
+>>  - You made an excellent first cut at reasonable assignments of tasks =
+and responsibilities. Group members should feel free to volunteer for =
+other or additional tasks, and I will surely need to add Admin =
+privileges to several others in our group.
+>>=20
+>>  - Your scheme does not mention a way of dealing with "release =
+candidates." We have used "-rc#" releases to let brave users experiment =
+with and test new ideas. Should we keep such a capability? Or maybe =
+handle it differently, in future?
+>>=20
+>>  - About deploying your scheme for general use: I could grant full =
+Admin privileges to Brian and Terrell, at least, and the two of you =
+could bring it into a state for full use by all of us. You, Terrell, =
+could surely do it quickest by yourself, but bringing Brian fully up to =
+speed would also be advantageous. Does this approach make sense?=20
+>>=20
+>>  - We have been planning to do a hotfix release of v3.0.1 soon, maybe =
+even next week. Should we plan to use the pipeline for this purpose?
+>>=20
+>>  - Right now, I believe wsjtx-internal/develop has JTTY code in it. =
+So v3.0.1 should be based on wsjtx-internal/v3.0.0_test, rather than =
+wsjtx-internal/develop.
+>>=20
+>>  - Am I right that the contents of your pdf #4 would become the =
+public file CONTRIBUTING.md ?
+>>=20
+>> I'll probably have more thoughts/questions after thinking further on =
+what you've sent us. I look forward to hearing what others think of it =
+all!
+>>=20
+>>     -- Joe
+>>=20
+>> On 4/10/26 02:29, Terrell Deppe wrote:
+>>> I=E2=80=99ve never really considered myself a DevOps guy, but =
+looking back at my approach to CI/CD starting about 20 years ago, I =
+guess I am at some level. My CI/CD sandbox passed all tests. Windows was =
+a pain (as usual), but I think I found a work around for the OmniRig =
+problem. That will need some evaluation by someone who doesn=E2=80=99t =
+yet hate Windows.
+>>>=20
+>>> Attached is a spewing of information gathered over the last week or =
+so. The documents are numbered from course to fine grain, in terms of =
+detail, followed by a document of recommendations. It is a short term =
+treatment for insomnia if nothing else. #3 is in the weeds. #2 and #4 =
+are probably the most relevant to most of you followed by #5.
+>>>=20
+>>> My secretary, Claudia, wrote all these from my dictation. I talk =
+funny, and she is deaf so pardon any mistakes in the material. I asked =
+her go over it more than once, but my sign language is generally limited =
+to one finger, and I can never seem to remember which one is appropriate =
+in any given situation.
+>>>=20
+>>> --
+>>>=20
+>>> Terrell Deppe
+>>> (What is the difference between peas and boogers? Kids don=E2=80=99t =
+always eat their peas.)
+>>>=20
+>=20
+
+
+--Apple-Mail=_728C5823-1CFD-46D3-AFE0-06A89464FDBF
+Content-Type: multipart/mixed;
+	boundary="Apple-Mail=_FCC5430F-82DA-49E0-ADAD-1475A7913E0E"
+
+
+--Apple-Mail=_FCC5430F-82DA-49E0-ADAD-1475A7913E0E
+Content-Transfer-Encoding: quoted-printable
+Content-Type: text/html;
+	charset=utf-8
+
+<html aria-label=3D"message body"><head><meta http-equiv=3D"content-type" =
+content=3D"text/html; charset=3Dutf-8"></head><body =
+style=3D"overflow-wrap: break-word; -webkit-nbsp-mode: space; =
+line-break: =
+after-white-space;"><div>Terrell,</div><div><br></div><div>I=E2=80=99ve =
+attached the bash shell script that Joe was referring to, and the =
+results that it produces with the current v3.0.1 tag. =
+&nbsp;</div><div><br></div><div>Steve</div></body></html>=
+
+--Apple-Mail=_FCC5430F-82DA-49E0-ADAD-1475A7913E0E
+Content-Disposition: attachment;
+	filename=decoder_tests.bash
+Content-Type: application/octet-stream;
+	x-unix-mode=0644;
+	name="decoder_tests.bash"
+Content-Transfer-Encoding: 7bit
+
+DECODER_TESTS_VERSION=26.04.15-1
+
+PATH_TO_JT9="/Users/sfranke/Builds/wsjtx-internal/install/wsjtx.app/Contents/MacOS/jt9"
+PATH_TO_WSPRD="/Users/sfranke/Builds/wsjtx-internal/install/wsjtx.app/Contents/MacOS/wsprd"
+PATH_TO_SOX="/opt/local/bin/sox"
+PATH_TO_SAMPLES="/Users/sfranke/Library/Application Support/WSJT-X/save/samples"
+
+echo "**********************************************"
+echo "Decoder Tests Version:" $DECODER_TESTS_VERSION
+echo "**********************************************"
+echo ""
+
+echo "FST4W-1800"
+OPTIONS="-p 1800 -W -d 3 -f 1500 -F 100 -q"
+FILES="$PATH_TO_SAMPLES/FST4+FST4W/201230_0300.wav"
+echo "$FILES"
+$PATH_TO_JT9 $OPTIONS "$FILES"
+echo ""
+
+echo "FST4-60"
+OPTIONS="-p 60 -7 -d 3 -L 900 -H 1400 -q"
+FILES="$PATH_TO_SAMPLES/FST4+FST4W/210115_0058.wav"
+echo "$FILES"
+$PATH_TO_JT9 $OPTIONS "$FILES"
+echo ""
+
+#FT4
+echo "FT4"
+OPTIONS="-5 -d 3 -q"
+FILES="$PATH_TO_SAMPLES/FT4/000000_000002.wav"
+echo "$FILES"
+$PATH_TO_JT9 $OPTIONS "$FILES"
+echo ""
+
+#FT8 Standard Decoder
+echo "FT8 - standard decoder"
+OPTIONS="-8 -d 3 -q"
+FILES="$PATH_TO_SAMPLES/FT8/210703_133430.wav"
+echo "$FILES"
+$PATH_TO_JT9 $OPTIONS "$FILES"
+echo ""
+
+#FT8 MT decoder 
+echo "FT8 - MT decoder"
+OPTIONS="-8 -M -N 1 -E 3 -q"
+echo "$FILES"
+FILES="$PATH_TO_SAMPLES/FT8/210703_133430.wav"
+$PATH_TO_JT9 $OPTIONS "$FILES"
+echo ""
+
+#JT4 
+echo "JT4"
+OPTIONS="-4 -f 1250 -F 50 -b A -p 60 -X 96 -d 3 -q"
+FILE1="$PATH_TO_SAMPLES/JT4/JT4A/DF2ZC_070926_040700.wav"
+echo "$FILE1"
+$PATH_TO_SOX "$FILE1" -b 16 tmp1.wav rate 12000
+$PATH_TO_SOX tmp1.wav 000000_0091.wav pad 0 1.0
+$PATH_TO_JT9 $OPTIONS 000000_0091.wav
+
+OPTIONS="-4 -f 1200 -F 50 -b F -p 60 -X 96 -d 3 -q"
+FILE1="$PATH_TO_SAMPLES/JT4/JT4F/OK1KIR_141105_175700.wav"
+echo "$FILE1"
+$PATH_TO_SOX "$FILE1" -b 16 tmp1.wav rate 12000
+$PATH_TO_SOX tmp1.wav 000000_0092.wav pad 0 1.0
+$PATH_TO_JT9 $OPTIONS 000000_0092.wav
+
+rm 000000_00??.wav tmp1.wav
+echo ""
+
+#JT9 
+echo "JT9"
+OPTIONS="-9 -q"
+FILES="$PATH_TO_SAMPLES/JT9/130418_1742.wav"
+echo "$FILES"
+$PATH_TO_JT9 $OPTIONS "$FILES"
+echo ""
+
+#JT65 
+echo "JT65B - average odd intervals" 
+OPTIONS="-6 -b B -X 96 -d 16 -f 1300 -F 100 -x K1ABC -q"
+FILE1="$PATH_TO_SAMPLES/JT65/JT65B/000000_0001.wav"
+echo "$FILE1"
+FILE2="$PATH_TO_SAMPLES/JT65/JT65B/000000_0003.wav"
+echo "$FILE2"
+FILE3="$PATH_TO_SAMPLES/JT65/JT65B/000000_0005.wav"
+echo "$FILE3"
+FILE4="$PATH_TO_SAMPLES/JT65/JT65B/000000_0007.wav"
+echo "$FILE4"
+$PATH_TO_SOX "$FILE1" tmp.wav trim 2.1
+$PATH_TO_SOX tmp.wav 000000_0091.wav pad 0 2.1
+$PATH_TO_SOX "$FILE2" tmp.wav trim 2.1
+$PATH_TO_SOX tmp.wav 000000_0093.wav pad 0 2.1
+$PATH_TO_SOX "$FILE3" tmp.wav trim 2.1
+$PATH_TO_SOX tmp.wav 000000_0095.wav pad 0 2.1
+$PATH_TO_SOX "$FILE4" tmp.wav trim 2.1
+$PATH_TO_SOX tmp.wav 000000_0097.wav pad 0 2.1
+$PATH_TO_JT9 $OPTIONS 000000_0091.wav 000000_0093.wav 000000_0095.wav 000000_0097.wav
+#$PATH_TO_JT9 $OPTIONS "$FILE1" "$FILE2" "$FILE3" "$FILE4"
+rm 000000_00??.wav tmp.wav
+echo ""
+
+echo "JT65B - average even intervals" 
+OPTIONS="-6 -b B -X 96 -d 16 -f 1700 -F 100 -x G4XYZ -c K1ABC -q"
+FILE1="$PATH_TO_SAMPLES/JT65/JT65B/000000_0002.wav"
+echo "$FILE1"
+FILE2="$PATH_TO_SAMPLES/JT65/JT65B/000000_0004.wav"
+echo "$FILE2"
+FILE3="$PATH_TO_SAMPLES/JT65/JT65B/000000_0006.wav"
+echo "$FILE3"
+$PATH_TO_SOX "$FILE1" tmp.wav trim 2.1
+$PATH_TO_SOX tmp.wav 000000_0092.wav pad 0 2.1
+$PATH_TO_SOX "$FILE2" tmp.wav trim 2.1
+$PATH_TO_SOX tmp.wav 000000_0094.wav pad 0 2.1
+$PATH_TO_SOX "$FILE3" tmp.wav trim 2.1
+$PATH_TO_SOX tmp.wav 000000_0096.wav pad 0 2.1
+$PATH_TO_JT9 $OPTIONS 000000_0092.wav 000000_0094.wav 000000_0096.wav
+rm 000000_00??.wav tmp.wav
+echo ""
+
+echo "JT65B - DL7UAE_040308_002400.wav"
+# Should decode as: 0403 -23  3.3 1494 #* K1JT DL7UAE JO62
+OPTIONS="-6 -b B -X 96 -d 2 -f 1494 -F 50 -c K1JT -x DL7UAE -q"
+FILE1="$PATH_TO_SAMPLES/JT65/JT65B/DL7UAE_040308_002400.wav"
+echo "$FILE1"
+$PATH_TO_SOX "$FILE1" -b 16 tmp1.wav rate 12000
+$PATH_TO_SOX tmp1.wav tmp2.wav pad 0 3.0
+$PATH_TO_SOX tmp2.wav 000000_0091.wav trim 3.0
+$PATH_TO_JT9 $OPTIONS 000000_0091.wav
+rm 000000_00??.wav tmp1.wav tmp2.wav
+echo ""
+
+#MSK144
+echo "Decode MSK144"
+OPTIONS="-k -p 15 -q"
+FILE1="$PATH_TO_SAMPLES"/MSK144/181211_120500.wav
+echo "$FILE1"
+$PATH_TO_JT9 $OPTIONS "$FILE1"
+FILE1="$PATH_TO_SAMPLES"/MSK144/181211_120800.wav
+echo "$FILE1"
+$PATH_TO_JT9 $OPTIONS "$FILE1"
+echo ""
+
+#Q65A
+echo "Q65-30A 3-file averages"
+FILE1="$PATH_TO_SAMPLES"/Q65/30A_Ionoscatter_6m/201203_022700.wav
+echo "$FILE1"
+FILE2="$PATH_TO_SAMPLES"/Q65/30A_Ionoscatter_6m/201203_022800.wav
+echo "$FILE2"
+FILE3="$PATH_TO_SAMPLES"/Q65/30A_Ionoscatter_6m/201203_022900.wav
+echo "$FILE3"
+FILE4="$PATH_TO_SAMPLES"/Q65/30A_Ionoscatter_6m/201203_024000.wav
+echo "$FILE4"
+
+echo ""
+echo "3-file averages:"
+OPTIONS="-3 -b A -p 30 -X 96 -f 1000 -F 20 -q"
+echo "1,2,3"
+$PATH_TO_JT9 $OPTIONS "$FILE1" "$FILE2" "$FILE3"
+echo "1,2,4"
+$PATH_TO_JT9 $OPTIONS "$FILE1" "$FILE2" "$FILE4"
+echo "1,3,4"
+$PATH_TO_JT9 $OPTIONS "$FILE1" "$FILE3" "$FILE4"
+echo "2,3,4"
+$PATH_TO_JT9 $OPTIONS "$FILE2" "$FILE3" "$FILE4"
+echo ""
+echo "Single file decodes with AP:"
+OPTIONS="-3 -b A -p 30 -X 96 -f 1000 -F 20 -x K9AN -c K1JT -Q 1 -q"
+$PATH_TO_JT9 $OPTIONS "$FILE1" 
+$PATH_TO_JT9 $OPTIONS "$FILE2" 
+$PATH_TO_JT9 $OPTIONS "$FILE3" 
+$PATH_TO_JT9 $OPTIONS "$FILE4" 
+echo ""
+
+echo "Q65-60A 6m EME"
+#OPTIONS="-3 -b A -p 60 -X 96 -f 1500 -F 100 -q"
+OPTIONS="-3 -b A -p 60 -f 1500 -F 100 -q"
+FILE1="$PATH_TO_SAMPLES"/Q65/60A_EME_6m/210106_1621.wav
+echo "$FILE1"
+$PATH_TO_SOX "$FILE1" tmp1.wav trim 2.5
+$PATH_TO_SOX tmp1.wav 000000_0091.wav pad 0 2.5
+$PATH_TO_JT9 $OPTIONS 000000_0091.wav
+rm tmp1.wav 000000_00??.wav
+echo ""
+
+echo "Q65-60B 1296 Tropo"
+FILE1="$PATH_TO_SAMPLES"/Q65/60B_1296_Troposcatter/210109_0007.wav
+echo $FILE1
+FILE2="$PATH_TO_SAMPLES"/Q65/60B_1296_Troposcatter/210109_0147.wav
+echo $FILE2
+FILE3="$PATH_TO_SAMPLES"/Q65/60B_1296_Troposcatter/210109_0151.wav
+echo $FILE3
+echo ""
+echo "Single file decodes with AP:"
+OPTIONS="-3 -b B -p 60 -f 1000 -F 20 -d 3 -c VK7MO -x VK7PD -Q 1 -q"
+$PATH_TO_JT9 $OPTIONS "$FILE1" 
+$PATH_TO_JT9 $OPTIONS "$FILE2"
+$PATH_TO_JT9 $OPTIONS "$FILE3"
+echo ""
+echo "3-file average:"
+OPTIONS="-3 -b B -p 60 -f 1000 -F 20 -d 3 -q"
+$PATH_TO_JT9 $OPTIONS "$FILE1" "$FILE2" "$FILE3"
+echo ""
+
+echo "Q65-60D EME 10GHz"
+OPTIONS="-3 -b D -p 60 -X 96 -f 1000 -F 100 -q"
+FILE1="$PATH_TO_SAMPLES"/Q65/60D_EME_10GHz/201212_1838.wav
+echo "$FILE1"
+$PATH_TO_SOX "$FILE1" tmp1.wav trim 2.5
+$PATH_TO_SOX tmp1.wav 000000_0091.wav pad 0 2.5
+$PATH_TO_JT9 $OPTIONS 000000_0091.wav
+rm tmp1.wav 000000_00??.wav
+echo ""
+
+echo "Q65-120D 10 GHz Rainscatter"
+OPTIONS="-3 -b D -p 120 -X 96 -f 1000 -F 20 -d 3 -q"
+FILES="$PATH_TO_SAMPLES"/Q65/120D_Rainscatter_10_GHz/210117_0920.wav
+echo $FILES
+$PATH_TO_JT9 $OPTIONS "$FILES"
+echo ""
+
+echo "Q65-120E 6m Ionoscatter"
+OPTIONS="-3 -b E -p 120 -X 96 -f 1800 -F 20 -d 3 -x N0AN -c KB7IJ -Q 4 -q"
+FILE1="$PATH_TO_SAMPLES"/Q65/120E_Ionoscatter_6m/210130_1438.wav
+echo $FILE1
+FILE2="$PATH_TO_SAMPLES"/Q65/120E_Ionoscatter_6m/210130_1442.wav
+echo $FILE2
+$PATH_TO_JT9 $OPTIONS "$FILE1" 
+#OPTIONS="-3 -b E -p 120 -X 96 -f 1800 -F 20 -d 3 -q"
+$PATH_TO_JT9 $OPTIONS "$FILE2"
+echo ""
+
+echo "Q65-300A Optical Scatter"
+OPTIONS="-3 -b A -p 300 -X 96 -f 1000 -F 20 -d 3 -q"
+FILE1="$PATH_TO_SAMPLES"/Q65/300A_Optical_Scatter/201210_0505.wav
+echo $FILE1
+$PATH_TO_JT9 $OPTIONS "$FILE1"
+echo ""
+
+#WSPR
+echo "WSPR"
+OPTIONS="-d -C 500 -o 4"
+FILE1="$PATH_TO_SAMPLES"/WSPR/150426_0918.wav
+echo "$FILE1"
+$PATH_TO_WSPRD $OPTIONS "$FILE1"
+echo ""
+
+--Apple-Mail=_FCC5430F-82DA-49E0-ADAD-1475A7913E0E
+Content-Transfer-Encoding: 7bit
+Content-Type: text/html;
+	charset=us-ascii
+
+<html aria-label="message body"><body style="overflow-wrap: break-word; -webkit-nbsp-mode: space; line-break: after-white-space;"><head><meta http-equiv="content-type" content="text/html; charset=us-ascii"></head></body></html>
+--Apple-Mail=_FCC5430F-82DA-49E0-ADAD-1475A7913E0E
+Content-Disposition: attachment;
+	filename=decoder_test_results_v3.0.1.txt
+Content-Type: text/plain;
+	x-unix-mode=0644;
+	name="decoder_test_results_v3.0.1.txt"
+Content-Transfer-Encoding: quoted-printable
+
+**********************************************
+Decoder Tests Version: 26.04.15-1
+**********************************************
+
+FST4W-1800
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/FST4+FST4W/201230_0300.wav
+0300 -44  0.3 1433 `  DL0HOT JO60 30                                 =20
+
+FST4-60
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/FST4+FST4W/210115_0058.wav
+0058  17  0.4 1331 `  CQ K9KFR EN71                                  =20
+0058  -8  0.3 1101 `  CQ N5TM EL29                                   =20
+0058 -28  0.4 1135 `  CQ N3HSK FM28                       ? a1       =20
+
+FT4
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/FT4/000000_000002.wav
+000002 -10 -0.2  296 +  N1TRK N4FKH 569 VA                     =20
+000002  -9 -0.4  422 +  N1TRK KB7RUQ RR73                      =20
+000002  -7 -0.1  560 +  CQ RU AB5XS EM12                       =20
+000002 -12  0.1  727 +  NZ7P WA7JAY 589 CA                     =20
+000002  16  0.3 1149 +  KB0VHA KA1YQC R 539 MA                 =20
+000002  -3 -0.2 1640 +  CQ RU N9OY EN43                        =20
+000002 -11  0.2 1910 +  K1JT WB4HXE 559 GA                     =20
+000002   5  0.3 2067 +  VE3LON K7RL R 549 WA                   =20
+000002  -1  0.2 2310 +  WD9IGY KX1X 73                         =20
+000002 -17 -0.4 2413 +  W7BOB KJ7G RR73                        =20
+000002  -7 -0.3 2566 +  NI6G W7DRW 569 AZ                      =20
+000002   2 -0.3 2725 +  K4SQC VE3RX RR73                       =20
+000002  -6 -0.4 2813 +  CQ RU W1QA FN32                        =20
+000002   0  0.0 2995 +  CQ RU WS4WW FM17                       =20
+000002  13  0.2 3159 +  HB9BUN KG4W R 549 VA                   =20
+000002  -8  0.4 3337 +  W9TO KN3ILZ 529 PA                     =20
+000002 -10 -0.3  520 +  W9JA PY2APK RRR                        =20
+000002 -15  0.2 2299 +  AC6BW KR9A R 559 WI                    =20
+000002 -13 -0.3 2560 +  CQ RU W0FRC DM79                       =20
+
+FT8 - standard decoder
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/FT8/210703_133430.wav
+133430  16  0.3 2571 ~  W1FC F5BZB -08                         =20
+133430  12 -0.1 2157 ~  WM3PEN EA6VQ -09                       =20
+133430  -2 -0.8 1197 ~  CQ F5RXL IN94                          =20
+133430 -14  0.3 2238 ~  N1API HA6FQ -23                        =20
+133430 -12  0.3  641 ~  N1JFU EA6EE R-07                       =20
+133430  -7  0.1  723 ~  A92EE F5PSR -14                        =20
+133430  -3 -0.1 2695 ~  K1BZM EA3GP -09                        =20
+133430 -16  0.3  400 ~  W0RSJ EA3BMU RR73                      =20
+133430 -14  0.3  590 ~  K1JT HA0DU KN07                        =20
+133430  -7  0.4 2733 ~  W1DIG SV9CVY -14                       =20
+133430 -16  0.1 1648 ~  K1JT EA3AGB -15                        =20
+133430 -11  0.2 2852 ~  XE2X HA2NP RR73                        =20
+133430 -17  0.1 2280 ~  CQ EA2BFM IN83                         =20
+133430  -7  0.2 2522 ~  K1BZM EA3CJ JN01                       =20
+133430  -9 -0.1 2546 ~  WA2FZW DL5AXX RR73                     =20
+133430  -2  0.2  466 ~  N1PJT HB9CQK -10                       =20
+133430 -17  0.7 1513 ~  N1API F2VX 73                          =20
+133430 -17  0.2 2606 ~  CQ DX DL8YHR JO41                      =20
+133430 -20  0.5  244 ~  K1BZM DK8NE -10                        =20
+133430 -20  0.1 2039 ~  K1JT HA5WA 73                          =20
+133430  -6  0.4  472 ~  KD2UGC F6GCP R-23                      =20
+
+FT8 - MT decoder
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/FT8/210703_133430.wav
+133430  -7 -0.8 1196 ~  CQ F5RXL IN94                          =20
+133430   0 -0.1 2157 ~  WM3PEN EA6VQ -09                       =20
+133430   0  0.3 2571 ~  W1FC F5BZB -08                         =20
+133430  -9  0.1  723 ~  A92EE F5PSR -14                        =20
+133430 -14  0.3  641 ~  N1JFU EA6EE R-07                       =20
+133430 -11 -0.1 2695 ~  K1BZM EA3GP -09                        =20
+133430 -13  0.3  590 ~  K1JT HA0DU KN07                        =20
+133430  -9  0.4 2734 ~  W1DIG SV9CVY -14                       =20
+133430 -13  0.3 2239 ~  N1API HA6FQ -23                        =20
+133430 -15  0.1 2279 ~  CQ EA2BFM IN83                         =20
+133430 -18  0.7 1513 ~  N1API F2VX 73                          =20
+133430 -12  0.3  465 ~  N1PJT HB9CQK -10                       =20
+133430 -15  0.1 1648 ~  K1JT EA3AGB -15                        =20
+133430 -14  0.2 2854 ~  XE2X HA2NP RR73                        =20
+133430 -15  0.3  399 ~  W0RSJ EA3BMU RR73                      =20
+133430 -10  0.4  472 ~  KD2UGC F6GCP R-23                      =20
+133430 -19  0.5  244 ~  K1BZM DK8NE -10                        =20
+133430 -18  0.1 2039 ~  K1JT HA5WA 73                          =20
+133430 -12  0.2 2522 ~  K1BZM EA3CJ JN01                       =20
+133430 -15 -0.1 2546 ~  WA2FZW DL5AXX RR73                     =20
+
+JT4
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/JT4/JT4A/DF2ZC_070926_040700.wav
+0091 -22  3.9 1251 $# K1JT DF2ZC JO30        f =20
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/JT4/JT4F/OK1KIR_141105_175700.wav
+0092 -14  1.8 1201 $# G3WDG OK1KIR RRR       f =20
+
+JT9
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/JT9/130418_1742.wav
+1742  -5  1.2 1505 @  JA1KAU PD0JAC -23    =20
+1742 -25  0.0 1119 @  CQ GM7GAX IO75       =20
+1742 -17 -0.0 1186 @  TF3G N7MQ CN84       =20
+1742 -18  0.0 1224 @  K1JT KF4RWA 73       =20
+1742 -22  0.1 1290 @  CQ M0WAY IO82        =20
+1742 -13  0.0 1461 @  G7CNF N4HFA EL89     =20
+
+JT65B - average odd intervals
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/JT65/JT65B/000000_0001.wav
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/JT65/JT65B/000000_0003.wav
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/JT65/JT65B/000000_0005.wav
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/JT65/JT65B/000000_0007.wav
+0091 -29  0.4 1300 #*                          =20
+0093 -27  0.4 1300 #*                          =20
+0095 -28  0.4 1300 #* CQ K1ABC FN42          f3=20
+0095 -28  0.4 1300 #*                          =20
+0097 -29  0.4 1300 #* CQ K1ABC FN42          f4=20
+0097 -29  0.4 1300 #*                          =20
+
+JT65B - average even intervals
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/JT65/JT65B/000000_0002.wav
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/JT65/JT65B/000000_0004.wav
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/JT65/JT65B/000000_0006.wav
+0092 -29  0.4 1700 #*                          =20
+0094 -28  0.4 1700 #* K1ABC G4XYZ IO91       a22
+0094 -28  0.4 1700 #* K1ABC G4XYZ IO91       a6=20
+0096 -27  0.4 1700 #* K1ABC G4XYZ IO91       f3=20
+0096 -27  0.4 1700 #*                          =20
+
+JT65B - DL7UAE_040308_002400.wav
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/JT65/JT65B/DL7UAE_040308_002400.wav
+0091 -22  0.3 1494 #* K1JT DL7UAE JO62       f =20
+
+Decode MSK144
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/MSK144/181211_120500.wav
+120500   8  8.7 1488 &  K1JT WA4CQG EM72                                 =
+      =20
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/MSK144/181211_120800.wav
+120800   7 12.2 1496 &  CQ KD9VV EN71                                    =
+      =20
+
+Q65-30A 3-file averages
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/Q65/30A_Ionoscatter_6m/201203_022700.wav
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/Q65/30A_Ionoscatter_6m/201203_022800.wav
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/Q65/30A_Ionoscatter_6m/201203_022900.wav
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/Q65/30A_Ionoscatter_6m/201203_024000.wav
+
+3-file averages:
+1,2,3
+1,2,4
+1,3,4
+2,3,4
+
+Single file decodes with AP:
+022800 -21  0.3 1010 :  K1JT K9AN R-16                        q3=20
+024000 -18  0.3 1010 :  K1JT K9AN R-16                        q3=20
+
+Q65-60A 6m EME
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/Q65/60A_EME_6m/210106_1621.wav
+0091 -20  0.4 1420 :  W7GJ W1VD FN31                        q0=20
+0091 -24  0.4  697 :  W7GJ N8JX EN73                        q0=20
+0091 -24  0.4  943 :  W7GJ N0TB -15                         q0=20
+0091 -19  0.4 1620 :  W7GJ VE1JF RRR                        q0=20
+
+Q65-60B 1296 Tropo
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/Q65/60B_1296_Troposcatter/210109_0007.wav
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/Q65/60B_1296_Troposcatter/210109_0147.wav
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/Q65/60B_1296_Troposcatter/210109_0151.wav
+
+Single file decodes with AP:
+0007 -28  0.2 1002 :  VK7MO VK7PD QE38                      q2=20
+0147 -25  0.2 1002 :  VK7MO VK7PD QE38                      q2=20
+0151 -25  0.1 1002 :  VK7MO VK7PD QE38                      q3=20
+
+3-file average:
+
+Q65-60D EME 10GHz
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/Q65/60D_EME_10GHz/201212_1838.wav
+0091 -14  0.2  998 :  VK7MO K6QPV DM12                      q0=20
+
+Q65-120D 10 GHz Rainscatter
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/Q65/120D_Rainscatter_10_GHz/210117_0920.wav
+0920 -16  0.0  996 :  VK3WE VK7MO QE37                      q0=20
+
+Q65-120E 6m Ionoscatter
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/Q65/120E_Ionoscatter_6m/210130_1438.wav
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/Q65/120E_Ionoscatter_6m/210130_1442.wav
+1442 -17  0.7 1799 :  KB7IJ N0AN 73                         q3=20
+
+Q65-300A Optical Scatter
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/Q65/300A_Optical_Scatter/201210_0505.wav
+0505 -34 -0.6 1002 :  VK7MO VK7PD QE38                      q0=20
+
+WSPR
+/Users/sfranke/Library/Application =
+Support/WSJT-X/save/samples/WSPR/150426_0918.wav
+0918  -9  1.1   0.001446  0  ND6P DM04 30=20
+0918 -15  0.1   0.001460  0  W5BIT EL09 17=20
+0918 -25  2.2   0.001465  0  G8VDQ IO91 37=20
+0918  -6  0.6   0.001489  0  WD4LHT EL89 30=20
+0918  -1 -0.8   0.001503  0  NM7J DM26 30=20
+0918 -21  0.5   0.001517  0  KI7CI DM09 37=20
+0918 -20 -1.9   0.001530  0  DJ6OL JO52 37=20
+0918 -11  0.8   0.001587  0  W3HH EL89 30=20
+0918 -27  0.7   0.001594  0  W3BI FN20 30=20
+<DecodeFinished>
+
+
+--Apple-Mail=_FCC5430F-82DA-49E0-ADAD-1475A7913E0E
+Content-Transfer-Encoding: quoted-printable
+Content-Type: text/html;
+	charset=utf-8
+
+<html aria-label=3D"message body"><head><meta http-equiv=3D"content-type" =
+content=3D"text/html; charset=3Dutf-8"></head><body =
+style=3D"overflow-wrap: break-word; -webkit-nbsp-mode: space; =
+line-break: after-white-space;"><br =
+id=3D"lineBreakAtBeginningOfMessage"><div><br><blockquote =
+type=3D"cite"><div>On Apr 16, 2026, at 3:53=E2=80=AFPM, Terrell Deppe =
+&lt;terrell@deppe.com&gt; wrote:</div><br =
+class=3D"Apple-interchange-newline"><div><meta http-equiv=3D"content-type"=
+ content=3D"text/html; charset=3Dutf-8"><div style=3D"overflow-wrap: =
+break-word; -webkit-nbsp-mode: space; line-break: =
+after-white-space;">Steve,<div><br></div><div>Joe mentioned that you =
+have done some test scripts when he said the =
+following:</div><div><div><br =
+class=3D"webkit-block-placeholder"></div><blockquote =
+type=3D"cite"><p>&nbsp;- It should be fairly easy to add some execution =
+tests to add to the pipeline, especially after the effort Steve has =
+already put into a script that tests the decoders for each of our =
+supported modes.</p></blockquote></div><div><div>
+<div style=3D"font-family: Helvetica; font-style: normal; =
+font-variant-ligatures: normal; font-variant-numeric: normal; =
+font-variant-caps: normal; font-variant-alternates: normal; =
+font-variant-east-asian: normal; font-variant-position: normal; =
+font-weight: normal; letter-spacing: normal; line-height: normal; =
+orphans: 2; text-align: -webkit-auto; text-indent: 0px; text-transform: =
+none; white-space: normal; widows: 2; word-spacing: 0px; =
+-webkit-text-stroke-width: 0px; overflow-wrap: break-word; =
+-webkit-nbsp-mode: space; line-break: after-white-space;">=E2=80=A6but =
+I=E2=80=99m not finding any such test scripts in the repo. Can you point =
+me in the right direction?</div><div style=3D"font-family: Helvetica; =
+font-style: normal; font-variant-ligatures: normal; =
+font-variant-numeric: normal; font-variant-caps: normal; =
+font-variant-alternates: normal; font-variant-east-asian: normal; =
+font-variant-position: normal; font-weight: normal; letter-spacing: =
+normal; line-height: normal; orphans: 2; text-align: -webkit-auto; =
+text-indent: 0px; text-transform: none; white-space: normal; widows: 2; =
+word-spacing: 0px; -webkit-text-stroke-width: 0px; overflow-wrap: =
+break-word; -webkit-nbsp-mode: space; line-break: =
+after-white-space;"><br>=E2=80=94<br><br><b>Terrell Deppe</b></div><div =
+style=3D"font-family: Helvetica; font-style: normal; =
+font-variant-ligatures: normal; font-variant-numeric: normal; =
+font-variant-caps: normal; font-variant-alternates: normal; =
+font-variant-east-asian: normal; font-variant-position: normal; =
+font-weight: normal; letter-spacing: normal; line-height: normal; =
+orphans: 2; text-align: -webkit-auto; text-indent: 0px; text-transform: =
+none; white-space: normal; widows: 2; word-spacing: 0px; =
+-webkit-text-stroke-width: 0px; overflow-wrap: break-word; =
+-webkit-nbsp-mode: space; line-break: =
+after-white-space;"><b><br></b></div><div style=3D"font-family: =
+Helvetica; font-style: normal; font-variant-ligatures: normal; =
+font-variant-numeric: normal; font-variant-caps: normal; =
+font-variant-alternates: normal; font-variant-east-asian: normal; =
+font-variant-position: normal; font-weight: normal; letter-spacing: =
+normal; line-height: normal; orphans: 2; text-align: -webkit-auto; =
+text-indent: 0px; text-transform: none; white-space: normal; widows: 2; =
+word-spacing: 0px; -webkit-text-stroke-width: 0px; overflow-wrap: =
+break-word; -webkit-nbsp-mode: space; line-break: =
+after-white-space;"><b><br></b></div><br =
+class=3D"Apple-interchange-newline">
+</div>
+<div><br><blockquote type=3D"cite"><div>On Apr 10, 2026, at 7:37=E2=80=AFP=
+M, Joe Taylor &lt;joe@princeton.edu&gt; wrote:</div><br =
+class=3D"Apple-interchange-newline"><div>
+<meta http-equiv=3D"Content-Type" content=3D"text/html; charset=3Dutf-8">
+ =20
+  <div><p>Hi Terrell and all,</p><p>I've been busy with non-ham things =
+most of today, but have now
+      had time to read your five pdf docs. Your CI/CD pipeline is a
+      *major* contribution to the WSJT project. I can't thank you enough
+      for all the effort that went into it -- and for the clear way your
+      documentation describes it for us. I can't wait to see it in
+      action!</p><p>In no particular order, here are a few things that =
+occurred to me
+      as I read through your files.</p><p>&nbsp;- It should be fairly =
+easy to add some execution tests to add to
+      the pipeline, especially after the effort Steve has already put
+      into a script that tests the decoders for each of our supported
+      modes.</p><p>&nbsp;- We still use Qt5 so we can still support =
+users with Windows 7.
+      For the same reason, we probably want to maintain support for
+      macOS 10.13 and later on x86 hardware. Can those builds be added
+      to the pipeline?</p><p>&nbsp;- You made an excellent first cut at =
+reasonable assignments of
+      tasks and responsibilities. Group members should feel free to
+      volunteer for other or additional tasks, and I will surely need to
+      add Admin privileges to several others in our group.</p><p>&nbsp;- =
+Your scheme does not mention a way of dealing with "release
+      candidates." We have used "-rc#" releases to let brave users
+      experiment with and test new ideas. Should we keep such a
+      capability? Or maybe handle it differently, in =
+future?</p><p>&nbsp;- About deploying your scheme for general use: I =
+could grant
+      full Admin privileges to Brian and Terrell, at least, and the two
+      of you could bring it into a state for full use by all of us. You,
+      Terrell, could surely do it quickest by yourself, but bringing
+      Brian fully up to speed would also be advantageous.&nbsp;Does this
+      approach make sense?&nbsp;</p><p>&nbsp;- We have been planning to =
+do a hotfix release of v3.0.1 soon,
+      maybe even next week. Should we plan to use the pipeline for this
+      purpose?</p><p>&nbsp;- Right now, I believe wsjtx-internal/develop =
+has JTTY code in
+      it. So v3.0.1 should be based on wsjtx-internal/v3.0.0_test,
+      rather than&nbsp;wsjtx-internal/develop.</p><p>&nbsp;- Am I right =
+that the contents of your pdf #4 would become the
+      public file CONTRIBUTING.md ?</p><p>I'll probably have more =
+thoughts/questions after thinking further
+      on what you've sent us. I look forward to hearing what others
+      think of it all!</p><p>&nbsp; &nbsp; -- Joe</p>
+    <div class=3D"moz-cite-prefix">On 4/10/26 02:29, Terrell Deppe =
+wrote:<br>
+    </div>
+    <blockquote type=3D"cite" =
+cite=3D"mid:883BFAF8-A5E3-4556-99E2-F0FFAA9ECEDD@deppe.com">
+     =20
+      <div style=3D"line-break:after-white-space">I=E2=80=99ve never =
+really
+        considered myself a DevOps guy, but looking back at my approach
+        to CI/CD starting about 20 years ago, I guess I am at some
+        level. My CI/CD sandbox passed all tests. Windows was a pain (as
+        usual), but I think I found a work around for the OmniRig
+        problem. That will need some evaluation by someone who doesn=E2=80=
+=99t
+        yet hate Windows.
+        <div><br>
+        </div>
+        <div>Attached is a spewing of information gathered over the last
+          week or so. The documents are numbered from course to fine
+          grain, in terms of detail, followed by a document of
+          recommendations. It is a short term treatment for insomnia if
+          nothing else. #3 is in the weeds. #2 and #4 are probably the
+          most relevant to most of you followed by #5.</div>
+        <div><br>
+        </div>
+        <div>My secretary, Claudia, wrote all these from my dictation. I
+          talk funny, and she is deaf so pardon any mistakes in the
+          material. I asked her go over it more than once, but my sign
+          language is generally limited to one finger, and I can never
+          seem to remember which one is appropriate in any given
+          situation.</div>
+      </div>
+      <div style=3D"line-break:after-white-space">
+        <div>
+        </div>
+      </div>
+      <div style=3D"line-break:after-white-space">
+        <div>
+        </div>
+      </div>
+      <div style=3D"line-break:after-white-space">
+        <div>
+        </div>
+      </div>
+      <div style=3D"line-break:after-white-space">
+        <div>
+        </div>
+      </div>
+      <div style=3D"line-break:after-white-space">
+        <div>
+          <div>
+            <div>
+              <div style=3D"font-family: Helvetica; font-style: normal; =
+font-variant-ligatures: normal; font-variant-numeric: normal; =
+font-variant-caps: normal; font-variant-alternates: normal; =
+font-variant-east-asian: normal; font-weight: normal; letter-spacing: =
+normal; line-height: normal; orphans: 2; text-indent: 0px; =
+text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; =
+line-break: after-white-space;"><br>
+                --<br>
+                <br>
+                <b>Terrell Deppe</b></div>
+              <div style=3D"font-family: Helvetica; font-style: normal; =
+font-variant-ligatures: normal; font-variant-numeric: normal; =
+font-variant-caps: normal; font-variant-alternates: normal; =
+font-variant-east-asian: normal; font-weight: normal; letter-spacing: =
+normal; line-height: normal; orphans: 2; text-indent: 0px; =
+text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; =
+line-break: after-white-space;">
+                (What is the difference between peas and boogers? Kids
+                don=E2=80=99t always eat their peas.)</div>
+            </div>
+          </div>
+        </div>
+        <div style=3D"font-family: Helvetica; font-style: normal; =
+font-variant-ligatures: normal; font-variant-numeric: normal; =
+font-variant-caps: normal; font-variant-alternates: normal; =
+font-variant-east-asian: normal; font-weight: normal; letter-spacing: =
+normal; line-height: normal; orphans: 2; text-indent: 0px; =
+text-transform: none; white-space: normal; widows: 2; word-spacing: 0px; =
+line-break: after-white-space;">
+          <br>
+        </div>
+      </div>
+    </blockquote>
+  </div>
+
+=
+</div></blockquote></div><br></div></div></div></blockquote></div><br></bo=
+dy></html>=
+
+--Apple-Mail=_FCC5430F-82DA-49E0-ADAD-1475A7913E0E--
+
+--Apple-Mail=_728C5823-1CFD-46D3-AFE0-06A89464FDBF--

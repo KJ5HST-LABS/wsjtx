@@ -49,7 +49,7 @@ WSJT-X ARM64 macOS native build project. Produces signed, notarized `.pkg` insta
 - **Contributor docs:** `docs/contributor/` — contribution plan, repo audit, migration plan (never reference consumer context here)
 - **Consumer docs:** `docs/consumer/` — symbiotic doctrine, GPL compliance gaps, consumer strategy
 - **Persona rule:** Contributor persona never mentions rad-con, consumer agenda, or AI tooling. Consumer can reference contributor work freely.
-- **Build pipeline:** `.github/workflows/build.yml` — GitHub Actions CI/CD (uses superbuild)
+- **Build pipeline:** `.github/workflows/` — GitHub Actions CI/CD: `ci.yml` (PR/develop builds), `release.yml` (tag-triggered release), `build-{macos,linux,windows}.yml` (per-platform), `hamlib-upstream-check.yml` (scheduled upstream poll). Hamlib built directly, not via superbuild.
 
 ### Architecture
 - Two-layer build: superbuild (wsjtx-superbuild) wraps raw source (wsjtx)
