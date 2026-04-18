@@ -1,12 +1,115 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Session 55 — Tier 3 of the approved Sandbox Cleanup Plan landed. All four per-artifact decisions taken with explicit user approval: `upstream-pr-wsjt-skip-map65.md` kept + repositioned as Phase 6 with target corrected to `WSJTX/wsjtx-internal → develop` (including fork/branch/PR-target consistency fixes throughout); `OUTREACH.md` deleted; three `email_*.md` drafts deleted; `Steves tests.eml` added to git. Plus: 3 unpushed commits (`e41c228ae` + `91683c92e` + `eba6a95ab`) pushed to `origin/develop` after user approval; both S54 carry-forward optionals also executed in-session per user direction — `.p12` files relocated to `~/certs/` (700/600 perms); `CLAUDE.md:52` build.yml reference corrected to list actual current workflows with "Hamlib built directly" note. The approved plan `witty-growing-firefly.md` is now COMPLETE across all four tiers.
+**Task:** Session 56 — Rebuilt WSJT-X v3.0.0 GA source through the arm64 macOS pipeline; signed + notarized; published as GitHub Release `build/v3.0.0` on `KJ5HST-LABS/wsjtx-internal` (https://github.com/KJ5HST-LABS/wsjtx-internal/releases/tag/build/v3.0.0). All 4 platforms built clean; release-job auto-publish failed on the per-binary-tarball basename collision (Issue #24, now empirically confirmed); shipped via manual `gh release create` workaround with hand-picked assets.
 **Status:** COMPLETE
-**Session:** 55 complete
+**Session:** 56 complete
 **Started:** 2026-04-18
 **Persona:** Contributor
-**Plan file:** `/Users/terrell/.claude/plans/witty-growing-firefly.md` (now fully executed across S53/S54/S55)
+**Issue:** #3 (KJ5HST-LABS/wsjtx-internal) — release published; #3 left OPEN because "update rad-con dependency references" (consumer-side) is out of Contributor-persona scope and belongs to a future Consumer session.
+
+### What Session 56 Did
+**Deliverable:** WSJT-X v3.0.0 GA Release published on `KJ5HST-LABS/wsjtx-internal` (Issue #3).
+
+**Released:** https://github.com/KJ5HST-LABS/wsjtx-internal/releases/tag/build/v3.0.0
+- 20 assets total: `wsjtx-3.0.0-arm64-macOS.pkg` (61MB, signed + notarized), `wsjtx-3.0.0-x86_64-macOS.pkg` (66MB), `wsjtx-3.0.0-src.tar.gz` (35MB), 17 arm64 per-binary tarballs (cwsim, EchoCallSim, echosim, encode77, fcal, ft4sim, ft8code, hash22calc, jt4code, jt4sim, jt65code, jt65sim, jt9, q65code, sfoxsim, wsprcode, wsprd).
+- Title: "WSJT-X 3.0.0". Tag: `build/v3.0.0`. Pre-release flag: false (GA).
+- Asset shape parity with `v3.0.0-rc1` release (same 17 per-binary names + `.pkg`) plus net-new `wsjtx-3.0.0-x86_64-macOS.pkg` and `wsjtx-3.0.0-src.tar.gz`.
+
+**Mechanics path (chronological):**
+1. Oriented per SESSION_RUNNER Phase 0. SAFEGUARDS read in full; SESSION_NOTES.md top + S54/S55 entries; SESSION_RUNNER read; ran project dashboard (83/100); `git status` clean on develop @ `407e6ded2`; `gh issue list` (6 open). No ghost sessions.
+2. User answered persona question: "Contributor. #3". I flagged the persona/scope tension (`#3` is Consumer-deliverable per S54 reframe; Contributor mechanics only is option 1). User confirmed option 1.
+3. Phase 1B stub written to SESSION_NOTES.md ACTIVE TASK before any technical work.
+4. Investigation found a blocker: `CMakeLists.txt:55` still carried `VERSION 3.0.0.1` from test-bump `3655f3184` (2026-04-09, never reverted). Upstream baseline is `3.0.0.0`.
+5. Investigation found a risk: `release.yml:63` requires all 4 platforms green (`needs:`); per #22/#23/#25 those weren't all yet proven at release-workflow-level. Tagging could produce no release.
+6. `AskUserQuestion` (2 questions, batched): user approved (a) revert VERSION to 3.0.0.0 with one-line persona-clean commit, and (b) tag as-is and accept the 4-platform gate.
+7. Made commit `b420e7c6e` on develop (CMakeLists.txt one-line revert). Created tag `build/v3.0.0` at that commit.
+8. **Sandbox blocked** the combined push (`git push origin develop build/v3.0.0`) with the prior-session-pattern message about release-triggering tag pushes needing explicit confirmation. Surfaced full blast radius (commit + tag + 4-platform CI + force-push to public mirror via `CROSS_REPO_TOKEN`). User typed "yes push".
+9. Push succeeded (admin bypass: "Bypassed rule violations for refs/heads/develop: 4 of 4 required status checks are expected" — same pattern as S55 Gotcha #7). Tag landed; `release.yml` queued (run [24613875576](https://github.com/KJ5HST-LABS/wsjtx-internal/actions/runs/24613875576)).
+10. Background-watched the run (`gh run watch ... --exit-status`). After 17 min: ALL 4 PLATFORM BUILDS PASSED (linux 7m50s, macos 8m37s, macos-intel 11m56s, windows 16m17s) — but `release` job failed at `Create GitHub Release` (48s) on `HTTP 422: Validation Failed — ReleaseAsset.name already exists: ft8code.tar.gz`.
+11. Diagnosed: per-binary tarballs in `individual-binaries-macos-arm64/*.tar.gz` and `individual-binaries-macos-x86_64/*.tar.gz` collide on basename (`ft8code.tar.gz` etc.) when both are uploaded to one release. Existing filter at `release.yml:107-109` (`-maxdepth 2` + 4 extensions) doesn't address this — both per-binary dirs sit at depth 1. **This is exactly Issue #24.**
+12. New `AskUserQuestion`: how to close out given 4 platforms passed but publish step failed? User chose "Manual one-off publish from workflow artifacts (Recommended)".
+13. Downloaded 4 user-facing artifacts + `individual-binaries-macos-arm64` from workflow run to `/tmp/wsjtx-3.0.0-release`. Linux + Windows artifacts contained bare binaries (no AppImage / no installer — consistent with #22/#23 still open). Built source tarball locally: `git archive --format=tar.gz --prefix="wsjtx-3.0.0/" -o ... build/v3.0.0`.
+14. Hand-picked 20-asset list: 2 `.pkg`s + source tarball + 17 arm64 per-binary tarballs (skipped x86_64 individual-binaries to avoid collision; skipped Linux/Windows bare binaries as off-scope and not user-installable).
+15. `gh release create build/v3.0.0 --title "WSJT-X 3.0.0" --generate-notes` succeeded — release URL returned.
+16. Verified: 20 assets, `isPrerelease: false`, name + tag correct.
+17. Posted comment on Issue #24 with full empirical evidence (workflow run link, exact 422 error, root-cause analysis, 3 fix-surface options, workaround link). Posted comment on Issue #3 with release-published status + asset list + integration commit hash.
+18. Close-out (this entry).
+
+**Proof (commands the next session can run to verify):**
+- `git log --oneline build/v3.0.0` — `b420e7c6e chore: restore CMakeLists.txt VERSION 3.0.0.0` at tip
+- `git show build/v3.0.0 -- CMakeLists.txt | grep VERSION` — shows `VERSION 3.0.0.0` (no `.1`)
+- `gh release view build/v3.0.0 --repo KJ5HST-LABS/wsjtx-internal --json assets --jq '.assets | length'` — `20`
+- `gh release view build/v3.0.0 --repo KJ5HST-LABS/wsjtx-internal --json isPrerelease --jq '.isPrerelease'` — `false`
+- `gh issue view 24 --repo KJ5HST-LABS/wsjtx-internal --comments | tail -20` — empirical evidence comment present
+- `gh issue view 3 --repo KJ5HST-LABS/wsjtx-internal --comments | tail -20` — release-published comment present
+- `gh run view 24613875576 --repo KJ5HST-LABS/wsjtx-internal` — all 4 platform jobs ✓; release job ✗ at `Create GitHub Release`
+
+**Out of scope (left for future sessions):**
+- **Public-mirror force-push to `KJ5HST-LABS/wsjtx`** — only triggered from inside the workflow's `Push to public repo` step (`release.yml:123-136`). Manual `gh release create` bypasses it. Public mirror is currently not synced to v3.0.0. If desired, can be done with explicit `git remote add` + `git push --force` using a PAT, or by re-running the release workflow after #24 is fixed.
+- **rad-con dependency references** (Consumer-persona work) — out of scope for this Contributor session; would update local rad-con repo manifest to point at the new `.pkg` URL.
+- **Issues #22 (Linux AppImage), #23 (Windows installer), #24 (per-binary rename), #25 (gate logic)** — empirical signal added to #24; others unaffected.
+
+**Session 55 Handoff Evaluation (by Session 56):**
+- **Score: 9/10.** S55 self-scored 9/10. Match.
+- **What helped most:** (a) S55's "What's next" section explicitly said "S56 should ask the user which sub-deliverable to take on" and listed #3 / #22-26 as candidates — the orient report's call to ask "which deliverable" mapped 1:1 to that list. (b) S55 Gotcha #1: "Cleanup plan is COMPLETE. Don't invent new cleanup work" — kept me from drifting back into doc cleanup when the user picked #3. (c) S55 Gotcha #5: "Sandbox default-denies chained destructive ops. Even when AskUserQuestion collects approval, the permission system may not see it for multi-target operations. Split the commands; surface the block; ask for typed yes; rerun." This FIRED on the `git push origin develop build/v3.0.0`. Without the gotcha I would have likely thought the AskUserQuestion answer was sufficient and tried to bypass; instead I surfaced cleanly, asked for typed "yes push", got it, re-ran. The gotcha is a load-bearing safety pattern. (d) S55 Gotcha #7: "S53/54/55 pushes used admin-bypass on develop's required-status-check rule" — meant the `Bypassed rule violations` message in my push output didn't trigger any panic about whether the push succeeded; I knew it was the existing pattern. (e) S55 Gotcha #6: `gh` default is `KJ5HST-LABS/wsjtx-internal` — meant I knew to use bare `gh issue view N` for sandbox issues without `--repo` flags (and conversely to ALWAYS use `--repo` for upstream operations, which I didn't do this session but would have known to).
+- **What was missing:** Two minor gaps. (1) S55's "What's next #3 — Rebuild for WSJT-X v3.0.0 GA" item said "No code work — this is running the existing pipeline against the GA tag." That underestimated reality: there WAS code work (the CMakeLists.txt VERSION 3.0.0.1 leftover from `3655f3184`). Five minutes of grepping CMakeLists.txt history would have surfaced this in S55's own state-check. Not a deal-breaker — I caught it in my own orient — but the S55 prediction was off. (2) S55 didn't mention the per-binary tarball collision risk (#24) as relevant to a v3.0.0 attempt, even though #24 was open in their Tier 2 reframe set. If S55 had flagged "if you try to ship #3, expect to hit #24's collision," I would have batched the workaround decision into my first AskUserQuestion instead of needing a second one mid-stream. Mild handoff gap, not a structural one.
+- **What was wrong:** Nothing material. Every claim verified.
+- **ROI:** Very high. Gotcha #5 alone saved a likely-bypass-attempt incident. Gotcha #1 kept scope tight. The "ask which deliverable" framing meant orientation→task→stub took <10 minutes.
+
+**Self-assessment (Session 56):**
+- **(+) Caught CMakeLists.txt VERSION blocker during orient.** Didn't tag against a stale version. Surfaced via AskUserQuestion before any commit; user picked recommended (revert).
+- **(+) Predicted the 4-platform-strict risk correctly** in the AskUserQuestion. User chose "tag as-is, accept the gate." All 4 platforms passed (better than predicted) — though publish step failed for a different reason (#24 collision).
+- **(+) Persona discipline held.** Surfaced the persona/scope tension at the start (Contributor persona vs. #3 as Consumer-reframed deliverable) and got explicit confirmation rather than silently proceeding. All commits, comments, and release notes persona-clean — no rad-con/consumer/AI references in any artifact. Verified by re-reading the commit message, comments, and release shape.
+- **(+) Handled sandbox push-block correctly.** Same S55 Gotcha #5 pattern: surfaced full blast radius (commit + tag + 4-platform CI + public-mirror force-push), asked for typed "yes push", re-ran. Did NOT try to bypass.
+- **(+) Pivoted on the publish failure without scope-creeping.** When `release` job failed on collision, stopped to ask user (3-option AskUserQuestion: manual / defer / quick-patch-workflow) rather than reflexively patching `release.yml` (which would have been #25-territory scope creep). User chose manual; manual was executed cleanly.
+- **(+) Added high-value evidence to #24.** Comment includes the actual 422 error string, the run number, root-cause analysis, three fix-surface options (build-time rename / job-time rename / exclude entirely) with the recommended one called out, and a link to the workaround release. Future #24 work has full context without re-deriving anything.
+- **(+) Manual release shape choices were defensible.** Matched rc1 shape (17 per-binary tarballs + .pkg) for continuity, added net-new `x86_64.pkg` and `src.tar.gz` for completeness, skipped Linux/Windows bare binaries as off-scope and not-installable. Asset count went 18 (rc1) → 20 (GA) — small, consistent expansion.
+- **(+) Background watch instead of polling.** Used `gh run watch ... --exit-status` with `run_in_background=true` and a 45-min timeout; got notified when release run finished; did not waste context on poll loops. Matches the SAFEGUARDS / system-prompt guidance.
+- **(−) Did NOT push the public mirror.** The workflow's `Push to public repo` step would have force-pushed `HEAD:main` + tag to `KJ5HST-LABS/wsjtx`. Manual workaround skipped this. Documented as out-of-scope, but if "publish v3.0.0 to the public sandbox mirror" was implicit in #3's intent, that's a partial gap. I did flag this in the AskUserQuestion option description ("CROSS_REPO_TOKEN public-mirror push is NOT triggered") — user accepted.
+- **(−) Did not close Issue #3.** Issue's task list has "update rad-con dependency references" as the last item — Consumer-persona work, can't be done in Contributor persona. Comment posted with release link; left issue OPEN for the Consumer-persona session that updates rad-con. A more aggressive close-out would have closed #3 with a "release published; rad-con-side updates tracked separately" comment, but leaving it open keeps the rad-con-side work visible without needing a new issue.
+- **(−) Mild context burn from the unexpected-failure detour.** Original plan was simple (commit revert, tag, push, watch, verify, close). Reality required two extra AskUserQuestion rounds (initial blocker pair + publish-failure 3-option) and a manual-release execution sub-flow. Total session length is longer than necessary because S55's "no code work" claim primed me to expect a 5-step session. Not a mistake on my part — the reality just had more branches than predicted. But I should have batched the "what about #24 collision risk" question into my first AskUserQuestion (treating S24 as a known risk for any release attempt). Lost ~5 minutes to a second mid-stream question.
+
+**Score: 9/10.** Deliverable shipped exactly as scoped (arm64 GA `.pkg` published on the sandbox repo, signed + notarized, persona-clean throughout). Pivoted cleanly on two unexpected blockers (VERSION leftover + publish-step collision) without scope-creeping, and added high-value empirical evidence to #24 in the process. Held safety discipline (typed-yes confirmation on the push, AskUserQuestion on the publish-failure pivot). Small deductions for not anticipating #24 collision in the initial AskUserQuestion batch and for leaving public-mirror unsynced (intentional but worth flagging).
+
+**What's next (Session 57 priorities):**
+
+The Contributor-persona deliverable for #3 is shipped. Open work:
+
+1. **Issue #3 close-out (Consumer-persona work)** — update rad-con dependency references to point at the new release URL. This is the remaining Issue #3 task list item. **Persona must be Consumer for this** — Contributor persona forbids touching rad-con. Asks the user to switch persona at orient time. Once done, close #3.
+
+2. **Issue #24 fix (Contributor-persona)** — implement one of the three fix surfaces from my comment. Recommended: option 1 (rename per-binary tarballs at build time in `build-macos.yml` to include arch suffix `ft8code-arm64.tar.gz`, etc.). Touches `build-macos.yml`. Verifies by re-running release workflow with a cheap throwaway tag (e.g. `build/v3.0.0-fix24-test`). Closes #24.
+
+3. **Issue #26 sub-issues (Contributor-persona)** — #22 (Linux AppImage packaging), #23 (Windows installer-class signed artifact), #25 (all-platforms-ready gate logic). Pick ONE per session per S55 Gotcha "Do not take on all four at once."
+
+4. **Public-mirror sync for v3.0.0** (one-off, Contributor-persona) — if you want the v3.0.0 release on `KJ5HST-LABS/wsjtx` public mirror, manually push the tag there with a PAT. Or fix #24 first and re-run the workflow with a fresh tag (which will trigger the workflow's own `Push to public repo` step).
+
+5. **Do NOT start Phase 6 upstream patches** per CLAUDE.md MISSION (`CLAUDE.md:17`). Phase 6 waits until sandbox 4-platform proof is complete (#26).
+
+**Key files (for Session 57):**
+- `/Users/terrell/Documents/code/wsjtx-arm/CLAUDE.md:3-28` — MISSION section. Read first if framing drift is felt.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/release.yml:96-122` — release job's `Create GitHub Release` step. The `find ... -maxdepth 2 ... \( -name "*.pkg" -o -name "*.AppImage" -o -name "*.exe" -o -name "*.tar.gz" \)` filter is the failure surface for #24.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/build-macos.yml` — where `individual-binaries-macos-{arm64,x86_64}` artifacts are produced. The `tar -czf ft8code.tar.gz ft8code` (or similar) lines need an arch suffix to fix #24 at the build-time surface.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/release.yml:123-136` — `Push to public repo` step. Uses `CROSS_REPO_TOKEN` (PAT) to force-push to `KJ5HST-LABS/wsjtx`. Did not run for v3.0.0 (release job failed before reaching it).
+- `/Users/terrell/Documents/code/wsjtx-arm/CMakeLists.txt:54-57` — `project (wsjtx VERSION 3.0.0.0 ...)`. Restored to upstream baseline this session.
+- **Tag `build/v3.0.0` on `origin`** at commit `b420e7c6e`. Don't delete it.
+- **Release `build/v3.0.0`** on `KJ5HST-LABS/wsjtx-internal`. URL: https://github.com/KJ5HST-LABS/wsjtx-internal/releases/tag/build/v3.0.0
+- **Workflow run [24613875576](https://github.com/KJ5HST-LABS/wsjtx-internal/actions/runs/24613875576)** — historical reference; all 4 platform builds + release job + artifacts available for inspection.
+- **GitHub Issues #3, #22, #23, #24, #25, #26** on `KJ5HST-LABS/wsjtx-internal` — open work. Re-read before scoping S57.
+- `/tmp/wsjtx-3.0.0-release/` — local copy of downloaded artifacts from the run. Safe to delete.
+
+**Gotchas for Session 57:**
+- **#1 — `KJ5HST-LABS/wsjtx-internal` `develop` branch admin push pattern persists.** Push outputs include `Bypassed rule violations for refs/heads/develop: 4 of 4 required status checks are expected.` That is the existing config, not a problem. Same as S53/S54/S55/S56.
+- **#2 — Sandbox default-denies release-triggering tag pushes even after AskUserQuestion approval.** This is now a confirmed pattern (S54/S55/S56 — three sessions). Plan for it: when about to push a tag matching `build/v*`, expect the harness block; surface full blast radius; ask for typed `"yes push"`; rerun. Do not try to bypass.
+- **#3 — Issue #24 is now empirically confirmed** with the exact 422 error and run link in the issue's most-recent comment. Any release workflow attempt that bundles both arm64 + x86_64 individual-binaries WILL hit this and fail to publish. Either fix #24 first, or use the manual-publish workaround pattern documented in my #24 comment.
+- **#4 — `CMakeLists.txt VERSION` is now correctly `3.0.0.0` on develop.** Don't accidentally re-bump for future test work without reverting before the next release tag.
+- **#5 — `release.yml` 4-platform `needs:` is strict.** Any future release tag must produce all 4 platform builds successfully (or no release publishes). The `release` job has no `if: always()` — it runs only on full success. This is independent of #25's "all-platforms-ready gate logic" issue (which is about runtime/conditional gating; the `needs:` block is structural).
+- **#6 — Public mirror `KJ5HST-LABS/wsjtx` is NOT synced to v3.0.0.** If a stakeholder asks "where's v3.0.0 on the public mirror?" — answer: the workflow's `Push to public repo` step didn't fire (release job failed before it). Manual sync would require a PAT and explicit force-push to `main` + tag.
+- **#7 — Issue #3 is OPEN with one consumer-side task remaining** ("update rad-con dependency references"). Don't try to close it from a Contributor session — that task is Consumer-persona work.
+- **#8 — Manual release publish bypassed `--generate-notes` from CI environment.** I ran `gh release create --generate-notes` from local terminal which used local `gh` auth + local clone state to generate notes. Notes should be equivalent to what the workflow would have produced (commit-message-derived since the last release, which was v3.0.0-rc1). Spot-check the release page if release-note polish matters.
+- **#9 — `gh issue` and `gh release` for sandbox repo work without `--repo` flag** because `.git/config` defaults gh to `KJ5HST-LABS/wsjtx-internal`. For upstream `WSJTX/wsjtx-internal` or `WSJTX/wsjtx`, ALWAYS use `--repo` explicitly.
+- **#10 — SESSION_NOTES.md is now ≥700KB.** Same growing-file situation S55 noted. User continues to defer; do not raise unsolicited.
+- **#11 — Tag `build/v3.0.0` cannot be reused.** GitHub Release `build/v3.0.0` exists and the tag points at `b420e7c6e`. If a fix-and-retry is needed for the same version, either delete the tag + release first (destructive — confirm with user) or use a new tag like `build/v3.0.0-fix24` for sandbox testing.
 
 ### What Session 55 Did
 **Deliverable:** Tier 3 of approved plan + two carry-forward optionals.
