@@ -126,6 +126,63 @@ jobs:
           file wsjtx-build/jt9
           file wsjtx-build/jt9 | grep -q "ELF 64-bit"
 
+      - name: Install to AppDir
+        run: |
+          cmake --install wsjtx-build --prefix "${GITHUB_WORKSPACE}/AppDir/usr"
+          # linuxdeploy's desktop/icon integration needs these exact paths.
+          test -x AppDir/usr/bin/wsjtx
+          test -x AppDir/usr/bin/jt9
+          test -x AppDir/usr/bin/ft8code
+          test -f AppDir/usr/share/applications/wsjtx.desktop
+          test -f AppDir/usr/share/pixmaps/wsjtx_icon.png
+
+      - name: Package AppImage
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          # Prebuilt linuxdeploy + Qt5 plugin from upstream continuous
+          # releases (recommended channel for CI).
+          curl -fsSL -o linuxdeploy.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          curl -fsSL -o linuxdeploy-plugin-qt.AppImage \
+            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy.AppImage linuxdeploy-plugin-qt.AppImage
+
+          # --appimage-extract-and-run avoids FUSE on the hosted runner.
+          export OUTPUT="wsjtx-${VERSION}-linux-x86_64.AppImage"
+          ./linuxdeploy.AppImage --appimage-extract-and-run \
+            --appdir AppDir \
+            --plugin qt \
+            --output appimage \
+            --desktop-file AppDir/usr/share/applications/wsjtx.desktop \
+            --icon-file AppDir/usr/share/pixmaps/wsjtx_icon.png
+
+          ls -lh "$OUTPUT"
+          file "$OUTPUT"
+
+      - name: Smoke-test AppImage payload
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          APPIMAGE="wsjtx-${VERSION}-linux-x86_64.AppImage"
+          ./"$APPIMAGE" --appimage-extract >/dev/null
+          test -x squashfs-root/usr/bin/wsjtx
+          test -x squashfs-root/usr/bin/jt9
+          test -x squashfs-root/usr/bin/ft8code
+          test -x squashfs-root/usr/bin/wsprd
+          file squashfs-root/usr/bin/wsjtx | grep -q "ELF 64-bit"
+          # Qt5 libs should have been bundled by linuxdeploy-plugin-qt.
+          ls squashfs-root/usr/lib/ | grep -q "^libQt5Core\.so"
+          ls squashfs-root/usr/lib/ | grep -q "^libQt5Widgets\.so"
+          rm -rf squashfs-root
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: wsjtx-${{ inputs.version }}-linux-x86_64-AppImage
+          path: wsjtx-${{ inputs.version }}-linux-x86_64.AppImage
+          if-no-files-found: error
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
