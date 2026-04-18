@@ -43,6 +43,8 @@ jobs:
             mingw-w64-x86_64-libusb
             mingw-w64-x86_64-portaudio
             mingw-w64-x86_64-pkg-config
+            mingw-w64-x86_64-nsis
+            mingw-w64-x86_64-osslsigncode
             autoconf automake libtool
 
       - name: Cache pFUnit
@@ -175,6 +177,57 @@ jobs:
       - name: Verify binary
         run: |
           file wsjtx-build/jt9.exe
+
+      # Issue #23 — emit an NSIS installer containing the full CLI tool set
+      # (wsjtx.exe, jt9, wsprd, fmtave, fcal, fmeasure + WSJT_BUILD_UTILS
+      # ft8code/jt65code/... + rigctl wrappers + Qt runtime via bundle_fixup).
+      # CMakeLists.txt:1989-1990 sets CPACK_GENERATOR=NSIS on WIN32 and
+      # CPACK_MONOLITHIC_INSTALL=1 packages every install() target.
+      - name: Package NSIS installer
+        run: |
+          cd wsjtx-build
+          cpack -G NSIS -V
+          ls -la *.exe
+
+      # Issue #23 — self-signed sandbox signing. Proves the signing step is
+      # wired into the pipeline; signature will NOT chain to a trusted root
+      # (by design — production cert is team-owned per issue #23 "Signing
+      # cert" section). Generates an ephemeral cert per-run.
+      - name: Sign installer with self-signed sandbox cert
+        run: |
+          cd wsjtx-build
+          INSTALLER=$(ls wsjtx-${{ inputs.version }}-*.exe | head -1)
+          if [ -z "$INSTALLER" ]; then
+            echo "ERROR: no NSIS installer produced by cpack"
+            ls -la
+            exit 1
+          fi
+          echo "Unsigned installer: $INSTALLER"
+          openssl req -x509 -newkey rsa:2048 \
+            -keyout sandbox-key.pem -out sandbox-cert.pem \
+            -days 365 -nodes \
+            -subj "/CN=WSJT-X Sandbox Dev Signing/O=KJ5HST-LABS/C=US"
+          SIGNED="${INSTALLER%.exe}-signed.exe"
+          osslsigncode sign \
+            -certs sandbox-cert.pem -key sandbox-key.pem \
+            -n "WSJT-X Sandbox Installer" \
+            -i "https://github.com/KJ5HST-LABS/wsjtx-internal" \
+            -h sha256 \
+            -in "$INSTALLER" -out "$SIGNED"
+          mv "$SIGNED" "$INSTALLER"
+          rm -f sandbox-key.pem sandbox-cert.pem
+          echo "Signed installer: $INSTALLER"
+          osslsigncode verify "$INSTALLER" || true
+          # Exit 0: osslsigncode verify returns non-zero on CA-untrust even
+          # when the signature itself is structurally valid. Sandbox cert is
+          # self-signed by design; the "|| true" keeps CI green. Structural
+          # presence is proven by the sign step succeeding above.
+
+      - name: Upload installer artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wsjtx-${{ inputs.version }}-windows-x86_64-installer
+          path: wsjtx-build/wsjtx-${{ inputs.version }}-*.exe
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
