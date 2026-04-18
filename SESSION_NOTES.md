@@ -1,12 +1,104 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Session 57 — Added Linux x86_64 AppImage packaging to `build-linux.yml`. Pipeline now produces `wsjtx-<version>-linux-x86_64.AppImage` (70 MiB) via `linuxdeploy` + `linuxdeploy-plugin-qt`, uploaded as a new artifact alongside the existing raw-ELF upload. All 4 AC items on Issue #22 met; issue closed. Verified on [CI run 24614754650](https://github.com/KJ5HST-LABS/wsjtx-internal/actions/runs/24614754650) — all 4 platforms green; Linux job 12m31s (+4m41s over pre-AppImage baseline); smoke-test confirmed core binaries present and Qt5 libs bundled.
+**Task:** Session 58 — Fixed Issue #24 by arch-suffixing per-binary tarballs in `build-macos.yml` (filename + inner dir). Verified on [CI run 24615347615](https://github.com/KJ5HST-LABS/wsjtx-internal/actions/runs/24615347615): all 4 platforms green (after a single-job rerun of `macos-intel` on a transient Apple timestamp-service outage unrelated to this fix); both per-arch artifacts downloaded; 17 arm64 tarballs + 17 x86_64 tarballs; 0 basename overlaps confirmed via `comm -12`. #24 closed with evidence comment.
 **Status:** COMPLETE
-**Session:** 57 complete
+**Session:** 58 complete
 **Started:** 2026-04-18
 **Persona:** Contributor
-**Issue:** #22 (KJ5HST-LABS/wsjtx-internal) — CLOSED.
+**Issue:** #24 (KJ5HST-LABS/wsjtx-internal) — CLOSED.
+
+### What Session 58 Did
+**Deliverable:** `build-macos.yml` per-binary packaging emits arch-suffixed tarballs (`<name>-<arch>.tar.gz`) with matching inner directories (`<name>-<arch>/`). Eliminates the `ReleaseAsset.name already exists: ft8code.tar.gz` 422 that blocked the `build/v3.0.0` release job (run `24613875576`).
+
+**Change surface:** `build-macos.yml:482-501` (`Package individual binaries` step). 9 lines added, 2 lines changed. Rest of the workflow untouched. No changes to `release.yml`, `ci.yml`, or other build-*.yml files.
+
+**Mechanics path (chronological):**
+1. User opened S58 with "24". Mini-reorient (`git status` clean on `develop @ ae539cada`, `git log --oneline -3`); S57 artifacts verified intact.
+2. Re-read S56's `#24` empirical-evidence comment (3 fix-surface options documented there): (1) build-time rename, (2) release-job rename, (3) exclude individual-binaries. Option 1 is the S56 recommendation.
+3. Located fix surface: `build-macos.yml:482-496` — `Package individual binaries` step.
+4. `AskUserQuestion` (2 questions, batched):
+   - (a) Rename shape: filename + inner dir both suffixed, vs. filename only. User: both.
+   - (b) Validation: static (safe) vs. end-to-end (triggers public-mirror force-push) vs. end-to-end with disabled public-push (larger change surface). User: static.
+5. Wrote S58 stub to SESSION_NOTES.md ACTIVE TASK.
+6. Edited `build-macos.yml`: introduced `arch_name="${name}-${ARCH}"` bound to `inputs.arch`, used for both `mkdir`/`cp` target and `tar -czf` output name. Added a 3-line comment explaining why (points to #24).
+7. Commit `b6a782532 fix(ci-macos): arch-suffix per-binary tarballs to avoid release collision (#24)` (build-macos.yml only). Push to develop; expected admin-bypass message appeared.
+8. Watched CI run `24615347615`. First pass: `macos / build` (arm64) ✓ 9m22s; `linux / build` ✓ 8m15s; `windows / build` ✓ 16m26s; `macos-intel / build` ✗ at `Code sign binaries` step with `QtMultimediaWidgets.framework: The timestamp service is not available.` — RFC 3161 transient, NOT my change (my step hadn't run yet on intel).
+9. `gh run rerun 24615347615 --failed` to retry only `macos-intel`. 18m20s later: ✓. Run now all-green.
+10. Downloaded `individual-binaries-macos-arm64` artifact → 17 × `<name>-arm64.tar.gz`, no bare `<name>.tar.gz`. Spot-checked inner dir: `ft8code-arm64/ft8code` + `ft8code-arm64/lib/`.
+11. Downloaded `individual-binaries-macos-x86_64` artifact → 17 × `<name>-x86_64.tar.gz`.
+12. `comm -12 <(ls arm64 | sort) <(ls x86_64 | sort) | wc -l` → `0`. Zero basename overlap. Collision empirically eliminated.
+13. Posted resolution comment on #24 with full static evidence (artifact listings, collision check, inner-dir spot-check, asset-shape projection for next release tag). Closed #24.
+14. Cleaned up `/tmp/fix24-verify*` local verification directories.
+15. Close-out (this entry).
+
+**Proof (commands next session can run to verify):**
+- `gh issue view 24 --repo KJ5HST-LABS/wsjtx-internal --json state --jq '.state'` → `CLOSED`.
+- `git log --oneline b6a782532` → `fix(ci-macos): arch-suffix per-binary tarballs to avoid release collision (#24)`.
+- `gh run view 24615347615 --json conclusion --jq '.conclusion'` → `success`.
+- `grep -A1 arch_name .github/workflows/build-macos.yml` → shows the renamed target path.
+
+**Out of scope (left for future sessions):**
+- **End-to-end release-tag validation.** Static proof shows 0 basename overlap across both per-arch artifacts; a real `build/v*` tag hasn't been tested yet. The first real release tag after #23 + #25 work (or a throwaway `build/v*-test` tag with public-mirror side-effect accepted) will fully validate the release-job end-to-end. Deferred because the user chose static validation for this session, and no in-flight release needs shipping right now.
+- **Removing the x86_64 macOS Intel run.** Not in #24 scope.
+- **Pinning `linuxdeploy` continuous version** (S57 self-assessment follow-up). Not in #24 scope.
+- **`#23` Windows installer-class artifact.** Next-session candidate.
+
+**Session 57 Handoff Evaluation (by Session 58):**
+- **Score: 9/10.** S57 self-scored 9/10. Match.
+- **What helped most:** (a) S57's "Key files for Session 58" pointed me directly at `build-macos.yml` (`#24` fix surface) and `release.yml:107-109` (collision filter) — zero archaeology. (b) S57's "Out of scope" explicitly named `#24` as the recommended next deliverable with the rationale "#24 fix enables end-to-end release-tag validation for #22 + #24 together" — kept the scope tight. (c) S57 Gotcha #1 (admin-bypass on develop push) + Gotcha #8 (`gh` default repo) + Gotcha #10 (tag `build/v3.0.0` immutable) all applied. (d) Critically, S57 Gotcha #2 (sandbox default-denies release-triggering tag pushes) — this drove me to surface the public-mirror force-push side-effect in the validation-path AskUserQuestion instead of silently pushing a test tag. User picked static validation; the surface of risk stayed zero.
+- **What was missing:** S57 handoff said "#24 fix surface: per-binary tarball names" without citing line numbers. Mild. I grepped `tar -czf|individual-binaries|\.tar\.gz` and found `build-macos.yml:494` in under a minute; line numbers would have been instantaneous. Nit.
+- **What was wrong:** S57's "#24 can be validated via a cheap throwaway tag (e.g., `build/v3.0.0-fix24-test`) — unlike #22, #24 needs end-to-end release-job validation because the failure surface is inside the release job." That framing misses that a test tag has a real public-mirror force-push side-effect. Static validation is, in practice, equivalent proof for a structural-rename fix. Small error in S57's recommendation; didn't mislead because I surfaced the trade-off explicitly in the AskUserQuestion.
+- **ROI:** Very high. Orient → first edit in ~10 minutes; scope was ambient from S57's handoff.
+
+**Self-assessment (Session 58):**
+- **(+) One deliverable, end to end.** #24 scoped, fixed, verified, closed. No drift into adjacent issues (#23/#25/#3). No adjacent cleanup.
+- **(+) Batched the approach questions.** Rename shape + validation path in one AskUserQuestion. Two round-trips avoided.
+- **(+) Correctly classified the macos-intel transient as unrelated.** Apple's `timestamp.apple.com` RFC 3161 being briefly unreachable is a known intermittent. Reading the failure trace showed the failure was in `Code sign binaries` (before my `Package individual binaries` step would have even executed on that job). A `--failed` rerun succeeded. Did NOT try to "fix" a symptom that wasn't a fault.
+- **(+) Verified both per-arch artifacts, not just the happy-path one.** The user's chosen validation criterion was "basenames unique across the pair" — that requires both halves of the pair. I insisted on the rerun rather than declaring arm64-alone-proof as good enough.
+- **(+) Computed `comm -12 | wc -l` as the formal collision check** instead of spot-checking by eye. Cheap; objectively verifiable; zero false-negative risk.
+- **(+) Inner-dir rename was independently verified** (`tar tzf ft8code-arm64.tar.gz | head -3` shows `ft8code-arm64/ft8code`). Both halves of the shape-choice were proven, not just the filename half.
+- **(+) Evidence-rich #24 close comment.** Future reader gets: asset listings, collision check, inner-dir spot-check, 38-asset projection for the next release tag, transient-flake disclaimer, commit hash. Zero re-derivation needed.
+- **(+) Clean commit isolation.** `build-macos.yml` committed alone (`b6a782532`); SESSION_NOTES stub held for this close-out commit (deliverable bisectable without doc churn mixed in, same pattern as S57).
+- **(+) `/tmp/fix24-verify*` cleaned up before close-out.** No local-state detritus left for the next session.
+- **(−) Did not exercise end-to-end release-tag validation.** Static proof is very strong (0 basename overlap across the pair) but doesn't simulate the full `gh release create` upload, which could theoretically fail on other surface (asset-size limit, rate limit, etc.). The user's chosen validation path accepts this trade-off. Documented in "Out of scope."
+- **(−) macos-intel transient added ~20 minutes to session wall-clock.** Single-job rerun was the right response, but the total "push → verified" cycle was ~50 minutes instead of ~35. Not a mistake; just overhead. No mitigation possible short of retry-on-transient logic in the workflow, which is out of scope.
+- **Score: 9/10.** Deliverable exactly as scoped; AC fully met (empirical collision proof); issue closed with defensible evidence; CI still green across all 4 platforms; one-and-done held; clean handoff.
+
+**What's next (Session 59 priorities):**
+
+With #22 and #24 both closed, the sandbox pipeline now builds installer-class artifacts for macOS (`.pkg`) and Linux (`.AppImage`), and the release-job asset upload no longer collides on macOS per-binary tarballs. Two issues remain in the #26 umbrella (#23 + #25), plus Consumer-persona follow-up on #3.
+
+1. **Issue #23 (Contributor-persona, Windows installer-class signed artifact) — Recommended next.** Current Windows artifact is 6.5 MB (raw executable set inside a zip-shaped artifact). Target: a signed `.exe` installer (NSIS or WiX) and/or MSIX. Touches `build-windows.yml`. Expect iteration — MSYS2 path, code-signing secret setup (or stub-signing for the sandbox proof), and potentially multiple sessions. If code-signing cert isn't available on the sandbox side, a stub (unsigned) installer proves the machinery; real signing is production-resource work.
+2. **Issue #25 (Contributor-persona, release gate logic).** Runtime conditional that lets `release` job proceed only when all 4 platforms are green AND each artifact matches the expected shape/size. `release.yml`'s `needs:` already enforces all-platforms-green structurally; #25 is about *shape* / *content* gating. Lower priority than #23 because the structural case is already covered.
+3. **Issue #3 close-out (Consumer-persona).** Update rad-con dependency references to point at the `build/v3.0.0` release URL. Persona must be Consumer. User must switch persona at orient time.
+4. **End-to-end release-tag validation of #22 + #24 + #23.** After #23 lands, push a throwaway `build/v*-test` tag to empirically prove the full release workflow publishes successfully. At that point the workflow's `Push to public repo` step will also fire; user should decide beforehand whether public-mirror sync is desired or should be temporarily suppressed for the test.
+5. **Issue #26 (umbrella) will auto-close when #23 and #25 both close.** No direct work; tracking only.
+6. **Do NOT start Phase 6 upstream patches** per `CLAUDE.md:17` MISSION. Phase 6 waits until sandbox 4-platform proof (#26) closes.
+7. **S57 self-assessment follow-ups** (not blockers): pin `linuxdeploy` continuous → tagged version if transient fetch flakes; add an AppImage size-bound sanity check. Defer.
+
+**Key files (for Session 59):**
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/build-windows.yml` — #23 baseline. Read first.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/build-macos.yml:482-501` — reference for arch-aware packaging (S58's fix).
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/build-linux.yml:129-184` — reference for installer-class packaging (S57's AppImage steps).
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/release.yml:107-109` — asset selection filter. Already includes `*.exe` for whatever #23 produces.
+- **CI run [24615347615](https://github.com/KJ5HST-LABS/wsjtx-internal/actions/runs/24615347615)** — S58 baseline (all 4 platforms green, new #24 shape).
+- **GitHub Issues #3, #23, #25, #26** on `KJ5HST-LABS/wsjtx-internal` — remaining open work. Both sandbox-pipeline blockers (#23, #25) still wait.
+
+**Gotchas for Session 59:**
+- **#1 — `KJ5HST-LABS/wsjtx-internal` `develop` branch admin push pattern persists.** `Bypassed rule violations for refs/heads/develop: 4 of 4 required status checks are expected.` is expected; confirmed across S53-S58.
+- **#2 — Sandbox default-denies release-triggering tag pushes even after AskUserQuestion approval.** Plan for it when pushing `build/v*` tags: surface full blast radius (commit + tag + 4-platform CI + public-mirror force-push via `CROSS_REPO_TOKEN`), ask for typed `yes push`, rerun.
+- **#3 — `release.yml` Push-to-public-repo step is unconditional force-push.** `release.yml:123-136`. Any `build/v*` tag push that makes it past `Create GitHub Release` will force-push current `develop` HEAD to `KJ5HST-LABS/wsjtx` `main` + push the tag. Public mirror is still NOT synced to v3.0.0 (per S56 Gotcha #6). Before a test-tag validation in a future session, decide explicitly whether to let this fire or `if: false`-gate it.
+- **#4 — #22 + #24 asset-shape projection for next release tag: 38 assets, all unique basenames.** See #24's close comment for the breakdown. Release filter at `release.yml:107-109` handles all of them.
+- **#5 — Apple RFC 3161 timestamp service (`timestamp.apple.com`) is a known intermittent failure point on macOS codesign.** S58 hit it; a single `gh run rerun --failed` fixed it. If a future macos-intel or macos run fails with `The timestamp service is not available.`, it is almost certainly transient; retry before investigating.
+- **#6 — `gh run rerun 24615347615 --failed`** reruns only the failed jobs within a run. Useful to avoid a full 4-platform rerun when only one job hit a transient.
+- **#7 — `gh` default repo is `KJ5HST-LABS/wsjtx-internal`.** Bare commands work; ALWAYS `--repo` for upstream `WSJTX/*` repos.
+- **#8 — SESSION_NOTES.md still growing (~745 KB now).** User continues to defer the split; do not raise unsolicited.
+- **#9 — `CMakeLists.txt VERSION 3.0.0.0`** is the correct upstream baseline. Don't accidentally re-bump for test work.
+- **#10 — Tag `build/v3.0.0` is immutable; release exists and is final.** For validation retries use `build/v3.0.0-fix-test` / `build/v3.0.0-s23-test` / etc.
+- **#11 — `release.yml` 4-platform `needs:` is strict.** The `release` job runs only if all 4 platform builds succeed. Independent of #25's runtime shape-gate work.
+
+### What Session 57 Did
 
 ### What Session 57 Did
 **Deliverable:** Linux x86_64 AppImage packaging in CI (Issue #22).
