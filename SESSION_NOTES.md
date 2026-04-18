@@ -1,12 +1,105 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Session 56 — Rebuilt WSJT-X v3.0.0 GA source through the arm64 macOS pipeline; signed + notarized; published as GitHub Release `build/v3.0.0` on `KJ5HST-LABS/wsjtx-internal` (https://github.com/KJ5HST-LABS/wsjtx-internal/releases/tag/build/v3.0.0). All 4 platforms built clean; release-job auto-publish failed on the per-binary-tarball basename collision (Issue #24, now empirically confirmed); shipped via manual `gh release create` workaround with hand-picked assets.
+**Task:** Session 57 — Added Linux x86_64 AppImage packaging to `build-linux.yml`. Pipeline now produces `wsjtx-<version>-linux-x86_64.AppImage` (70 MiB) via `linuxdeploy` + `linuxdeploy-plugin-qt`, uploaded as a new artifact alongside the existing raw-ELF upload. All 4 AC items on Issue #22 met; issue closed. Verified on [CI run 24614754650](https://github.com/KJ5HST-LABS/wsjtx-internal/actions/runs/24614754650) — all 4 platforms green; Linux job 12m31s (+4m41s over pre-AppImage baseline); smoke-test confirmed core binaries present and Qt5 libs bundled.
 **Status:** COMPLETE
-**Session:** 56 complete
+**Session:** 57 complete
 **Started:** 2026-04-18
 **Persona:** Contributor
-**Issue:** #3 (KJ5HST-LABS/wsjtx-internal) — release published; #3 left OPEN because "update rad-con dependency references" (consumer-side) is out of Contributor-persona scope and belongs to a future Consumer session.
+**Issue:** #22 (KJ5HST-LABS/wsjtx-internal) — CLOSED.
+
+### What Session 57 Did
+**Deliverable:** Linux x86_64 AppImage packaging in CI (Issue #22).
+
+**Produced:** `wsjtx-3.0.0-linux-x86_64.AppImage` (73,727,022 bytes ≈ 70 MiB) as a new CI artifact on every push to `develop`. Payload: full `cmake --install` manifest (`wsjtx` GUI + `jt9` + `wsprd` + `fmtave` + `fcal` + `fmeasure` + 14 utilities under `WSJT_BUILD_UTILS=ON` + `rigctl-wsjtx` / `rigctld-wsjtx` / `rigctlcom-wsjtx` wrappers + `wsjtx.desktop` + `icons/Unix/wsjtx_icon.png`) with Qt5 runtime libs bundled by `linuxdeploy-plugin-qt` (Core/Gui/Widgets/Network/Multimedia/PrintSupport/SerialPort/Sql/WebSockets).
+
+**Mechanics path (chronological):**
+1. Oriented per SESSION_RUNNER Phase 0. SAFEGUARDS read in full; SESSION_NOTES.md tail (S55/S56 entries); ran project dashboard (83/100); `git status` clean on develop @ `1e8b88e1e`; `gh issue list` — 6 open on sandbox. No ghost sessions.
+2. User answered persona question: "contributor. 22". Confirmed #22 AC and current gap.
+3. Investigation:
+   - `build-linux.yml` currently uploads 3 raw ELFs (`jt9`, `wsprd`, `wsjtx`) — no installer-class artifact. Issue accurate.
+   - `CMakeLists.txt:1777-1954` already installs everything needed for AppImage packaging (binaries + `wsjtx.desktop` + `wsjtx_icon.png`) under the Linux branch.
+   - `WSJT_BUILD_UTILS` defaults to `ON` in CMakeLists — no flag change required to get the helper tools built.
+   - `release.yml:107-109` filter already accepts `*.AppImage` — no release-workflow change required; AppImage will be picked up on future release tags automatically.
+4. `AskUserQuestion` (batched, 3 questions): tool = `linuxdeploy + qt plugin`; verify path = push-to-develop → `ci.yml`; payload = full `cmake --install` output. User accepted all 3 recommendations.
+5. Wrote Phase 1B stub to SESSION_NOTES ACTIVE TASK before technical work.
+6. Edited `build-linux.yml` — 4 new steps between `Verify binary` and the existing `Upload build artifacts`:
+   - `Install to AppDir` — `cmake --install wsjtx-build --prefix AppDir/usr` + sanity `test -x` on `wsjtx`/`jt9`/`ft8code` + `test -f` on `.desktop` and `wsjtx_icon.png`.
+   - `Package AppImage` — downloads `linuxdeploy-x86_64.AppImage` + `linuxdeploy-plugin-qt-x86_64.AppImage` from `continuous` channel (upstream's recommended CI source), sets `OUTPUT=wsjtx-${VERSION}-linux-x86_64.AppImage`, runs `linuxdeploy --appimage-extract-and-run --appdir AppDir --plugin qt --output appimage --desktop-file ... --icon-file ...`.
+   - `Smoke-test AppImage payload` — uses `--appimage-extract` (no FUSE), verifies core binaries in `squashfs-root/usr/bin/` and Qt5 lib bundling in `squashfs-root/usr/lib/`.
+   - `Upload AppImage` — new artifact name `wsjtx-<version>-linux-x86_64-AppImage` containing the `.AppImage` file. Existing raw-ELF upload preserved untouched.
+7. Commit `078a6668a feat(ci-linux): package Linux x86_64 build as AppImage (#22)` (build-linux.yml only; SESSION_NOTES stub kept uncommitted for close-out). Pushed to `origin/develop`. Admin-bypass message appeared as expected per S56 Gotcha #1.
+8. Background-watched `ci.yml` run [24614754650](https://github.com/KJ5HST-LABS/wsjtx-internal/actions/runs/24614754650) via `gh run watch --exit-status`. After ~17 min wall-clock: all 4 platforms green. Linux job 12m31s. All 4 new AppImage steps ✓.
+9. Verified AppImage artifact via `gh api runs/.../artifacts`: `wsjtx-3.0.0-linux-x86_64-AppImage`, 73,727,022 bytes. Linuxdeploy log confirmed 9 Qt5 libs bundled.
+10. Static-verified `release.yml` pickup filter: `find artifacts -maxdepth 2 -type f ... -name "*.AppImage"` matches `artifacts/wsjtx-3.0.0-linux-x86_64-AppImage/wsjtx-3.0.0-linux-x86_64.AppImage` at depth 2. No release-workflow change required for future release tags to include the AppImage.
+11. Posted resolution comment on #22 (4 AC checkboxes ticked + evidence: CI run, commit, bundled libs, artifact name/size). Closed #22.
+12. Close-out (this entry).
+
+**Proof (commands next session can run to verify):**
+- `git log --oneline -3` — `078a6668a feat(ci-linux): package Linux x86_64 build as AppImage (#22)` is the top commit after close-out.
+- `gh run view 24614754650 --repo KJ5HST-LABS/wsjtx-internal --json conclusion --jq '.conclusion'` — `success`.
+- `gh api repos/KJ5HST-LABS/wsjtx-internal/actions/runs/24614754650/artifacts --jq '.artifacts[] | select(.name=="wsjtx-3.0.0-linux-x86_64-AppImage") | .size_in_bytes'` — `73727022`.
+- `gh issue view 22 --repo KJ5HST-LABS/wsjtx-internal --json state --jq '.state'` — `CLOSED`.
+- `grep -c "AppImage" .github/workflows/build-linux.yml` — ≥6 matches.
+
+**Out of scope (left for future sessions):**
+- **End-to-end release-tag validation.** Pickup is statically verified; the next real release tag (or a throwaway `build/v*-test` tag) will provide the first empirical end-to-end proof. Not done this session because a test release tag would also re-trip Issue #24 (per-binary tarball collision in macOS artifacts), making the signal noisy. Fix #24 first, then the next release tag validates both simultaneously.
+- **AppImage desktop integration / signing.** AppImage is unsigned (linuxdeploy defaults). Not an AC item.
+- **Removing the raw-ELF upload.** Kept for this session to minimize change surface. A future session can delete the raw `wsjtx-${version}-linux-x86_64` artifact once downstream consumers are confirmed switched to the AppImage.
+- **`ci.yml` / `release.yml` `linux-arm64`** — sandbox pipeline is x86_64-only on Linux. Not in #22 scope.
+
+**Session 56 Handoff Evaluation (by Session 57):**
+- **Score: 9/10.** S56 self-scored 9/10. Match.
+- **What helped most:** (a) S56's "What's next" listed #22/#23/#24/#25 with the direction "pick ONE per session" — user answered "22" immediately, task scope was unambiguous. (b) S56 Gotcha #1 (admin-bypass message on `develop` push) — when `git push` output included `Bypassed rule violations for refs/heads/develop: 4 of 4 required status checks are expected`, no panic; same existing pattern. (c) S56 Gotcha #9 (`gh` defaults to sandbox without `--repo`) — saved flag noise on `gh issue comment 22`, `gh issue close 22`, `gh run view` calls. (d) S56 Gotcha #5 (`release.yml` 4-platform `needs:` is strict) — prevented me from thinking about pushing a test release tag this session; the static pickup check was the right substitute. (e) S56's evidence that the full 4-platform ci.yml run completes in ~17 min — good expectation setting for the background watch.
+- **What was missing:** None that mattered. S56's close-out was unusually thorough given how much happened in that session. One tiny gap: S56 did not flag that `ci.yml` exists on every push to `develop` (so per-platform iteration doesn't require tags). That was obvious from a 2-line read of `ci.yml` though.
+- **What was wrong:** Nothing.
+- **ROI:** Very high. The "ask which deliverable" framing + per-issue gotcha list + `gh` CLI hygiene meant orient → task → stub → first edit took ~15 minutes.
+
+**Self-assessment (Session 57):**
+- **(+) One deliverable, end to end.** Acceptance criteria read at start → 4/4 met + closed at end. No scope creep. Did not touch adjacent issues (#23/#24/#25/#26) beyond a single forward-reference in "Out of scope."
+- **(+) Batched the approach decision into one AskUserQuestion** (tool + verify path + payload) rather than asking three sequential questions. Saved round trips.
+- **(+) Non-destructive change surface.** Added 4 CI steps + 1 new artifact upload; left the existing raw-ELF upload untouched. A rollback is a single `git revert`. No CMake edits, no release.yml edits, no cross-file coupling.
+- **(+) Defended against runner-side FUSE risk** by using `--appimage-extract-and-run` when invoking `linuxdeploy` and `--appimage-extract` (not `--appimage-run`) in the smoke test. Hosted runners' FUSE availability is inconsistent; this avoids the entire class.
+- **(+) Static verification of release.yml pickup** instead of triggering a real release tag. Saved ~20 min of CI time + avoided tripping #24 for no new signal.
+- **(+) Evidence-rich #22 close comment.** Each AC tick has proof (run link, commit hash, bundled-lib list, artifact size). Future reader does not need to re-derive.
+- **(+) Clean commit isolation.** `build-linux.yml` change committed alone (`078a6668a`); SESSION_NOTES stub held for a separate close-out commit (deliverable code is bisectable without doc churn mixed in).
+- **(−) Single-cycle CI validation.** Only observed one successful run. If the download of `linuxdeploy` continuous builds ever flakes (upstream cache miss, GitHub release asset transient 5xx, etc.), the Linux job will fail. Not a blocker — transient is still recoverable by re-run — but worth flagging. A pinned linuxdeploy version (tag release instead of `continuous`) would be marginally more stable at the cost of missing upstream fixes. Not addressed.
+- **(−) AppImage not size-bound in CI.** 70 MiB is reasonable; if a future CMake change or Qt6 migration doubles it, nothing in the workflow catches the regression. Low priority; not blocking.
+- **(−) Did not update `MIGRATION_PLAN.md`** (`docs/contributor/MIGRATION_PLAN.md:148` mentions AppImage as a target — an editorial "done" marker could be added). Deferred because the migration plan is a dead letter under the current MISSION framing (per CLAUDE.md Architecture/MISSION) and touching it risks reopening the contributor-plan scope.
+- **Score: 9/10.** Deliverable exactly as scoped; AC fully met; issue closed with defensible evidence; CI still green across all 4 platforms; one-and-done discipline held.
+
+**What's next (Session 58 priorities):**
+
+With #22 closed, the sandbox now has installer-class artifacts on both macOS (`.pkg`) and Linux (`.AppImage`). Open work on the 4-platform proof umbrella:
+
+1. **Issue #24 fix (Contributor-persona, Recommended next).** Rename per-binary tarballs in `build-macos.yml` to include arch suffix (`ft8code-arm64.tar.gz`, etc.) so release-job artifact upload no longer collides on basename. Touches `build-macos.yml`. Can be validated via a cheap throwaway tag (e.g., `build/v3.0.0-fix24-test`) — unlike #22, #24 needs end-to-end release-job validation because the failure surface is inside the release job. Closes #24. After #24 is closed, a fresh release tag will end-to-end-validate both #22 and #24 together. S56 left full fix-surface analysis in the #24 comment; read that first.
+2. **Issue #23 (Windows installer-class signed artifact, Contributor-persona).** Currently Windows CI ships raw `.exe` + DLLs inside a zip-ish artifact (per S56 shape note). Target: a single `.exe` installer (NSIS or WiX) and/or MSIX. Higher-effort than #22; may take more than one session. Expect iteration on MSYS2 / code-signing path.
+3. **Issue #25 (release gate logic, Contributor-persona).** "All-platforms-ready gate" — runtime conditional that lets release-job proceed only when all 4 platforms are green + artifact shape is canonical. Lower priority than #23 because `release.yml`'s `needs:` already enforces all-platforms-green structurally.
+4. **Issue #26 (umbrella, closes automatically when #23/#24/#25 close).** No direct work; tracking only.
+5. **Issue #3 close-out (Consumer-persona).** Update rad-con dependency references to point at new release URL. Persona must be Consumer. Blocked on user persona switch at orient time.
+6. **Do NOT start Phase 6 upstream patches** per `CLAUDE.md:17` MISSION. Phase 6 waits until sandbox 4-platform proof (#26) closes.
+
+**Key files (for Session 58):**
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/build-linux.yml` — AppImage packaging steps at `:129-184`. Reference for future packaging work.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/build-macos.yml` — #24 fix surface: per-binary tarball names.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/build-windows.yml` — #23 baseline.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/release.yml:107-109` — asset-selection filter (AppImage pickup already enabled; includes `*.exe` for #23).
+- `/Users/terrell/Documents/code/wsjtx-arm/CMakeLists.txt:1777-1954` — Linux install manifest (used by AppImage staging).
+- **CI run [24614754650](https://github.com/KJ5HST-LABS/wsjtx-internal/actions/runs/24614754650)** — baseline linuxdeploy log; reference for Qt5 bundling debug if things drift.
+- **GitHub Issues #3, #23, #24, #25, #26** on `KJ5HST-LABS/wsjtx-internal` — open work.
+
+**Gotchas for Session 58:**
+- **#1 — `KJ5HST-LABS/wsjtx-internal` `develop` branch admin push pattern persists.** `Bypassed rule violations for refs/heads/develop: 4 of 4 required status checks are expected.` is expected; not an error. Confirmed across S53/S54/S55/S56/S57.
+- **#2 — Sandbox default-denies release-triggering tag pushes even after AskUserQuestion approval.** Confirmed pattern (S54/S55/S56). Plan for it when pushing `build/v*` tags: surface full blast radius, ask for typed `yes push`, rerun.
+- **#3 — `release.yml` 4-platform `needs:` is strict.** The `release` job runs only if all 4 platform builds succeed. Independent of #25's runtime-gate logic work.
+- **#4 — Issue #24 still reproducible.** Any release-tag attempt that bundles both arm64 + x86_64 per-binary tarballs from `individual-binaries-macos-*` WILL hit the 422 collision and fail to publish. Fix #24 first, or use the manual-publish workaround from S56's #24 comment.
+- **#5 — `linuxdeploy` CONTINUOUS-channel dependency.** `build-linux.yml:145-148` pulls `linuxdeploy-x86_64.AppImage` and `linuxdeploy-plugin-qt-x86_64.AppImage` from their `continuous` releases. That's the upstream-recommended CI channel, but it does mean transient upstream issues (asset 5xx, temporary removal) can fail the Linux job with no sandbox-side code change. Re-run fixes it. If flakes become chronic, pin to a tagged release.
+- **#6 — AppImage smoke-test is payload-only.** `squashfs-root/usr/bin/wsjtx` is checked for existence + `ELF 64-bit` file-type, not *executed*. GUI binaries are not run in headless CI. If wsjtx fails to *launch* (e.g., a runtime linker error masked by rpath bundling), the Linux CI will still be green. Real-run validation requires either a `Xvfb`-capable job or user-side smoke test on the artifact.
+- **#7 — Raw-ELF artifact still uploaded.** `wsjtx-3.0.0-linux-x86_64` artifact (3 raw ELFs) is preserved for now. Can be safely deleted in a future cleanup session; currently harmless.
+- **#8 — `gh` default repo is `KJ5HST-LABS/wsjtx-internal`.** ALWAYS `--repo` when reaching upstream (`WSJTX/wsjtx`, `WSJTX/wsjtx-internal`). For sandbox, bare commands work.
+- **#9 — SESSION_NOTES.md now ~740KB.** Growing unabated. User continues to defer the split; do not raise unsolicited.
+- **#10 — `build/v3.0.0` tag is immutable; release `build/v3.0.0` exists and is final.** For a validation retry tied to the current source, use `build/v3.0.0-fix24-test` or similar. Do NOT delete the existing tag/release.
+- **#11 — `CMakeLists.txt` `VERSION 3.0.0.0`** is the correct upstream baseline. Don't accidentally re-bump for test work without reverting before any release tag.
 
 ### What Session 56 Did
 **Deliverable:** WSJT-X v3.0.0 GA Release published on `KJ5HST-LABS/wsjtx-internal` (Issue #3).
