@@ -1,15 +1,116 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Session 67 — Monitor PR #29 CI to terminal state, then proceed accordingly (merge authorization / triage). Contributor persona.
-**Status:** Session claimed. Work beginning.
-**Session:** 67 in progress
-**Started:** 2026-04-19
-**Persona:** Contributor
-**Issue:** PR #29 on `KJ5HST-LABS/wsjtx-internal` (Phase 2 A5/A6/A8).
+**Task:** Session 67 — Monitor PR #29 CI on `KJ5HST-LABS/wsjtx-internal` to terminal state; on all-green + user authorization, execute the merge and verify. Contributor persona.
+**Status:** COMPLETE
+**Session:** 67 complete
+**Started:** 2026-04-19 (same calendar day as S65 + S66 — third session in one real-time block)
+**Persona:** Contributor (sandbox governance work; zero rad-con/consumer references in any committed or external artifact)
+**Issue:** PR #29 on `KJ5HST-LABS/wsjtx-internal` (Phase 2 A5/A6/A8). Merged as commit `03dee59ad8b5d2dd08e74dde235818c53cb917c4` at 2026-04-19T19:55:41Z.
 
 ### What Session 67 Did
-(in progress — stub per SESSION_RUNNER Phase 1B)
+**Deliverable:** PR #29 merged via regular (non-squash) merge — user explicitly chose option 2 from a three-option prompt (squash / merge / hold). One merge commit `03dee59a` on `develop` atop the feature-branch commit `8a3616af` (the A5/A6/A8 changeset from S66). Feature branch `feat/phase2-security-governance` auto-deleted post-merge. All four CI platform builds plus `prepare` PASSED before merge authorization (5/5 green — the 8.0.2 action: no forced merges while red). Phase 2 of `docs/contributor/4_PRODUCTION_READINESS_PLAN.md` is now live on `develop` with A5 (3 of 4 features enabled; CodeQL still documented-blocker on GHAS license), A6 (branch-protection playbook §10 note), A8 (SECURITY.md, CONTRIBUTING.md, CODEOWNERS, `.github/CODE_OF_CONDUCT.md`, `.github/dependabot.yml`) + the `docs/contributor/evidence/phase2_security_settings.json` audit snapshot.
+
+**Change surface:**
+- **On `KJ5HST-LABS/wsjtx-internal`:** 1 merge commit on `develop` (`03dee59a`), feature branch deleted. No content delta beyond what S66 committed on the feature branch.
+- **On local `wsjtx-arm`:** 2 commits on `develop` — the S67 stub (`bde5f7323`) written during Phase 1B, and this close-out commit. Zero source changes. 4 untracked drafts in `docs/contributor/drafts/` still untouched (S49-era).
+- **Nothing on `WSJTX/*`, `KJ5HST-LABS/wsjtx`, or upstream.** Phase 2 is sandbox-internal only.
+
+**Mechanics path (chronological):**
+1. Oriented per SESSION_RUNNER Phase 0 (SAFEGUARDS full, SESSION_NOTES top 200 lines, dashboard 83/100, git status showed local 7 ahead of origin/develop, `gh pr view 29` showed `OPEN`/`MERGEABLE` with prepare+linux PASS at orient but macos/macos-intel/windows IN_PROGRESS). Reported state; awaited user direction.
+2. User: "Contributor. monitor the workflow then proceed accordingly" — one coherent instruction: watch CI, act on the outcome.
+3. Loaded `TaskCreate/TaskUpdate/TaskList/Monitor` tools via ToolSearch.
+4. Wrote Phase 1B stub to SESSION_NOTES.md claiming S67 + committed (`bde5f7323`). Stub-then-commit pattern per FM #14 (ghost-session guard): even a crash now leaves evidence S67 was in flight with a specific deliverable.
+5. Armed a polling Monitor loop (v1) watching `gh pr checks 29`. Used `rc=$?` branching for "API error"; but `gh pr checks` exits 8 when any check is non-terminal, which I treated as API error — spurious "api-error" event fired on first poll, which included actual check data (macos had passed by then). Stopped v1, rewrote as v2 using empty-stdout as the error signal.
+6. Armed v2. Immediately failed with zsh `read-only variable: status` error. Cause: I used `status` as a `read -r` loop variable, and zsh reserves `$status` as a builtin (mirror of `$?` from csh ancestry). Stopped v2, renamed the variable to `st`, armed v3.
+7. v3 ran to completion. Emitted per-check terminal events as platforms finished (macos 8m30s → macos-intel 16m33s → linux 8m25s → windows 19m56s — latter two staggered because linux was already done at orient; the event-dedup set `seen` is populated once the poll cycle sees each check's terminal state). Final `ALL-TERMINAL` summary after windows hit `pass`.
+8. Verified PR state post-CI: `OPEN` / `MERGEABLE` / `mergeStateStatus: CLEAN` / zero reviews required (sandbox posture per A6 note). All 5/5 checks PASS.
+9. Reported to user: options 1/2/3 (squash / merge / hold). User chose "2" — regular merge. Did NOT merge unilaterally; waited for the authorization even after S66's "do it" precedent, because the persona memory is "PR merge is user-authorized shared-state" (S65 + S66 both confirmed).
+10. Executed `gh pr merge 29 --repo KJ5HST-LABS/wsjtx-internal --merge --delete-branch`. Command returned clean (no output on success — this particular `gh pr merge` quirk is fine).
+11. Verified merge: `state: MERGED`, `mergedAt: 2026-04-19T19:55:41Z`, `mergeCommit.oid: 03dee59ad8b5d2dd08e74dde235818c53cb917c4`. Confirmed `develop` HEAD is the merge commit, author `Terrell Deppe`, message `Merge pull request #29 from KJ5HST-LABS/feat/phase2-security-governance`. Confirmed `feat/phase2-security-governance` branch returns 404 (deleted).
+12. Post-merge regression check: queried `security_and_analysis` on the repo — `dependabot_security_updates: enabled`, `secret_scanning: enabled`, `secret_scanning_push_protection: enabled`, `code_security: disabled` (CodeQL remains GHAS-blocked as documented). Queried each of the 6 governance files by path on `develop` — all resolve with content SHAs (SECURITY.md `f4744c17`, CONTRIBUTING.md `ea7624e8`, CODEOWNERS `a8f8d21d`, CODE_OF_CONDUCT.md `37c10537`, dependabot.yml `cc6090ef`, phase2_security_settings.json `af6a2868`).
+13. Wrote this close-out, committing on local `develop`. NOTE: local develop is now 8 ahead of origin/develop (7 pre-session + S67 stub + this close-out); origin has the PR #28 merge commit (`6b7b5a5f`) + now the PR #29 merge commit (`03dee59a`) from remote-side execution — local does not yet have PR #29's merge commit. Rebase/merge reconciliation continues to defer to user.
+
+**Proof (commands the next session can run to verify):**
+- `gh pr view 29 --repo KJ5HST-LABS/wsjtx-internal --json state,mergeCommit` → `MERGED` / `03dee59ad…`
+- `gh api repos/KJ5HST-LABS/wsjtx-internal/commits/develop --jq '.sha'` → starts with `03dee59ad`
+- `gh api repos/KJ5HST-LABS/wsjtx-internal/branches/feat/phase2-security-governance` → 404
+- `gh api repos/KJ5HST-LABS/wsjtx-internal --jq '.security_and_analysis | {d: .dependabot_security_updates.status, s: .secret_scanning.status, p: .secret_scanning_push_protection.status, c: .code_security.status}'` → `d/s/p = enabled`, `c = disabled`
+- `gh api repos/KJ5HST-LABS/wsjtx-internal/contents/.github/dependabot.yml?ref=develop --jq '.name'` → `dependabot.yml` (and same for SECURITY.md, CONTRIBUTING.md, CODEOWNERS, `.github/CODE_OF_CONDUCT.md`, `docs/contributor/evidence/phase2_security_settings.json`)
+
+**Out of scope (left for future sessions):**
+- **Phase 3 sandbox E2E release validation.** Plan §Phase 3. Now fully unblocked (both Phase 1 and Phase 2 merged). Two test tags: (a) forced-failure `build/v3.0.1-gatefail-test` to prove the A12 all-platforms-ready gate rejects partial matrix, (b) happy-path `build/v3.0.1-rc1` to exercise the full release workflow end-to-end. The (b) tag triggers the public-mirror force-push; `yes push` authorization required before arming. Plan says one session covers both.
+- **Plan §5 A9 contract row split (A9a/A9b).** Four sessions deferred now (S64/S65/S66/S67). The plan says A9 retired; the actual state is A9a retired (linuxdeploy family pinned to tested combination), A9b tracks upstream (GHA pinning deferred to Phase 6). S68 should absorb this as a preamble 2-line doc commit before Phase 3 work, or as a micro-session of its own. Continuing to defer is drifting toward scope-hygiene debt.
+- **Local `develop` reconciliation.** Local is now 8 ahead of origin post-S67 close-out (S61+S62+S63+S63-addendum+S64+S65+S66+S67-stub+S67-closeout = 9 local commits on top of common base; origin has +2 merge commits for PR #28 and PR #29). The divergence is semantically clean (local-only is docs, origin-only is feature merges that flow through PRs and don't exist locally) but topologically growing. A rebase of local docs onto `origin/develop` gives a clean linear history. Defer to user direction; if user wants to push, pull-rebase-push is the right sequence.
+- **CodeQL enablement.** Still blocked on org-level GHAS. Phase 6 production-migration requirement on `WSJTX/wsjtx-internal`; sandbox cannot unblock.
+- **`release.yml:123-136` unconditional force-push hardening.** A2 retained in sandbox; Phase 6 retirement item on production.
+- **rad-con + radio-web reconciliation** (Consumer persona, carried).
+- **Post-merge smoke test for Dependabot.** Within 24h, a Dependabot version-update PR opens even if empty ("no updates available" shows automation is live). Low priority to verify — if automation is broken, the first signal is the absence of expected PRs over time.
+- **4 untracked draft files in `docs/contributor/drafts/`** (S49-era). Unchanged.
+
+**Session 66 Handoff Evaluation (by Session 67):**
+- **Score: 9/10.** S66 self-scored 9/10. I concur.
+- **What helped most:** (a) S66's "What's next" #1 gave the exact first action ("check PR #29 CI state. If all 5 green → merge is user's call. If any fail → triage"). When user said "monitor the workflow then proceed accordingly", zero interpretation friction — I already knew what "accordingly" meant on either branch. (b) S66's Gotcha #4 ("always pipe `gh api` output through `--jq`") was remembered and applied throughout this session; no noisy PATCH-response logs. (c) S66's Gotcha #9 ("S66 was a session-boundary override; S67 starts fresh unless user re-authorizes") was doctrinally correct — I did orient fully per Phase 0 even though this session happened in the same real-time block as S65+S66. (d) S66's listed proof commands (curl SHA verification for assets, `gh api` security-status probe) were reused for post-merge verification, reducing the "is it really merged?" question to a 2-second API call.
+- **What was missing:** (a) S66 did NOT flag that `gh pr checks` exits 8 when any check is non-terminal, which cost me two monitor iterations. Fair that S66 didn't know this — Monitor was a first-time tool for this repo in S66-space — but "gh's exit-code semantics for poll-mode tools" is now session-level knowledge that needs capturing (Learning #17 below). (b) S66 did not note zsh's read-only `$status` variable. This is a platform quirk not specific to the CI work, but Monitor scripts are new terrain and platform gotchas should be flagged proactively. Learning #18. (c) S66's "If all 5 green → merge is user's call" was right, but did not specify whether merge style was a user decision or a default. I presented three options (squash/merge/hold); would have been slightly cleaner if S66 had said "offer the three-way choice" explicitly. Minor.
+- **What was wrong:** Nothing material. The predicted-low-probability of CI failure turned out correct — all 5 green on first try. The "prepare" version-extraction job held up post-merge exactly as S66 said it would.
+- **ROI:** Very high. From orient to merged in ~25 minutes real-time, 22 of which was waiting on CI (windows build dominated at 19m56s). Active session work was ~3 minutes of reading/reporting + 2 minutes of Monitor iteration debugging + 1 minute of post-merge verification.
+
+**Self-assessment (Session 67):**
+- **(+) Did not merge unilaterally.** Even after S66 ended with "merge is user's call" and even though S66 had itself been a user-override continuation of S65, I presented the 3-option prompt and waited. "The last session merged on 'do it' doesn't mean this one does." Merge is a shared-state action; authorization is per-session, not transitive.
+- **(+) Three-option prompt (squash / merge / hold).** Gave the user a real choice, not a yes/no on a default. S65's PR #28 merge was squash; presenting "merge" as an equal option (because the merge-commit style preserves the feature-branch history better and matches GitHub's own default) let the user pick differently. They did.
+- **(+) Post-merge verification was multi-axis.** Not just "state=MERGED" — also verified develop HEAD SHA, branch deletion, security feature state still on, and all 6 governance files present by path on develop. Each of these could have failed silently (e.g., a content delivery lag, an auto-disable of a feature, a file path typo); none did, but the discipline is the point.
+- **(+) Monitor script debugging was incremental.** v1 failed on exit-code semantics; v2 failed on zsh quirk; v3 worked. Each failure was a 15-second diagnosis + 30-second fix, not a session-derailer. Captured both as learnings.
+- **(+) Used `--jq` consistently.** Every `gh api` call in this session filtered fields. S66's deduction #1 was this exact pattern; carried forward.
+- **(+) Kept Phase 1B stub commit separate from close-out commit.** Two commits on local develop, not one bundled — the stub is a crash-beacon, the close-out is the evaluation + handoff. Each serves a different purpose; bundling would have destroyed the crash-beacon semantics.
+- **(+) Did NOT touch `docs/contributor/drafts/*`.** 5-session consistency (S61-S67 all untouched). The 4 untracked drafts continue to be user-territory.
+- **(+) Did NOT start Phase 3 or A9 contract row split while waiting on CI.** "While I'm at it" is the classic scope creep red flag; this session is Phase 2 close-out, period. Even with 20 minutes of CI idle time. S64/S65/S66/S67 all in a row is deferring A9 — but rolling it into a session whose deliverable is "monitor + merge" would have been exactly the bundling anti-pattern FM #18 warns against.
+- **(−) Did NOT push local `develop` this session either.** Following S65/S66 precedent. Accumulating divergence is becoming material (9 local-only commits now). Should at minimum surface "do you want me to push/rebase?" as an explicit question in the report. Instead, left it as a gotcha for S68. Borderline.
+- **(−) v1 Monitor spent a full minute on a preventable failure.** Should have tested `gh pr checks; echo $?` once in Bash before arming a 45-minute persistent poll loop around it. Reading the `gh pr checks --help` docs (or even `gh pr checks --help 2>&1 | grep -i exit`) would have revealed the exit-code semantics before the first iteration. Learning #17's true cost: 2 minutes of Monitor-iterating instead of 30 seconds of upfront probing.
+- **(−) Regular merge vs squash was a 50/50 decision for me before asking.** I offered both without a recommendation. A cleaner version would have been: "Recommend squash to match PR #28 pattern; if you want to preserve S66's feature-branch commit, pick merge." Instead I listed them neutrally. The user picked correctly (regular merge preserves the feature-branch attribution + keeps merge-commit trail; squash would have flattened a well-scoped feature branch that already had a clean commit message). Small.
+- **(−) Still did NOT absorb the A9 contract row split.** Four sessions now. The right time to do it is any time the current session is docs-only with idle slack; this session literally had 20 minutes of CI-wait slack and I did not spend 3 minutes of it on the A9a/A9b split. FM #18 protects against bundling implementation into plan sessions, but it does not protect against indefinitely deferring a well-defined 2-line doc edit. S68 must not let this slide a fifth time.
+- **Score: 9/10.** Clean merge, clean verification, clean handoff evaluation, Monitor-tool learnings captured. Deductions for the push/rebase unsurfaced, the preventable Monitor v1 iteration, and the fifth deferral of the A9 contract row.
+
+**Learnings to add to SESSION_RUNNER.md Learnings table:**
+| # | Learning | Source | When to Apply |
+|---|----------|--------|---------------|
+| 17 | `gh pr checks <n>` exits non-zero (typically 8) when any check is non-terminal — not an error. Before wrapping gh-read commands in a poll loop with `rc=$?` error branching, run the command once in the expected state (partial completion) and check `echo $?` to confirm what non-zero actually means. For `gh pr checks` specifically, treat empty stdout as the true API failure signal, not non-zero exit. | S67 Monitor v1 → v2 debug | Any Monitor or Bash-poll loop wrapping a `gh` read command that changes state during the poll window. |
+| 18 | zsh reserves `$status` as a read-only variable (mirror of `$?`, legacy csh semantics). Never name a shell variable `status` in zsh scripts — including inside `read -r name status elapsed …` loops, where zsh will error "read-only variable: status" on assignment. Rename to `st`, `state`, `result`, etc. Most portable across bash and zsh. | S67 Monitor v2 → v3 debug | Any shell script run under zsh (macOS default) that uses `read` or variable assignment with common status-like names. |
+| 19 | When presenting a multi-option decision to the user (e.g., squash vs. merge vs. hold), include a recommendation + rationale even if the options are close-to-neutral. "Present three options, recommend one with reasoning" beats "present three options neutrally and wait." The user can override trivially; the recommendation surfaces your own analysis and reduces decision cost. | S67 squash/merge prompt | Any shared-state decision prompt where the agent has context to recommend. |
+| 20 | Idle CI wait time is NOT free. A session that hits a 20-minute CI wait and does nothing else productively during it is wasting a clean slot. Safe idle-slack activities: re-reading previous session handoffs, running exploratory `gh api` queries that aid the upcoming deliverable, or absorbing small deferred doc edits (A9-style contract row splits). Unsafe: starting a new deliverable (FM #18, "1 and done"), refactoring, or touching files outside the current session's scope. | S67 20-min CI wait used only for reporting + waiting | Sessions with a known multi-minute blocker (CI run, long test, remote sync) should pre-plan the idle-slack activity at orient time. |
+
+**What's next (Session 68 priorities):**
+
+1. **A9 contract row split (A9a/A9b) on `docs/contributor/4_PRODUCTION_READINESS_PLAN.md §5`.** Four sessions deferred. If S68's primary deliverable is Phase 3 E2E validation, do this as a preamble commit before starting. 2-line doc edit; cannot grow. Fix the deferral chain now.
+2. **Phase 3 sandbox E2E release validation** (plan §Phase 3). Fully unblocked (both Phase 1 and Phase 2 merged). Two test tags:
+   - (a) Forced-failure: `build/v3.0.1-gatefail-test`. Comment out one platform's build job in `.github/workflows/release.yml`, push the tag, confirm A12 all-platforms-ready gate rejects the release before the mirror-push step. Revert. This proves the gate's forward-failure path works as designed.
+   - (b) Happy-path: `build/v3.0.1-rc1`. Clean release run end-to-end. Triggers the `release.yml:123-136` force-push to the public `KJ5HST-LABS/wsjtx` mirror. **User authorization required before push** (user memory says `yes push` is the explicit gate phrase for public-state changes).
+   - Plan §Phase 3 says one session covers both. Document the run IDs + asset SHAs in `docs/contributor/evidence/` (the new pattern from S66). Record outcome in plan §5.
+3. **Local `develop` reconciliation.** 9 local-only commits after this close-out. A rebase of local onto `origin/develop` gives clean linear history. Surface at S68 orient: "Local develop is N ahead; reconcile now?" before any new deliverable.
+4. **Phase 4a — evidence-based inventory for replication to `WSJTX/wsjtx-internal`.** Plan §Phase 4a. This is a **planning session**, not implementation. Produces `docs/contributor/REPLICATION_DELTA.md`. Prerequisite: Phase 3 green.
+5. **rad-con + radio-web reconciliation** (Consumer persona, carried).
+6. **Post-merge Dependabot smoke test.** Within 24h of the PR #29 merge. If no Dependabot PR shows up inside a week (even a "no updates available" PR), investigate. Low-priority verification, not a session deliverable on its own.
+
+**Key files (for Session 68):**
+- `/Users/terrell/Documents/code/wsjtx-arm/docs/contributor/4_PRODUCTION_READINESS_PLAN.md` §5 (A9 contract row), §Phase 3 (E2E validation recipe), §Phase 4a (replication planning).
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/release.yml:123-136` — force-push step, target of Phase 3 (b) test tag + Phase 6 retirement.
+- `/Users/terrell/Documents/code/wsjtx-arm/docs/contributor/3_CICD_DEPLOYMENT_PLAYBOOK.md` §9 "Phase 7: Test the Release Pipeline" — Phase 3 test recipe lives here. §10 (branch protection, updated S66).
+- `/Users/terrell/Documents/code/wsjtx-arm/docs/contributor/evidence/` — new directory pattern (S66). Phase 3 run IDs + asset SHAs go here.
+
+**Gotchas for Session 68:**
+- **#1 — Phase 3 (b) triggers a force-push to public `KJ5HST-LABS/wsjtx`.** User authorization (`yes push` phrase per memory) required before arming. If the user authorizes Phase 3 generally without distinguishing (a) from (b), confirm explicitly: "(a) is a no-push forced-failure test and safe; (b) is the public-mirror update and needs explicit `yes push` — proceed with (a) now, pause for (b)?"
+- **#2 — PR #29 is merged via regular (non-squash) merge.** The develop history now shows `03dee59a` merge commit + `8a3616af` feature-branch commit. Different from PR #28 pattern (squash merge → single commit on develop). Both are user-chosen; document-as-precedent: "merge style is a user decision per PR, not a repo default."
+- **#3 — A9 contract row split is four sessions deferred.** Do not let it be five. Absorb before Phase 3 work begins.
+- **#4 — Local `develop` is 9 ahead of origin.** Clean-but-growing divergence. Surface at orient, don't assume "we'll reconcile later".
+- **#5 — `gh pr checks` exits non-zero when any check is non-terminal.** See Learning #17. If scripting around gh, test exit-code semantics before arming poll loops.
+- **#6 — zsh reserves `$status`.** See Learning #18. Do not use `status` as a shell variable name in any poll/read loop on macOS.
+- **#7 — CodeQL is documented-blocked on GHAS licensing.** The sandbox repo will continue to show `code_security: disabled`. This is intentional. Phase 6 production requirement on `WSJTX/wsjtx-internal`.
+- **#8 — S65's "yes push" authorization gate phrase** still applies to public-mirror changes.
+- **#9 — The `public` remote on local `wsjtx-arm`** was added in S65, points at `KJ5HST-LABS/wsjtx`. Still configured; usable for any future mirror ops that don't go through release.yml.
+- **#10 — Content-filter substitution pattern (S66 Learning #13):** For any governance document that would contain necessary-but-filter-adjacent vocabulary (harassment terms, security disclosure templates), default to adopt-by-reference, not inline.
+- **#11 — Idle CI wait should not be idle.** S67 Learning #20. Pre-plan what small deferred item you'll knock out during any known multi-minute CI/test blocker.
+- **#12 — `docs/contributor/evidence/` is the new pattern** (S66) for machine-readable audit trails. Phase 3 run IDs + release-asset SHAs should land there, not in SESSION_NOTES.
+- **#13 — S67 was a third-in-a-row same-day session.** S68 starts fresh unless user re-authorizes continuation. Orient first per SESSION_RUNNER Phase 0.
+- **#14 — Three-option prompt pattern (S67 Learning #19).** When presenting shared-state decisions, include a recommendation with rationale, not neutral alternatives.
 
 ---
 
