@@ -115,7 +115,7 @@ jobs:
 
       - name: Upload test results
         if: always() && steps.ctest.conclusion != 'skipped'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ctest-results-linux
           path: wsjtx-build/ctest-results.xml
@@ -186,14 +186,14 @@ jobs:
           rm -rf squashfs-root
 
       - name: Upload AppImage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wsjtx-${{ inputs.version }}-linux-x86_64-AppImage
           path: wsjtx-${{ inputs.version }}-linux-x86_64.AppImage
           if-no-files-found: error
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wsjtx-${{ inputs.version }}-linux-x86_64
           path: |

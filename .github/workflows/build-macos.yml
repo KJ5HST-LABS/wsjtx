@@ -146,7 +146,7 @@ jobs:
 
       - name: Upload test results
         if: always() && steps.ctest.conclusion != 'skipped'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: ctest-results-macos-${{ inputs.arch }}
           path: wsjtx-build/ctest-results.xml
@@ -492,7 +492,7 @@ jobs:
 
       - name: Upload pkg
         if: steps.check_secrets.outputs.signing_enabled == 'true'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: wsjtx-${{ inputs.version }}-${{ inputs.arch }}-macOS.pkg
           path: wsjtx-${{ inputs.version }}-${{ inputs.arch }}-macOS.pkg
@@ -519,7 +519,7 @@ jobs:
           done
 
       - name: Upload individual binaries
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: individual-binaries-macos-${{ inputs.arch }}
           path: packages/*.tar.gz
