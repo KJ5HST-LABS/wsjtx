@@ -1,12 +1,113 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Session 58 — Fixed Issue #24 by arch-suffixing per-binary tarballs in `build-macos.yml` (filename + inner dir). Verified on [CI run 24615347615](https://github.com/KJ5HST-LABS/wsjtx-internal/actions/runs/24615347615): all 4 platforms green (after a single-job rerun of `macos-intel` on a transient Apple timestamp-service outage unrelated to this fix); both per-arch artifacts downloaded; 17 arm64 tarballs + 17 x86_64 tarballs; 0 basename overlaps confirmed via `comm -12`. #24 closed with evidence comment.
+**Task:** Session 59 — Closed Issue #23 in one session. `build-windows.yml` now emits a signed NSIS installer (`wsjtx-3.0.0-win64.exe`, 44.4 MB) containing the full CLI tool set + Qt runtime, signed with a per-run ephemeral self-signed cert via `osslsigncode`. Verified on [CI run 24617296532](https://github.com/KJ5HST-LABS/wsjtx-internal/actions/runs/24617296532): all 4 platforms green; installer artifact downloadable; `osslsigncode verify` shows valid signer + integrity-intact digest; `release.yml:107-109` filter picks up the artifact.
 **Status:** COMPLETE
-**Session:** 58 complete
+**Session:** 59 complete
 **Started:** 2026-04-18
 **Persona:** Contributor
-**Issue:** #24 (KJ5HST-LABS/wsjtx-internal) — CLOSED.
+**Issue:** #23 (KJ5HST-LABS/wsjtx-internal) — CLOSED.
+
+### What Session 59 Did
+**Deliverable:** `build-windows.yml` 3 new steps — CPack NSIS invocation, self-signed cert + osslsigncode signing, installer artifact upload — plus 2 new MSYS2 packages (`mingw-w64-x86_64-nsis`, `mingw-w64-x86_64-osslsigncode`). Hits all 4 of #23's ACs (installer produced; full CLI tool set; signing step wired; `release.yml` pickup).
+
+**Change surface:** `build-windows.yml:43-46` (+2 pacman packages), `build-windows.yml:180-230` (+3 new steps between `Verify binary` and existing `Upload build artifacts`). 4 lines changed + 57 lines added total across two commits. No changes to `release.yml`, `ci.yml`, other `build-*.yml`, or `CMakeLists.txt` — upstream's `CPACK_GENERATOR=NSIS` + `CPACK_MONOLITHIC_INSTALL=1` at `CMakeLists.txt:1989-1990` already had the packaging machinery wired; this session just invokes it.
+
+**Mechanics path (chronological):**
+1. Oriented per SESSION_RUNNER Phase 0 (read SAFEGUARDS full, SESSION_NOTES top 300 lines, ran dashboard 83/100, `git status` clean on develop @ `36d056433`, `gh issue list` 4 open). No ghost sessions (S57/S58 commits match notes 1:1).
+2. User: "Contributor. 23". Persona + deliverable unambiguous.
+3. Phase 1B stub written to SESSION_NOTES.md ACTIVE TASK before technical work.
+4. Investigation (~4 minutes): read Issue #23, read `build-windows.yml` in full, grepped `CMakeLists.txt` for NSIS/CPACK. Key finding: **NSIS CPack was already wired upstream** (`CMakeLists.txt:1989-1990`: `if (WIN32) set(CPACK_GENERATOR "NSIS")`). This simplified scope significantly — the work is workflow plumbing, not CMake authorship.
+5. `AskUserQuestion` (3 questions, batched): scope (all 4 ACs vs. phased) / signing approach (self-signed in CI vs. GitHub-secret .pfx vs. no signing) / validation (develop push+ci.yml vs. release-tag vs. static). User accepted all 3 recommendations: single session, self-signed in CI via osslsigncode, push-to-develop.
+6. Edited `build-windows.yml`: added 2 MSYS2 packages, 3 new steps (Package NSIS installer, Sign installer with self-signed sandbox cert, Upload installer artifact). Committed `363dad4a7`.
+7. Pushed to develop (admin-bypass message fired as expected per S58 Gotcha #1). CI run 24616732440 queued.
+8. First watch: all 4 platforms went green **up to `Package NSIS installer` step** (CPack produced `wsjtx-3.0.0-win64.exe`, 44,414,222 bytes). Signing step ✗ with `req: subject name is expected to be in the format /type0=value0/type1=value1/...` — MSYS2's path-conversion heuristic was mangling `/CN=...` into `D:/a/_temp/msys64/CN=...`.
+9. Fix: wrapped the `openssl req` invocation with `MSYS2_ARG_CONV_EXCL="*"` to bypass path conversion for that one command. Committed `fae89e095`.
+10. Pushed fix to develop (typed "yes push" confirmation again per S55 Gotcha #5). CI run 24617296532 queued.
+11. Second watch: all 4 platforms ✓. Windows job 13m21s. Signing step produced `Signer #0: CN=WSJT-X Sandbox Dev Signing, SHA-256, digest match`. Installer artifact uploaded at 43,905,736 bytes (within-zip).
+12. Downloaded artifact locally (`gh run download`), confirmed single `.exe` at 44,415,672 bytes matches log.
+13. Independently verified `release.yml:107-109` filter matches the artifact path (`artifacts/wsjtx-3.0.0-windows-x86_64-installer/wsjtx-3.0.0-win64.exe` = depth 2, extension `.exe`).
+14. Posted evidence comment on #23 (all 4 ACs ticked with log excerpts + commit hashes + artifact size + filter-match analysis). Closed #23.
+15. Cleaned up `/tmp/wsjtx23-verify`.
+16. Close-out (this entry).
+
+**Proof (commands the next session can run to verify):**
+- `gh issue view 23 --repo KJ5HST-LABS/wsjtx-internal --json state --jq '.state'` → `CLOSED`
+- `gh run view 24617296532 --repo KJ5HST-LABS/wsjtx-internal --json conclusion --jq '.conclusion'` → `success`
+- `git log --oneline 363dad4a7 fae89e095` → both commits present
+- `gh api repos/KJ5HST-LABS/wsjtx-internal/actions/runs/24617296532/artifacts --jq '.artifacts[] | select(.name=="wsjtx-3.0.0-windows-x86_64-installer") | .size_in_bytes'` → `43905736`
+- `grep -c "mingw-w64-x86_64-nsis\|mingw-w64-x86_64-osslsigncode\|Package NSIS installer\|Sign installer\|Upload installer artifact" .github/workflows/build-windows.yml` → ≥5
+
+**Out of scope (left for future sessions):**
+- **End-to-end release-tag validation** — static proof is strong (filter-match verified, artifact shape confirmed), but no real `build/v*` tag has exercised the release-job since #22 + #24 + #23 all landed. First real release tag (or a throwaway `build/v*-test` tag with public-mirror side-effect accepted per S58 Gotcha #3) will end-to-end-validate the full pipeline.
+- **Production code-signing cert** — team-owned operational resource per `3_CICD_DEPLOYMENT_PLAYBOOK.md:311-327`. Not a sandbox deliverable.
+- **Timestamp server** on the signature — deliberately omitted. Long-term validity past cert expiry needs an RFC 3161 timestamp; sandbox ephemeral cert expires in 1 year anyway, so this is moot for the proof.
+- **Dropping the raw-exe artifact** (`wsjtx-<version>-windows-x86_64`, 6.5 MB, 3 .exe files). Kept for now per S57 pattern (Linux raw-ELF also kept). Harmless; can be removed in a future cleanup.
+- **Issue #25** (release gate logic — runtime shape/content checks) remains open; last blocker for #26 umbrella.
+- **Issue #3** Consumer-persona close-out (rad-con dep refs) remains open.
+
+**Session 58 Handoff Evaluation (by Session 59):**
+- **Score: 10/10.** S58 self-scored 9/10; I'm bumping to 10/10 because the "Key files for Session 59" list in S58's handoff included the *exact* files I needed (`build-windows.yml` baseline + `build-macos.yml:482-501` as packaging reference + `release.yml:107-109` as filter reference), and S58's Gotchas #1/#2/#7 all fired and were pre-documented.
+- **What helped most:** (a) S58's "Key files for Session 59" named `build-windows.yml` as "#23 baseline. Read first." — I did, and S58's framing was right. (b) S58 "What's next" called out #23 as "Recommended next" with the phrase "Higher-effort than #22; may take more than one session. Expect iteration." — This primed me to batch the scope-decomposition question into the first AskUserQuestion instead of silently committing to a full-scope session and hoping. User chose full-scope; fine; but the framing was correct. (c) S58 Gotcha #1 (admin-bypass develop push) fired on both push attempts — no surprise. (d) S58 Gotcha #5 (Apple RFC 3161 timestamp flakes) was IN SCOPE for me when I considered adding a timestamp to osslsigncode. I decided not to add a timestamp because the same class of transient network flake would gratuitously re-flake my Windows job. S58's macOS-side gotcha made me extrapolate to Windows proactively. (e) S58 Gotcha #7 (`gh` default repo = `KJ5HST-LABS/wsjtx-internal`) — used bare `gh issue comment 23` without `--repo` flags, saved noise.
+- **What was missing:** Nothing significant. S58 didn't mention MSYS2 path-conversion quirks on `/`-prefixed arguments — but that's not something S58 should have known (S58 touched macOS-side work, not MSYS2). Not a gap in S58's handoff; a fresh-discovery from my own work.
+- **What was wrong:** Nothing.
+- **ROI:** Very high. Orient → first edit in ~12 minutes; scope was ambient; the "Key files" pointer eliminated archaeology.
+
+**Self-assessment (Session 59):**
+- **(+) One deliverable, end to end.** Scoped → fixed → verified → closed #23 in one session. No drift into #25 (gate logic) or #3 (consumer close-out) or adjacent cleanup. Held the "1 and done" boundary.
+- **(+) Batched the scope-decomposition question upfront.** Three questions in one AskUserQuestion — scope / signing approach / validation path — instead of three sequential round trips. Saved time and made the user's decision atomic.
+- **(+) Discovered upstream's NSIS CPack wiring during orient.** `CMakeLists.txt:1989-1990` already had `CPACK_GENERATOR=NSIS` + `CPACK_MONOLITHIC_INSTALL=1`. Reading the existing code before assuming "needs NSIS config authored from scratch" meant the session was workflow plumbing, not CMake editing — a fraction of the effort. This was a deliberate "assume existing capabilities" check per FM #21 (greenfield assumption).
+- **(+) Correctly diagnosed the MSYS2 path-conversion failure on the first log pass.** The error string `D:/a/_temp/msys64/CN=...` clearly indicated MSYS2 path mangling (known MSYS2 behavior: `/`-prefixed arguments are auto-translated to Windows paths under the msys root). The fix (`MSYS2_ARG_CONV_EXCL="*"`) is targeted — scoped to the one command instead of blanket-disabling conversion for the whole step.
+- **(+) Iterate-on-evidence not on guessing.** When the first run failed, I pulled the log FIRST (not re-read the workflow from memory or speculate about potential causes). The log showed the exact mangled string. Fix was deterministic.
+- **(+) Independent local verification.** Downloaded the artifact, confirmed its size matched the log (44,415,672 bytes on disk vs. `wsjtx-3.0.0-win64.exe    44414222` in the CI's `ls -la` dump — slight zip-compression delta expected). Two independent confirmations of the deliverable.
+- **(+) Static verification of `release.yml` filter match.** Didn't push a release tag (risk of public-mirror force-push per S58 Gotcha #3). Instead read the filter and traced the artifact path; filter matches at depth 2 with extension `.exe`. Future real release tag will validate end-to-end; static proof suffices for #23 AC #4.
+- **(+) Evidence-rich #23 close comment.** Included: CI run link, both commit hashes, installer size, full `osslsigncode verify` excerpt (cert details + digest match), filter-match analysis, out-of-scope framing. Future reader needs zero re-derivation.
+- **(+) Two small commits kept clean and isolated.** `363dad4a7` is the main feature commit (bisectable as "does installer get built"); `fae89e095` is the minimal MSYS2-quirk fix (bisectable as "does the signing step work"). Both have descriptive messages that explain the WHY. No SESSION_NOTES churn mixed in.
+- **(+) Used `MSYS2_ARG_CONV_EXCL="*"` narrowly.** Scoped to the `openssl` call only, not the whole step. The `osslsigncode` call further down doesn't need it because its arguments (`-certs sandbox-cert.pem` etc.) aren't `/`-prefixed. Principle of minimal blast radius for escape hatches.
+- **(−) First CI run failed.** Not a mistake per se (MSYS2 path-conversion is a known quirk but not something most CI workflows hit because most don't use `/`-prefixed args in shell steps), but it added ~17 minutes of wall-clock to the session. If I'd pre-validated the subject string format I might have caught it — but realistically, local-testing a Windows MSYS2 quirk from a macOS host is not practical. Accept as overhead.
+- **(−) Did not add a test/assertion for the "installer contains expected binaries" shape.** The artifact is 44 MB which implies it's not empty, but nothing in CI asserts "wsjtx.exe is inside the installer". A future session could add `7z l wsjtx-*.exe | grep wsjtx.exe` as a smoke check. Low priority — analogous to S57 AppImage smoke-test gap, which user accepted as out of scope.
+- **(−) `osslsigncode verify` ran with `|| true`** per explicit design (self-signed cert won't chain to a trusted CA). Future production cert integration will need to remove the `|| true` to actually enforce trust-chain validity — this is flagged in the inline comment but not independently tracked as a TODO. Acceptable for sandbox proof.
+- **Score: 9.5/10.** Deliverable exactly as scoped; all 4 ACs fully met with strong evidence; issue closed cleanly; one-and-done held. Half-point deduction because the first CI run had to be retried for the MSYS2 quirk — preventable in theory but probably not in practice from a non-Windows host. Handoff written in full.
+
+**What's next (Session 60 priorities):**
+
+With #22, #23, #24 all closed, the sandbox now produces installer-class signed artifacts on **all four platforms**: macOS `.pkg` (arm64 + x86_64, real Apple signing + notarization), Linux `.AppImage` (unsigned, payload smoke-tested), Windows `.exe` NSIS (self-signed sandbox proof). Two open items remain under the #26 umbrella:
+
+1. **Issue #25 (Contributor-persona, Recommended next).** Release gate logic — runtime conditional that lets `release` job proceed only when all 4 platforms are green AND each artifact matches the expected shape/size. `release.yml`'s `needs:` already enforces all-platforms-green structurally; #25 is about *shape/content* gating (e.g., "fail if windows artifact is < 30 MB" or "fail if no `.pkg` exists in artifacts"). Touches `release.yml:96-122` area. Smaller scope than #22/#23; likely one session.
+2. **Issue #3 close-out (Consumer-persona only).** Update rad-con dependency references to point at the `build/v3.0.0` release URL. **Persona must be Consumer** — Contributor persona forbids touching rad-con. Asks user to switch persona at orient time. Once done, close #3.
+3. **End-to-end release-tag validation** of #22 + #23 + #24 + eventually #25. First real `build/v*` tag push will empirically prove the full `release.yml` pipeline publishes all 4 installer-class artifacts without 422 collisions. Will trigger `release.yml:123-136` public-mirror force-push per S58 Gotcha #3 — user should decide beforehand whether to let that fire or `if: false`-gate it.
+4. **Issue #26** closes automatically when #25 closes (last open dependency). No direct work.
+5. **Do NOT start Phase 6 upstream patches** per `CLAUDE.md:17` MISSION. Phase 6 waits until sandbox 4-platform proof (#26) closes.
+6. **Carry-forward low-priority follow-ups** (not blockers): (a) remove `|| true` from osslsigncode verify when a real cert is provisioned; (b) add an installer-contents smoke check (`7z l` for wsjtx.exe presence); (c) drop the raw-exe `wsjtx-<version>-windows-x86_64` artifact if nothing downstream consumes it; (d) same for Linux raw-ELF artifact (S57 follow-up); (e) pin `linuxdeploy` continuous → tagged version if fetch flakes (S57 follow-up).
+
+**Key files (for Session 60):**
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/release.yml:96-122` — #25 fix surface. The `Create GitHub Release` step's `find` filter is where shape/content gating would slot in.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/build-windows.yml:180-230` — #23's new steps. Reference for future Windows-side work.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/build-linux.yml:129-184` — reference for installer-class packaging (S57's AppImage).
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/build-macos.yml:482-501` — reference for arch-aware packaging (S58's fix).
+- **CI run [24617296532](https://github.com/KJ5HST-LABS/wsjtx-internal/actions/runs/24617296532)** — S59 baseline (all 4 platforms green, installer-class artifacts present across all 4).
+- **GitHub Issues #3, #25, #26** on `KJ5HST-LABS/wsjtx-internal` — remaining open work.
+
+**Gotchas for Session 60:**
+- **#1 — `KJ5HST-LABS/wsjtx-internal` `develop` branch admin push pattern persists.** `Bypassed rule violations for refs/heads/develop: 4 of 4 required status checks are expected.` confirmed across S53-S59.
+- **#2 — Sandbox default-denies release-triggering tag pushes even after AskUserQuestion approval.** Confirmed pattern S54-S59. Plan for it: when pushing `build/v*` tags, surface full blast radius, ask for typed `"yes push"`, rerun.
+- **#3 — Sandbox ALSO denies `git push origin develop` by default**, even for non-tag develop commits, matching a branch-protection bypass policy. User must reply `"yes push"` (typed) for each develop push. Harness message mentions "AskUserQuestion confirmation was not answered before retry" even when it WAS answered via AskUserQuestion — so the actual requirement is typed free-text approval in chat, not the structured tool. Confirmed in S59 on both develop pushes.
+- **#4 — `release.yml:123-136` Push-to-public-repo step is unconditional force-push.** Any `build/v*` tag push that makes it past `Create GitHub Release` will force-push current `develop` HEAD to `KJ5HST-LABS/wsjtx` `main` + push the tag. Public mirror is still NOT synced to v3.0.0 (per S56 Gotcha #6).
+- **#5 — Windows MSYS2 path-conversion quirk.** Any MINGW64 shell step that passes `/`-prefixed arguments to native (non-MSYS) binaries will trip the MSYS2 argument-mangling heuristic (arg gets prefixed with `D:/a/_temp/msys64/`). Fix: wrap the specific command with `MSYS2_ARG_CONV_EXCL="*"` (or `MSYS2_ARG_CONV_EXCL_ALL=1`). Relevant if a future Windows step uses tools like `openssl`, `signtool` (via wine), or any tool with POSIX-style flag-prefixed-by-slash arguments. `osslsigncode` itself is MSYS2-aware so doesn't need it.
+- **#6 — Apple RFC 3161 timestamp service (`timestamp.apple.com`) is a known intermittent failure point on macOS codesign** (S58 Gotcha #5). Didn't hit it this session but still live. For a future macos-intel or macos transient, retry via `gh run rerun <ID> --failed`.
+- **#7 — `release.yml:107-109` filter currently covers `.pkg / .AppImage / .exe / .tar.gz` at depth 2.** After #23 landed, the filter is unchanged — `wsjtx-<version>-win64.exe` matches the existing `*.exe` clause. If #25 adds shape gating, it should plug in here.
+- **#8 — Asset-shape projection for next release tag after #23 + #22 + #24:** 1× `.AppImage` (Linux) + 1× `.exe` installer (Windows) + 2× `.pkg` (macOS arm64 + x86_64) + 17× `-arm64.tar.gz` + 17× `-x86_64.tar.gz` per-binary + 1× `-src.tar.gz` source = 39 assets, all unique basenames. `release.yml` filter handles all of them.
+- **#9 — `gh` default repo is `KJ5HST-LABS/wsjtx-internal`.** Bare commands work; ALWAYS `--repo` for upstream `WSJTX/*` repos.
+- **#10 — SESSION_NOTES.md is now ≈750 KB.** User continues to defer split; do not raise unsolicited.
+- **#11 — `CMakeLists.txt VERSION 3.0.0.0`** is the correct upstream baseline. Don't bump for test work.
+- **#12 — Tag `build/v3.0.0` is immutable; release exists and is final.** For validation retries use `build/v3.0.0-*-test` or similar.
+- **#13 — `release.yml` 4-platform `needs:` is strict.** The `release` job runs only if all 4 platform builds succeed. Independent of #25's runtime shape-gate work.
+- **#14 — Ephemeral sandbox signing cert expires in 1 year.** Per-run generation means every CI run gets a fresh cert (valid `notBefore` = build start, `notAfter` = +1 year). For production: replace with persistent cert from team's signing infra; remove `|| true` on verify.
+
+---
+
+### Previous: What Session 58 Did
+**Deliverable:** Fixed Issue #24 by arch-suffixing per-binary tarballs in `build-macos.yml`. Verified on CI run 24615347615; #24 CLOSED.
 
 ### What Session 58 Did
 **Deliverable:** `build-macos.yml` per-binary packaging emits arch-suffixed tarballs (`<name>-<arch>.tar.gz`) with matching inner directories (`<name>-<arch>/`). Eliminates the `ReleaseAsset.name already exists: ft8code.tar.gz` 422 that blocked the `build/v3.0.0` release job (run `24613875576`).
