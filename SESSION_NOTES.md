@@ -1,12 +1,133 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Session 59 — Closed Issue #23 in one session. `build-windows.yml` now emits a signed NSIS installer (`wsjtx-3.0.0-win64.exe`, 44.4 MB) containing the full CLI tool set + Qt runtime, signed with a per-run ephemeral self-signed cert via `osslsigncode`. Verified on [CI run 24617296532](https://github.com/KJ5HST-LABS/wsjtx-internal/actions/runs/24617296532): all 4 platforms green; installer artifact downloadable; `osslsigncode verify` shows valid signer + integrity-intact digest; `release.yml:107-109` filter picks up the artifact.
+**Task:** Session 60 — Closed Issue #25 in one session. `release.yml` now has an all-platforms-ready gate at `release.yml:96-152` (commit `249e9c3bd`) that refuses to publish unless each of the four platforms produced an installer-grade artifact (macOS arm64 `.pkg`, macOS x86_64 `.pkg`, Linux `.AppImage`, Windows `.exe`). Statically validated against S59's real release-shape artifact names via `gh api` cross-check, plus a 4-case local bash simulation (happy path + 3 failure modes, each producing the correct `::error::MISSING` output and `exit 1`). Umbrella #26 also closed — all 5 ACs met via #22/#23/#24/#25.
 **Status:** COMPLETE
-**Session:** 59 complete
+**Session:** 60 complete
 **Started:** 2026-04-18
 **Persona:** Contributor
-**Issue:** #23 (KJ5HST-LABS/wsjtx-internal) — CLOSED.
+**Issue:** #25 (KJ5HST-LABS/wsjtx-internal) — CLOSED. #26 umbrella — CLOSED.
+
+### What Session 60 Did
+**Deliverable:** One new step — "Verify installer-grade artifacts (all-platforms-ready gate)" — inserted into `release.yml`'s `release` job between `List artifacts` and `Create GitHub Release`. 58 lines added (36 code + 22 comment). The step hard-fails the release job with `::error::` annotations naming the missing platform(s) if any of the four per-platform `upload-artifact@v4` outputs is absent or empty, preempting both `gh release create` and `release.yml:123-136`'s public-mirror force-push. Satisfies all 3 of #25's ACs.
+
+**Change surface:** `release.yml:96-152` (single additive step — 58 lines). No changes to `ci.yml`, `build-*.yml`, `CMakeLists.txt`, or any other workflow. Diff is pure insert (no existing lines modified or moved).
+
+**Mechanics path (chronological):**
+1. Oriented per SESSION_RUNNER Phase 0 (read SAFEGUARDS full, SESSION_NOTES top 200 lines, `git status` shows clean `develop` 1-commit-ahead of origin at `8f1a94fee`, `git log --oneline -10`, `gh issue list` shows #3/#25/#26 open, ran project-local dashboard 83/100). No ghost sessions — S59 commits match notes 1:1.
+2. User: "Contributor. 25". Persona + issue unambiguous.
+3. Phase 1B stub written to SESSION_NOTES.md ACTIVE TASK before any technical work.
+4. Investigation (~5 minutes): read Issue #25 in full; read `release.yml` in full; grepped `upload-artifact|name: wsjtx|path:` across `.github/workflows/` to enumerate the exact artifact-name conventions of all four `build-*.yml` files. Found:
+   - `build-macos.yml:479` → `name: wsjtx-${ver}-${arch}-macOS.pkg` (for `arch` = `arm64` or `x86_64`)
+   - `build-linux.yml:182` → `name: wsjtx-${ver}-linux-x86_64-AppImage`
+   - `build-windows.yml:232` → `name: wsjtx-${ver}-windows-x86_64-installer`
+   Each contains its installer file. `actions/download-artifact@v4` with `path: artifacts` places these as `artifacts/<artifact-name>/<file>`, giving 4 well-defined glob patterns for the gate.
+5. `AskUserQuestion` (2 questions, batched): validation strategy (static-only / forced-failure / happy-path / both) and scope (missing-only / missing+duplicates). User picked both recommended options: static-only + missing-only.
+6. Implemented the gate: bash step, `shopt -s nullglob`, parallel `labels`/`patterns` arrays, for-loop, `::error::` annotations, `exit 1` on any miss, descriptive comment block (upstream-replication note + expected-layout table).
+7. `python3 -c "import yaml; yaml.safe_load(...)"` → `YAML OK`. Passed syntactic validation before any other step.
+8. Local simulation in a clean `/tmp/gate25-sim` tree, using `bash -c` (zsh default doesn't have `shopt`/nullglob — caught on first try). 4 cases:
+   - CASE 1: All 4 installer dirs + noise (ctest-results, individual-binaries-*, raw-binary dirs) → PASS, `exit 0`, 4 `ok` lines with sizes.
+   - CASE 2: Linux `.AppImage` file removed (dir empty) → FAIL, `::error::MISSING  Linux .AppImage` correctly fired, `exit 1`.
+   - CASE 3: Windows `-installer` dir removed entirely → FAIL, nullglob handles missing-dir case, `exit 1`.
+   - CASE 4: All 4 installer dirs removed → FAIL with all 4 `::error::MISSING` lines + `4 of 4 platform(s) missing` summary, `exit 1`.
+9. Cross-referenced gate patterns against the REAL artifact names from S59's run 24617296532 (fetched via `gh api repos/.../actions/runs/24617296532/artifacts`). All 4 gate patterns match real artifact directory names 1:1. Four noise artifacts (`ctest-results-*` ×4, `individual-binaries-macos-*` ×2, raw `wsjtx-3.0.0-linux-x86_64` ELF dir, raw `wsjtx-3.0.0-windows-x86_64` EXE dir) correctly do NOT match any gate pattern — the gate is anchored on dir-name suffix (`-installer`, `-AppImage`, `-macOS.pkg`) not a wider glob.
+10. Committed `release.yml` alone as `249e9c3bd feat(ci-release): add all-platforms-ready gate before publish (#25)` (SESSION_NOTES stub held for this close-out commit, matching S57/S58/S59 commit-isolation pattern).
+11. Surfaced push-to-develop decision to user. First attempt denied (admin-bypass policy plus typed "yes push" requirement per S59 Gotcha #3). After wrong-project confusion (`push-all` query — resolved), user replied `yes push`. Push succeeded `fae89e095..249e9c3bd` with admin-bypass message (S59 Gotcha #1 fired as expected). Push ALSO carried the S59 docs commit `8f1a94fee` which was still 1-ahead of origin from Session 59's incomplete close-out.
+12. Triggered CI run 24619090003 on develop (4-platform build). Did NOT wait for it to complete — `ci.yml` does not invoke `release.yml`, so CI can't exercise the gate; static proof is the entirety of the validation strategy the user chose.
+13. Posted close comment on #25 with: AC checklist, static cross-check table (4 real artifacts vs. 4 gate patterns), 4-case simulation table, YAML-parse proof, noise-exclusion proof, out-of-scope framing (no size/shape gating beyond presence).
+14. Closed #25 via `gh issue close`.
+15. Per S59 handoff ("Issue #26 closes automatically when #25 closes"), posted #26 umbrella resolution comment with a 5-row AC-vs-delivering-issue table, marked sandbox 4-platform pipeline proof COMPLETE, and closed #26.
+16. Cleaned up `/tmp/gate25-sim`.
+17. Close-out (this entry).
+
+**Proof (commands the next session can run to verify):**
+- `gh issue view 25 --repo KJ5HST-LABS/wsjtx-internal --json state --jq '.state'` → `CLOSED`
+- `gh issue view 26 --repo KJ5HST-LABS/wsjtx-internal --json state --jq '.state'` → `CLOSED`
+- `git log --oneline 249e9c3bd` → `feat(ci-release): add all-platforms-ready gate before publish (#25)`
+- `grep -c "all-platforms-ready gate" .github/workflows/release.yml` → `≥3`
+- `python3 -c 'import yaml; yaml.safe_load(open(".github/workflows/release.yml"))' && echo OK` → `OK`
+- `gh issue list --repo KJ5HST-LABS/wsjtx-internal --state open --json number --jq '.[].number'` → `[3]` (only #3 remaining; #22/#23/#24/#25/#26 all closed)
+
+**Out of scope (left for future sessions):**
+- **End-to-end release-tag validation of the gate in anger.** Static cross-check against S59's run 24617296532 proves the globs match real artifact names, but no real `build/v*` tag has exercised the gate path in CI. First real release tag (or a throwaway `build/v*-test` tag with public-mirror side-effect accepted per S59 Gotcha #4) will empirically confirm gate-pass behavior end-to-end. A forced-failure test tag (temporarily break one upload-artifact, push tag, expect gate to fail, revert) is a safer mid-ground option still available.
+- **Shape/content gating beyond presence.** AC is presence-only; gate checks for at least one matching file per platform. Size-floor assertions (e.g., "Windows installer ≥ 30 MB", "macOS `.pkg` non-trivial") would catch empty-but-present pathological cases but exceed #25's AC. Deferred as a low-priority follow-up.
+- **Production Windows code-signing cert** — team-owned operational resource per `3_CICD_DEPLOYMENT_PLAYBOOK.md:311-327`. Not a sandbox deliverable (per `CLAUDE.md:17` MISSION).
+- **Remove `|| true` from osslsigncode verify** on Windows (S59 follow-up) — needs production cert first.
+- **Drop raw-binary artifacts** (`wsjtx-<ver>-windows-x86_64` ×6.5 MB, `wsjtx-<ver>-linux-x86_64` ×12 MB, per-binary tarballs ×17) — harmless noise, S57/S59 follow-up.
+- **Pin `linuxdeploy` continuous → tagged version** (S57 follow-up).
+- **`release.yml:123-136` unconditional public-mirror force-push** remains unchanged and still carries blast radius on any tag push that passes the gate. Not a #25 deliverable.
+- **Issue #3** Consumer-persona close-out (rad-con dep refs pointing at `build/v3.0.0` release URL) remains open.
+- **CI run 24619090003** (triggered by the S60 develop push) was in_progress at close-out time. Confidence of regression is very low — the change is confined to `release.yml` which `ci.yml` doesn't invoke. Session 61 can confirm-green if paranoid.
+
+**Session 59 Handoff Evaluation (by Session 60):**
+- **Score: 9/10.** S59 self-scored 9.5/10. I'm within half a point.
+- **What helped most:** (a) S59's "Key files for Session 60" listed `release.yml:96-122` as "#25 fix surface" — that was exactly right; I opened that file first and the gate fit naturally into that window. (b) S59's "What's next #1" gave a one-paragraph framing of #25 that included the key insight "`release.yml`'s `needs:` already enforces all-platforms-green structurally; #25 is about *shape/content* gating." This correctly framed the problem as a CONTENT gate sitting on top of the STRUCTURAL gate that already exists. (c) S59 Gotcha #1 (admin-bypass develop push) fired on the push. (d) S59 Gotcha #3 (typed "yes push" required) fired on the push. Pre-documented, no surprise. (e) S59 Gotcha #4 (unconditional public-mirror force-push) drove my AskUserQuestion to frame "happy-path test tag" as high-blast-radius — user picked static-only, consistent with the risk surface S59 flagged. (f) S59 Gotcha #8 (asset-shape projection: 1× AppImage + 1× exe + 2× pkg + tarballs) fed directly into my 4-platform gate design. (g) S59's explicit "Issue #26 closes automatically when #25 closes. No direct work." prevented me from treating #26 as an open scope question.
+- **What was missing:** (a) S59 framed #25 as "shape/size gating" (quoting directly: "`release.yml`'s `needs:` already enforces all-platforms-green structurally; #25 is about *shape*/*content* gating"). The actual AC is PRESENCE gating — not size/content. This framing could have led an eager successor to implement size-floor assertions that exceed AC. I caught this via the AskUserQuestion scope question (missing-only vs. missing+duplicates). Minor scope-inflation in S59's handoff. (b) S59 didn't link to the `upload-artifact@v4` name conventions in each `build-*.yml`. I had to grep. Would have saved ~2 minutes to have the 4 artifact-name literals pre-listed. Nit.
+- **What was wrong:** Nothing material.
+- **ROI:** Very high. Orient → first edit in ~15 minutes (including investigation, AskUserQuestion round-trip, and Phase 1B stub). The "Key files" pointer alone saved ~10 minutes of archaeology.
+
+**Self-assessment (Session 60):**
+- **(+) One deliverable, end to end.** #25 scoped → designed → questioned → implemented → simulated → committed → pushed → closed in one session. No drift into #3 (Consumer-persona). #26 closure is pure aggregation (no new work), matched to S59's explicit "auto-closes" direction.
+- **(+) Batched AskUserQuestion upfront.** Validation strategy + gate scope in one round-trip. Same pattern S58/S59 used; works well.
+- **(+) Proved gate correctness across 4 failure modes, not just happy path.** Single-platform miss, multi-platform miss, dir-entirely-missing, all-missing. Nullglob + missing-dir case explicitly verified (would otherwise trip the shell's default `a/*/b` = literal string behavior). Not assumed — simulated.
+- **(+) Cross-referenced gate patterns against REAL S59 artifact names.** Used `gh api` to pull the ground-truth list from run 24617296532 and built a 4-row match table. This is the strongest possible static proof short of running CI: if the patterns match the real names from a known-good run, the gate will pass on any future release run that produces the same shape.
+- **(+) Explicit negative-proof on noise.** Identified that `individual-binaries-macos-*` and `wsjtx-<ver>-{linux,windows}-x86_64` (raw binary artifacts) have similar-looking names but do NOT match any gate pattern. Closing-comment includes this as an explicit "noise correctly excluded" claim. Rules out the "gate is over-permissive" failure mode.
+- **(+) Commit isolation held.** `release.yml` committed alone as `249e9c3bd`; SESSION_NOTES held for this separate docs commit. Bisectable without doc churn. S57/S58/S59 pattern preserved.
+- **(+) Surfaced the validation trade-off space explicitly.** 4-option AskUserQuestion (static-only / forced-failure / happy-path / both) put the blast-radius surface on the user's page for their decision rather than unilaterally picking. User picked static-only, consistent with S58/S59 posture.
+- **(+) Proportionate umbrella close.** #26 is pure aggregation — no new work required. Closed with a 5-row summary table mapping each AC to its delivering issue, plus out-of-scope framing. Not mixed into the #25 close-out; separate comment, clean audit trail.
+- **(+) Evidence-rich close comments on both issues.** Future reader of #25 gets: 3 ACs ticked, static validation table with real artifact names, 4-case simulation table, YAML-parse proof, noise-exclusion proof, out-of-scope framing. #26 gets: 5-row delivering-issue table, out-of-scope framing, sandbox-proof-COMPLETE header.
+- **(+) Caught S59's scope-inflation on #25 framing.** S59 used "shape/size gating" phrasing; real AC is presence-only. Flagged in my Phase 3A evaluation as the one material ding on S59's handoff. This matters because scope-inflation in handoffs → over-engineered successors.
+- **(+) Used `shopt -s nullglob` for correctness, not just ergonomics.** Without it, `artifacts/wsjtx-<ver>-*/*.pkg` with no matches would expand to the literal glob pattern string, which would then match nothing in `[ -e ]` tests but would print confusingly. Nullglob is the shell's built-in "no-match means empty array" behavior; correct tool for the job.
+- **(−) Push flow had friction.** First `git push origin develop` attempt returned the admin-bypass denial before I'd surfaced the "yes push" requirement to the user. Would have been smoother to state upfront: "About to push to develop; harness will need typed 'yes push' to authorize." Then there was a wrong-project "push-all" confusion (~1 round-trip). Net ~2 extra round-trips. Minor.
+- **(−) Local bash simulation first-try failed in zsh.** My default shell is zsh, which doesn't have `shopt -s nullglob` or bash's array/index syntax. Caught immediately and re-ran with `bash -c`. Should have used `bash -c` from the start since I knew the gate runs in bash under GitHub Actions. ~30 seconds of rework.
+- **(−) Did not wait for CI 24619090003 to confirm-green.** This is a judgment call — `ci.yml` doesn't invoke `release.yml`, so the gate can't be exercised by ci.yml, which means waiting would only confirm "ci.yml still passes on this commit for its existing checks." Low-confidence regression risk. The user explicitly chose static-only validation; waiting would be over-delivery. Accept.
+- **(−) Did not exercise forced-failure validation.** Would have given the strongest empirical proof (gate visibly fails in CI on an induced miss). User chose static-only (recommended) and the cost was ~1 test CI cycle. Defer.
+- **Score: 9/10.** Deliverable exactly as scoped; all 3 ACs fully met with strong static evidence; #25 closed cleanly; #26 umbrella closed as natural housekeeping; one-and-done held. Half-point deduction because the push flow had avoidable friction (should have surfaced "yes push" requirement upfront) and initial bash simulation ran in zsh. Handoff written in full.
+
+**What's next (Session 61 priorities):**
+
+With #22 + #23 + #24 + #25 + #26 all closed, **the sandbox 4-platform release pipeline proof is COMPLETE.** The only open work on `KJ5HST-LABS/wsjtx-internal` is #3 (Consumer-persona). Session 61 faces a significantly different landscape: no open sandbox-machinery blockers, a live gate protecting future releases, and a clear path to either Consumer-persona close-out (#3) or parallel-track Phase 6 upstream patches.
+
+1. **Issue #3 close-out (Consumer-persona only).** Update rad-con dependency references to point at the `build/v3.0.0` release URL. **Persona must be Consumer** per `CLAUDE.md` — Contributor persona forbids touching rad-con. User must switch persona at orient time. Once done, close #3. This is the last open issue on the repo.
+2. **End-to-end release-tag validation of the full pipeline + gate.** First real `build/v*` tag push will exercise the gate empirically in CI. Two approaches available: (a) forced-failure test tag (temporarily break one upload-artifact, push `build/v3.0.0-gatefail-test`, expect gate to fail, revert) — safe, no public-mirror side-effect because gate fails before `release.yml:123-136` runs; (b) happy-path test tag on current develop — triggers public-mirror force-push per S59 Gotcha #4, high blast radius. Session 61 (or whoever does this) should decide explicitly which approach before pushing.
+3. **Phase 6 upstream patches Terrell authors.** Per `CLAUDE.md:17` MISSION, Phase 6 waits until sandbox 4-platform proof (#26) closes. #26 CLOSED in Session 60 — Phase 6 is UNBLOCKED. These patches open directly against `WSJTX/wsjtx-internal → develop`, not this sandbox. Not a sandbox deliverable, but the gate on Phase 6 work is now lifted.
+4. **Low-priority follow-ups** (not blockers; none of these gate any deliverable): (a) size-floor assertions in the gate (e.g., "Windows installer ≥ 30 MB") — extends #25 beyond AC; (b) remove `|| true` on osslsigncode verify when production cert arrives — S59 carry-forward; (c) drop raw-binary artifacts from the upload matrix — S57/S59 carry-forward; (d) pin `linuxdeploy` continuous → tagged version — S57 carry-forward; (e) `release.yml:123-136` unconditional force-push — consider `if:` guard before next release tag.
+5. **Do NOT reopen #22/#23/#24/#25/#26** unless a new failure mode emerges that the existing fixes don't cover. The umbrella is closed on empirical and static evidence.
+6. **CI run 24619090003** from S60's develop push: confirm green if paranoid (`gh run view 24619090003 --repo KJ5HST-LABS/wsjtx-internal --json conclusion`). Expected `success` — the diff is additive and confined to `release.yml` which `ci.yml` doesn't touch.
+
+**Key files (for Session 61):**
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/release.yml:96-152` — the new all-platforms-ready gate. Reference for any future gate extension (size floors, content asserts, additional platforms).
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/release.yml:123-136` — public-mirror force-push. Still unconditional, still risk-carrying. Gate failure preempts this; gate pass doesn't.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/build-macos.yml:479-480` — artifact upload naming (`wsjtx-<ver>-${arch}-macOS.pkg`). Gate-coupled — any rename breaks the gate.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/build-linux.yml:182-183` — artifact upload naming (`wsjtx-<ver>-linux-x86_64-AppImage`). Gate-coupled.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/build-windows.yml:230-233` — artifact upload naming (`wsjtx-<ver>-windows-x86_64-installer`). Gate-coupled.
+- **CI run [24619090003](https://github.com/KJ5HST-LABS/wsjtx-internal/actions/runs/24619090003)** — S60 post-push develop CI run. Confirm-green if paranoid.
+- **CI run [24617296532](https://github.com/KJ5HST-LABS/wsjtx-internal/actions/runs/24617296532)** — S59 reference run whose artifact names I cross-checked against the gate. Canonical 4-platform pipeline shape.
+- **For #3 (Consumer):** `/Users/terrell/Documents/code/wsjtx-arm/docs/consumer/SYMBIOTIC_OPEN_SOURCE.md` — GPL doctrine, READ BEFORE any rad-con refs changes.
+- **GitHub Issue #3** on `KJ5HST-LABS/wsjtx-internal` — the last remaining open work.
+
+**Gotchas for Session 61:**
+- **#1 — `KJ5HST-LABS/wsjtx-internal` `develop` admin-bypass push pattern persists.** `Bypassed rule violations for refs/heads/develop: 4 of 4 required status checks are expected.` — confirmed across S53-S60. Expected; not a failure.
+- **#2 — Sandbox default-denies release-triggering tag pushes even after AskUserQuestion approval.** Plan for it: when pushing `build/v*` tags, surface full blast radius (commit + tag + 4-platform CI + public-mirror force-push), ask for typed `yes push`, rerun. S60 did NOT push any tag; this remains live for Session 61.
+- **#3 — Sandbox ALSO denies `git push origin develop` by default.** User must reply `yes push` (typed free-text in chat) for each develop push. Harness message mentions "Pushing directly to the repository's default branch (develop) bypasses PR review; use a feature branch instead." — the typed confirmation overrides this via admin-bypass. S60 hit this on develop push; pattern unchanged.
+- **#4 — `release.yml:123-136` Push-to-public-repo step is unconditional force-push.** Any `build/v*` tag push that passes the new gate AND makes it past `Create GitHub Release` will force-push current `develop` HEAD to `KJ5HST-LABS/wsjtx main` + push the tag. Public mirror is still NOT synced to v3.0.0 (per S56 Gotcha #6). Decide before any test-tag push whether to `if: false`-gate this step.
+- **#5 — Windows MSYS2 path-conversion quirk.** Any MINGW64 shell step passing `/`-prefixed args to native binaries will trip the MSYS2 argument-mangling heuristic. Fix: wrap specific command with `MSYS2_ARG_CONV_EXCL="*"`. S59 discovery; still live for any future Windows-side work.
+- **#6 — Apple RFC 3161 timestamp service (`timestamp.apple.com`) is a known intermittent failure point** on macOS codesign. Retry via `gh run rerun <ID> --failed`. S58 discovery; still live.
+- **#7 — `release.yml:107-109` filter** (`*.pkg / *.AppImage / *.exe / *.tar.gz` at depth 2) is UNCHANGED by S60. Gate is orthogonal — runs before the filter. If a future session extends the gate to cover a new platform, the filter likely needs a parallel update.
+- **#8 — All 4 build-*.yml artifact naming conventions are now gate-coupled.** If anyone renames the upload-artifact `name:` in any of `build-{macos,linux,windows}.yml`, the gate in `release.yml:128-133` will fail with `MISSING` on the next release tag (gate-as-intended behavior) even if the artifact was produced correctly. Renames must update both files in lockstep. Relevant gate lines: `release.yml:128-133`. Relevant build workflow lines: `build-macos.yml:479`, `build-linux.yml:182`, `build-windows.yml:232`.
+- **#9 — `release.yml` no longer tolerates partial releases.** This is a FEATURE (the whole point of #25), not a gotcha, but worth internalizing: if any `build-*.yml` regresses to producing no installer, the release job will now hard-fail with a clear error, NOT silently publish a partial release.
+- **#10 — `gh` default repo is `KJ5HST-LABS/wsjtx-internal`.** Bare commands work; ALWAYS `--repo` for upstream `WSJTX/*` repos.
+- **#11 — SESSION_NOTES.md is now ≈760 KB.** User continues to defer split; do not raise unsolicited.
+- **#12 — `CMakeLists.txt VERSION 3.0.0.0`** is the correct upstream baseline. Don't bump for test work.
+- **#13 — Tag `build/v3.0.0` is immutable; release exists and is final.** For validation retries use `build/v3.0.0-*-test` or similar.
+- **#14 — S59 docs commit `8f1a94fee` was carried along in S60's develop push.** It had been local-only since S59 close-out; now on origin.
+- **#15 — Ephemeral Windows sandbox signing cert** (from #23) is per-run, 1-year validity. Production cert replacement is team-owned work; when that lands, remove `|| true` from osslsigncode verify.
+- **#16 — Phase 6 upstream patches are now UNBLOCKED** (per `CLAUDE.md:17`, they waited on #26). Session 61 can begin Phase 6 work IF Contributor persona AND user direction says so. These patches open against `WSJTX/wsjtx-internal → develop`, NOT this sandbox.
+
+---
+
+### Previous: What Session 59 Did
+**Deliverable:** `build-windows.yml` emits a signed NSIS installer (`wsjtx-3.0.0-win64.exe`, 44.4 MB) with full CLI tool set + Qt runtime; signed via per-run ephemeral self-signed cert + `osslsigncode`. Verified on CI run 24617296532; all 4 platforms green; #23 CLOSED.
 
 ### What Session 59 Did
 **Deliverable:** `build-windows.yml` 3 new steps — CPack NSIS invocation, self-signed cert + osslsigncode signing, installer artifact upload — plus 2 new MSYS2 packages (`mingw-w64-x86_64-nsis`, `mingw-w64-x86_64-osslsigncode`). Hits all 4 of #23's ACs (installer produced; full CLI tool set; signing step wired; `release.yml` pickup).

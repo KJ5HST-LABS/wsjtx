@@ -278,6 +278,7 @@ These are documented tendencies. The agent must actively guard against them.
 | # | Learning | Source | When to Apply |
 |---|----------|--------|---------------|
 | 1 | Plan-mode output is a draft, not a verified plan. When a prompt contains a multi-phase plan with "implement," the deliverable is a plan document with evidence-based inventory, not Phase 1 code. The gap: Phase 1's task mapping had no entry for plan-mode handoffs, so the session defaulted to "implement." Structural fix: new mapping row + FM #19. | FM #19 discovery | When a prompt contains a multi-phase plan with "implement" — recognize this as a planning workstream. |
+| 2 | When adding a CI gate/validation step, cross-check the gate's input assumptions (file patterns, artifact names, expected shapes) against REAL historical data via `gh api` — not just abstract test cases. Fabricating a mock artifact tree proves the gate's LOGIC is correct; pulling real artifact names from a known-good run proves the gate's PATTERNS match reality. Both are needed. Session 60 used both for #25: four simulation cases (happy + 3 failure modes) AND a `gh api` pull of S59's run artifacts for a pattern-vs-real-name match table. Catches naming-convention drift that would otherwise only surface on the next real release — expensive to debug, cheap to prevent. | S60 #25 gate implementation | When adding any CI gate, shape check, or filter that depends on upstream-workflow artifact names, versions, or paths. |
 
 ---
 
