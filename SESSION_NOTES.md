@@ -1,12 +1,113 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Session 61 — Closed Issue #3 (Consumer-persona) narrowly. Updated rad-con's `Jt9Downloader.java:62-65` two URL constants (`MAC_ARM64_JT9_URL`, `MAC_ARM64_WSPRD_URL`) from the renamed-to-private `KJ5HST-LABS/WSJT-X-MAC-ARM64/releases/download/latest/{jt9,wsprd}.tar.gz` to `KJ5HST-LABS/wsjtx/releases/latest/download/{jt9,wsprd}.tar.gz` (radio-web commit `d57df4d`, local-only — not pushed). Discovered and surfaced a deeper consumer-distribution gap: BOTH `KJ5HST-LABS/wsjtx-internal` AND the public-mirror-by-name `KJ5HST-LABS/wsjtx` are currently private; the new URLs do not resolve until the mirror is flipped public AND has the v3.0.0 release with `jt9.tar.gz` + `wsprd.tar.gz` published as Latest. User chose "narrow" path. Filed follow-up issue #27 on `KJ5HST-LABS/wsjtx-internal` tracking the mirror-flip + release-publishing operational work. Posted detailed close comment on #3 and closed it.
+**Task:** Session 62 — Produced `docs/contributor/4_PRODUCTION_READINESS_PLAN.md` in response to an auditor-framed production-readiness challenge from the user. Plan enumerates 14 audit findings (A0–A13), organizes them into 6 phases (sandbox hardening → governance → E2E validation → replication to `WSJTX/wsjtx-internal` → production signature integrity → operational readiness), with per-phase completion criteria, verification commands, and explicit session boundaries. Includes a sandbox-shortcut-vs-production-retirement contract table (§5) so every sandbox compromise is bound to a retirement phase. No implementation — planning-session deliverable only, per SESSION_RUNNER Planning Sessions discipline.
 **Status:** COMPLETE
-**Session:** 61 complete
-**Started:** 2026-04-18
-**Persona:** Consumer
-**Issue:** #3 (KJ5HST-LABS/wsjtx-internal) — CLOSED. #27 (KJ5HST-LABS/wsjtx-internal) — OPENED.
+**Session:** 62 complete
+**Started:** 2026-04-19
+**Persona:** Neither (user explicit — team-auditor framing; plan written persona-neutral so it reads cleanly under Contributor rules in future sessions)
+**Issue:** No GitHub issue; audit response is session-scoped planning. Plan references #27 (public-mirror flip) implicitly via audit item A1.
+
+### What Session 62 Did
+**Deliverable:** One new plan document at `docs/contributor/4_PRODUCTION_READINESS_PLAN.md` (~290 lines). Closes the "is this production-ready?" audit by replacing a verbal answer with a phased, evidence-cited, session-bounded execution plan.
+
+**Change surface:** Two file changes — new `docs/contributor/4_PRODUCTION_READINESS_PLAN.md`, plus this SESSION_NOTES.md update. No workflow, code, or configuration changes. Strict planning-session discipline held.
+
+**Mechanics path (chronological):**
+1. Oriented per SESSION_RUNNER Phase 0 (SAFEGUARDS full, SESSION_NOTES top 250 lines, project-local dashboard 83/100, `gh issue list` → only #27 open, ghost-session check clean). Reported findings, waited for persona/task.
+2. User declined Contributor/Consumer split: "neither — I'm the auditor from the team." Asked whether the pipeline is commercially viable + production-ready, demanded deep audit. Persona framework suspended for this session by user direction.
+3. **Audit response (S62's first deliverable):** investigated current state via `gh api` + file reads — found 13 concrete production gaps + 1 replication gap (A0: `WSJTX/wsjtx-internal` has zero workflows; none of the sandbox machinery has been replicated). Delivered honest-not-varnished audit response: "No, not production-ready, not commercially viable today" with each finding line-cited. Explicitly named the force-push, silent-skip, verify-suppression, security-scanning-off, unpinned-linuxdeploy, version-drift, no-post-publish-verify, no-reproducibility-manifest defects.
+4. User escalated: "Make a concrete plan to fill the gaps. Shortcuts in sandbox OK but production needs precision and intent."
+5. Recognized this as a **Planning Workstream** task per SESSION_RUNNER — plan is the deliverable, implementation is a separate session (FM #18 guard). Auto Mode does NOT override this.
+6. Phase 1B stub written to ACTIVE TASK before any technical work.
+7. Additional evidence-gathering: `CMakeLists.txt:55` (version literal), `build-linux.yml:143-148` (linuxdeploy pin location), `build-windows.yml:223` (`|| true` line + explanatory comment), `WSJTX/wsjtx-internal` branch protection endpoint (404 — **no protection configured on team repo**).
+8. Drafted plan with 6 phases + dependency graph + sandbox/production contract table + risks + session-count estimate. Every action cites specific files and line ranges; every phase has DONE criteria and verification commands.
+9. Wrote plan document. Wrote handoff. Commit pending.
+
+**Proof (commands the next session can run to verify):**
+- `test -f docs/contributor/4_PRODUCTION_READINESS_PLAN.md && wc -l docs/contributor/4_PRODUCTION_READINESS_PLAN.md` → non-zero count
+- `grep -c "^### Phase " docs/contributor/4_PRODUCTION_READINESS_PLAN.md` → `6` (one heading per phase, plus 4a/4b sub-headings — actual count may be 8 including sub-phases)
+- `grep -c "^| A" docs/contributor/4_PRODUCTION_READINESS_PLAN.md` → covers A0-A13 (14 rows in the audit baseline table)
+- `git log --oneline -1` → `docs(session-62): production-readiness plan covering audit items A0-A13`
+- Dashboard still 83/100 (no code change, no regression surface)
+
+**Out of scope (left for future sessions):**
+- **Implementation of any plan phase** — Planning Sessions discipline: close out after plan. Each phase = its own future session(s).
+- **#27 public-mirror flip** — referenced in plan as A1/Phase 6 but remains a hard-to-reverse operational action requiring explicit user authorization at execution time.
+- **rad-con + radio-web reconciliation** — pre-existing state carried from S61, unchanged this session (S62 only touched `wsjtx-arm` files).
+- **wsjtx-arm push** — this docs commit will be local-only when made. S61's commit is still local-only (develop is now 2 ahead of origin). User decides push timing.
+
+**Session 61 Handoff Evaluation (by Session 62):**
+- **Score: 9/10.** S61 self-scored 9/10. I concur.
+- **What helped most:** (a) S61's "What's next" priorities were framed in a way that anticipated a persona pivot (#27 Consumer-ambiguous, Phase 6 Contributor-only, reconciliation as standalone). When the user surprised by going "neither persona, I'm the auditor," the S61 handoff didn't lock me into one of the persona-specific next items; I was able to reframe cleanly. (b) S61's Gotcha #5 ("`KJ5HST-LABS/wsjtx` is PRIVATE, not public — naming ≠ state; verify via `gh api` before trusting 'public mirror' in any doc") was EXACTLY the note the audit needed — I cited it in audit finding A1 and the plan's Phase 6. Without it, I might have replicated the "public mirror" nomenclature without investigation. (c) S61's Gotcha #4 (`release.yml:123-136` unconditional force-push, still in effect) directly became audit finding A2 / Phase 1 action. (d) S61's documentation of pre-existing rad-con dirty state let me skip re-investigating that entire area — it's out of scope for a wsjtx-arm planning session.
+- **What was missing:** (a) S61 didn't flag that `WSJTX/wsjtx-internal` has zero workflows. This is the MASTER gap — no sandbox replication has happened upstream. Not S61's fault (it was Consumer-persona, upstream is not its territory), but the audit would have surfaced faster with a pointer. Cost me one `gh api` call to discover; zero real impact. (b) S61's gotcha list at 19 items is approaching unwieldy. Signal-to-noise is still good, but some items (e.g., #18 "when closing narrowly, file follow-up first") are meta-protocol rather than gotchas — could graduate to the Learnings table.
+- **What was wrong:** Nothing material.
+- **ROI:** Very high. Orient → audit delivered in ~15 minutes; plan written in ~25. Without S61's "public mirror is private" explicit note, the audit would have taken 5+ additional minutes. Without the consolidated issue-list state, I'd have spent time re-enumerating.
+
+**Self-assessment (Session 62):**
+- **(+) Recognized the planning-session trap immediately.** User's "make a concrete plan" in Auto Mode could have been read as "start coding." Did NOT. FM #18 guard held — plan IS the deliverable, implementation is future sessions. This is the single highest-ROI discipline point in the session; every alternative reading would have started N phases of implementation without team sign-off on the shortcut/production-retirement contract.
+- **(+) Honest audit before the plan.** Did not soft-pedal the gaps. Did not lead with what DOES work and bury the defects. Led with "No, not production-ready" and line-cited each finding. Auditor framing demands unvarnished answers; varnishing would have failed the brief.
+- **(+) Evidence-cited every plan action.** Every action in the plan has a file:line citation. No hand-wave "fix the release workflow" items. Inventory discipline from SESSION_RUNNER Planning Sessions applied even though this is not a deletion/migration/rename plan.
+- **(+) Sandbox/production contract as an explicit table.** §5 of the plan binds every sandbox compromise to its retirement phase. This is the single structural feature that distinguishes a plan-that-will-be-executed from a plan-that-will-rot. Future executors cannot "forget" that `|| true` on osslsigncode verify was sandbox-only — it's on the contract.
+- **(+) Session-count estimate.** §7 gives the team a realistic 14-16 sessions, broken down by phase. No false claims of "I'll close this in a week."
+- **(+) Persona-neutral writing in a persona-governed repo.** User authorized "neither" persona for this session, but the plan document persists and will be read in future Contributor-persona sessions. Wrote with no rad-con/consumer references so the document reads cleanly under Contributor rules; framed public-distribution issues purely as "end-user downloads" which is team-truth. Future readers won't hit a persona violation.
+- **(+) Respected hard-reverse actions.** Plan does NOT pre-authorize any cert provisioning, repo visibility flip, or release-tag push. Every one of those is called out as "team sign-off required" or "gated on team-delivered resource."
+- **(−) Did NOT check whether `actions/attest-build-provenance@v2`** is actually GA. Mentioned in Phase 6 A13 with a "confirm availability on WSJTX" caveat, but I should have verified. Low-impact — it's in a Risks section with an explicit confirmation requirement — but I could have spent 30 seconds on the check.
+- **(−) Plan length ~290 lines.** Dense, but the team may find it longer than necessary. Trade-off was "comprehensive coverage with evidence" vs. "tight." Went with comprehensive for the auditor-scrutiny framing. If the team pushes back, a condensed executive summary is a 1-session follow-up.
+- **(−) Did not propose specific metric for gating each phase.** E.g., "Phase 1 passes if all PR CI checks go green within 2 attempts" would be more actionable than "PR merged, CI green." Minor — the verification commands are concrete.
+- **(−) Auto Mode interpretation.** Auto Mode says "execute immediately, minimize interruptions, prefer action." I interpreted it as "do not block on questions the user clearly wants answered by the plan itself" but did NOT interpret it as "skip planning discipline." Judgment call; I believe correct. If the user wanted immediate implementation, they would have said "implement Phase 1" rather than "make a concrete plan."
+- **Score: 9/10.** Deliverable exactly as scoped (one plan document); evidence discipline held; sandbox/production contract is the structural contribution; honest audit preceded the plan (no sales varnish); no scope creep into implementation. Half-point deduction because the plan is long enough that team digest friction is real, and because I did not spend 30 seconds verifying `attest-build-provenance` GA status.
+
+**No new learning added to SESSION_RUNNER table this session.** Learning #3 from S61 (curl the current URL first) was applied in the audit phase — I used `gh api` to check actual state before trusting doc nomenclature (e.g., "public mirror is actually private"). No new pattern surfaced that isn't already captured.
+
+**What's next (Session 63 priorities):**
+
+The plan is the deliverable; Session 63 starts executing it. The sequencing is defined in `docs/contributor/4_PRODUCTION_READINESS_PLAN.md §4`. Recommended first session:
+
+1. **Phase 1 — Sandbox release-path safety hardening.** One PR against `KJ5HST-LABS/wsjtx-internal:develop`. Closes audit items A2, A3, A9, A12. All edit-local, no external dependencies. Low blast radius (no tag push, no mirror side-effects). Good starting point because it retires the first shortcuts from the contract table.
+   - Concrete edits (all cited in plan):
+     - `release.yml:181-194` — guard force-push; pre-push SHA logging.
+     - `release.yml:185-188` — `exit 0` → `exit 1` on missing `CROSS_REPO_TOKEN`.
+     - `build-linux.yml:143-148` — pin linuxdeploy + plugin to tagged releases + SHA256 verify.
+     - `ci.yml:14,25,34,41` — hard-coded `"3.0.0"` → derived from `CMakeLists.txt:55`.
+   - Verification per plan §Phase 1 Completion criteria.
+   - Persona for this work: Contributor (sandbox machinery work; no rad-con references required).
+
+2. **Phase 2 — Sandbox repo security posture + governance.** Parallel-able with Phase 1 if two sessions are spun up; otherwise Session 64. Add SECURITY.md / CONTRIBUTING.md / CODEOWNERS; enable Dependabot / secret scanning / CodeQL on the sandbox repo.
+
+3. **Confirm team buy-in on §1 policy + §5 contract** before Phase 1 starts. Without sign-off, the plan risks being executed on preferences that later prove wrong. Per §9 "Verification of this plan."
+
+4. **Everything from S61's "What's next" that is NOT production-readiness work** remains carry-forward:
+   - rad-con + radio-web reconciliation (user decides).
+   - Phase 6 upstream patches Terrell authors (Contributor, targets `WSJTX/wsjtx-internal → develop`).
+   - #27 public-flip (now formally captured as plan audit item A1 / Phase 6).
+   - Apple Developer ownership clarification (Gap #9 from #3).
+
+**Key files (for Session 63):**
+- `/Users/terrell/Documents/code/wsjtx-arm/docs/contributor/4_PRODUCTION_READINESS_PLAN.md` — the plan. Start here.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/release.yml:181-194` — force-push + silent-skip (Phase 1 action #1 + #2).
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/build-linux.yml:143-148` — linuxdeploy pin (Phase 1 action #3).
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/ci.yml:14,25,34,41` — version drift (Phase 1 action #4).
+- `/Users/terrell/Documents/code/wsjtx-arm/CMakeLists.txt:55` — `VERSION 3.0.0.0` source of truth.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/build-windows.yml:223-226` — `osslsigncode verify || true` (Phase 5, cert-gated).
+
+**Gotchas for Session 63:**
+- **#1 — Plan is a DRAFT until team signs off on §1 policy + §5 contract.** Do NOT start Phase 1 edits before confirming. Per SESSION_RUNNER FM #19 (plan-mode bypass), the plan is draft until evidence-verified; I did the evidence-verification via file-cited actions, but the POLICY surface (sandbox-vs-production split) is a team decision, not a technical one. Surface this to the user at orient time.
+- **#2 — `WSJTX/wsjtx-internal` has ZERO workflows.** Confirmed by `gh api repos/WSJTX/wsjtx-internal/contents/.github/workflows` → 404. This is the replication master gap (A0). All sandbox machinery lives at `KJ5HST-LABS/wsjtx-internal`; the team has none of it. Do not tell the team "your pipeline is working" — it does not exist on their repo.
+- **#3 — `WSJTX/wsjtx-internal` has NO branch protection on develop.** Confirmed by `gh api .../branches/develop/protection` → 404. Phase 4b must add this.
+- **#4 — Sandbox security posture is ALL DISABLED.** `code_security`, `dependabot_security_updates`, `secret_scanning`, `secret_scanning_push_protection` — all `disabled` per `gh api repos/KJ5HST-LABS/wsjtx-internal --jq .security_and_analysis`. Phase 2 flips these on.
+- **#5 — Every gotcha from S61 still applies** (admin-bypass, typed `yes push`, `release.yml:123-136` force-push, MSYS2 quirk, timestamp.apple.com intermittent, public-mirror private, rad-con dirty state, etc.). S62 did not push anything, did not touch workflows, did not trigger any CI. State is unchanged from S61 close for all non-plan matters.
+- **#6 — wsjtx-arm develop is now 2 ahead of origin** after this S62 docs commit lands (S61 docs commit still local + this one). Push decision still with user.
+- **#7 — Plan document persona-neutrality.** The plan was written under "neither persona" authorization, but the document persists. Framed persona-neutrally so future Contributor sessions can cite it without violating persona rules. Do not add rad-con or consumer language to the plan if updating it during Contributor-persona sessions.
+- **#8 — Planning Session discipline must hold** in Session 63+. FM #18 (planning-to-implementation bleed): Session 63 implements ONE phase. If it bundles Phase 1 + Phase 2, that's a protocol violation. Each phase is its own session per the plan's "Session boundary" statements.
+- **#9 — Auto Mode does NOT override Planning Session discipline.** Auto Mode's "prefer action over planning" does NOT mean skip planning phases when the deliverable is a plan. Established in S62.
+- **#10 — User role-plays to stress-test honesty.** S62 user adopted "auditor from the team" framing and explicitly invited harsh-if-honest criticism ("liars, cheats and charlatans"). Respond with unvarnished truth; do not assume the user will accept a sales pitch just because Auto Mode is active. The auditor framing is a signal that honesty is the PRIMARY deliverable, not a side-note.
+- **#11 — SESSION_NOTES.md now ≈810 KB.** User continues to defer split. Do not raise unsolicited. Use offset/limit with Read to avoid size-limit failures.
+- **#12 — The plan references `actions/attest-build-provenance@v2`** (Phase 6 A13) without having verified its GA status on `WSJTX`. Confirm before Phase 6 starts; fallback is `cosign` or SLSA provenance via a different action.
+- **#13 — `gh` default repo is `KJ5HST-LABS/wsjtx-internal`.** ALWAYS `--repo WSJTX/*` for team-repo operations.
+
+---
+
 
 ### What Session 61 Did
 **Deliverable:** One 4-line edit to `rad-con/radio-web/backend/src/main/java/com/deppe/radio/web/jt9/Jt9Downloader.java:62-65` updating two URL string constants. Plus: filed follow-up issue #27 surfacing the mirror-public-flip-and-release-publish operational gap discovered during inventory; posted close comment on #3 and closed it. Net repo deltas: rad-con (`radio-web` submodule) gains 1 local commit `d57df4d`; wsjtx-arm gains 1 docs commit (this close-out).
