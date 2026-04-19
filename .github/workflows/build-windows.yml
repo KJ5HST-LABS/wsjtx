@@ -203,7 +203,10 @@ jobs:
             exit 1
           fi
           echo "Unsigned installer: $INSTALLER"
-          openssl req -x509 -newkey rsa:2048 \
+          # MSYS2 auto-converts arguments starting with '/' into Windows paths
+          # (e.g., '/CN=...' becomes 'D:/a/_temp/msys64/CN=...').
+          # MSYS2_ARG_CONV_EXCL="*" disables that conversion for this command.
+          MSYS2_ARG_CONV_EXCL="*" openssl req -x509 -newkey rsa:2048 \
             -keyout sandbox-key.pem -out sandbox-cert.pem \
             -days 365 -nodes \
             -subj "/CN=WSJT-X Sandbox Dev Signing/O=KJ5HST-LABS/C=US"
