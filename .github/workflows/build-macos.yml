@@ -31,6 +31,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Check signing secrets
+        id: check_secrets
+        env:
+          APP_P12: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}
+        run: |
+          if [ -n "$APP_P12" ]; then
+            echo "signing_enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signing_enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::macOS signing skipped — secrets unavailable (Dependabot or fork PR context). Compile + tests + dylib bundling still validated."
+          fi
+
       - name: Set Homebrew prefix
         run: echo "HOMEBREW_PREFIX=$(brew --prefix)" >> "$GITHUB_ENV"
 
@@ -305,6 +317,7 @@ jobs:
           done
 
       - name: Import signing certificates
+        if: steps.check_secrets.outputs.signing_enabled == 'true'
         env:
           APP_P12: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}
           APP_P12_PW: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
@@ -336,6 +349,7 @@ jobs:
         id: keychain
 
       - name: Code sign binaries
+        if: steps.check_secrets.outputs.signing_enabled == 'true'
         run: |
           STAGE="${{ steps.collect.outputs.stage_dir }}"
           ASSETS="${{ steps.collect.outputs.assets_dir }}"
@@ -367,6 +381,7 @@ jobs:
           done
 
       - name: Build installer pkg
+        if: steps.check_secrets.outputs.signing_enabled == 'true'
         run: |
           STAGE="${{ steps.collect.outputs.stage_dir }}"
           IDENTITY="${{ steps.keychain.outputs.identity }}"
@@ -417,6 +432,7 @@ jobs:
             "wsjtx-${{ inputs.version }}-${{ inputs.arch }}-macOS.pkg"
 
       - name: Notarize pkg
+        if: steps.check_secrets.outputs.signing_enabled == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
@@ -446,6 +462,7 @@ jobs:
           notarize_and_staple "wsjtx-${{ inputs.version }}-${{ inputs.arch }}-macOS.pkg"
 
       - name: Notarize CLI tools
+        if: steps.check_secrets.outputs.signing_enabled == 'true'
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_ID_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
@@ -470,10 +487,11 @@ jobs:
           rm cli-tools.zip
 
       - name: Clean up keychain
-        if: always()
+        if: always() && steps.check_secrets.outputs.signing_enabled == 'true'
         run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" 2>/dev/null || true
 
       - name: Upload pkg
+        if: steps.check_secrets.outputs.signing_enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: wsjtx-${{ inputs.version }}-${{ inputs.arch }}-macOS.pkg
