@@ -304,7 +304,8 @@ Phase 2 (sandbox governance) ─┘                                             
 | `|| true` on `osslsigncode verify` | RETAINED (explained inline) | Removed — hard fail on verify | 5 |
 | Force-push to public mirror main | RETAINED (guarded post-Phase 1) | Fast-forward-only + manual approval env | 6 |
 | `CROSS_REPO_TOKEN` optional sync | RETIRED Phase 1 (fail-loud) | Same + environment-scoped secret | Phase 1 / 4b |
-| `linuxdeploy` `continuous` tag | RETIRED Phase 1 (pinned) | Same + SHA256 verify | Phase 1 |
+| A9a: core `linuxdeploy` `continuous` tag | RETIRED Phase 1 (tag pinned + SHA256 verified) | Same | Phase 1 |
+| A9b: `linuxdeploy-plugin-qt` `continuous` tag | BLOCKED on upstream — no dated release since `1-alpha-20250213-1` (Qt5.15 `mediaservice` crash on ubuntu-24.04) | Pin + SHA256 verify when upstream ships a newer dated tag | Phase 6 |
 | Hard-coded version `"3.0.0"` in `ci.yml` | RETIRED Phase 1 | Same | Phase 1 |
 | `enforce_admins: false` | RETAINED (sandbox bring-up) | `true` on production | Phase 5 |
 | `required_signatures: false` | RETAINED | `true` on production | Phase 5 |

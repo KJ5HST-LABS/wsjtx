@@ -1,6 +1,19 @@
 # Session Notes
 
 ## ACTIVE TASK
+**Task:** Session 69 — Work through S68's handoff priorities in order: (1) A9 contract row split A9a/A9b in `docs/contributor/4_PRODUCTION_READINESS_PLAN.md §5` (FIVE-session-deferred 2-line doc edit); (2) merge decision on 4 green Dependabot PRs (#30/#31/#32/#33); (3) Phase 3 sandbox E2E release validation; (4) local `develop` reconciliation (11 ahead of origin). Contributor persona, sandbox-only per `feedback_sandbox_scope_default.md`.
+**Status:** IN PROGRESS — item #1 (A9 split) edit applied locally, ready to commit.
+**Session:** 69 in progress
+**Started:** 2026-04-19
+**Persona:** Contributor (sandbox-only; `WSJTX/*` off-limits)
+**Issue:** No pre-existing issue. Preamble housekeeping: duplicate file `4_PRODUCTION_READINESS_PLAN 2.md` (byte-identical, cloud-sync artifact) deleted with user authorization before starting item #1.
+
+### What Session 69 Did (in progress)
+**Deliverable:** Session claimed. A9 row in §5 split into A9a (core `linuxdeploy` retired — tag-pinned + SHA256-verified) and A9b (`linuxdeploy-plugin-qt` BLOCKED on upstream — stays on rolling `continuous` channel until upstream cuts a new dated release past `1-alpha-20250213-1`, which carries the Qt5.15 `mediaservice` crash on ubuntu-24.04). 2-line edit on local `develop` of `docs/contributor/4_PRODUCTION_READINESS_PLAN.md`. Next: items #2-#4.
+
+---
+
+## ACTIVE TASK (previous — Session 68, complete)
 **Task:** Session 68 — Fill the Dependabot-PR macOS-build gap first exposed by PRs #30/31/32/33. Single-file workflow edit on `.github/workflows/build-macos.yml`: add a `Check signing secrets` gate step and `if:` guards on all 7 Developer-ID-dependent steps. Signing still runs full-treatment on tag-triggered release workflows (secrets present); signing skips cleanly on Dependabot and fork PRs (secrets empty). PR #34 opened, merged (squash), and end-to-end skip path validated against all 4 Dependabot PRs without manual rebasing. Contributor persona.
 **Status:** COMPLETE
 **Session:** 68 complete
