@@ -139,13 +139,22 @@ jobs:
       - name: Package AppImage
         env:
           VERSION: ${{ inputs.version }}
+          # Core linuxdeploy is pinned to a dated release + SHA256 verify
+          # so an undetected upstream change fails the build instead of
+          # shipping. The Qt5 plugin stays on the rolling "continuous"
+          # channel because upstream has not cut a dated release since
+          # 1-alpha-20250213-1, which carries a filesystem_error bug on
+          # ubuntu-24.04 / Qt5.15 (missing qt5/plugins/mediaservice dir).
+          # When upstream publishes a newer dated plugin release, pin +
+          # verify it here too.
+          LINUXDEPLOY_TAG: "1-alpha-20251107-1"
+          LINUXDEPLOY_SHA256: "c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d"
         run: |
-          # Prebuilt linuxdeploy + Qt5 plugin from upstream continuous
-          # releases (recommended channel for CI).
           curl -fsSL -o linuxdeploy.AppImage \
-            https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+            "https://github.com/linuxdeploy/linuxdeploy/releases/download/${LINUXDEPLOY_TAG}/linuxdeploy-x86_64.AppImage"
           curl -fsSL -o linuxdeploy-plugin-qt.AppImage \
             https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          echo "${LINUXDEPLOY_SHA256}  linuxdeploy.AppImage" | sha256sum -c -
           chmod +x linuxdeploy.AppImage linuxdeploy-plugin-qt.AppImage
 
           # --appimage-extract-and-run avoids FUSE on the hosted runner.
