@@ -178,17 +178,52 @@ jobs:
             $PRERELEASE_FLAG \
             $FILES
 
+      # Defense-in-depth: the workflow trigger already constrains
+      # github.ref_name to tags matching build/v*, but if this job
+      # ever runs outside that trigger (workflow_dispatch, manual
+      # re-run with a fork ref, misconfiguration) the force-push
+      # below would overwrite WSJTX/wsjtx:main with arbitrary content.
+      # Abort here if the ref doesn't match the expected release-tag
+      # shape.
+      - name: Verify release tag format
+        run: |
+          if [[ "$GITHUB_REF_TYPE" != "tag" || "$GITHUB_REF_NAME" != build/v* ]]; then
+            echo "::error::Refusing to sync — expected tag build/v*, got $GITHUB_REF_TYPE:$GITHUB_REF_NAME"
+            exit 1
+          fi
+
       - name: Push to public repo
         env:
           TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
         run: |
+          # A "successful" release that silently skips the mirror sync is
+          # the worst failure mode — it looks green in Actions but leaves
+          # users unable to download. Fail loud instead.
           if [ -z "$TOKEN" ]; then
-            echo "::warning::CROSS_REPO_TOKEN not set — skipping public repo sync"
-            exit 0
+            echo "::error::CROSS_REPO_TOKEN not set — refusing to publish without public-mirror sync"
+            exit 1
           fi
           # Deploy keys can't push .github/workflows/ (GitHub platform
           # restriction).  Use CROSS_REPO_TOKEN (PAT with repo+workflow
-          # scopes) over HTTPS instead.
-          git remote add public https://x-access-token:${TOKEN}@github.com/KJ5HST-LABS/wsjtx.git || true
+          # scopes) over HTTPS instead. Idempotent: on job re-run the
+          # remote already exists, so skip add.
+          if ! git remote get-url public >/dev/null 2>&1; then
+            git remote add public "https://x-access-token:${TOKEN}@github.com/KJ5HST-LABS/wsjtx.git"
+          fi
+
+          # Human-auditable record of what the force-push is overwriting.
+          # If public main doesn't exist yet, ls-remote returns empty —
+          # still safe, just logs "no prior SHA".
+          PRIOR_SHA=$(git ls-remote public main | awk '{print $1}')
+          LOCAL_SHA=$(git rev-parse HEAD)
+          echo "Public mirror force-push audit:"
+          echo "  tag:        $GITHUB_REF_NAME"
+          echo "  prior SHA:  ${PRIOR_SHA:-<none>}"
+          echo "  new SHA:    $LOCAL_SHA"
+
+          # Sandbox-acceptable: --force retained during bring-up so mirror
+          # history can be rewritten. Production must replace with
+          # fast-forward-only + manual-approval environment — see
+          # docs/contributor/4_PRODUCTION_READINESS_PLAN.md Phase 6.
           git push public HEAD:main --force
           git push public "$GITHUB_REF_NAME"
