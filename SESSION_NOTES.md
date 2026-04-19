@@ -1,6 +1,21 @@
 # Session Notes
 
 ## ACTIVE TASK
+**Task:** Session 68 — Fill the Dependabot-PR macOS-build gap first exposed by PRs #30/31/32/33. Single-file workflow edit on `.github/workflows/build-macos.yml`: add a `Check signing secrets` gate step and `if:` guards on all 7 Developer-ID-dependent steps. Signing still runs full-treatment on tag-triggered release workflows (secrets present); signing skips cleanly on Dependabot and fork PRs (secrets empty). PR opened against `KJ5HST-LABS/wsjtx-internal` develop. Contributor persona.
+**Status:** IN PROGRESS
+**Session:** 68 in progress
+**Started:** 2026-04-19 (fourth session in one real-time block: S65 + S66 + S67 + S68)
+**Persona:** Contributor (sandbox-only; `WSJTX/*` off-limits per S68 user directive captured in `feedback_sandbox_scope_default.md`)
+**Issue:** No pre-existing issue. Fix is a direct consequence of the Dependabot-PR macOS failures observed live during S68's PR-watch phase (PRs #30/31/32/33 — identical failure pattern: `SecKeychainItemImport: Unable to decode the provided data` because `APP_P12` env var was empty under the Dependabot PR context).
+
+### What Session 68 Did
+**Deliverable:** (IN PROGRESS) One PR on `KJ5HST-LABS/wsjtx-internal` adding the signing-secrets guard to `build-macos.yml`. Sandbox-only scope. Replicates cleanly upstream in Phase 4 (environment-agnostic: production gets the same pattern AND has populated secrets, so Developer ID signing continues normally on production release tags).
+**Started:** 2026-04-19
+**Status:** Session claimed. Orient done; 4 Dependabot PRs watched to partial terminal state (all 4 macOS fail, all 4 linux pass, prepare pass on all); design approved; branch + edit + commit + push + open PR pending.
+
+---
+
+## ACTIVE TASK (previous — Session 67, complete)
 **Task:** Session 67 — Monitor PR #29 CI on `KJ5HST-LABS/wsjtx-internal` to terminal state; on all-green + user authorization, execute the merge and verify. Contributor persona.
 **Status:** COMPLETE
 **Session:** 67 complete
