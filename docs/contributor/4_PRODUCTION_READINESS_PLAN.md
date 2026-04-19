@@ -102,6 +102,7 @@ gh run list --workflow=ci.yml --branch=develop --limit=1 # → success
    - Dependabot version updates (config file committed in `.github/dependabot.yml` — weekly cadence for GitHub Actions ecosystem; quarterly for C++/Python where churn is low).
    - Secret scanning + push protection.
    - Code scanning with CodeQL (C++, Python, Actions YAML).
+   - Repo auto-merge feature (`allow_auto_merge: true`) — usage policy documented in `3_CICD_DEPLOYMENT_PLAYBOOK.md §10` (sandbox: auto-merge OK for all Dependabot bumps; production: restrict to security + patch; human click for minor/major).
    - Enable via `gh api` PATCH or GitHub web UI; settings committed as screenshots in `docs/contributor/screenshots/` for audit trail.
 
 2. **A6 — Tighten admin bypass on sandbox `develop`**:

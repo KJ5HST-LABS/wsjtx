@@ -924,6 +924,32 @@ If the sandbox ever changes (e.g., a second maintainer joins the project
 and PR-based review becomes viable), update this section with the new
 state and open a tracking issue to tighten `enforce_admins` on the sandbox
 as well.
+### Dependabot & Auto-merge Policy
+
+**Repo feature — enable everywhere this machinery lives:**
+
+```bash
+gh api -X PATCH /repos/<org>/<repo> -f allow_auto_merge=true
+```
+
+Enabling the feature only makes auto-merge *available* per-PR; it does not auto-merge anything on its own.
+
+**Usage policy:**
+
+| Posture | Dependabot security updates | Patch bumps (x.y.Z) | Minor/major bumps (x.Y.z / X.y.z) |
+|---------|-----------------------------|---------------------|-----------------------------------|
+| Sandbox | Auto-merge | Auto-merge | Auto-merge OK — breakage teaches here |
+| Production | Auto-merge | Auto-merge | **Human merge click required** |
+
+Rationale: CI cannot catch runtime-behavior regressions in major action-version bumps (output-format, permission-model, default-input changes). A human click is the cheapest way to force a moment of review proportional to the blast radius of a production action upgrade.
+
+**Arming auto-merge on a specific PR:**
+
+```bash
+gh pr merge <N> --repo <org>/<repo> --auto --squash --delete-branch
+```
+
+Dependabot auto-rebases its PRs when the base branch moves, CI re-runs, and GitHub merges once the branch-protection checks (including "up-to-date with base") pass.
 
 ---
 
