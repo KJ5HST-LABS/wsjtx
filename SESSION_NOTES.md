@@ -1,12 +1,116 @@
 # Session Notes
 
 ## ACTIVE TASK
-**Task:** Session 62 — Produced `docs/contributor/4_PRODUCTION_READINESS_PLAN.md` in response to an auditor-framed production-readiness challenge from the user. Plan enumerates 14 audit findings (A0–A13), organizes them into 6 phases (sandbox hardening → governance → E2E validation → replication to `WSJTX/wsjtx-internal` → production signature integrity → operational readiness), with per-phase completion criteria, verification commands, and explicit session boundaries. Includes a sandbox-shortcut-vs-production-retirement contract table (§5) so every sandbox compromise is bound to a retirement phase. No implementation — planning-session deliverable only, per SESSION_RUNNER Planning Sessions discipline.
-**Status:** COMPLETE
-**Session:** 62 complete
+**Task:** Session 63 — Executed Phase 1 of `docs/contributor/4_PRODUCTION_READINESS_PLAN.md`: one PR (#28 on `KJ5HST-LABS/wsjtx-internal`) closing audit items A2, A3, A9, A12. Three workflow files edited (`.github/workflows/release.yml`, `build-linux.yml`, `ci.yml`), +79/-12, single commit, branch `feat/phase1-release-hardening` based at `2b1e0b96e` (origin/develop) so the 2 local-only docs commits on develop do not ride along in the PR.
+**Status:** COMPLETE (merge + CI-run watch remain with user / team)
+**Session:** 63 complete
 **Started:** 2026-04-19
-**Persona:** Neither (user explicit — team-auditor framing; plan written persona-neutral so it reads cleanly under Contributor rules in future sessions)
-**Issue:** No GitHub issue; audit response is session-scoped planning. Plan references #27 (public-mirror flip) implicitly via audit item A1.
+**Persona:** Contributor (sandbox machinery work; no rad-con or consumer references in PR or commit body)
+**Issue:** No open issue pre-existed for Phase 1. PR #28 IS the deliverable. Plan reference: `docs/contributor/4_PRODUCTION_READINESS_PLAN.md §Phase 1`.
+
+### What Session 63 Did
+**Deliverable:** PR #28 on `KJ5HST-LABS/wsjtx-internal`. Closes A2, A3, A9, A12. Commit `82b6a4851` on branch `feat/phase1-release-hardening`. Plan §5 "RETIRED Phase 1" contract rows all satisfied.
+
+**Change surface:** 3 files, +79/-12, all edit-local. No external dependencies, no tag push, no mirror side-effects, no cert work, no governance files — strict Phase 1 scope.
+- `release.yml`: new "Verify release tag format" step (defense-in-depth ref guard); token-missing branch flipped from `exit 0` → `exit 1`; pre-push audit log (prior SHA + new SHA + tag); `|| true` on `git remote add` replaced with idempotent existence-check.
+- `build-linux.yml`: linuxdeploy pinned to `1-alpha-20250213-2` (SHA256 `4648f278ab3ef31f819e67c30d50f462640e5365a77637d7e6f2ad9fd0b4522a`) and linuxdeploy-plugin-qt to `1-alpha-20250213-1` (SHA256 `15106be885c1c48a021198e7e1e9a48ce9d02a86dd0a1848f00bdbf3c1c92724`). `sha256sum -c -` on both.
+- `ci.yml`: new `prepare` job reads `CMakeLists.txt:55` via `grep -E '^\s*VERSION\s+[0-9]' | head -1 | awk '{print $2}' | cut -d. -f1-3` → `3.0.0`. All four platform jobs `needs: prepare` and consume `${{ needs.prepare.outputs.version }}`.
+
+**Mechanics path (chronological):**
+1. Oriented per SESSION_RUNNER Phase 0 (SAFEGUARDS full, SESSION_NOTES top 200 lines, project-local dashboard 83/100, `git status` → develop +2 ahead of origin with 4 untracked drafts pre-existing, `gh issue list` → only #27 open). Reported + surfaced S62 Gotcha #1 blocker (plan-is-draft until team sign-off). Waited for direction.
+2. User: "Contributor. phase 1" — persona + scope unambiguous. S62 Gotcha #1 is implicitly waived by direct authorization.
+3. Read plan §Phase 1 in full. Confirmed 4 actions + completion criteria + session boundary ("one PR").
+4. Pre-flight reads: `release.yml:181-194` (force-push block), `build-linux.yml:130-170` (AppImage package), `ci.yml` full, `CMakeLists.txt:50-65` (version literal). Confirmed plan citations are still accurate.
+5. Decided to branch from `origin/develop` (not local develop) so the 2 local-only docs commits don't ride along in the PR. `git fetch origin && git checkout -b feat/phase1-release-hardening origin/develop`.
+6. Loaded TaskCreate/TaskUpdate/TaskList via ToolSearch. Created 6 tasks (1 setup, 4 audit items, 1 verify+push).
+7. A2 + A3: combined into a single `release.yml` edit since both touch the same step. Added `Verify release tag format` defense-in-depth step before the push. Added pre-push audit log. Flipped silent-skip to fail-loud. Kept `--force` but added Phase 6 retirement comment citation.
+8. A9: `gh api` on both linuxdeploy repos to enumerate non-continuous tags. Chose `1-alpha-20250213-*` as the most recent shared dated release. Downloaded both AppImages to `/tmp`, ran `shasum -a 256` to get real hashes (not fabricated). Edited `build-linux.yml:139-149` to use env vars for tags + SHAs, `sha256sum -c -` on both downloads.
+9. A12: full-rewrite of `ci.yml`. Added `prepare` job with version extraction + `needs: prepare` on all four platform jobs. Removed four hard-coded `"3.0.0"` literals.
+10. First pass of plan §Phase 1 completion grep: passed 3 of 4 checks. Two cosmetic misses — the word "continuous" still in an explanatory comment in `build-linux.yml`, and `|| true` on `git remote add ...` in `release.yml`. Both were grep-false-positives (comment vs. URL; idempotency vs. failure-suppression), but the plan's criterion is literal. Rewrote the comment ("continuous" → "rolling-release channel") and replaced `|| true` with `if ! git remote get-url public >/dev/null 2>&1; then ...; fi`.
+11. Re-ran all four grep checks: zero hits across the board. `python3 -c "import yaml; yaml.safe_load(...)"` on all three files passed.
+12. `git add` only the 3 workflow files (did NOT touch the 4 untracked drafts in `docs/contributor/drafts/`). Committed as `82b6a4851` with per-item summary in the commit body. No Co-Authored-By per user memory.
+13. `git push -u origin feat/phase1-release-hardening`.
+14. `gh pr create --repo KJ5HST-LABS/wsjtx-internal --base develop --head feat/phase1-release-hardening` → **PR #28**. Body covers each audit item with rationale, completion-criteria checklist, test plan, and out-of-scope framing (A4/A5/A6/A8/A10/A11/A13 each tied to their Phase).
+15. `gh pr checks 28` at close-out: `prepare` PASSED (11s — **A12 validated live**); 4 platform builds `pending`. Not waiting — 1-and-done; merge decision and CI watch are with user.
+16. Hit a session-boundary gotcha writing this handoff: tried to edit SESSION_NOTES.md on the feature branch first, discovered it was at S60 state there (because S61 and S62 docs commits are on local `develop` only). Checked out `develop` to do the SESSION_NOTES edit on the correct branch so the close-out commit lands alongside S61/S62's.
+
+**Proof (commands the next session can run to verify):**
+- `gh pr view 28 --repo KJ5HST-LABS/wsjtx-internal --json state,title` → `OPEN` / `feat(ci): phase 1 release-path safety hardening (A2/A3/A9/A12)`
+- `git log --oneline -1 origin/feat/phase1-release-hardening` → `82b6a4851 feat(ci): phase 1 release-path safety hardening (A2/A3/A9/A12)`
+- `git show origin/feat/phase1-release-hardening -- .github/workflows/ci.yml | grep 'prepare:'` → matches
+- `git show origin/feat/phase1-release-hardening -- .github/workflows/build-linux.yml | grep -c 'SHA256'` → 4 (two env vars + two verify commands)
+- `curl -fsSL https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20250213-2/linuxdeploy-x86_64.AppImage | sha256sum` → `4648f278ab3ef31f819e67c30d50f462640e5365a77637d7e6f2ad9fd0b4522a`
+- `gh pr checks 28 --repo KJ5HST-LABS/wsjtx-internal --jq '.[] | select(.name == "prepare")'` → PASS
+
+**Out of scope (left for future sessions):**
+- **PR #28 merge itself.** Contributor rule + "hard-to-reverse action for shared state" means user/team merges. S63 did not merge.
+- **Waiting on CI.** 4 builds pending at close-out. If any fail, S64 triage is in scope; if green, S64 can either merge (user call) or move to Phase 2.
+- **Phase 2-6 of the plan.** Each phase = its own session per plan §4 session boundaries.
+- **rad-con + radio-web reconciliation.** Pre-existing dirty state carried across S61/S62/S63, unchanged (S63 touched zero rad-con files).
+- **S61 + S62 docs commits on local `develop`** plus this S63 close-out commit. Still local-only. Feature branch was explicitly based at `origin/develop` so the PR is clean of them; local develop remains 3 commits ahead of origin after this commit.
+- **#27 public-mirror flip.** Referenced in plan §Phase 6, out of scope for Phase 1.
+- **4 untracked draft files in `docs/contributor/drafts/`.** Pre-existing from S49-ish, not mine, not touched.
+
+**Session 62 Handoff Evaluation (by Session 63):**
+- **Score: 10/10.** S62 self-scored 9/10. I upgrade to 10/10 for execution-ROI.
+- **What helped most:** (a) The plan itself IS the handoff. S62 produced a document that I could read once, map to 4 edit locations, and execute. Every action has a file:line citation; every completion criterion is a grep command. This is the highest-ROI handoff a planning session can produce — the successor doesn't need to re-audit, re-prioritize, or re-discover. (b) S62's Gotcha #1 ("plan is a DRAFT until team signs off on §1 policy + §5 contract. Do NOT start Phase 1 edits before confirming") made me surface this blocker at orient time. User's one-word "phase 1" response implicitly waived it. If S62 had not flagged this, I'd have started edits without presenting the governance question. (c) S62's Gotcha #5 pointed at S61's gotchas still being in effect, which saved re-deriving rad-con dirty-state etc. (d) The plan's §5 shortcut-retirement contract table let me write Phase 6 retirement comments inline in `release.yml` ("production must replace with fast-forward-only + manual-approval environment — see `4_PRODUCTION_READINESS_PLAN.md` Phase 6") without having to re-read the plan to confirm the retirement phase. Comments point at authoritative source.
+- **What was missing:** (a) S62's Phase 1 action text said "CMakeLists.txt:55 via `grep -E 'VERSION\s+[0-9]' CMakeLists.txt | head -1` **or equivalent**". It did NOT flag that `CMakeLists.txt:55` is `VERSION 3.0.0.0` (4-part) while release.yml produces `3.0.0` (3-part from tag `build/v3.0.0`). I had to decide the mismatch resolution myself (chose `cut -d. -f1-3` to strip the trailing .0 so artifact names stay consistent). Small — a 15-second decision — but a better Phase 1 spec would have either named the extraction exactly or flagged the mismatch. (b) S62 did not mention that the `|| true` on `git remote add` in release.yml was going to show up in the Phase 1 completion grep even though it's idempotency-not-suppression. I had to do a second clean-up pass. Minor. (c) S62 did not flag the branch-topology gotcha: "if you branch from origin/develop, the SESSION_NOTES close-out goes on local develop, not on the feature branch." I figured this out mid-close-out but would have been a 30-second save if flagged.
+- **What was wrong:** Nothing material.
+- **ROI:** Very high. Orient → PR opened in ~30 minutes. Without S62's plan this would have been a 2-session effort (plan + execute).
+
+**Self-assessment (Session 63):**
+- **(+) One deliverable, end-to-end, strict session boundary.** Plan §Phase 1 says "One PR. One session." Delivered one PR with exactly the 4 audit items listed. Did NOT touch A4 (`|| true` on osslsigncode), did NOT start Phase 2 governance artifacts, did NOT chase rad-con reconciliation. Pure 1-and-done.
+- **(+) Verified linuxdeploy SHA256 by actual download.** Could have fabricated hashes from memory or copied from the wrong source. Instead: `curl` + `shasum -a 256` on both AppImages locally, then pasted the real values into the workflow. No trust-me-bro values shipped.
+- **(+) Caught the literal-vs-spirit grep mismatch.** First pass had two comment-level `continuous` / `|| true` hits that were semantically fine but failed the plan's literal criterion. Fixed both. Reasoning: the plan author set grep criteria as a proxy for future audits; a comment leftover would trigger a false positive in S70 when someone reads compliance via `git grep`. Better to remove the trigger than to document why it's OK.
+- **(+) Branched from `origin/develop`, not local `develop`.** The 2 local-only docs commits would have ridden along in the feature branch push otherwise, committing the user's local-only docs policy to shared-repo history without explicit authorization. Respected "user decides push timing".
+- **(+) Did NOT touch the 4 untracked drafts.** `docs/contributor/drafts/SESSION_49_AUDIT.md` etc. predated this session and are not mine. Per SAFEGUARDS "do not touch user-edited state; report and ask". Listed in out-of-scope.
+- **(+) Did NOT merge the PR.** Merging is shared-state, team-visible, harder to reverse than the PR open. Per general guidance "match scope of actions to what was actually requested" — user authorized Phase 1 execution, which completes when the PR is open. Merge is a separate decision.
+- **(+) Surfaced S62 Gotcha #1 at orient time.** User's reply confirmed implicit waiver. Did not silently skip the blocker check.
+- **(+) Auto-close discipline.** When user said "close out", I did not push into Phase 2. Closing now as-directed.
+- **(+) Recovered cleanly from the branch-topology mistake mid-close-out.** Tried to edit SESSION_NOTES on the feature branch (where it reflects S60 state), got the "file modified since read" error, realized the topology issue, switched to develop, re-read, and proceeded without looping or destructive action. Good error recovery posture.
+- **(−) Did not wait for CI before closing out.** 4 builds still pending. If one fails due to e.g. `cut -d. -f1-3` behaving unexpectedly on a macOS `grep` version, S64 opens with a broken PR. Judgment call: `prepare` passed, YAML parses, version string shape matches convention, and platform builds exercise the same actions as before (the only meaningful change is the `needs: prepare` dependency). Low likelihood of a platform-build break. But not zero.
+- **(−) Did NOT pre-verify the `sha256sum -c -` syntax works on GitHub's ubuntu-latest.** It does (coreutils); I trust it. But I could have sanity-checked in a disposable step. Minor.
+- **(−) The `grep -E '^\s*VERSION\s+[0-9]' CMakeLists.txt | head -1 | awk '{print $2}' | cut -d. -f1-3` chain is brittle to CMakeLists formatting changes** (e.g., if a future commit adds a comment-after-`VERSION`, or moves to a multi-line `project(...)` call). A pure-cmake extraction (`cmake -P` with a tiny script) would be more robust. Decided not to over-engineer for Phase 1; the current pipeline has used ad-hoc grep extraction for years. Flagged here in case A14-adjacent work ever touches this.
+- **Score: 9.5/10.** Deliverable shipped exactly as scoped; plan compliance literal + strict; verification discipline held (real SHA256s, real YAML parse, real grep checks); branch topology respected user's local-only-docs policy; PR body thorough enough that a future Phase-1-executor can audit comprehension. Half-point deduction for not waiting for CI green before close-out and for the brittleness of the version-extraction pipeline. Handoff written in full.
+
+**Learnings to add to SESSION_RUNNER.md Learnings table:**
+| # | Learning | Source | When to Apply |
+|---|----------|--------|---------------|
+| 4 | When the plan specifies a literal grep completion criterion ("zero hits of X"), treat it literally — clean the string even from comments and idempotency hacks. The plan author is using grep as a proxy for "this shortcut is gone"; a leftover in a comment triggers a false positive during any future grep-based audit. Rewrite the trigger out of the source. | S63 Phase 1 execution (`continuous` comment, `\|\| true` idempotency) | Any session executing a plan that specifies grep-based completion criteria. |
+| 5 | When verifying external dependency hashes for a pin, ACTUALLY download the artifact and compute the SHA256 locally. Do not fabricate from memory or copy from third-party sources. Paste the computed hash directly into the workflow. Takes 10 seconds and is the difference between a real pin and a placeholder. | S63 A9 linuxdeploy pin | Any pin-a-dependency task (Phase 1 A9, Phase 6 A13, future hash-pins). |
+| 6 | When a feature branch is based at `origin/<branch>` (to exclude local-only commits from the PR), the SESSION_NOTES close-out commit must be made on the LOCAL branch, not the feature branch. Otherwise the close-out lands against stale SESSION_NOTES (the state pre-local-commits) and the edit will fail or overwrite wrong state. Switch to local branch for handoff commits. | S63 close-out recovery | Any session that opens a PR from a branch based at `origin/<branch>` while local `<branch>` has unpushed commits. |
+
+**What's next (Session 64 priorities):**
+
+With Phase 1 PR #28 open, `KJ5HST-LABS/wsjtx-internal` has TWO open items (#27 public-mirror flip, #28 Phase 1 PR) plus implicit Phase 2-6 work from the plan. Priority ordering below reflects the dependency graph in plan §4 plus pragmatic sequencing.
+
+1. **First action: check `gh pr checks 28 --repo KJ5HST-LABS/wsjtx-internal`.** If all 4 platforms green → user decides merge timing. If any fail → S64 triage on the failing platform (most likely suspect: the `prepare` job's version output not being consumed correctly by `build-windows.yml` or the linuxdeploy SHA mismatching on a different runner — but both are unlikely given the YAML parse + manual SHA verify).
+2. **If PR #28 merges:** next session is **Phase 2 — Sandbox repo security posture + governance**. Plan §Phase 2. Actions: enable Dependabot + secret scanning + CodeQL on sandbox; add SECURITY.md / CONTRIBUTING.md / CODEOWNERS / CODE_OF_CONDUCT.md. Contributor persona. One PR + one settings-change (may split across two sessions per plan §7).
+3. **Parallel-able with Phase 2: #27 public-mirror flip.** Different scope (hard-to-reverse operational action) but blocks Phase 6. Needs typed `yes flip` + audit-before-flip pattern from S61.
+4. **rad-con + radio-web reconciliation** (Consumer persona, carried from S61). User decides push timing for the 3 unpushed radio-web commits + uncommitted state.
+5. **Phase 3 sandbox E2E validation** (plan §Phase 3) is NOT next — it needs Phase 1 MERGED first because action #2 "happy-path test tag" fires the post-Phase-1 guarded force-push. Do Phase 2 first, merge Phase 1, THEN Phase 3.
+6. **Phase 6 capstone (real production release)** stays blocked on team-delivered certs (plan §Phase 5 dependencies).
+
+**Key files (for Session 64):**
+- `/Users/terrell/Documents/code/wsjtx-arm/docs/contributor/4_PRODUCTION_READINESS_PLAN.md` — authoritative plan. Phase 2 actions at §Phase 2.
+- PR #28 — check status first.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/release.yml` (post-merge) — look for the new `Verify release tag format` step + pre-push audit log to confirm Phase 1 landed as designed.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/build-linux.yml:139-160` (post-merge) — linuxdeploy pin. If plan §Phase 6 A13 touches attestations, this is adjacent work.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/ci.yml` (post-merge) — reference for the `prepare`-pattern that will need replication to `WSJTX/wsjtx-internal` in Phase 4b.
+
+**Gotchas for Session 64:**
+- **#1 — PR #28 is OPEN, not MERGED.** Do not start Phase 2 PR on top of Phase 1 assumptions in the tree until merge. Rebase if needed.
+- **#2 — `feat/phase1-release-hardening` branch is local+origin.** Don't delete until merged.
+- **#3 — Branch topology.** Feature branch was based at `2b1e0b96e` (origin/develop) to exclude local docs commits. Local `develop` is now 3 ahead of origin (S61 + S62 + S63 close-outs) + will be 2 behind after PR merge (origin advances by 1 merge commit, local by 0). User must reconcile via fetch+rebase when convenient.
+- **#4 — Every gotcha from S61/S62 still applies** (admin-bypass, typed `yes push` patterns, MSYS2 quirk, public-mirror is still private, rad-con dirty state, 820KB SESSION_NOTES, `actions/attest-build-provenance@v2` unverified, etc.). Note `release.yml`'s force-push IS now guarded by S63 changes but still `--force`-ful on a matching tag.
+- **#5 — Phase 1 grep criteria remain valid post-merge.** Run `git grep '"3.0.0"' .github/workflows/` on `develop` post-merge to confirm the retirement landed. Zero hits = landed cleanly.
+- **#6 — `prepare` job version-extraction brittleness.** `grep -E '^\s*VERSION\s+[0-9]' CMakeLists.txt | head -1 | awk '{print $2}' | cut -d. -f1-3` expects `VERSION X.Y.Z[.W]` on a single line with leading whitespace. A CMakeLists reorganization that breaks this shape fails the `prepare` job (which then fails CI). Fail-loud is correct behavior; just know the failure mode.
+- **#7 — Plan §5 contract now has 3 RETIRED Phase 1 rows validated** (CROSS_REPO_TOKEN, linuxdeploy, version literal). Production retirement table should be kept in sync as phases land.
+- **#8 — `git remote add public` in release.yml is now conditional.** On first run of a tag, it adds; on re-run of the same tag, it skips. Behaviorally identical to the prior `|| true` but grep-clean.
+- **#9 — SHA256 pins need refresh when upstream tags ship.** If Phase 1 is not merged within weeks, `1-alpha-20250213-*` may feel stale. Refresh to the then-current tag.
+- **#10 — When close-out needs SESSION_NOTES edit, do it on LOCAL develop, not on a feature branch based at origin/develop.** Feature-branch SESSION_NOTES is stale relative to local develop's S61/S62/S63 docs commits.
+
+---
 
 ### What Session 62 Did
 **Deliverable:** One new plan document at `docs/contributor/4_PRODUCTION_READINESS_PLAN.md` (~290 lines). Closes the "is this production-ready?" audit by replacing a verbal answer with a phased, evidence-cited, session-bounded execution plan.
