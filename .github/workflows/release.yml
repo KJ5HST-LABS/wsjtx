@@ -93,6 +93,64 @@ jobs:
       - name: List artifacts
         run: find artifacts -type f | sort
 
+      # ── All-platforms-ready gate (Issue #25) ───────────────────────────
+      # Refuse to publish unless every platform produced an installer-grade
+      # artifact. The release job's `needs:` already enforces structural
+      # success (all 4 builds ran and exited 0), but a build can exit 0
+      # without actually packaging — e.g. a packaging step behind an `if:`
+      # that evaluated false, or an upload-artifact step that silently
+      # matched zero files. This gate fails the release job BEFORE any
+      # asset upload so partial releases never reach GitHub Releases or
+      # the public mirror.
+      #
+      # Expected artifact layout (one installer per platform, per the
+      # four build-*.yml upload-artifact steps):
+      #   artifacts/wsjtx-<ver>-arm64-macOS.pkg/*.pkg
+      #   artifacts/wsjtx-<ver>-x86_64-macOS.pkg/*.pkg
+      #   artifacts/wsjtx-<ver>-linux-x86_64-AppImage/*.AppImage
+      #   artifacts/wsjtx-<ver>-windows-x86_64-installer/*.exe
+      #
+      # Upstream replication: this gate encodes the sandbox's policy
+      # ("publish only when all four platforms have an installer"). If
+      # upstream chooses a different policy (e.g. publish any-platform-
+      # ready), adjust or remove this step.
+      - name: Verify installer-grade artifacts (all-platforms-ready gate)
+        env:
+          VERSION: ${{ needs.prepare.outputs.version }}
+        run: |
+          shopt -s nullglob
+          labels=(
+            "macOS arm64 .pkg"
+            "macOS x86_64 .pkg"
+            "Linux .AppImage"
+            "Windows .exe"
+          )
+          patterns=(
+            "artifacts/wsjtx-${VERSION}-arm64-macOS.pkg/*.pkg"
+            "artifacts/wsjtx-${VERSION}-x86_64-macOS.pkg/*.pkg"
+            "artifacts/wsjtx-${VERSION}-linux-x86_64-AppImage/*.AppImage"
+            "artifacts/wsjtx-${VERSION}-windows-x86_64-installer/*.exe"
+          )
+          missing=0
+          echo "Installer-grade artifact gate — checking 4 platforms…"
+          for i in "${!labels[@]}"; do
+            # shellcheck disable=SC2206 # word-split is intentional; nullglob makes it safe.
+            matches=( ${patterns[$i]} )
+            if [ ${#matches[@]} -eq 0 ]; then
+              echo "::error::MISSING  ${labels[$i]} — no match for ${patterns[$i]}"
+              missing=$((missing + 1))
+            else
+              size=$(stat --printf '%s' "${matches[0]}")
+              printf '  ok  %-20s %s (%s bytes)\n' "${labels[$i]}" "${matches[0]}" "$size"
+            fi
+          done
+          if [ "$missing" -gt 0 ]; then
+            echo "::error::All-platforms-ready gate FAILED — $missing of 4 platform(s) missing installer-grade artifact."
+            echo "::error::Refusing to publish a partial release. Fix the failing build job(s) and retry the tag."
+            exit 1
+          fi
+          echo "All-platforms-ready gate PASSED — all 4 installer-grade artifacts present. Proceeding to publish."
+
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
