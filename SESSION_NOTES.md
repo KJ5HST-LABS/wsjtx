@@ -1,6 +1,105 @@
 # Session Notes
 
 ## ACTIVE TASK
+**Task:** Session 64 — Triaged PR #28 linux CI failure at "Package AppImage" step. Root cause found in pinned `linuxdeploy-plugin-qt` version (not the SHA verify). Pushed amending commit `e97e5dca3` to `feat/phase1-release-hardening`: bumped `linuxdeploy` to `1-alpha-20251107-1` (newest dated), reverted plugin to `continuous` channel, kept SHA verify on the main tool only. CI green on all 5 checks after the amendment.
+**Status:** COMPLETE (merge decision + A9 contract-row correction remain with user / team / plan maintenance)
+**Session:** 64 complete
+**Started:** 2026-04-19
+**Persona:** Contributor
+**Issue:** PR #28 on `KJ5HST-LABS/wsjtx-internal`. No separate issue filed.
+
+### What Session 64 Did
+**Deliverable:** PR #28 restored to all-green. Two-commit branch: original `82b6a4851` + fix `e97e5dca3`. Triage comment posted. Body/A9 revisions captured in-comment (PR body left as-is for audit integrity; comment documents the amendment).
+
+**Change surface:** 1 file, +11/-10 on `.github/workflows/build-linux.yml`. No other files touched. No commit on `develop` for workflows (the fix lives on the feature branch only, lands on develop when PR #28 merges). SESSION_NOTES close-out commits on `develop` directly.
+
+**Mechanics path (chronological):**
+1. Oriented per SESSION_RUNNER Phase 0 (SAFEGUARDS full, SESSION_NOTES top 250 lines, project-local dashboard 83/100, `gh issue list` → #27 only). Ghost-session check clean — S63 commits match notes 1:1. Reported state; `gh pr checks 28` showed linux still FAIL as S63 left it.
+2. User: "Contributor. triage" — persona + deliverable unambiguous.
+3. Phase 1B stub to SESSION_NOTES.md ACTIVE TASK before technical work.
+4. `gh run view 24633637315 --log-failed` — pulled the actual linux job log. Root cause visible: `linuxdeploy-plugin-qt` throws `std::filesystem::filesystem_error` / "directory iterator cannot open directory" on `/usr/lib/x86_64-linux-gnu/qt5/plugins/mediaservice` during Qt "multimedia" module scan. Not a SHA issue — the download + verify completed; failure is deep inside the plugin's C++ filesystem iteration.
+5. Cross-checked by listing previous `ci.yml` runs. S60's `24619472629` on `develop` (pre-A9, unpinned continuous linuxdeploy) succeeded on linux. Confirms S63's pin IS the regression.
+6. `gh api repos/linuxdeploy/linuxdeploy-plugin-qt/releases` — plugin has **exactly one dated release ever**: `1-alpha-20250213-1`. Pinning the plugin to a tag = pinning the known bug until upstream ships another dated release.
+7. `gh api repos/linuxdeploy/linuxdeploy/releases` — main tool has `1-alpha-20251107-1` (Nov 2025), newer than the `1-alpha-20250213-2` S63 chose. S63's "shared-date" heuristic overweighted symmetry.
+8. Presented 3 options to user (partial pin, mkdir workaround, full revert). User picked option 1 (partial pin).
+9. Downloaded linuxdeploy 1-alpha-20251107-1 from upstream, computed SHA256 locally: `c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d`.
+10. Stashed the Phase 1B SESSION_NOTES stub on `develop` (S63 Gotcha #10), checked out `feat/phase1-release-hardening`. Edited `build-linux.yml:139-157`: bumped `LINUXDEPLOY_TAG` + `LINUXDEPLOY_SHA256`, removed `LINUXDEPLOY_PLUGIN_QT_TAG` + `LINUXDEPLOY_PLUGIN_QT_SHA256` env vars, reverted plugin URL to `continuous`, dropped the plugin's `sha256sum -c -` line, rewrote the env-block comment to document WHY the plugin stays on the rolling channel.
+11. YAML parse check + `git diff` review. Committed as `e97e5dca3` with a commit body explaining both the S63 heuristic error and the upstream plugin cadence constraint. Pushed to origin.
+12. Checked back out `develop`, popped the stash. Posted a concise PR comment (`issuecomment-4276381659`) surfacing the triage finding, the fix, and noting that two body facts are now stale (tag/SHA line + "continuous = zero hits" grep criterion).
+13. `gh run watch 24634273638 --exit-status` in background. Exit code 0 on completion.
+14. Confirmed final state: all 5 checks PASS; PR status MERGEABLE / CLEAN. linux 12m17s, macos 7m58s, macos-intel 15m42s, windows 18m34s, prepare 9s.
+15. This close-out.
+
+**Proof (commands the next session can run to verify):**
+- `gh pr checks 28 --repo KJ5HST-LABS/wsjtx-internal` → 5 PASS, 0 FAIL
+- `gh pr view 28 --repo KJ5HST-LABS/wsjtx-internal --json mergeStateStatus` → `CLEAN`
+- `git log --oneline origin/feat/phase1-release-hardening -2` → `e97e5dca3 fix(ci-linux)…` / `82b6a4851 feat(ci)…`
+- `gh api "repos/KJ5HST-LABS/wsjtx-internal/contents/.github/workflows/build-linux.yml?ref=feat/phase1-release-hardening" --jq .content | base64 -d | grep -c 'LINUXDEPLOY_PLUGIN_QT'` → `0` (plugin env vars removed; plugin now on continuous URL)
+- `curl -fsSL https://github.com/linuxdeploy/linuxdeploy/releases/download/1-alpha-20251107-1/linuxdeploy-x86_64.AppImage | shasum -a 256` → `c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d`
+
+**Out of scope (left for future sessions):**
+- **PR #28 merge** — user / team decision. S64 did not merge; shared-state hard-to-reverse action.
+- **Plan §5 contract row for A9.** Currently says "A9 retired (Phase 1)". Post-merge, this becomes inaccurate — A9 is partially retired. Suggest splitting into A9a (core tool pinned + verified — RETIRED) and A9b (plugin on rolling channel — BLOCKED on upstream dated release). Small doc-edit session.
+- **Phase 2+.** Each phase its own session per plan §Phase boundaries.
+- **rad-con + radio-web reconciliation** (Consumer persona). Carried from S61/S62/S63.
+- **#27 public-mirror flip.** Unchanged.
+- **4 untracked draft files in `docs/contributor/drafts/`.** Untouched per S63 precedent.
+
+**Session 63 Handoff Evaluation (by Session 64):**
+- **Score: 9.5/10.** S63 self-scored 9.5/10. I concur.
+- **What helped most:** (a) S63's Gotcha #11 called the linux FAIL explicitly and even enumerated the three most-likely root causes (sha256sum syntax, SHA mismatch, missing tag). All three were wrong — actual root cause was deeper (plugin bug on missing Qt directory) — but the hypotheses gave me a structured entry point for elimination. Knowing upfront what DIDN'T explain it was almost as valuable as knowing what did; I could skip hypothesis (a)/(b)/(c) and go straight to the actual log. (b) S63's "Proof" block listed the exact `gh api` URL + SHA for the original pin, so I had the baseline to compare against without re-deriving. (c) Gotcha #3 (branch topology: feature branch based at origin/develop, local develop ahead by 3) saved me an entire diagnostic digression — the stash + checkout + pop dance was obvious because S63 had flagged it.
+- **What was missing:** (a) S63's self-assessment correctly identified "didn't wait for CI before close-out" as a gap, but the gotcha list didn't go the extra step of saying "if linux fails, first check the plugin at multimedia-module scan because `ubuntu-24.04` dropped the mediaservice plugin category." That's hindsight — S63 couldn't have known — but it's the class of upstream-env change that catches any workflow that pins old plugin versions. Flagging for future "pin X, verify Y" retirements that this class of change exists is useful learning (see Learnings table below). (b) S63's choice of `1-alpha-20250213-*` over `1-alpha-20251107-1` for linuxdeploy was based on "shared date with plugin." A note like "preferred latest over shared-date when there was a newer main-tool release available" would have caught this. Also hindsight, but becomes Learning #7. (c) Nothing on the handoff said "post-merge, plan §5 contract A9 row needs splitting." Inferred during triage; not blocker.
+- **What was wrong:** S63 Gotcha #11's ranked hypotheses were all wrong. Not material — the log read directly revealed the actual cause in <30 seconds.
+- **ROI:** Very high. Orient → triage → root-cause ID in ~3 minutes (most of which was reading log). Fix design + push → ~10 minutes. CI watch → ~18 minutes (hands-off). Without S63's precise PR state + gotcha #11, triage would have been slower.
+
+**Self-assessment (Session 64):**
+- **(+) Led with log reading, not hypothesis testing.** The S63 gotcha list offered three hypotheses; I pulled the actual failed-job log first and let it tell me. Root cause jumped out immediately. Hypothesis-first would have burned ~10 minutes eliminating sha256sum syntax and download SHA before I got to the real answer. When evidence is free (`gh run view --log-failed`), take it before reasoning.
+- **(+) Presented options before acting.** Three distinct paths (partial pin / mkdir workaround / full revert) each with tradeoffs. User chose. Did not silently pick option 1 and execute. This is the pattern SAFEGUARDS asks for on hard-to-characterize defects.
+- **(+) Downloaded + computed the new SHA locally.** Did NOT fabricate from memory or copy from upstream's release page (which I could not have verified anyway). 30-second cost; concrete trust.
+- **(+) Preserved original PR body, documented amendment in comment.** PR body is a snapshot of the original proposal; amendments live in commit history + comments. Future auditors see both. Tempting alternative — editing the body in place — would have destroyed audit trail of what S63 proposed vs. what shipped.
+- **(+) Respected branch topology discipline.** Stashed SESSION_NOTES stub on develop, checked out feature branch, edited workflow, committed + pushed, checked back out develop, popped stash, wrote handoff on develop. Zero state confusion. S63's gotcha #10 explicitly called this out; S64 followed it precisely.
+- **(+) Waited for CI green before close-out.** S63's #1 self-criticism was exactly this. S64 launched `gh run watch` in background, waited for the completion notification, verified ALL 5 green before writing handoff. Learning applied.
+- **(+) Honest about what "partial retirement" means.** A9 was originally listed as fully retired in Phase 1. The fix moves it to partial (core pinned; plugin unpinned). Flagged this explicitly in the PR comment AND in this handoff's out-of-scope section. Did not paper over the scope reduction.
+- **(−) Did NOT update the plan §5 contract in this session.** The plan-doc is on `wsjtx-arm/docs/contributor/4_PRODUCTION_READINESS_PLAN.md`, not `KJ5HST-LABS/wsjtx-internal`. Contract update would be a separate small commit on develop, easily doable in this session. Chose to keep scope tight (triage deliverable = fix PR #28) and defer doc-edit to a follow-up session. Debatable — either keeping scope tight OR bundling the immediate-consequence doc edit is defensible. Left the call in the handoff's "recommended follow-ups" for user direction.
+- **(−) Did NOT verify the fix in a pre-push dry run.** Could have downloaded linuxdeploy 1-alpha-20251107-1 locally and invoked it against an AppDir from a prior build to confirm the plugin scan completes. Would have caught any Nov 2025 release regression before pushing. Didn't — trusted the shape (newer release of the same tool hitting the same workflow code path). CI confirmed the trust was correct, but the discipline would have been stronger with local reproduction. Low-probability concern given the simplicity of the change but worth noting.
+- **(−) PR comment is long-ish (~35 lines).** Could have been 15. Traded-off readability (separate sections for root cause / fix / A9-status / body-correction) against terseness. Went with readability since the next reader is a reviewer/maintainer who needs all four pieces.
+- **Score: 9.5/10.** Triage root-caused correctly and quickly; fix designed with a clear tradeoff (partial retirement made explicit, not hidden); branch discipline + stash flow clean; CI watched to green before close-out (S63 gap closed); no false credit, no scope creep, no premature bundling. Half-point deduction for not pre-reproducing the fix locally + not bundling the plan-contract update.
+
+**Learnings to add to SESSION_RUNNER.md Learnings table:**
+| # | Learning | Source | When to Apply |
+|---|----------|--------|---------------|
+| 7 | When a CI step fails, pull the actual job log FIRST (`gh run view <id> --log-failed`) before testing hypotheses from the handoff. Handoff-listed root-cause hypotheses may be wrong; the log is authoritative and usually reveals the cause in <30 seconds of reading. Hypothesis-first on a free-evidence problem burns 10+ minutes eliminating things the log would have ruled out instantly. | S64 triage of PR #28 linux FAIL | Any session whose deliverable starts with "triage a failed CI run." |
+| 8 | When choosing a dated tag for a dependency pin, prefer **newest** over date-symmetry with a related package. If package A has a recent release and package B has only an older one, pin A to its newest AND pin B to its older — or leave B unpinned with a commented rationale. Don't downgrade A to match B's date; you inherit all the bugs fixed between B's release and A's. | S63 `linuxdeploy 1-alpha-20250213-2` instead of `1-alpha-20251107-1`, picked for "shared date" with plugin | Any pin-a-dependency task with related/coupled packages on different release cadences. |
+| 9 | Upstream env changes (OS package removals, Qt/Python/etc. version bumps) break old pinned tools silently. Specifically: ubuntu-24.04 removed the Qt5 `mediaservice` plugin category, which old `linuxdeploy-plugin-qt` versions iterate over and crash on. When pinning a tool that scans a runtime-OS directory tree, check its handling-on-missing behavior; prefer tools with graceful-skip semantics. | S63 pin of linuxdeploy-plugin-qt 1-alpha-20250213-1; S64 triage | When pinning any tool that scans host OS for files/dirs whose presence depends on the runner OS version. |
+
+**What's next (Session 65 priorities):**
+
+1. **First action: check if PR #28 merged.** If yes → S65 moves to Phase 2 of the plan (sandbox security posture + governance). If still OPEN → user decision pending; S65 stands by. `gh pr view 28 --repo KJ5HST-LABS/wsjtx-internal --json state`.
+2. **If PR #28 merged, optional small session: update plan §5 contract table.** Split A9 row into A9a (RETIRED: core linuxdeploy pinned + SHA verified) and A9b (BLOCKED: plugin on rolling channel until upstream ships new dated release). Also update the "RETIRED Phase 1" row count (3.5 items, or list A9 as partial). Small doc-only edit on `develop` of `wsjtx-arm`. Can be bundled into Phase 2 opener if preferred.
+3. **Phase 2 — sandbox repo security posture + governance.** Plan §Phase 2. Actions: Dependabot, secret scanning, CodeQL on KJ5HST-LABS/wsjtx-internal; add SECURITY.md / CONTRIBUTING.md / CODEOWNERS / CODE_OF_CONDUCT.md. Contributor persona. Likely two sessions (settings change + governance files).
+4. **Everything else from S63's "What's next"** carries forward verbatim: #27 public-mirror flip (hard-to-reverse; typed `yes flip`), Phase 3 E2E validation (blocked on Phase 1 merge then Phase 2), rad-con/radio-web reconciliation (Consumer persona).
+
+**Key files (for Session 65):**
+- `/Users/terrell/Documents/code/wsjtx-arm/docs/contributor/4_PRODUCTION_READINESS_PLAN.md` — plan. §Phase 2 actions; §5 A9 contract row needs splitting.
+- PR #28 on `KJ5HST-LABS/wsjtx-internal` — check merge state first.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/build-linux.yml` (post-merge) — reference for the partial-pin pattern (core pinned + SHA; plugin on continuous with rationale comment).
+
+**Gotchas for Session 65:**
+- **#1 — PR #28 now has TWO commits on the feature branch.** `82b6a4851` (original) + `e97e5dca3` (S64 fix). Merge method preserves both; squash-merge collapses to one. Either is fine.
+- **#2 — A9 is PARTIALLY retired, not fully.** Plan §5 contract table will be out-of-date post-merge. Suggest splitting A9a/A9b per "What's next" #2.
+- **#3 — `linuxdeploy-plugin-qt` has only ONE dated release ever** (`1-alpha-20250213-1`, Feb 2025). Upstream release cadence is glacial. If Phase 6 (production) wants a full pin, plan on a long wait for a new dated release OR a commit-SHA pin strategy (more brittle).
+- **#4 — Ubuntu-24.04 dropped the Qt5 `mediaservice` plugin category.** Any future pin of a Qt-scanning tool to a pre-2026 version may hit the same `filesystem_error`. Test on the actual runner OS before merging pins.
+- **#5 — The PR body's A9 section + one completion-criterion are STALE post-amendment.** The PR comment (`issuecomment-4276381659`) documents this. Anyone reading the body in isolation will see the old `4648f278…` / `15106be8…` / "continuous = zero hits" facts; cross-reference the comment.
+- **#6 — Every gotcha from S61/S62/S63 still applies.** admin-bypass on KJ5HST-LABS; typed `yes push`; public-mirror still private (#27 open); rad-con dirty state; SESSION_NOTES.md ~850KB. S64 did NOT push to `WSJTX/wsjtx-internal`, did NOT touch rad-con, did NOT change any of these.
+- **#7 — wsjtx-arm local develop is now 4 ahead of origin** after this S64 close-out commit (S61+S62+S63+S64 docs). Push decision still with user. S64 does NOT push develop.
+- **#8 — Branch topology pattern from S63/S64 works.** When a feature branch is based at `origin/<branch>` to exclude local-only commits, stash SESSION_NOTES edits on local before checking out the feature branch; pop after returning. S64 followed this pattern cleanly.
+- **#9 — `gh run watch --exit-status` with `run_in_background` works.** Background job + notification on completion is the right pattern for waiting on multi-minute CI runs instead of polling. Use it for future CI-gated close-outs.
+- **#10 — SESSION_NOTES.md is approaching ~860KB.** User continues to defer split. Do not raise unsolicited.
+- **#11 — `gh` default repo is `KJ5HST-LABS/wsjtx-internal`.** Always `--repo WSJTX/*` for team-repo operations; S64 did not need this but the convention stands.
+
+---
+
+## ACTIVE TASK (previous — Session 63, complete)
 **Task:** Session 63 — Executed Phase 1 of `docs/contributor/4_PRODUCTION_READINESS_PLAN.md`: one PR (#28 on `KJ5HST-LABS/wsjtx-internal`) closing audit items A2, A3, A9, A12. Three workflow files edited (`.github/workflows/release.yml`, `build-linux.yml`, `ci.yml`), +79/-12, single commit, branch `feat/phase1-release-hardening` based at `2b1e0b96e` (origin/develop) so the 2 local-only docs commits on develop do not ride along in the PR.
 **Status:** COMPLETE (merge + CI-run watch remain with user / team)
 **Session:** 63 complete
