@@ -856,6 +856,75 @@ When modifying workflow files, keep in mind:
 - Changes to `ci.yml` or `release.yml` do **not** invalidate caches (they're just orchestrators).
 - Reusable workflows (`workflow_call`) cannot be tested from fork PRs — they must be on the same repo.
 
+### Branch Protection and Admin Bypass (A6 — sandbox vs. production)
+
+The sandbox repo (`KJ5HST-LABS/wsjtx-internal`) and the production repo
+(`WSJTX/wsjtx-internal`) have deliberately different branch-protection
+postures. The difference is documented here so that replication doesn't
+silently carry sandbox laxness into production.
+
+**Current sandbox state** on `KJ5HST-LABS/wsjtx-internal`, branch `develop`:
+
+| Setting | Sandbox value | Verify |
+|---------|---------------|--------|
+| `required_status_checks` | `macos`, `macos-intel`, `linux`, `windows` — all must pass; strict (branch must be up-to-date with base) | `gh api repos/KJ5HST-LABS/wsjtx-internal/branches/develop/protection --jq '.required_status_checks'` |
+| `required_pull_request_reviews` | **none** | `gh api .../branches/develop/protection --jq '.required_pull_request_reviews'` returns `null` |
+| `enforce_admins` | **`false`** — admins can bypass required checks and direct-push | `gh api .../branches/develop/protection --jq '.enforce_admins.enabled'` returns `false` |
+| `allow_force_pushes` | `false` | same endpoint, `.allow_force_pushes.enabled` |
+| `allow_deletions` | `false` | same endpoint, `.allow_deletions.enabled` |
+| `restrictions` (push allowlist) | `null` (everyone with write can push when other checks pass) | `.restrictions` |
+
+**Why the sandbox keeps admin bypass on:**
+
+1. The sandbox has a **single admin** (the project lead during bring-up). If
+   `enforce_admins: true` were set, every routine SESSION_NOTES commit and
+   every emergency hotfix would need to round-trip through a PR — but there
+   is nobody else to review the PR. The protection becomes self-blocking.
+2. During bring-up, workflow iteration frequently requires direct pushes to
+   `develop` to unstick a half-working workflow that can only be validated
+   on the real runner. Forcing every iteration through a PR adds 5-20
+   minutes of cycle time per attempt with no added safety (the reviewer
+   would be the same person pushing).
+3. The sandbox does not ship to external users as a primary distribution
+   channel — its purpose is (a) to prove the machinery works, and (b) to
+   feed the arm64 macOS `.pkg` to the one downstream consumer. Blast
+   radius from a bad direct-push is small.
+
+**Production requirement** (MUST change before replicating to
+`WSJTX/wsjtx-internal`):
+
+1. Set `enforce_admins: true` so that **no one** — including org owners —
+   can bypass the required status checks. Command:
+   ```bash
+   gh api -X POST repos/WSJTX/wsjtx-internal/branches/develop/protection/enforce_admins
+   ```
+2. Add `required_pull_request_reviews` with at least one required reviewer
+   and `dismiss_stale_reviews: true`. Team size on the production repo is
+   large enough that self-review is avoidable.
+3. Consider adding `required_signatures: true` if the team's contributors
+   all use signed commits, or leaving it off if signing adoption is not
+   universal (the required checks still block unreviewed code).
+4. The A2 retirement from `docs/contributor/4_PRODUCTION_READINESS_PLAN.md`
+   (remove `--force` from the release-time public-mirror sync) should land
+   before `enforce_admins: true` — the `--force` step relies on admin
+   bypass during sandbox bring-up.
+
+**Verification of the production state** — after replication, this query
+should return `true` on production and `false` on sandbox:
+
+```bash
+gh api repos/WSJTX/wsjtx-internal/branches/develop/protection/enforce_admins --jq '.enabled'
+# → true (production)
+
+gh api repos/KJ5HST-LABS/wsjtx-internal/branches/develop/protection/enforce_admins --jq '.enabled'
+# → false (sandbox; intentional)
+```
+
+If the sandbox ever changes (e.g., a second maintainer joins the project
+and PR-based review becomes viable), update this section with the new
+state and open a tracking issue to tighten `enforce_admins` on the sandbox
+as well.
+
 ---
 
 ## 11. Troubleshooting

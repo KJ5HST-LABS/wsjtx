@@ -1,0 +1,10 @@
+# Default owner for everything in the repo.
+# Sandbox-tier rule during bring-up: single owner.
+# Production migration will replace this with per-path team ownership:
+#   /.github/workflows/        @WSJTX/ci-maintainers
+#   /CMakeLists.txt            @WSJTX/build-maintainers
+#   /lib/                      @WSJTX/decoder-maintainers
+#   /doc/                      @WSJTX/doc-maintainers
+# See docs/contributor/4_PRODUCTION_READINESS_PLAN.md, Phase 2 action A8.
+
+*   @KJ5HST
