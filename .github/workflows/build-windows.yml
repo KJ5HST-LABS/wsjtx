@@ -250,7 +250,9 @@ jobs:
             EXTRA_ARGS+=("-DFFTW3_ROOT_DIR=${WORKSPACE}/fftw-prefix")
             EXTRA_ARGS+=("-DUsb_INCLUDE_DIR=${WORKSPACE}/libusb-prefix/include/libusb-1.0")
             EXTRA_ARGS+=("-DUsb_LIBRARY=${WORKSPACE}/libusb-prefix/lib/libusb-1.0.a")
-            export PKG_CONFIG_PATH="${WORKSPACE}/libusb-prefix/lib/pkgconfig:${WORKSPACE}/fftw-prefix/lib/pkgconfig:${PKG_CONFIG_PATH}"
+            EXTRA_ARGS+=("-DHamlib_INCLUDE_DIR=${WORKSPACE}/hamlib-prefix/include")
+            EXTRA_ARGS+=("-DHamlib_LIBRARY=${WORKSPACE}/hamlib-prefix/lib/libhamlib.dll.a")
+            export PKG_CONFIG_PATH="${WORKSPACE}/hamlib-prefix/lib/pkgconfig:${WORKSPACE}/libusb-prefix/lib/pkgconfig:${WORKSPACE}/fftw-prefix/lib/pkgconfig:${PKG_CONFIG_PATH}"
           fi
           echo "Resolved CMAKE_PREFIX_PATH: ${PREFIX_PATH}"
           echo "Resolved PKG_CONFIG_PATH:   ${PKG_CONFIG_PATH}"
