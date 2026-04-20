@@ -41,11 +41,11 @@ jobs:
           msystem: ${{ inputs.arch == 'x86' && 'MINGW32' || 'MINGW64' }}
           update: true
           cache: true
-          # Qt5, FFTW, and libusb are installed from MSYS2 for x86_64 but
-          # not for x86 — MSYS2 dropped mingw-w64-i686 Qt5 + fftw + libusb
-          # packaging in late 2024. The x86 path installs Qt via the Qt
-          # online installer (jurplel/install-qt-action) and builds FFTW
-          # and libusb from source in later steps.
+          # MSYS2 removed mingw-w64-i686 Qt5, FFTW, and libusb from its
+          # i686 repo in late 2024. They're still hosted as files on
+          # repo.msys2.org/mingw/mingw32/ — just de-indexed from the
+          # pacman database. For x86 we omit them from the install list
+          # here and pull them directly in the next step.
           install: >-
             git make tar
             ${{ env.PKG }}-gcc
@@ -59,22 +59,43 @@ jobs:
             autoconf automake libtool
             ${{ inputs.arch != 'x86' && format('{0}-qt5-base {0}-qt5-multimedia {0}-qt5-serialport {0}-qt5-tools {0}-qt5-websockets {0}-qt5-activeqt {0}-fftw {0}-libusb', env.PKG) || '' }}
 
-      # ── x86-only: Qt5 via aqtinstall ─────────────────────────────────
-      # MSYS2 no longer ships mingw-w64-i686-qt5-*; pin Qt 5.15.2 (final
-      # open-source Qt5 LTS release) from Qt's online installer. Qt
-      # 5.15.2 is a monolithic LTS — qtserialport, qtmultimedia, qttools,
-      # qtwebsockets, and qtactiveqt are all part of the base install
-      # (not separate modules). aqtinstall rejects them if listed as
-      # modules. Leave `modules:` unset so the base install is used.
-      - name: Install Qt5 (x86 via Qt online installer)
+      # ── x86-only: pull the i686 Qt5 / FFTW / libusb packages from
+      # MSYS2's archive CDN ──────────────────────────────────────────
+      # MSYS2 delisted these from the i686 pacman database in late
+      # 2024 but the .pkg.tar.zst files remain hosted at
+      # repo.msys2.org. Versions pinned to the last release present
+      # in the archive (verified via directory index before commit).
+      # qt5-serialport and qt5-websockets both cap at 5.15.14; Qt5
+      # patch-level ABI compatibility lets us use 5.15.14 across all
+      # components. pacman -U installs local .pkg.tar.zst files
+      # directly. --overwrite '*' tolerates files the base install
+      # may have already laid down.
+      - name: Install archived i686 Qt5/FFTW/libusb (x86 only)
         if: inputs.arch == 'x86'
-        uses: jurplel/install-qt-action@v4
-        with:
-          version: '5.15.2'
-          host: 'windows'
-          target: 'desktop'
-          arch: 'win32_mingw81'
-          cache: true
+        run: |
+          set -euo pipefail
+          MIRROR="https://repo.msys2.org/mingw/mingw32"
+          PKGS=(
+            "mingw-w64-i686-qt5-base-5.15.14%2Bkde%2Br143-1-any.pkg.tar.zst"
+            "mingw-w64-i686-qt5-multimedia-5.15.14-1-any.pkg.tar.zst"
+            "mingw-w64-i686-qt5-serialport-5.15.14-1-any.pkg.tar.zst"
+            "mingw-w64-i686-qt5-tools-5.15.14-1-any.pkg.tar.zst"
+            "mingw-w64-i686-qt5-websockets-5.15.14%2Bkde%2Br2-1-any.pkg.tar.zst"
+            "mingw-w64-i686-qt5-activeqt-5.15.14-1-any.pkg.tar.zst"
+            "mingw-w64-i686-fftw-3.3.10-5-any.pkg.tar.zst"
+            "mingw-w64-i686-libusb-1.0.26-1-any.pkg.tar.zst"
+          )
+          mkdir -p /tmp/archived-pkgs
+          cd /tmp/archived-pkgs
+          for pkg in "${PKGS[@]}"; do
+            # curl downloads to a file named with %2B preserved — rename
+            # to the decoded form so pacman sees a canonical local name.
+            local_name="${pkg//%2B/+}"
+            echo "Fetching ${local_name}…"
+            curl -fsSL -o "${local_name}" "${MIRROR}/${pkg}"
+          done
+          ls -lh
+          pacman -U --noconfirm --overwrite='*' ./*.pkg.tar.zst
 
       - name: Cache pFUnit
         id: pfunit-cache
@@ -117,62 +138,6 @@ jobs:
             echo "$(echo $pkg | tr '[:upper:]' '[:lower:]')_dir=${DIR}" >> "$GITHUB_OUTPUT"
           done
 
-      # ── x86-only: FFTW3 from source ──────────────────────────────────
-      # mingw-w64-i686-fftw is not in MSYS2 today. Build from source;
-      # static single-precision with threads for FT8 decoder performance.
-      - name: Cache FFTW3 (x86)
-        if: inputs.arch == 'x86'
-        id: fftw-cache
-        uses: actions/cache@v5
-        with:
-          path: fftw-prefix
-          key: fftw-windows-x86-3.3.10-${{ hashFiles('.github/workflows/build-windows.yml') }}
-
-      - name: Build FFTW3 (x86)
-        if: inputs.arch == 'x86' && steps.fftw-cache.outputs.cache-hit != 'true'
-        run: |
-          WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
-          curl -fsSL -o fftw.tar.gz https://fftw.org/fftw-3.3.10.tar.gz
-          tar xf fftw.tar.gz
-          cd fftw-3.3.10
-          # --enable-threads without --with-combined-threads produces
-          # separate libfftw3f.a and libfftw3f_threads.a archives. The
-          # project's CMake/Modules/FindFFTW3.cmake searches for those
-          # names individually (FFTW3F_LIBRARY + FFTW3F_THREADS_LIBRARY);
-          # a combined archive would not be discoverable.
-          ./configure \
-            --prefix="${WORKSPACE}/fftw-prefix" \
-            --enable-float \
-            --enable-threads \
-            --disable-shared --enable-static \
-            --with-our-malloc \
-            CFLAGS="-O2 -fdata-sections -ffunction-sections" \
-            LDFLAGS="-Wl,--gc-sections"
-          make -j$(nproc)
-          make install
-
-      # ── x86-only: libusb from source ─────────────────────────────────
-      # mingw-w64-i686-libusb is not in MSYS2 today. WSJT-X's top-level
-      # find_package(Usb REQUIRED) needs this. Hamlib's configure picks
-      # up the same prefix via PKG_CONFIG_PATH below.
-      - name: Cache libusb (x86)
-        if: inputs.arch == 'x86'
-        id: libusb-cache
-        uses: actions/cache@v5
-        with:
-          path: libusb-prefix
-          key: libusb-windows-x86-1.0.27-${{ hashFiles('.github/workflows/build-windows.yml') }}
-
-      - name: Build libusb (x86)
-        if: inputs.arch == 'x86' && steps.libusb-cache.outputs.cache-hit != 'true'
-        run: |
-          WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
-          git clone --depth 1 --branch v1.0.27 https://github.com/libusb/libusb.git libusb-src
-          cd libusb-src
-          ./autogen.sh --prefix="${WORKSPACE}/libusb-prefix"
-          make -j$(nproc)
-          make install
-
       - name: Cache Hamlib
         id: hamlib-cache
         uses: actions/cache@v5
@@ -186,10 +151,6 @@ jobs:
           MSYS2_PATH_TYPE: inherit
         run: |
           WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
-          # x86: make Hamlib see the from-source libusb via pkg-config.
-          if [ "${{ inputs.arch }}" = "x86" ]; then
-            export PKG_CONFIG_PATH="${WORKSPACE}/libusb-prefix/lib/pkgconfig:${PKG_CONFIG_PATH}"
-          fi
           git clone --depth 1 --branch "${{ inputs.hamlib_branch }}" \
             https://github.com/Hamlib/Hamlib.git hamlib-src
           cd hamlib-src
@@ -219,12 +180,7 @@ jobs:
           if (-not $omnirig) { throw "OmniRig install failed — OmniRig.exe not found" }
           echo "OMNIRIG_PATH=$($omnirig.FullName)" >> $env:GITHUB_ENV
 
-      # x86_64 only: MSYS2 renamed dumpcpp → dumpcpp-qt5. aqtinstall's
-      # qtactiveqt module ships dumpcpp.exe unmodified, so the symlink
-      # is not needed (and would fail — the aqtinstall path is not in
-      # /mingw32/bin).
       - name: Fix dumpcpp name (MSYS2 ships dumpcpp-qt5, CMake expects dumpcpp)
-        if: inputs.arch != 'x86'
         run: |
           ln -sf "/${MINGW_DIR}/bin/dumpcpp-qt5.exe" "/${MINGW_DIR}/bin/dumpcpp.exe"
 
@@ -232,33 +188,8 @@ jobs:
         run: |
           WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
           OMNIRIG=$(cygpath "${OMNIRIG_PATH}")
-          # Base prefix path: Hamlib. Append from-source FFTW + libusb
-          # when building x86; those come from MSYS2 on x86_64.
-          PREFIX_PATH="${WORKSPACE}/hamlib-prefix"
-          EXTRA_ARGS=()
-          if [ "${{ inputs.arch }}" = "x86" ]; then
-            PREFIX_PATH="${PREFIX_PATH};${WORKSPACE}/fftw-prefix;${WORKSPACE}/libusb-prefix"
-            # Explicit hints to keep the project's Find modules happy:
-            #   FindFFTW3.cmake honors FFTW3_ROOT_DIR as HINTS.
-            #   FindUsb.cmake (libfind_pkg_detect) probes pkg-config under
-            #   the module name 'usb-1.0', but libusb installs
-            #   'libusb-1.0.pc' — the name mismatch makes the pkg-config
-            #   probe empty, so the fall-back find_path / find_library
-            #   rely on PATH_SUFFIXES that don't match an autotools-style
-            #   install. Pre-seed the cache variables directly; the
-            #   layout is fixed and known.
-            EXTRA_ARGS+=("-DFFTW3_ROOT_DIR=${WORKSPACE}/fftw-prefix")
-            EXTRA_ARGS+=("-DUsb_INCLUDE_DIR=${WORKSPACE}/libusb-prefix/include/libusb-1.0")
-            EXTRA_ARGS+=("-DUsb_LIBRARY=${WORKSPACE}/libusb-prefix/lib/libusb-1.0.a")
-            EXTRA_ARGS+=("-DHamlib_INCLUDE_DIR=${WORKSPACE}/hamlib-prefix/include")
-            EXTRA_ARGS+=("-DHamlib_LIBRARY=${WORKSPACE}/hamlib-prefix/lib/libhamlib.dll.a")
-            export PKG_CONFIG_PATH="${WORKSPACE}/hamlib-prefix/lib/pkgconfig:${WORKSPACE}/libusb-prefix/lib/pkgconfig:${WORKSPACE}/fftw-prefix/lib/pkgconfig:${PKG_CONFIG_PATH}"
-          fi
-          echo "Resolved CMAKE_PREFIX_PATH: ${PREFIX_PATH}"
-          echo "Resolved PKG_CONFIG_PATH:   ${PKG_CONFIG_PATH}"
           cmake -G "MSYS Makefiles" -S . -B wsjtx-build \
-            -DCMAKE_PREFIX_PATH="${PREFIX_PATH}" \
-            "${EXTRA_ARGS[@]}" \
+            -DCMAKE_PREFIX_PATH="${WORKSPACE}/hamlib-prefix" \
             -DOMNIRIG_TYPE_LIB="${OMNIRIG}" \
             -DWSJT_SKIP_MAP65=ON \
             -DCMAKE_Fortran_FLAGS="-fallow-argument-mismatch -std=legacy" \
