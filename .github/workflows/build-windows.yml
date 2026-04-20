@@ -41,25 +41,37 @@ jobs:
           msystem: ${{ inputs.arch == 'x86' && 'MINGW32' || 'MINGW64' }}
           update: true
           cache: true
+          # Qt5, FFTW, and libusb are installed from MSYS2 for x86_64 but
+          # not for x86 — MSYS2 dropped mingw-w64-i686 Qt5 + fftw + libusb
+          # packaging in late 2024. The x86 path installs Qt via the Qt
+          # online installer (jurplel/install-qt-action) and builds FFTW
+          # and libusb from source in later steps.
           install: >-
             git make tar
             ${{ env.PKG }}-gcc
             ${{ env.PKG }}-gcc-fortran
             ${{ env.PKG }}-cmake
-            ${{ env.PKG }}-qt5-base
-            ${{ env.PKG }}-qt5-multimedia
-            ${{ env.PKG }}-qt5-serialport
-            ${{ env.PKG }}-qt5-tools
-            ${{ env.PKG }}-qt5-websockets
-            ${{ env.PKG }}-qt5-activeqt
-            ${{ env.PKG }}-fftw
             ${{ env.PKG }}-boost
-            ${{ env.PKG }}-libusb
             ${{ env.PKG }}-portaudio
             ${{ env.PKG }}-pkg-config
             ${{ env.PKG }}-nsis
             ${{ env.PKG }}-osslsigncode
             autoconf automake libtool
+            ${{ inputs.arch != 'x86' && format('{0}-qt5-base {0}-qt5-multimedia {0}-qt5-serialport {0}-qt5-tools {0}-qt5-websockets {0}-qt5-activeqt {0}-fftw {0}-libusb', env.PKG) || '' }}
+
+      # ── x86-only: Qt5 via aqtinstall ─────────────────────────────────
+      # MSYS2 no longer ships mingw-w64-i686-qt5-*; pin Qt 5.15.2 (final
+      # open-source Qt5 LTS release) from Qt's online installer.
+      - name: Install Qt5 (x86 via Qt online installer)
+        if: inputs.arch == 'x86'
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '5.15.2'
+          host: 'windows'
+          target: 'desktop'
+          arch: 'win32_mingw81'
+          modules: 'qtserialport qtmultimedia qttools qtwebsockets qtactiveqt'
+          cache: true
 
       - name: Cache pFUnit
         id: pfunit-cache
@@ -102,6 +114,58 @@ jobs:
             echo "$(echo $pkg | tr '[:upper:]' '[:lower:]')_dir=${DIR}" >> "$GITHUB_OUTPUT"
           done
 
+      # ── x86-only: FFTW3 from source ──────────────────────────────────
+      # mingw-w64-i686-fftw is not in MSYS2 today. Build from source;
+      # static single-precision with threads for FT8 decoder performance.
+      - name: Cache FFTW3 (x86)
+        if: inputs.arch == 'x86'
+        id: fftw-cache
+        uses: actions/cache@v5
+        with:
+          path: fftw-prefix
+          key: fftw-windows-x86-3.3.10-${{ hashFiles('.github/workflows/build-windows.yml') }}
+
+      - name: Build FFTW3 (x86)
+        if: inputs.arch == 'x86' && steps.fftw-cache.outputs.cache-hit != 'true'
+        run: |
+          WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
+          curl -fsSL -o fftw.tar.gz https://fftw.org/fftw-3.3.10.tar.gz
+          tar xf fftw.tar.gz
+          cd fftw-3.3.10
+          ./configure \
+            --prefix="${WORKSPACE}/fftw-prefix" \
+            --enable-float \
+            --enable-threads \
+            --with-combined-threads \
+            --disable-shared --enable-static \
+            --with-our-malloc \
+            CFLAGS="-O2 -fdata-sections -ffunction-sections" \
+            LDFLAGS="-Wl,--gc-sections"
+          make -j$(nproc)
+          make install
+
+      # ── x86-only: libusb from source ─────────────────────────────────
+      # mingw-w64-i686-libusb is not in MSYS2 today. WSJT-X's top-level
+      # find_package(Usb REQUIRED) needs this. Hamlib's configure picks
+      # up the same prefix via PKG_CONFIG_PATH below.
+      - name: Cache libusb (x86)
+        if: inputs.arch == 'x86'
+        id: libusb-cache
+        uses: actions/cache@v5
+        with:
+          path: libusb-prefix
+          key: libusb-windows-x86-1.0.27-${{ hashFiles('.github/workflows/build-windows.yml') }}
+
+      - name: Build libusb (x86)
+        if: inputs.arch == 'x86' && steps.libusb-cache.outputs.cache-hit != 'true'
+        run: |
+          WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
+          git clone --depth 1 --branch v1.0.27 https://github.com/libusb/libusb.git libusb-src
+          cd libusb-src
+          ./autogen.sh --prefix="${WORKSPACE}/libusb-prefix"
+          make -j$(nproc)
+          make install
+
       - name: Cache Hamlib
         id: hamlib-cache
         uses: actions/cache@v5
@@ -115,6 +179,10 @@ jobs:
           MSYS2_PATH_TYPE: inherit
         run: |
           WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
+          # x86: make Hamlib see the from-source libusb via pkg-config.
+          if [ "${{ inputs.arch }}" = "x86" ]; then
+            export PKG_CONFIG_PATH="${WORKSPACE}/libusb-prefix/lib/pkgconfig:${PKG_CONFIG_PATH}"
+          fi
           git clone --depth 1 --branch "${{ inputs.hamlib_branch }}" \
             https://github.com/Hamlib/Hamlib.git hamlib-src
           cd hamlib-src
@@ -144,7 +212,12 @@ jobs:
           if (-not $omnirig) { throw "OmniRig install failed — OmniRig.exe not found" }
           echo "OMNIRIG_PATH=$($omnirig.FullName)" >> $env:GITHUB_ENV
 
+      # x86_64 only: MSYS2 renamed dumpcpp → dumpcpp-qt5. aqtinstall's
+      # qtactiveqt module ships dumpcpp.exe unmodified, so the symlink
+      # is not needed (and would fail — the aqtinstall path is not in
+      # /mingw32/bin).
       - name: Fix dumpcpp name (MSYS2 ships dumpcpp-qt5, CMake expects dumpcpp)
+        if: inputs.arch != 'x86'
         run: |
           ln -sf "/${MINGW_DIR}/bin/dumpcpp-qt5.exe" "/${MINGW_DIR}/bin/dumpcpp.exe"
 
@@ -152,8 +225,14 @@ jobs:
         run: |
           WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
           OMNIRIG=$(cygpath "${OMNIRIG_PATH}")
+          # Base prefix path: Hamlib. Append from-source FFTW + libusb
+          # when building x86; those come from MSYS2 on x86_64.
+          PREFIX_PATH="${WORKSPACE}/hamlib-prefix"
+          if [ "${{ inputs.arch }}" = "x86" ]; then
+            PREFIX_PATH="${PREFIX_PATH};${WORKSPACE}/fftw-prefix;${WORKSPACE}/libusb-prefix"
+          fi
           cmake -G "MSYS Makefiles" -S . -B wsjtx-build \
-            -DCMAKE_PREFIX_PATH="${WORKSPACE}/hamlib-prefix" \
+            -DCMAKE_PREFIX_PATH="${PREFIX_PATH}" \
             -DOMNIRIG_TYPE_LIB="${OMNIRIG}" \
             -DWSJT_SKIP_MAP65=ON \
             -DCMAKE_Fortran_FLAGS="-fallow-argument-mismatch -std=legacy" \
