@@ -61,7 +61,11 @@ jobs:
 
       # ── x86-only: Qt5 via aqtinstall ─────────────────────────────────
       # MSYS2 no longer ships mingw-w64-i686-qt5-*; pin Qt 5.15.2 (final
-      # open-source Qt5 LTS release) from Qt's online installer.
+      # open-source Qt5 LTS release) from Qt's online installer. Qt
+      # 5.15.2 is a monolithic LTS — qtserialport, qtmultimedia, qttools,
+      # qtwebsockets, and qtactiveqt are all part of the base install
+      # (not separate modules). aqtinstall rejects them if listed as
+      # modules. Leave `modules:` unset so the base install is used.
       - name: Install Qt5 (x86 via Qt online installer)
         if: inputs.arch == 'x86'
         uses: jurplel/install-qt-action@v4
@@ -70,7 +74,6 @@ jobs:
           host: 'windows'
           target: 'desktop'
           arch: 'win32_mingw81'
-          modules: 'qtserialport qtmultimedia qttools qtwebsockets qtactiveqt'
           cache: true
 
       - name: Cache pFUnit
