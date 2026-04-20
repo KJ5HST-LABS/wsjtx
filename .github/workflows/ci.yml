@@ -56,6 +56,16 @@ jobs:
     with:
       version: ${{ needs.prepare.outputs.version }}
       hamlib_branch: "4.7.1"
+      arch: "x86_64"
+    secrets: inherit
+
+  linux-arm:
+    needs: prepare
+    uses: ./.github/workflows/build-linux.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      hamlib_branch: "4.7.1"
+      arch: "aarch64"
     secrets: inherit
 
   windows:
@@ -64,4 +74,14 @@ jobs:
     with:
       version: ${{ needs.prepare.outputs.version }}
       hamlib_branch: "4.7.1"
+      arch: "x86_64"
+    secrets: inherit
+
+  windows-x86:
+    needs: prepare
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      hamlib_branch: "4.7.1"
+      arch: "x86"
     secrets: inherit

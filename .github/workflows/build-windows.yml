@@ -1,4 +1,4 @@
-name: Build Windows x86_64
+name: Build Windows
 
 on:
   workflow_call:
@@ -12,6 +12,11 @@ on:
         required: false
         type: string
         default: "4.7.0"
+      arch:
+        description: "Windows target architecture: x86_64 or x86"
+        required: false
+        type: string
+        default: "x86_64"
 
 jobs:
   build:
@@ -19,32 +24,41 @@ jobs:
     defaults:
       run:
         shell: msys2 {0}
+    # Arch-dependent values used throughout the job. MINGW_DIR is the
+    # MSYS2 subtree ("/mingw64" or "/mingw32") that setup-msys2 populates;
+    # PKG is the MSYS2 package prefix; NSIS_SUFFIX is the installer
+    # filename suffix that matches the upstream v3.0.0 release naming
+    # (wsjtx-<ver>-win64.exe / wsjtx-<ver>-win32.exe).
+    env:
+      MINGW_DIR: ${{ inputs.arch == 'x86' && 'mingw32' || 'mingw64' }}
+      PKG: ${{ inputs.arch == 'x86' && 'mingw-w64-i686' || 'mingw-w64-x86_64' }}
+      NSIS_SUFFIX: ${{ inputs.arch == 'x86' && 'win32' || 'win64' }}
     steps:
       - uses: actions/checkout@v6
 
       - uses: msys2/setup-msys2@v2
         with:
-          msystem: MINGW64
+          msystem: ${{ inputs.arch == 'x86' && 'MINGW32' || 'MINGW64' }}
           update: true
           cache: true
           install: >-
             git make tar
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-gcc-fortran
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-qt5-base
-            mingw-w64-x86_64-qt5-multimedia
-            mingw-w64-x86_64-qt5-serialport
-            mingw-w64-x86_64-qt5-tools
-            mingw-w64-x86_64-qt5-websockets
-            mingw-w64-x86_64-qt5-activeqt
-            mingw-w64-x86_64-fftw
-            mingw-w64-x86_64-boost
-            mingw-w64-x86_64-libusb
-            mingw-w64-x86_64-portaudio
-            mingw-w64-x86_64-pkg-config
-            mingw-w64-x86_64-nsis
-            mingw-w64-x86_64-osslsigncode
+            ${{ env.PKG }}-gcc
+            ${{ env.PKG }}-gcc-fortran
+            ${{ env.PKG }}-cmake
+            ${{ env.PKG }}-qt5-base
+            ${{ env.PKG }}-qt5-multimedia
+            ${{ env.PKG }}-qt5-serialport
+            ${{ env.PKG }}-qt5-tools
+            ${{ env.PKG }}-qt5-websockets
+            ${{ env.PKG }}-qt5-activeqt
+            ${{ env.PKG }}-fftw
+            ${{ env.PKG }}-boost
+            ${{ env.PKG }}-libusb
+            ${{ env.PKG }}-portaudio
+            ${{ env.PKG }}-pkg-config
+            ${{ env.PKG }}-nsis
+            ${{ env.PKG }}-osslsigncode
             autoconf automake libtool
 
       - name: Cache pFUnit
@@ -52,7 +66,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: pfunit-prefix
-          key: pfunit-windows-v4.9.0-${{ hashFiles('.github/workflows/build-windows.yml') }}
+          key: pfunit-windows-${{ inputs.arch }}-v4.9.0-${{ hashFiles('.github/workflows/build-windows.yml') }}
 
       - name: Build pFUnit
         if: steps.pfunit-cache.outputs.cache-hit != 'true'
@@ -93,7 +107,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: hamlib-prefix
-          key: hamlib-windows-${{ inputs.hamlib_branch }}-${{ hashFiles('.github/workflows/build-windows.yml') }}
+          key: hamlib-windows-${{ inputs.arch }}-${{ inputs.hamlib_branch }}-${{ hashFiles('.github/workflows/build-windows.yml') }}
 
       - name: Build Hamlib
         if: steps.hamlib-cache.outputs.cache-hit != 'true'
@@ -132,7 +146,7 @@ jobs:
 
       - name: Fix dumpcpp name (MSYS2 ships dumpcpp-qt5, CMake expects dumpcpp)
         run: |
-          ln -sf /mingw64/bin/dumpcpp-qt5.exe /mingw64/bin/dumpcpp.exe
+          ln -sf "/${MINGW_DIR}/bin/dumpcpp-qt5.exe" "/${MINGW_DIR}/bin/dumpcpp.exe"
 
       - name: Configure
         run: |
@@ -164,13 +178,13 @@ jobs:
       - name: Publish test summary
         if: always() && steps.ctest.conclusion != 'skipped'
         working-directory: wsjtx-build
-        run: python3 ../.github/scripts/publish-ctest-summary.py "Windows x86_64" >> "$GITHUB_STEP_SUMMARY"
+        run: python3 ../.github/scripts/publish-ctest-summary.py "Windows ${{ inputs.arch }}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload test results
         if: always() && steps.ctest.conclusion != 'skipped'
         uses: actions/upload-artifact@v7
         with:
-          name: ctest-results-windows
+          name: ctest-results-windows-${{ inputs.arch }}
           path: wsjtx-build/ctest-results.xml
           if-no-files-found: ignore
 
@@ -198,7 +212,7 @@ jobs:
           # suffix gap.
           cpack -G NSIS -V \
             -D CPACK_PACKAGE_VERSION="${{ inputs.version }}" \
-            -D CPACK_PACKAGE_FILE_NAME="wsjtx-${{ inputs.version }}-win64"
+            -D CPACK_PACKAGE_FILE_NAME="wsjtx-${{ inputs.version }}-${NSIS_SUFFIX}"
           ls -la *.exe
 
       # Issue #23 — self-signed sandbox signing. Proves the signing step is
@@ -241,13 +255,13 @@ jobs:
       - name: Upload installer artifact
         uses: actions/upload-artifact@v7
         with:
-          name: wsjtx-${{ inputs.version }}-windows-x86_64-installer
-          path: wsjtx-build/wsjtx-${{ inputs.version }}-*.exe
+          name: wsjtx-${{ inputs.version }}-windows-${{ inputs.arch }}-installer
+          path: wsjtx-build/wsjtx-${{ inputs.version }}-${{ env.NSIS_SUFFIX }}.exe
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: wsjtx-${{ inputs.version }}-windows-x86_64
+          name: wsjtx-${{ inputs.version }}-windows-${{ inputs.arch }}
           path: |
             wsjtx-build/jt9.exe
             wsjtx-build/wsprd.exe

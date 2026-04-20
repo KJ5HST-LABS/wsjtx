@@ -1,4 +1,4 @@
-name: Build Linux x86_64
+name: Build Linux
 
 on:
   workflow_call:
@@ -12,10 +12,15 @@ on:
         required: false
         type: string
         default: "4.7.0"
+      arch:
+        description: "Linux target architecture: x86_64 or aarch64"
+        required: false
+        type: string
+        default: "x86_64"
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.arch == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
     steps:
       - uses: actions/checkout@v6
 
@@ -36,7 +41,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: pfunit-prefix
-          key: pfunit-linux-v4.9.0-${{ hashFiles('.github/workflows/build-linux.yml') }}
+          key: pfunit-linux-${{ inputs.arch }}-v4.9.0-${{ hashFiles('.github/workflows/build-linux.yml') }}
 
       - name: Build pFUnit
         if: steps.pfunit-cache.outputs.cache-hit != 'true'
@@ -69,7 +74,7 @@ jobs:
         uses: actions/cache@v5
         with:
           path: hamlib-prefix
-          key: hamlib-linux-${{ inputs.hamlib_branch }}-${{ hashFiles('.github/workflows/build-linux.yml') }}
+          key: hamlib-linux-${{ inputs.arch }}-${{ inputs.hamlib_branch }}-${{ hashFiles('.github/workflows/build-linux.yml') }}
 
       - name: Build Hamlib
         if: steps.hamlib-cache.outputs.cache-hit != 'true'
@@ -111,13 +116,13 @@ jobs:
       - name: Publish test summary
         if: always() && steps.ctest.conclusion != 'skipped'
         working-directory: wsjtx-build
-        run: python3 ../.github/scripts/publish-ctest-summary.py "Linux x86_64" >> "$GITHUB_STEP_SUMMARY"
+        run: python3 ../.github/scripts/publish-ctest-summary.py "Linux ${{ inputs.arch }}" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload test results
         if: always() && steps.ctest.conclusion != 'skipped'
         uses: actions/upload-artifact@v7
         with:
-          name: ctest-results-linux
+          name: ctest-results-linux-${{ inputs.arch }}
           path: wsjtx-build/ctest-results.xml
           if-no-files-found: ignore
 
@@ -139,6 +144,7 @@ jobs:
       - name: Package AppImage
         env:
           VERSION: ${{ inputs.version }}
+          ARCH: ${{ inputs.arch }}
           # Core linuxdeploy is pinned to a dated release + SHA256 verify
           # so an undetected upstream change fails the build instead of
           # shipping. The Qt5 plugin stays on the rolling "continuous"
@@ -148,17 +154,21 @@ jobs:
           # When upstream publishes a newer dated plugin release, pin +
           # verify it here too.
           LINUXDEPLOY_TAG: "1-alpha-20251107-1"
-          LINUXDEPLOY_SHA256: "c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d"
         run: |
+          case "$ARCH" in
+            x86_64)  LINUXDEPLOY_SHA256="c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d" ;;
+            aarch64) LINUXDEPLOY_SHA256="620095110d693282b8ebeb244a95b5e911cf8f65f76c88b4b47d16ae6346fcff" ;;
+            *)       echo "::error::Unknown linuxdeploy arch: $ARCH"; exit 1 ;;
+          esac
           curl -fsSL -o linuxdeploy.AppImage \
-            "https://github.com/linuxdeploy/linuxdeploy/releases/download/${LINUXDEPLOY_TAG}/linuxdeploy-x86_64.AppImage"
+            "https://github.com/linuxdeploy/linuxdeploy/releases/download/${LINUXDEPLOY_TAG}/linuxdeploy-${ARCH}.AppImage"
           curl -fsSL -o linuxdeploy-plugin-qt.AppImage \
-            https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+            "https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-${ARCH}.AppImage"
           echo "${LINUXDEPLOY_SHA256}  linuxdeploy.AppImage" | sha256sum -c -
           chmod +x linuxdeploy.AppImage linuxdeploy-plugin-qt.AppImage
 
           # --appimage-extract-and-run avoids FUSE on the hosted runner.
-          export OUTPUT="wsjtx-${VERSION}-linux-x86_64.AppImage"
+          export OUTPUT="wsjtx-${VERSION}-linux-${ARCH}.AppImage"
           ./linuxdeploy.AppImage --appimage-extract-and-run \
             --appdir AppDir \
             --plugin qt \
@@ -172,8 +182,9 @@ jobs:
       - name: Smoke-test AppImage payload
         env:
           VERSION: ${{ inputs.version }}
+          ARCH: ${{ inputs.arch }}
         run: |
-          APPIMAGE="wsjtx-${VERSION}-linux-x86_64.AppImage"
+          APPIMAGE="wsjtx-${VERSION}-linux-${ARCH}.AppImage"
           ./"$APPIMAGE" --appimage-extract >/dev/null
           test -x squashfs-root/usr/bin/wsjtx
           test -x squashfs-root/usr/bin/jt9
@@ -188,14 +199,14 @@ jobs:
       - name: Upload AppImage
         uses: actions/upload-artifact@v7
         with:
-          name: wsjtx-${{ inputs.version }}-linux-x86_64-AppImage
-          path: wsjtx-${{ inputs.version }}-linux-x86_64.AppImage
+          name: wsjtx-${{ inputs.version }}-linux-${{ inputs.arch }}-AppImage
+          path: wsjtx-${{ inputs.version }}-linux-${{ inputs.arch }}.AppImage
           if-no-files-found: error
 
       - name: Upload build artifacts
         uses: actions/upload-artifact@v7
         with:
-          name: wsjtx-${{ inputs.version }}-linux-x86_64
+          name: wsjtx-${{ inputs.version }}-linux-${{ inputs.arch }}
           path: |
             wsjtx-build/jt9
             wsjtx-build/wsprd
