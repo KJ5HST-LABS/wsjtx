@@ -33,7 +33,7 @@ jobs:
 
       - name: Cache pFUnit
         id: pfunit-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: pfunit-prefix
           key: pfunit-linux-v4.9.0-${{ hashFiles('.github/workflows/build-linux.yml') }}
@@ -66,7 +66,7 @@ jobs:
 
       - name: Cache Hamlib
         id: hamlib-cache
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           path: hamlib-prefix
           key: hamlib-linux-${{ inputs.hamlib_branch }}-${{ hashFiles('.github/workflows/build-linux.yml') }}
