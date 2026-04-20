@@ -235,11 +235,21 @@ jobs:
           # Base prefix path: Hamlib. Append from-source FFTW + libusb
           # when building x86; those come from MSYS2 on x86_64.
           PREFIX_PATH="${WORKSPACE}/hamlib-prefix"
+          EXTRA_ARGS=()
           if [ "${{ inputs.arch }}" = "x86" ]; then
             PREFIX_PATH="${PREFIX_PATH};${WORKSPACE}/fftw-prefix;${WORKSPACE}/libusb-prefix"
+            # Explicit hints: FindFFTW3.cmake uses FFTW3_ROOT_DIR as its
+            # primary HINTS source; FindUsb.cmake goes through
+            # libfind_pkg_detect → pkg-config, so libusb-prefix must be
+            # on PKG_CONFIG_PATH.
+            EXTRA_ARGS+=("-DFFTW3_ROOT_DIR=${WORKSPACE}/fftw-prefix")
+            export PKG_CONFIG_PATH="${WORKSPACE}/libusb-prefix/lib/pkgconfig:${WORKSPACE}/fftw-prefix/lib/pkgconfig:${PKG_CONFIG_PATH}"
           fi
+          echo "Resolved CMAKE_PREFIX_PATH: ${PREFIX_PATH}"
+          echo "Resolved PKG_CONFIG_PATH:   ${PKG_CONFIG_PATH}"
           cmake -G "MSYS Makefiles" -S . -B wsjtx-build \
             -DCMAKE_PREFIX_PATH="${PREFIX_PATH}" \
+            "${EXTRA_ARGS[@]}" \
             -DOMNIRIG_TYPE_LIB="${OMNIRIG}" \
             -DWSJT_SKIP_MAP65=ON \
             -DCMAKE_Fortran_FLAGS="-fallow-argument-mismatch -std=legacy" \
