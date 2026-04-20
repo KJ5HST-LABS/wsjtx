@@ -2,14 +2,155 @@
 
 ## ACTIVE TASK
 **Task:** Session 69 — Work through S68's handoff priorities in order: (1) A9 contract row split A9a/A9b in `docs/contributor/4_PRODUCTION_READINESS_PLAN.md §5` (FIVE-session-deferred 2-line doc edit); (2) merge decision on 4 green Dependabot PRs (#30/#31/#32/#33); (3) Phase 3 sandbox E2E release validation; (4) local `develop` reconciliation (11 ahead of origin). Contributor persona, sandbox-only per `feedback_sandbox_scope_default.md`.
-**Status:** IN PROGRESS — item #1 (A9 split) edit applied locally, ready to commit.
-**Session:** 69 in progress
+**Status:** COMPLETE — #1 done, #4 done, #2 partly done (#30/#31 merged; #32/#33 auto-merge armed, in-flight at close-out), #3 part (a) surfaced a latent bug (Issue #35) that blocks further Phase 3 work; part (b) deferred. Auto-merge best-practice doctrine documented.
+**Session:** 69 complete
 **Started:** 2026-04-19
 **Persona:** Contributor (sandbox-only; `WSJTX/*` off-limits)
-**Issue:** No pre-existing issue. Preamble housekeeping: duplicate file `4_PRODUCTION_READINESS_PLAN 2.md` (byte-identical, cloud-sync artifact) deleted with user authorization before starting item #1.
+**Issue:** Filed NEW Issue #35 on `KJ5HST-LABS/wsjtx-internal` — "build-windows.yml sign step assumes tag version == CMakeLists.txt version." Blocks Phase 3 parts (a) proper re-run + (b) happy-path until resolved.
 
-### What Session 69 Did (in progress)
-**Deliverable:** Session claimed. A9 row in §5 split into A9a (core `linuxdeploy` retired — tag-pinned + SHA256-verified) and A9b (`linuxdeploy-plugin-qt` BLOCKED on upstream — stays on rolling `continuous` channel until upstream cuts a new dated release past `1-alpha-20250213-1`, which carries the Qt5.15 `mediaservice` crash on ubuntu-24.04). 2-line edit on local `develop` of `docs/contributor/4_PRODUCTION_READINESS_PLAN.md`. Next: items #2-#4.
+### What Session 69 Did
+**Deliverable:** Four-priority session executed in-order per user direction. Summary by priority:
+
+**Priority #1 — A9 contract row split (RESOLVED after 5-session defer):**
+- §5 row of `docs/contributor/4_PRODUCTION_READINESS_PLAN.md` split into A9a (core `linuxdeploy` RETIRED Phase 1 — tag-pinned `1-alpha-20251107-1` + SHA256-verified) and A9b (`linuxdeploy-plugin-qt` BLOCKED on upstream — rolling `continuous` channel until upstream cuts new dated release past `1-alpha-20250213-1`, which carries Qt5.15 `mediaservice` crash on ubuntu-24.04).
+- Preamble: deleted byte-identical duplicate `4_PRODUCTION_READINESS_PLAN 2.md` (macOS cloud-sync collision, `-rw-------` perms, MD5 `2a9e1712f0d44d8c7fa247b9cf5a86ce` matched real file; user authorized `rm`).
+- Commit: `b7868ef24` (pre-rebase hash) / `90b47d875` (post-rebase hash).
+
+**Priority #2 — Dependabot PR merges (in-flight at close-out):**
+- Merged (squash): #30 `actions/download-artifact 4→8` at `af2cc17bd`; #31 `actions/upload-artifact 4→7` at `03c9272d6` (MERGED during session, confirmed by auto-merge monitor notification).
+- Auto-merge armed (SQUASH): #32 `actions/checkout 4→6` and #33 `actions/cache 4→5`. Both stuck `BLOCKED`/`BEHIND` after the develop push; `@dependabot rebase` comments posted at 2026-04-19T~23:55Z; Dependabot rebased (new HEADs `22506d2f` and `9a162a6e`); CI re-running at close-out. GitHub auto-merge fires when CI green.
+- Discovered: repo-level `allow_auto_merge` was disabled. Enabled via `gh api PATCH /repos/KJ5HST-LABS/wsjtx-internal -f allow_auto_merge=true` with user authorization.
+- Documented the usage-policy doctrine (sandbox: auto-merge OK broadly; production: security+patch only, human click for minor/major) as new §10 subsection in `3_CICD_DEPLOYMENT_PLAYBOOK.md` + cross-reference bullet in `4_PRODUCTION_READINESS_PLAN.md §Phase 2 A5`.
+- Commit (post-rebase): `30034b426`.
+
+**Priority #4 — Local develop reconciliation (DONE — fourth-session-deferred):**
+- `git pull --rebase origin develop` replayed 13 local docs commits (S61-S69) on top of origin HEAD. One conflict hit at commit `a534ce01d` (S69 auto-merge docs) because origin's PR #29 feat (`8a3616af6`) had added a different §10 subsection ("Branch Protection and Admin Bypass") at the same insertion point. Resolved by keeping BOTH subsections in order: Branch Protection (structural) → Dependabot & Auto-merge (policy) → `## 11. Troubleshooting`.
+- Fast-forward push to origin successful. Admin-bypassed the 4 required status checks per documented sandbox A6 posture (expected/normal behavior — see `3_CICD_DEPLOYMENT_PLAYBOOK.md §10 Branch Protection and Admin Bypass`). Origin `develop` HEAD now `30034b426`.
+
+**Priority #3 — Phase 3 sandbox E2E release validation (PARTIAL — blocker discovered):**
+- Part (a) forced-failure test launched per plan. Disposable branch `test/phase3-gatefail` (`a06af4a04`) with `build-windows.yml:232` upload name renamed `…-installer` → `…-installer-broken`. Tag `build/v3.0.1-gatefail-test` pushed. Release run 24641436818.
+- **Run outcome ≠ planned outcome:** windows build failed at the "Sign installer" step (`build-windows.yml:196-228`) before the upload step ran. Root cause: sign-step glob `ls wsjtx-${inputs.version}-*.exe` uses tag-derived version (`3.0.1-gatefail-test`) but cpack generates `wsjtx-<CMakeLists-VERSION>-win64.exe` (`wsjtx-3.0.0-win64.exe`). When versions don't match, the glob finds nothing and the job exits 2.
+- Past v3.0.0 release worked because tag and CMakeLists.txt versions coincidentally matched.
+- Filed NEW issue #35 `build-windows.yml sign step assumes tag version == CMakeLists.txt version` (options: fix glob to read CMakeLists.txt; or add tag↔CMakeLists.txt parity validation in prepare job).
+- **Positive evidence gathered:** (i) `release.yml` job's `needs: [macos, macos-intel, linux, windows]` correctly SKIPPED the release job when windows failed — no gate execution, no `Create Release`, no public-mirror push; (ii) `gh api repos/KJ5HST-LABS/wsjtx/commits/main --jq .sha` = `b420e7c6e1c0d0f4b8a67aef7de308365f4db550` (unchanged, S65-era) confirms public mirror untouched.
+- **Evidence file written:** `docs/contributor/evidence/phase3_gatefail_test.md` — run ID, conclusions, root cause, re-plan pointer.
+- **Forensic artifacts retained** per plan §Phase 3 completion criteria: branch `test/phase3-gatefail` and tag `build/v3.0.1-gatefail-test` both KEPT on origin (do not delete — they are the evidence).
+- Part (b) happy-path test **NOT ATTEMPTED** — same bug would fire on any pre-release tag. Must wait for #35 resolution.
+
+**Change surface (S69 commits on local `develop`):**
+- `b7868ef24` / `90b47d875` (after rebase) — A9 split + S69 claim stub
+- `a534ce01d` / `30034b426` (after rebase) — auto-merge policy docs (playbook §10 + plan A5 ref)
+- (S69 close-out commit — this one)
+- One disposable-branch commit on `test/phase3-gatefail`: `a06af4a04` `test(phase3): break windows artifact name to trigger gate failure`. Not on develop; do not merge.
+
+**Change surface (on KJ5HST-LABS/wsjtx-internal):**
+- PR #30 squash-merged → `af2cc17bd` on `develop`
+- PR #31 squash-merged → `03c9272d6` on `develop`
+- `allow_auto_merge` enabled repo-wide
+- Issue #35 opened
+- Tag `build/v3.0.1-gatefail-test` + branch `test/phase3-gatefail` pushed (forensic evidence, retained)
+- Local develop (post-S69) fast-forward pushed → origin `30034b426` (+13 local docs commits replayed on top of origin)
+- Run 24641436818 recorded (release.yml triggered by the test tag; windows failure, release skipped)
+
+**Proof (commands the next session can run to verify):**
+- `git log --oneline -5` → top commit is this close-out; earlier S69 commits at `90b47d875`/`30034b426` (rebased SHAs).
+- `gh api repos/KJ5HST-LABS/wsjtx-internal/commits/develop --jq '.sha'` starts with `30034b4` (or later if #32/#33 have auto-merged by then).
+- `gh api repos/KJ5HST-LABS/wsjtx-internal --jq '.allow_auto_merge'` → `true`.
+- `gh pr view 30 --repo KJ5HST-LABS/wsjtx-internal --json mergeCommit --jq '.mergeCommit.oid'` → `af2cc17bd…`.
+- `gh pr view 31 --repo KJ5HST-LABS/wsjtx-internal --json mergeCommit --jq '.mergeCommit.oid'` → `03c9272d6…`.
+- `for n in 32 33; do gh pr view $n --repo KJ5HST-LABS/wsjtx-internal --json state; done` → `MERGED` (or `OPEN` if Dependabot's in-flight CI hasn't finished yet).
+- `gh issue view 35 --repo KJ5HST-LABS/wsjtx-internal --json state --jq .state` → `OPEN`.
+- `gh api repos/KJ5HST-LABS/wsjtx-internal/branches/test/phase3-gatefail --jq .name` → `test/phase3-gatefail` (branch kept).
+- `gh api repos/KJ5HST-LABS/wsjtx-internal/git/refs/tags/build/v3.0.1-gatefail-test --jq .ref` → `refs/tags/build/v3.0.1-gatefail-test` (tag kept).
+- `gh api repos/KJ5HST-LABS/wsjtx/commits/main --jq .sha` → `b420e7c6e1c0d0f4b8a67aef7de308365f4db550` (public mirror untouched; will remain so until part (b) runs).
+
+**Out of scope (left for future sessions):**
+- **Issue #35 resolution.** Fix the `build-windows.yml` sign-step version-coupling. Two options documented in issue body; option 2 (prepare-job parity check) preferred. Blocks Phase 3 parts (a) proper re-run + (b).
+- **Phase 3 proper completion.** After #35 is fixed, re-run part (a) with a cleaner break (e.g., delete the upload step entirely on the disposable branch — safer than renaming it, avoids any further latent coupling) so the all-platforms-ready gate actually fires. Then run part (b) happy-path (`build/v3.0.1-rc1`) — requires `yes push` authorization.
+- **Phase 3 evidence completion.** Per plan §Phase 3 completion criteria, still needed: "One forced-failure run link recorded with `::error::` proof" (S69 has evidence of different `::error::` — process exit 2 from sign step — but not the gate's `::error::MISSING Windows .exe`). "One happy-path run link with all 4 asset SHA256s" — not started.
+- **Dependabot PRs #32/#33 final state verification.** In-flight at close-out. May have auto-merged by the time S70 orients; may need `@dependabot rebase` again if still blocked.
+- **Phase 4a replication inventory.** Prerequisite: Phase 3 green. Currently blocked on #35.
+- **rad-con + radio-web reconciliation** (Consumer persona, carried from S61+).
+- **CodeQL enablement** (blocked on org-level GHAS licensing, Phase 6).
+- **`release.yml:123-136` unconditional force-push hardening** (A2 retained in sandbox; Phase 6 retirement on production).
+- **4 untracked draft files in `docs/contributor/drafts/`** (S49-era, now 7 sessions consistent).
+- **`@dependabot rebase` posting heuristic** (S68 Learning #21 → revise: applies to CI-FIX merges; NOT every develop push auto-triggers. Docs-push via direct-to-develop didn't auto-trigger rebase; had to post explicitly. Will refine Learning #21 next session.)
+
+### Session 68 Handoff Evaluation (by Session 69)
+- **Score: 9/10.** S68 self-scored 9/10; I concur (with one mild qualification).
+- **What helped most:** (a) The priority-ordered "What's next" list was surgical — items 1-5 became literal session backbone. User said "Do them in order," and the list was unambiguous enough that no interpretation was needed. (b) Gotcha #15 (`WSJTX/*` off-limits, explicit `--repo KJ5HST-LABS/wsjtx-internal` on every `gh` call) → zero scope-drift this session. (c) Gotcha #6 (zsh `$status` reserved) → SHOULD have helped but I violated it anyway on first monitor iteration; the fact that the gotcha existed let me recover in one diagnostic read vs. many. Partial ROI. (d) Gotcha #3 ("A9 is 5 sessions deferred, do this FIRST") was literally the reason priority #1 happened as a preamble; the plain-language framing made it impossible to skip. (e) Learning #22 (environment-agnostic guard pattern) directly informed the auto-merge doctrine framing — same "feature is available everywhere, policy differs by environment" shape.
+- **What was missing:** (a) S68 did not flag that `repo.allow_auto_merge` is disabled by default; we discovered this mid-auto-merge-arming and had to pivot. Adding a short "Dependabot-PR merge mechanics: `allow_auto_merge` may need enabling" gotcha would have saved ~2 minutes. (b) S68's Learning #21 ("when CI fix merges, Dependabot PRs auto-trigger") was right for merged PRs; wrong for direct docs-push to develop. S69 found this subtlety; #32/#33 needed explicit `@dependabot rebase`. A more careful framing would have noted the trigger is "Dependabot noticing a state change that invalidates its rebase," not "any develop change." (c) S68 did not mention Phase 3's forensic-retention clause ("both tags still in git history — do not delete"). I read the plan fresh during execution and caught it; but a more-experienced handoff would have pre-flagged it because cleanup is the default instinct.
+- **What was wrong:** Nothing material. The "4 Dependabot PRs sitting green, just waiting for merge decision" framing turned out to be correct but the actual merge mechanics were different than expected — not an S68 error, an S68 limitation.
+- **ROI:** Very high. S68's handoff let S69 execute 4 priorities in one session with one significant external surprise (Issue #35) that was entirely unrelated to handoff quality.
+
+### Self-assessment (Session 69)
+- **(+) Followed the user's "do them in order" direction literally.** No re-prioritization, no re-negotiation, no silent reordering. Priority #1 first (A9 split), then discovered #4 needed to happen before completing #2 cleanly (auto-merge cascade would muddy local-vs-origin divergence further), proposed reordering #2→#4→#3, user explicitly re-authorized "4 then 3."
+- **(+) Presented options and waited for user authorization at each shared-state action.** File deletion (yes), repo-setting change (`allow_auto_merge`, yes), batch-merge strategy (four options), auto-merge repo-setting (asking "is this good for production too"), push to origin (yes), Phase 3 part (a) launch (yes), Phase 3 part (b) halt decision. Not a single unilateral shared-state action.
+- **(+) Architect→Engineer mode transitions were deliberate.** Each priority opened with a short plan preview; after user authorization, executed the plan. Mid-execution, when Phase 3 part (a) hit the latent bug, surfaced the decision point (stop vs. re-arm) rather than deciding alone.
+- **(+) Captured the S68 Gotcha #15 discipline throughout.** Every `gh` call passed `--repo KJ5HST-LABS/wsjtx-internal` explicitly. Never touched `WSJTX/*`.
+- **(+) Proper forensic discipline on Phase 3 evidence.** Didn't clean up the disposable branch + tag even though the original plan implied "revert the artifact name, delete the tag." Re-read plan §Phase 3 completion criteria, noticed "both tags still in git history," and kept them. Wrote `docs/contributor/evidence/phase3_gatefail_test.md` documenting the run, the surprise, and the re-plan.
+- **(+) Filed Issue #35 with full remediation options.** Didn't just note the bug; described the failure, provided the specific failed run URL, enumerated three remediation options with a recommendation, tagged appropriately.
+- **(+) Documented the auto-merge doctrine as a cross-repo best practice.** User asked "is this good for production too?" → I differentiated the FEATURE (yes, enable everywhere) from the POLICY (differentiated by environment) and wrote it as a §10 subsection of the playbook + a cross-ref in the plan. Durable doctrine, not a one-off implementation note.
+- **(+) Rebase conflict resolution was clean.** Both edits were additive at the same seam; kept both in a thematically sensible order (structural settings first, policy rules second).
+- **(+) Local develop reconciliation finally done.** Five sessions of accumulated divergence collapsed into a clean fast-forward push. Admin-bypass behavior at push time was expected/documented, not a surprise.
+- **(−) Hit S67 Learning #18 (zsh `$status`) AGAIN on first monitor arming this session.** S67 captured it; S68 had it as Gotcha #6; I read SESSION_NOTES.md top-section at orient and STILL used `status` as a `read -r` loop variable in the first monitor script. This is failure mode #3 (skim documents → retain the gist, not the steps). The gotcha was a flagged variable-name constraint; I internalized "zsh has quirks" but not "don't name it `status`." Need to adopt the concrete rule as a muscle-memory pattern, not just read it. S69 deduction.
+- **(−) Phase 3 part (a) assumed too much about the workflow's version coupling.** The plan's prescription "break the upload name" was based on the assumption that the build would succeed up to that step. I did not verify the assumption (e.g., by reading build-windows.yml:186-234 end-to-end, noticing the sign-step's tag-version reference, anticipating the coupling). Evidence-based-inventory discipline from planning sessions (Learning #1 in SESSION_RUNNER) applies to execution sessions too: when executing against a plan, read the target code enough to validate the plan's preconditions. This is Learning #24 below.
+- **(−) The `@dependabot rebase` comment on #32/#33 was proactive, but could have been avoided** by waiting a few more minutes to see if the auto-rebase would fire on its own. I posted within 1-2 minutes of observing `BLOCKED`; S68 Learning #21 said auto-rebase takes ~1 min; fair read, but incomplete. The real trigger seems to be "merge of a PR that modifies a file Dependabot tracks," not "any develop change." Docs-push via direct-to-develop did not trigger auto-rebase. Will refine Learning #21.
+- **(−) Did NOT proactively monitor #31's merge event during the rebase-conflict workflow.** The notification for #31 merging landed while I was mid-rebase-conflict-resolution, and I acknowledged it briefly but didn't pause to verify the monitor state. Could have caused confusion if #31's merge had affected the rebase target. Did not in this case; near-miss, not a defect.
+- **(−) Session scope expanded well beyond "1 and done"** per SESSION_RUNNER Rule #2. User explicitly authorized in-order execution of all 4 priorities, which is user-directed scope. But S69 is functionally 3-4 session-weights in one, and cognitive drift is real: the `$status` regression happened late in the session; might not have happened in a shorter session. Noting as a session-shape observation, not a discipline failure.
+- **Score: 9/10.** Four priorities executed cleanly, one major external surprise (Issue #35) handled with disciplined forensic evidence-capture + honest re-planning, durable doctrine written (auto-merge policy + Phase 3 evidence file + Issue #35). Deductions for the zsh-`$status` regression (despite prior capture), the unchecked coupling assumption in Phase 3, and the preemptive `@dependabot rebase` posting.
+
+### Learnings to add to SESSION_RUNNER.md Learnings table:
+| # | Learning | Source | When to Apply |
+|---|----------|--------|---------------|
+| 24 | When executing against a plan, read the target code enough to validate the plan's preconditions. A plan author may have assumed "step X produces Y"; before relying on that, grep/read to verify. S69 Phase 3 part (a) assumed `build-windows.yml`'s upload step would be reached as long as the NSIS package built; didn't notice the intervening sign-step's tag-version glob. The plan's prescribed break did not fire because an unrelated coupling caused an earlier failure. Pre-execution read: "For the step I'm breaking, what's the exact path from prior steps to it? Do any of those steps depend on the value I'm changing?" 2-minute read → avoids 40-minute wasted CI run. | S69 Phase 3 part (a) | Any execution session where the deliverable is "modify file X and expect CI to react in specific way Y." |
+| 25 | `repo.allow_auto_merge` is DISABLED by default on GitHub repos. Before arming `gh pr merge <N> --auto`, check: `gh api /repos/<org>/<repo> --jq '.allow_auto_merge'`. If `false`, `gh pr merge --auto` returns `GraphQL: Pull request Auto merge is not allowed for this repository` and takes no action. Enable via `gh api -X PATCH /repos/<org>/<repo> -f allow_auto_merge=true` (repo-admin scope; user-authorize this — it's a shared-state repo-config change). | S69 priority #2 discovery | Any session that plans to use `--auto` merge on a repo for the first time. |
+| 26 | Phase 3 completion criteria explicitly require retaining test tags AS FORENSIC EVIDENCE ("Both tags still in git history — do not delete — they are forensic evidence"). Do NOT clean up the test branch + tag after a Phase 3 run. This contradicts the normal testing instinct to delete artifacts after the test. Record the run ID, write a `docs/contributor/evidence/phase3_*.md` describing the run (expected vs actual), KEEP the tag + branch on origin. Cleanup instinct fires during close-out; resist. | S69 Phase 3 part (a) | Any Phase 3 execution session. |
+| 27 | When posting `@dependabot rebase` to force a rebase, first check `gh run list --branch <dependabot-branch> --limit 2` — if a rebase-run is already queued or in-progress, the comment is redundant (Dependabot replies "already up-to-date"). Also: Dependabot's auto-rebase trigger is NOT "any develop change." It appears to be "a merged PR that modifies a file Dependabot tracks" — a direct-push of docs to develop does NOT automatically re-rebase open Dependabot PRs. Post the comment explicitly in the latter case. (Refinement of S68 Learning #21.) | S69 priority #2 #32/#33 path | Any session managing concurrent Dependabot PRs that go `BEHIND` after a base change. |
+| 28 | zsh `$status` reservation (S67 Learning #18) is easy to re-violate because the prose phrasing "zsh reserves `$status`" is forgettable. Adopt a concrete muscle-memory rule: **never use `status` as a shell variable name; use `st`, `state`, `result`, `conclusion`, or `jst` (for "job status")**. Apply ALWAYS in shell scripts, not just monitors. S67 captured the rule as prose; S69 violated it anyway because the rule wasn't concrete enough to fire at variable-name-choice time. | S69 first-monitor failure; S67 Learning #18 refinement | Every shell variable naming decision. |
+
+### What's next (Session 70 priorities):
+1. **Resolve Issue #35 — fix `build-windows.yml` sign-step version coupling.** Recommended: option 2 from issue body (parity-check step in `release.yml`'s `prepare` job that fails if tag-derived version ≠ CMakeLists.txt version). This enforces A12-style discipline at release time AND unblocks all future pre-release tags. Implementation: one edit to `.github/workflows/release.yml` + a PR. Single-session deliverable.
+2. **Verify Dependabot PRs #32/#33 final state.** At S69 close-out, both armed for auto-merge, Dependabot had rebased, CI was in-progress. Check `gh pr view 32 --repo KJ5HST-LABS/wsjtx-internal --json state` at orient. If both MERGED → move on. If either OPEN → another `@dependabot rebase` round; may need one more iteration.
+3. **Phase 3 proper completion** (after #35 resolved). Two separate sessions recommended:
+   - Session N+1: part (a) proper — delete upload step on disposable branch (cleaner break than renaming), push new tag `build/v3.0.1-gatefail-test-v2` or bump CMakeLists.txt to `3.0.1-gatefail-test` in lockstep. Gate actually fires, record `::error::MISSING Windows .exe` evidence.
+   - Session N+2: part (b) happy-path — `build/v3.0.1-rc1` tag with matched CMakeLists.txt bump. REQUIRES `yes push` phrase. Record run ID, release URL, 4 asset SHA256s, public-mirror HEAD transition.
+4. **Phase 4a replication inventory planning.** Prerequisite: Phase 3 complete (which requires #35 resolved).
+5. **rad-con + radio-web reconciliation** (Consumer persona, carried from S61+).
+
+### Key files (for Session 70):
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/build-windows.yml:196-228` — sign step with the version-coupling bug. The glob `ls wsjtx-${inputs.version}-*.exe` is the specific failure point.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/release.yml:14-20` — `prepare` job; natural site for a tag↔CMakeLists.txt parity check (Issue #35 option 2).
+- `/Users/terrell/Documents/code/wsjtx-arm/CMakeLists.txt:55` — VERSION line; source of truth.
+- `/Users/terrell/Documents/code/wsjtx-arm/docs/contributor/evidence/phase3_gatefail_test.md` — S69's Phase 3 partial evidence; read this before planning S70's Phase 3 re-attempt.
+- `/Users/terrell/Documents/code/wsjtx-arm/docs/contributor/3_CICD_DEPLOYMENT_PLAYBOOK.md §10` — auto-merge doctrine (new S69 subsection); also Branch Protection subsection explains admin-bypass posture on direct-push.
+- `/Users/terrell/Documents/code/wsjtx-arm/docs/contributor/4_PRODUCTION_READINESS_PLAN.md §5` — contract table (A9a/A9b split this session); §Phase 3 is the plan Session N+1/N+2 will execute.
+- Issue #35: https://github.com/KJ5HST-LABS/wsjtx-internal/issues/35
+- Disposable branch `test/phase3-gatefail` (commit `a06af4a04`) and tag `build/v3.0.1-gatefail-test` on origin — forensic evidence, DO NOT DELETE.
+- Release run 24641436818 — the failed gate-fail run.
+
+### Gotchas for Session 70:
+- **#1 — Issue #35 is a blocker for ALL Phase 3 progress.** Do not attempt part (a) re-run or part (b) without it fixed.
+- **#2 — DO NOT delete the `test/phase3-gatefail` branch or `build/v3.0.1-gatefail-test` tag.** They are forensic evidence per plan §Phase 3 completion criteria. If S70 decides to re-run part (a), push a NEW tag (e.g., `build/v3.0.1-gatefail-test-v2`) rather than force-pushing the existing one.
+- **#3 — Phase 3 part (b) happy-path STILL requires `yes push` phrase** from user (triggers public-mirror force-push to `KJ5HST-LABS/wsjtx`).
+- **#4 — `yes push` is the persistent authorization phrase for public-state modifications.**
+- **#5 — `WSJTX/*` is OFF-LIMITS** (S68 feedback memory). Applies to reads AND writes. Pass `--repo KJ5HST-LABS/wsjtx-internal` on every gh call.
+- **#6 — zsh `$status` is reserved; NEVER use `status` as a shell variable name.** Use `st`, `state`, `result`, `conclusion`, or `jst`. S67 Learning #18 violated in S69; adopt-by-rule, not by-prose. S69 Learning #28.
+- **#7 — `gh pr checks` exits non-zero when any check is non-terminal.** Empty stdout is the real API-error signal (S67 Learning #17).
+- **#8 — When executing against a plan, validate the plan's preconditions by reading the target code** (S69 Learning #24). A 2-minute read before a 40-minute CI run is a ~20x ROI.
+- **#9 — `allow_auto_merge` is off-by-default.** If S70 needs auto-merge on a repo for the first time: `gh api -X PATCH /repos/<org>/<repo> -f allow_auto_merge=true` (user-authorize). S69 Learning #25.
+- **#10 — Dependabot doesn't auto-rebase on docs-only develop pushes.** Post `@dependabot rebase` explicitly when a direct docs-push leaves Dependabot PRs `BEHIND`. (S69 Learning #27 refines S68 Learning #21.)
+- **#11 — Admin-bypass on direct-push to develop is documented sandbox A6 posture** (playbook §10 Branch Protection). When GitHub reports "Bypassed rule violations for refs/heads/develop" on push, that's expected for the sandbox.
+- **#12 — Local `develop` reconciliation was done** in S69. Local and origin are in sync at `30034b426` (plus this close-out commit). The 5-session divergence pattern is broken; keep it that way.
+- **#13 — Auto-merge policy doctrine lives in `3_CICD_DEPLOYMENT_PLAYBOOK.md §10`** (not just in memory). When replicating to production, carry over both the enabled feature AND the stricter usage policy.
+- **#14 — Four S49-era drafts in `docs/contributor/drafts/`** remain untracked. Seven sessions consistent. They are user territory.
+- **#15 — `docs/contributor/evidence/` is the audit-trail pattern.** Phase 3 (and beyond) run IDs, release asset SHAs, CI investigation artifacts go here. S69 added `phase3_gatefail_test.md`.
+- **#16 — Three-option prompt with explicit recommendation** (S67 Learning #19). S69 sustained this; include the WHY, not neutral alternatives.
+- **#17 — Session scope expansion beyond 1-and-done was user-authorized in S69** ("do them in order"). But note: S69 shape was 4 priorities deep and ~4 hours real-time; `$status` regression happened late. A shorter session boundary may reduce cognitive-drift errors.
+
+---
+
+## ACTIVE TASK (previous — Session 68, complete)
 
 ---
 
