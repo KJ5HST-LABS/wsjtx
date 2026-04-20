@@ -1,6 +1,140 @@
 # Session Notes
 
 ## ACTIVE TASK
+**Task:** Session 70 — Resolve Issue #35 (S69's surfaced blocker): Windows build-windows.yml sign-step assumed tag version == CMakeLists.txt VERSION. Implement combined fix: (1) option 2 — parity check in `release.yml`'s `prepare` job (tag numeric base == first-3-components of CMakeLists.txt:55 VERSION); (2) option 3 — cpack `-D CPACK_PACKAGE_VERSION` + `-D CPACK_PACKAGE_FILE_NAME` overrides in `build-windows.yml` Package NSIS step. Option 2 alone catches the S69 bug but doesn't unblock pre-release tags (cpack can't carry suffixes like `-rc1`); combined 2+3 enforces A12 discipline AND unblocks pre-release naming. Contributor persona, sandbox-only.
+**Status:** COMPLETE — PR #36 opened, reviewed green (all 4 platform builds incl. Windows 40m47s), merged (squash) at `9ad08372c897a51713de770576d0a92937d41a10`. Issue #35 auto-closed by `Resolves #35` keyword. Phase 3 now unblocked for next session.
+**Session:** 70 complete
+**Started:** 2026-04-20
+**Persona:** Contributor (sandbox-only; `WSJTX/*` off-limits per `feedback_sandbox_scope_default.md`)
+**Issue:** #35 on `KJ5HST-LABS/wsjtx-internal` — CLOSED `2026-04-20T01:37:42Z` by PR #36 merge.
+
+### What Session 70 Did
+**Deliverable:** Issue #35 resolved. Two-file, 38-line fix merged cleanly to `develop` via PR #36.
+
+**Surface:**
+- `.github/workflows/release.yml` `prepare` job — added `actions/checkout@v4` step + `Verify tag ↔ CMakeLists.txt version parity` step. Check extracts tag numeric base via `${TAG_VERSION%%-*}`, reads CMakeLists.txt VERSION via `sed -nE 's/^[[:space:]]*VERSION[[:space:]]+([0-9][0-9.]*).*/\1/p'`, normalizes to 3 components via `awk -F. '{printf "%s.%s.%s", $1, $2, $3}'`, fails with `::error::` if mismatched. Runs in <30s — fast-fails 4-platform builds.
+- `.github/workflows/build-windows.yml` Package NSIS step — `cpack -G NSIS -V` extended with `-D CPACK_PACKAGE_VERSION="${{ inputs.version }}"` and `-D CPACK_PACKAGE_FILE_NAME="wsjtx-${{ inputs.version }}-win64"`. Pins installer filename to match `inputs.version` verbatim, including any pre-release suffix.
+
+**Why both (not just option 2):** Analyzed before coding and raised with user. S69's handoff claim "option 2 unblocks all future pre-release tags" was overreach: even with CMakeLists.txt bumped in lockstep (`3.0.1.0`), cpack would produce `wsjtx-3.0.1-win64.exe` while the Windows sign-step glob `wsjtx-3.0.1-rc1-*.exe` still wouldn't match. Option 3 (cpack override) closes the suffix gap; option 2 (parity) preserves A12 single-source-of-truth discipline. User authorized combined 2+3.
+
+**Evidence of fix working** (from Windows build log, run 24643495042, job 72051678952):
+```
+-D CPACK_PACKAGE_FILE_NAME="wsjtx-3.0.0-win64"
+CPack Verbose: Package files to: .../wsjtx-3.0.0-win64.exe
+CPack: - package: .../wsjtx-3.0.0-win64.exe generated.
+-rwxr-xr-x 1 runneradmin None 44414653 Apr 20 01:36 wsjtx-3.0.0-win64.exe
+Unsigned installer: wsjtx-3.0.0-win64.exe
+Signed installer: wsjtx-3.0.0-win64.exe
+```
+cpack override applied; filename pinned; sign step consumed; artifact (44MB) uploaded clean.
+
+**Parity-check dry-run** (pre-commit, against current CMakeLists.txt `VERSION 3.0.0.0`):
+
+| Tag | Numeric base | Outcome |
+|---|---|---|
+| `build/v3.0.0` | `3.0.0` | PASS |
+| `build/v3.0.1-rc1` | `3.0.1` | FAIL — bump CMakeLists.txt to `3.0.1.0` first |
+| `build/v3.0.1-gatefail-test` | `3.0.1` | FAIL (the exact S69 scenario) |
+
+BSD-sed portability issue caught during dry-run: `sed -n 's/...\+.../\1/p'` returns empty on macOS BSD sed (the `\+` isn't recognized in basic regex mode → silent pattern-no-match). Fixed by switching to `sed -nE` + `+` (POSIX extended regex) — works identically on both GNU (ubuntu-latest) and BSD. Not a blocker (CI runs on GNU) but the portable form is strictly better.
+
+**Change surface (S70 commits on `develop`):**
+- `9ad08372c` — squash merge of PR #36 `fix(ci): decouple Windows installer filename from CMakeLists.txt VERSION (#35) (#36)`. Local develop fast-forwarded from `f7b78356e` (S69 close-out).
+- (S70 close-out commit — this one)
+
+**Change surface (on KJ5HST-LABS/wsjtx-internal):**
+- PR #36 opened at `2026-04-20T00:55:41Z`, merged at `2026-04-20T01:37:41Z` (42-minute total from open to merge; Windows build dominated).
+- Issue #35 auto-closed by `Resolves #35` in PR body.
+
+**Proof (commands next session can run):**
+- `gh api repos/KJ5HST-LABS/wsjtx-internal/commits/develop --jq '.sha'` → starts with `9ad0837`.
+- `gh issue view 35 --repo KJ5HST-LABS/wsjtx-internal --json state --jq .state` → `CLOSED`.
+- `gh pr view 36 --repo KJ5HST-LABS/wsjtx-internal --json state,mergeCommit --jq .mergeCommit.oid` → `9ad08372c897a51713de770576d0a92937d41a10`.
+- `git log --oneline -2 .github/workflows/release.yml` top entry is the #36 squash.
+
+**Dependabot #32 final state:** Still OPEN at S70 close-out with auto-merge armed (`SQUASH`), `mergeStateStatus: UNKNOWN`. GitHub is re-evaluating after the develop push from PR #36 merge; Dependabot will auto-rebase on its own. S71 verifies — if still OPEN after ~10 min real-time, likely needs another `@dependabot rebase` per S69 Learning #27.
+
+**Out of scope (left for S71+):**
+- **Phase 3 forced-failure re-run.** Now unblocked. Recommended cleaner break: delete upload-artifact step on disposable branch `test/phase3-gatefail-v2` rather than renaming (avoids any latent coupling). Tag `build/v3.0.1-gatefail-test-v2` + `CMakeLists.txt` bumped to `3.0.1.0` in same commit. Goal: gate actually fires with `::error::MISSING Windows .exe` as the observed failure.
+- **Phase 3 happy-path** (`build/v3.0.1-rc1` with `CMakeLists.txt` bumped to `3.0.1.0`). REQUIRES `yes push` authorization.
+- **Phase 4a replication inventory.** Blocked on Phase 3 complete.
+- **Dependabot #32 final merge verification.** Quick check at S71 orient.
+- **rad-con + radio-web reconciliation** (Consumer persona, carried from S61+).
+- **S49-era drafts in `docs/contributor/drafts/`** — 8 sessions consistent now, user territory.
+- **Forensic artifacts** retained per plan: `test/phase3-gatefail` branch + `build/v3.0.1-gatefail-test` tag on origin. DO NOT DELETE.
+
+### Session 69 Handoff Evaluation (by Session 70)
+- **Score: 8/10.** S69 self-scored 9/10; I mark it one lower because of the overreach in the "option 2 unblocks pre-release" claim.
+- **What helped most:** (a) Priority-ordered `What's next` list was surgical — S70's priority #1 was literally the first S69 bullet, with the recommended fix (option 2) named. (b) Key files with line-numbers (`build-windows.yml:196-228`, `release.yml:14-20`, `CMakeLists.txt:55`) saved 5+ minutes of orientation. (c) Gotcha #1 ("Issue #35 blocks all Phase 3 progress") framed the session's importance without over-selling. (d) Gotcha #6 (zsh `$status`) — no shell-variable traps hit this session because I wasn't writing monitor scripts. (e) Gotcha #9 (`allow_auto_merge` is off-by-default) — already enabled per S69's own fix, so auto-merge just worked.
+- **What was missing:** (a) S69's "option 2 ... unblocks all future pre-release tags" claim. Wrong: option 2 (parity) is insufficient without option 3 (cpack override) because CMakeLists.txt VERSION can't hold pre-release suffixes. S70 caught this by reading `build-windows.yml:199` and `:233` end-to-end before coding — per S69's own Learning #24 ("validate plan's preconditions by reading target code"). S69 wrote the Learning; didn't apply it to its own handoff claim. (b) No mention of `ci.yml` having its OWN `prepare` job (separate from `release.yml`'s). S70 discovered this mid-CI-run and had to confirm that the new `release.yml` parity step doesn't affect PR CI. Minor — not a blocker, just an orientation detail.
+- **What was wrong:** Option-2-unblocks-pre-release claim (above). Otherwise nothing factually wrong.
+- **ROI:** Very high. S70 executed in one focused session with clear priority, good tooling pointers, and pre-authorized context. The `option 2 overreach` cost ~5 minutes of analysis surface → surfaced to user → combined 2+3 authorized → clean fix.
+
+### Self-assessment (Session 70)
+- **(+) Read target code end-to-end before coding.** Confirmed `build-windows.yml:199` sign-step glob AND `:233` upload-artifact path both depend on `inputs.version`. Analyzed cpack behavior (`CPACK_PACKAGE_VERSION_MAJOR/MINOR/PATCH` set at `CMakeLists.txt:1985-1987`, no `CPACK_PACKAGE_FILE_NAME` override → default path is CMake-version-derived). This 5-minute read is exactly S69 Learning #24 in action.
+- **(+) Raised the option-2-insufficiency analysis to user BEFORE coding.** Presented three paths (option 1, 2, 3) with a table comparing "catches S69 bug" × "unblocks pre-release" × complexity, recommended combined 2+3, and waited for authorization. User authorized option 3 (which I interpreted correctly as combined 2+3 based on the table context). Architect mode first, Engineer mode after approval.
+- **(+) Local dry-run caught the BSD-sed portability bug.** Ran the parity check script locally on macOS before commit. Got empty `CMAKE_VERSION`, recognized the `\+` issue, switched to `sed -nE` + `+`. One commit, no CI-based iteration.
+- **(+) Portable tooling throughout.** `${var%%-*}` (POSIX), `sed -nE` (works on GNU + BSD), `awk -F.` (POSIX). No platform-specific shell idioms.
+- **(+) PR body was a complete review artifact.** Summary, changes (both), why both (not just option 2), parity dry-run table, impact, out-of-scope. User-readable without having to open the diff.
+- **(+) Auto-merge fired instantly because required checks were already green when armed.** `gh pr merge --auto --squash` → immediate merge, no rebase needed. The "auto" means "as soon as gate conditions are met," not "after a delay." Learning #29 below.
+- **(+) CI watch discipline.** Used `ScheduleWakeup` with cache-window-aware delays (900s → 720s → 240s as Windows approached the critical Package NSIS step). One cache miss total; no sleep-loop antipattern.
+- **(+) Issue auto-close via `Resolves #N` keyword worked cleanly.** Verified closedAt = mergedAt + 1s.
+- **(+) Persona discipline maintained.** All `gh` calls explicit `--repo KJ5HST-LABS/wsjtx-internal`. Never touched `WSJTX/*`. Sandbox-only posture intact.
+- **(+) "1 and done" discipline.** Single deliverable (Issue #35 fix). Declined to chase PR #32 follow-up in-session.
+- **(−) Scheduled-wakeup firing after task completion produced a redundant loop-prompt.** The loop-runner re-injected the same prompt text after I had already merged PR #36. Minor friction, no harm — acknowledged and declined to reschedule. Not a discipline failure; a /loop-pattern edge case worth noting for future sessions: if a deliverable completes between wake-ups, the next wake still fires.
+- **(−) Could have pre-read `ci.yml` before pushing to understand both workflow surfaces.** Discovered ci.yml's separate `prepare` job mid-CI-run. Wouldn't have changed the implementation (parity check correctly belongs in release.yml only; CI derives from CMakeLists.txt directly), but would have removed a 30-second "why is prepare running?" confusion. Cost: 30 seconds.
+- **Score: 9/10.** Clean architect→engineer mode transition with user-authorized combined-fix scope, caught the option-2 overreach before implementation, one portable-shell bug caught in local dry-run, single commit to PR, full CI green, auto-merge immediate, issue auto-closed, local `develop` synced clean. Deduction for minor loop-pattern friction + 30s ci.yml orientation gap.
+
+### Learnings to add to SESSION_RUNNER.md Learnings table:
+| # | Learning | Source | When to Apply |
+|---|----------|--------|---------------|
+| 29 | `gh pr merge --auto` on a PR whose required-status-checks are already green triggers IMMEDIATE merge, not a wait. The `--auto` flag means "as soon as all merge conditions are met"; if they're already met at arm time, it merges synchronously. Useful when a PR has been sitting green awaiting review: once approved (or if the repo has no required-review rule), `--auto` arms and merges in one call. Verify with `gh pr view <N> --json state` right after — `MERGED` means it fired immediately. | S70 PR #36 auto-merge arm | Any session arming auto-merge on an already-green PR. |
+| 30 | Portable-shell rule for CI scripts: `sed -nE` + `+` (POSIX extended regex), not `sed -n` + `\+` (GNU basic regex extension). The GNU form returns empty on BSD sed (macOS default) with exit 0 — silent failure. Catches every time the shell script is run locally on macOS for dry-run before CI. Always prefer `sed -E` when using repetition operators like `+` or `?`. Also: `${var%%-*}` (POSIX parameter expansion), `awk -F. '{print $1"."$2"."$3}'` (POSIX awk) are portable; avoid `grep -P`, `sed -i''` (macOS requires `sed -i ''` with space), and array subscript syntax beyond `${arr[0]}`. | S70 parity check dry-run | Every CI shell script authored; every dry-run on macOS. |
+| 31 | Before implementing a plan prescribed by a prior session, READ the target code to validate the plan's fix-completeness claim, not just its fix-catches-bug claim. S69's handoff said "option 2 unblocks all future pre-release tags" — correct that option 2 catches the S69 bug, wrong that option 2 alone fixes pre-release naming. Reading `build-windows.yml:199` end-to-end revealed `${{ inputs.version }}` is also in the upload-artifact path at `:233`, and `cpack` without an override uses CMakeLists.txt VERSION (numeric-only) — so option 2 parity alone can't produce matching filenames for `-rc1`-style tags. Combined 2+3 is the real fix. Generalization of S69 Learning #24: don't just validate the plan's break; validate the plan's completeness. | S70 Issue #35 analysis | Every session executing against a prior-session plan, especially when the plan claims unblocking of downstream work. |
+| 32 | `Resolves #N` (or `Fixes #N`, `Closes #N`) in PR body auto-closes the linked issue at merge — verified `closedAt` = `mergedAt + 1s`. Prefer this over manually closing the issue post-merge: (a) atomic, (b) traceability preserved (PR appears in the issue's timeline with "Closed by #M"), (c) no session-missed-close risk. Place the keyword on its own line or in a `Resolves` section near the top of the PR body. Keywords work case-insensitively. | S70 PR #36 auto-close | Any PR that fully resolves a GitHub issue. |
+
+### What's next (Session 71 priorities):
+1. **Phase 3 forced-failure re-run (part a).** Now unblocked by #35. Disposable branch `test/phase3-gatefail-v2`; cleaner break (delete upload-artifact step entirely rather than renaming it); tag `build/v3.0.1-gatefail-test-v2`; bump `CMakeLists.txt` VERSION to `3.0.1.0` in the same commit so the parity check passes. Goal: record `::error::MISSING Windows .exe` from the all-platforms-ready gate, not a pre-gate build failure. Write `docs/contributor/evidence/phase3_gatefail_test_v2.md`.
+2. **Phase 3 happy-path (part b).** `build/v3.0.1-rc1` tag + `CMakeLists.txt 3.0.1.0` bump in lockstep. REQUIRES `yes push`. Record run ID, release URL, 4 asset SHA256s, `KJ5HST-LABS/wsjtx` public-mirror HEAD transition, release-asset naming (including `wsjtx-3.0.1-rc1-win64.exe` — the actual output of S70's cpack override).
+3. **Verify Dependabot #32 final state** at orient. Quick check: `gh pr view 32 --repo KJ5HST-LABS/wsjtx-internal --json state,mergeCommit`. If still OPEN, may need `@dependabot rebase` again.
+4. **Phase 4a replication inventory planning** (after Phase 3 complete).
+5. **rad-con + radio-web reconciliation** (Consumer persona, deferred from S61+).
+
+### Key files (for Session 71):
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/release.yml:14-45` — prepare job with S70 parity check. Will fail fast if S71's Phase 3 tag isn't matched by a CMakeLists.txt bump.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/build-windows.yml:186-202` — Package NSIS step with S70 cpack overrides. Installer filename is pinned to `wsjtx-${inputs.version}-win64.exe` on tag-triggered runs.
+- `/Users/terrell/Documents/code/wsjtx-arm/CMakeLists.txt:55` — VERSION. Must be bumped in lockstep with any `build/v<X.Y.Z[-suffix]>` tag where `X.Y.Z` ≠ current value.
+- `/Users/terrell/Documents/code/wsjtx-arm/docs/contributor/evidence/phase3_gatefail_test.md` — S69's partial evidence. S71's `_v2` evidence file should reference this as the prior run.
+- `/Users/terrell/Documents/code/wsjtx-arm/docs/contributor/4_PRODUCTION_READINESS_PLAN.md §Phase 3` — plan S71 will execute.
+- PR #36 merge commit: `9ad08372c897a51713de770576d0a92937d41a10`.
+- Issue #35 (CLOSED): <https://github.com/KJ5HST-LABS/wsjtx-internal/issues/35>.
+- Forensic-retained S69 artifacts: branch `test/phase3-gatefail`, tag `build/v3.0.1-gatefail-test`.
+
+### Gotchas for Session 71:
+- **#1 — Parity check is LIVE on tag pushes.** Any `build/v<X.Y.Z[-suffix]>` tag where `X.Y.Z` ≠ `CMakeLists.txt:55` first-3-components will fail the `prepare` job in <30s. This is the desired behavior, but S71 must bump `CMakeLists.txt` to `3.0.1.0` in the SAME commit as any Phase 3 tag push to clear parity.
+- **#2 — DO NOT delete `test/phase3-gatefail` branch or `build/v3.0.1-gatefail-test` tag.** Forensic evidence per plan §Phase 3 completion criteria. S71's Phase 3 part (a) should use a NEW branch name (`test/phase3-gatefail-v2`) and NEW tag (`build/v3.0.1-gatefail-test-v2`) rather than reusing.
+- **#3 — Phase 3 part (b) happy-path requires `yes push` phrase** from user (triggers public-mirror force-push to `KJ5HST-LABS/wsjtx`).
+- **#4 — `yes push` is the persistent authorization phrase for public-state modifications.**
+- **#5 — `WSJTX/*` is OFF-LIMITS.** Applies to reads AND writes. Pass `--repo KJ5HST-LABS/wsjtx-internal` on every gh call.
+- **#6 — zsh `$status` is reserved; NEVER use `status` as a shell variable name.** Use `st`, `state`, `result`, `conclusion`, or `jst`. S69 Learning #28 (adopted by rule, not by prose).
+- **#7 — `gh pr checks` exits non-zero when any check is non-terminal.** Empty stdout is the real API-error signal (S67 Learning #17).
+- **#8 — Before executing against a plan, validate the plan's preconditions AND the plan's completeness** by reading the target code (S69 Learning #24, S70 Learning #31). 5-minute read → catches option-2-insufficiency-class errors.
+- **#9 — `allow_auto_merge` is ENABLED on `KJ5HST-LABS/wsjtx-internal`** (enabled in S69, persisted). `gh pr merge --auto` works directly.
+- **#10 — Dependabot doesn't auto-rebase on docs-only develop pushes.** For code-touching develop pushes (like S70's PR #36), Dependabot rebases on its own within ~10 minutes. If a Dependabot PR is still `BEHIND` after that, post `@dependabot rebase` explicitly.
+- **#11 — Admin-bypass on direct-push to develop is documented sandbox A6 posture** (playbook §10 Branch Protection). Expected; not a surprise.
+- **#12 — `gh pr merge --auto` on already-green PRs triggers IMMEDIATE merge, not a wait.** S70 Learning #29. Verify with `gh pr view <N> --json state` → `MERGED`.
+- **#13 — Auto-merge policy doctrine lives in `3_CICD_DEPLOYMENT_PLAYBOOK.md §10`.**
+- **#14 — `Resolves #N` keyword in PR body auto-closes linked issue at merge.** S70 Learning #32. Use for every issue-resolving PR.
+- **#15 — Portable shell idioms for CI scripts:** `sed -nE` + `+` (not `sed -n` + `\+`); `${var%%-*}` (POSIX); `awk -F. '{printf ...}'` (POSIX). S70 Learning #30. Dry-run on macOS before committing to CI catches BSD-vs-GNU gotchas.
+- **#16 — Three-option prompt with explicit recommendation** (S67 Learning #19). S69, S70 sustained.
+- **#17 — Four S49-era drafts in `docs/contributor/drafts/`** remain untracked. Eight sessions consistent. User territory.
+- **#18 — `docs/contributor/evidence/` is the audit-trail pattern.** Phase 3 (and beyond) run IDs, release asset SHAs, CI investigation artifacts go here.
+- **#19 — `ci.yml` has its own `prepare` job** that derives `inputs.version` from `CMakeLists.txt` (not the tag). The parity check added to `release.yml`'s prepare is tag-only; PR/develop CI uses ci.yml's prepare. Both feed the same reusable platform workflows — no conflict.
+- **#20 — Scheduled-wakeup firing after task completion** produces a redundant loop-prompt. Normal /loop-pattern edge case. Acknowledge, decline to reschedule, continue close-out.
+
+---
+
+## ACTIVE TASK (previous — Session 69, complete)
 **Task:** Session 69 — Work through S68's handoff priorities in order: (1) A9 contract row split A9a/A9b in `docs/contributor/4_PRODUCTION_READINESS_PLAN.md §5` (FIVE-session-deferred 2-line doc edit); (2) merge decision on 4 green Dependabot PRs (#30/#31/#32/#33); (3) Phase 3 sandbox E2E release validation; (4) local `develop` reconciliation (11 ahead of origin). Contributor persona, sandbox-only per `feedback_sandbox_scope_default.md`.
 **Status:** COMPLETE — #1 done, #4 done, #2 partly done (#30/#31 merged; #32/#33 auto-merge armed, in-flight at close-out), #3 part (a) surfaced a latent bug (Issue #35) that blocks further Phase 3 work; part (b) deferred. Auto-merge best-practice doctrine documented.
 **Session:** 69 complete
