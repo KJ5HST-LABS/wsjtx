@@ -135,11 +135,15 @@ jobs:
           curl -fsSL -o fftw.tar.gz https://fftw.org/fftw-3.3.10.tar.gz
           tar xf fftw.tar.gz
           cd fftw-3.3.10
+          # --enable-threads without --with-combined-threads produces
+          # separate libfftw3f.a and libfftw3f_threads.a archives. The
+          # project's CMake/Modules/FindFFTW3.cmake searches for those
+          # names individually (FFTW3F_LIBRARY + FFTW3F_THREADS_LIBRARY);
+          # a combined archive would not be discoverable.
           ./configure \
             --prefix="${WORKSPACE}/fftw-prefix" \
             --enable-float \
             --enable-threads \
-            --with-combined-threads \
             --disable-shared --enable-static \
             --with-our-malloc \
             CFLAGS="-O2 -fdata-sections -ffunction-sections" \
