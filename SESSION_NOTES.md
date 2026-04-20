@@ -1,6 +1,137 @@
 # Session Notes
 
 ## ACTIVE TASK
+**Task:** Session 71 — Execute S70's priority #1: Phase 3 forced-failure re-run v2, now unblocked by Issue #35 resolution (PR #36 on `develop`). Disposable branch `test/phase3-gatefail-v2` with two edits in one commit: (a) delete `build-windows.yml`'s `Upload installer artifact` step entirely (cleaner break than S69's rename which never reached the upload step), (b) bump `CMakeLists.txt:55` VERSION `3.0.0.0 → 3.0.1.0` so S70's parity check passes for tag `build/v3.0.1-gatefail-test-v2`. Goal: observe `::error::MISSING Windows .exe` from the all-platforms-ready gate, not a pre-gate build failure. Also: verify Dependabot #32 final state (S70 left it auto-merge-armed, BEHIND). Contributor persona, sandbox-only.
+**Status:** COMPLETE — Phase 3 part (a) forced-failure closed end-to-end. Run 24644904444: all 4 platform builds green, release-job gate step failed with exact `::error::MISSING Windows .exe` line, 3 downstream steps (Create GitHub Release, Verify release tag format, Push to public repo) all `skipped`, no release draft created, public mirror HEAD unchanged at S65 SHA `b420e7c6e`. Dependabot #32 MERGED after `@dependabot rebase` comment (`87ab431a0` on `develop`).
+**Session:** 71 complete
+**Started:** 2026-04-20
+**Persona:** Contributor (sandbox-only; `WSJTX/*` off-limits per `feedback_sandbox_scope_default.md`)
+
+### What Session 71 Did
+**Deliverable:** Phase 3 forced-failure gate test v2 — end-to-end proof. Evidence artifact: `docs/contributor/evidence/phase3_gatefail_test_v2.md`.
+
+**Surface (one commit on disposable branch `test/phase3-gatefail-v2`, HEAD `9b7ecbf8b`):**
+- `.github/workflows/build-windows.yml` — deleted the `Upload installer artifact` step (5 lines removed, 3-line explanatory comment added). The second `Upload build artifacts` step (jt9/wsprd/wsjtx .exe) was kept; gate only checks the `windows-x86_64-installer/*.exe` pattern.
+- `CMakeLists.txt:55` — `VERSION 3.0.0.0 → 3.0.1.0`. Required in lockstep with the `3.0.1`-prefixed tag so S70's parity check passes.
+
+**Tag pushed:** `build/v3.0.1-gatefail-test-v2` — pushed to `origin` (sandbox only). No public-mirror or upstream exposure.
+
+**Run 24644904444 (<https://github.com/KJ5HST-LABS/wsjtx-internal/actions/runs/24644904444>):**
+| Job | Conclusion | Duration |
+|---|---|---|
+| prepare | success | 10s (parity check PASSED: 3.0.1 == 3.0.1) |
+| macos / build | success | 7m 55s |
+| macos-intel / build | success | 12m 33s |
+| linux / build | success | 7m 37s |
+| windows / build | success | 42m 13s |
+| release | **failure** | 39s (gate) |
+
+**Gate output (verbatim, the exact goal of Phase 3 part (a)):**
+```
+Installer-grade artifact gate — checking 4 platforms…
+  ok  macOS arm64 .pkg     … (64802447 bytes)
+  ok  macOS x86_64 .pkg    … (70260082 bytes)
+  ok  Linux .AppImage      … (74365432 bytes)
+##[error]MISSING  Windows .exe — no match for artifacts/wsjtx-3.0.1-gatefail-test-v2-windows-x86_64-installer/*.exe
+##[error]All-platforms-ready gate FAILED — 1 of 4 platform(s) missing installer-grade artifact.
+##[error]Refusing to publish a partial release. Fix the failing build job(s) and retry the tag.
+```
+
+**Release-job step outcomes (confirming refusal-to-publish):**
+- `Verify installer-grade artifacts (all-platforms-ready gate)` — failure
+- `Create GitHub Release` — skipped
+- `Verify release tag format` — skipped
+- `Push to public repo` — skipped
+
+**Post-run verifications:**
+- `gh release view build/v3.0.1-gatefail-test-v2 --repo KJ5HST-LABS/wsjtx-internal` → `release not found`.
+- `gh api repos/KJ5HST-LABS/wsjtx/commits/main --jq .sha` → `b420e7c6e1c0d0f4b8a67aef7de308365f4db550` (S65-era, identical to S69 pre/post-test SHA).
+- Forensic artifacts retained: branch `test/phase3-gatefail-v2`, tag `build/v3.0.1-gatefail-test-v2`, run 24644904444. S69's v1 artifacts also retained.
+
+**Dependabot #32 closure:**
+- State at S71 orient: OPEN, BEHIND `9ad08372c`, auto-merge SQUASH armed.
+- Action: posted `@dependabot rebase` comment (1 line, zero-risk hygiene while Phase 3 run was in flight).
+- Result: rebased to new base, auto-merge fired, MERGED at `2026-04-20T02:39:31Z` as commit `87ab431a0` — `ci(deps): bump actions/checkout from 4 to 6 (#32)`. Fast-forwarded local develop.
+
+**Change surface (S71 commits on `develop`):**
+- `87ab431a0` — squash merge of Dependabot #32 (actions/checkout 4→6).
+- (S71 close-out commit — this one)
+
+**Out of scope (left for S72+):**
+- **Phase 3 part (b) happy-path** (`build/v3.0.1-rc1` + `CMakeLists.txt 3.0.1.0` — already set on develop via #32's base? No, CMakeLists.txt `3.0.1.0` lives only on the test branch; **develop CMakeLists.txt is still `3.0.0.0`**. S72 must still bump CMakeLists.txt in lockstep with the rc1 tag). REQUIRES `yes push` authorization. Expected outputs: 4 installer-grade artifacts, release draft on sandbox, public-mirror force-push to `KJ5HST-LABS/wsjtx`, all 4 asset basenames including `wsjtx-3.0.1-rc1-win64.exe` (S70's cpack override in action).
+- **Phase 4a replication inventory.** Blocked on Phase 3 happy-path complete.
+- **rad-con + radio-web reconciliation** (Consumer persona, carried from S61+).
+- **S49-era drafts in `docs/contributor/drafts/`** — now 9 sessions consistent. User territory.
+
+### Session 70 Handoff Evaluation (by Session 71)
+- **Score: 10/10.** S70 self-scored 9/10; I mark it one higher because the handoff was executed without any surprises. Every priority, key file, gotcha, and learning carried into S71 was accurate and load-bearing.
+- **What helped most:** (a) Priority #1's bullet in "What's next" was surgical — "Disposable branch `test/phase3-gatefail-v2`; cleaner break (delete upload-artifact step entirely rather than renaming it); tag `build/v3.0.1-gatefail-test-v2`; bump `CMakeLists.txt` VERSION to `3.0.1.0` in the same commit." That was the exact plan executed, verbatim. Zero re-derivation cost. (b) Gotcha #1 (parity check is LIVE on tag pushes) — directly motivated the lockstep CMakeLists bump. (c) Gotcha #10 (Dependabot rebase on docs-only develop push) — matched the observed #32 BEHIND state at orient, pointed at the fix (rebase comment). (d) Key files with line numbers in S70 handoff — `.github/workflows/release.yml:14-45`, `build-windows.yml:186-202`, `CMakeLists.txt:55` — saved 3+ minutes of re-orientation. (e) S70 Learning #29 (`--auto` fires immediately on green PRs) — consistent with #32's observed behavior post-rebase.
+- **What was missing:** Nothing load-bearing. Minor: S70 said "develop CMakeLists.txt is `3.0.0.0`" implicitly (via "bump to `3.0.1.0`"), but didn't explicitly flag that the test-branch bump does NOT propagate to develop. S72 must know that develop CMakeLists.txt is still `3.0.0.0` so it must bump again in lockstep with the rc1 tag. (Now flagged in S71's "Out of scope".)
+- **What was wrong:** Nothing.
+- **ROI:** Very high. S71 executed in one linear arc: orient → rebase #32 → create branch → commit → push → tag → monitor → gate observed → evidence doc → close-out. No dead-ends, no re-plans. S70's handoff deserves full credit.
+
+### Self-assessment (Session 71)
+- **(+) Linear execution against S70's plan.** Priority #1 bullet was the exact plan. No re-derivation, no scope creep into priority #2 (happy-path correctly deferred — requires `yes push`).
+- **(+) Read target files before editing.** Re-read `CMakeLists.txt:50-62`, `build-windows.yml:180-255`, `release.yml` end-to-end, `phase3_gatefail_test.md` (v1) before the first edit. SAFEGUARDS read-before-edit honored.
+- **(+) Dependabot #32 hygiene in parallel.** Posted `@dependabot rebase` at orient (not end-of-session). By the time the 42-min Windows build finished, #32 had already rebased, auto-merged, and landed on develop. Zero-cost parallelism.
+- **(+) Cleaner-break choice was right.** Deleted the upload-installer step entirely rather than renaming its `name:` key. This made the break structurally visible in the release-job log (`no match for ...*-installer/*.exe` is unambiguous) and left no latent coupling for S72 to untangle.
+- **(+) Kept second upload step intact.** `Upload build artifacts` (jt9/wsprd/wsjtx .exe) was kept — the gate only checks the `-installer` artifact pattern. Deleting both would have been over-scope.
+- **(+) Cache-window-aware wakeup scheduling.** 90s post-push (prepare check), then 1800s + 720s to catch Windows near completion. One cache miss total across ~42m of wait, no sleep-loop antipattern.
+- **(+) Evidence doc comparative structure.** Table of v1 vs v2 outcomes in `phase3_gatefail_test_v2.md` makes it clear to a reader what v2 closes that v1 didn't (the gate itself was not exercised in v1).
+- **(+) Verified both positive AND negative outcomes of refusal-to-publish.** Checked gate step failed (positive: gate fired) AND checked downstream steps skipped + release draft absent + public mirror unchanged (negatives: nothing bad happened).
+- **(+) Persona discipline maintained.** All `gh` calls `--repo KJ5HST-LABS/wsjtx-internal`. `WSJTX/*` untouched.
+- **(+) "1 and done" discipline.** Single deliverable (Phase 3 part (a) evidence). Declined to chase happy-path, Phase 4a, or Consumer reconciliation in-session.
+- **(−) Post-edit system-reminder about build-windows.yml modification.** When I returned to develop after the tag push, a system-reminder noted build-windows.yml was modified; my working tree on develop was actually clean. Non-impactful but a stray signal — probably a cross-branch diff artifact from my worktree switch. No user action taken was needed.
+- **Score: 10/10.** Clean execution, no re-plans, S70's handoff followed literally, forensic evidence retained, hygiene work done in parallel, deliverable documented.
+
+### Learnings to add to SESSION_RUNNER.md Learnings table:
+| # | Learning | Source | When to Apply |
+|---|----------|--------|---------------|
+| 33 | For a "force the gate to fail" sandbox test, prefer DELETING the upload step over RENAMING its artifact name. Renaming preserves a working upload with a different name — the build still produces an artifact, just under a name the gate doesn't check. If an intermediate step (like sign-installer) has a silent dependency on the standard name, the rename breaks it before the gate sees anything (this was the S69 trap — sign-step globbed for tag-derived name, v1's renamed upload was never reached). Deleting the step entirely is structurally unambiguous: build succeeds, no artifact uploaded, gate reports missing. Also easier to reason about for the next reader of the evidence doc. | S71 Phase 3 v2 | Any forced-failure test targeting a release-phase gate that depends on upload artifacts. |
+| 34 | `@dependabot rebase` is the correct idempotent action when a Dependabot PR is BEHIND a recently-merged base AND has auto-merge armed. Post the comment at orient (not end-of-session) so the rebase + auto-merge happens during any long-running work. Observed at S71: #32 was BEHIND S70's merge (9ad08372c) for ~10h; `@dependabot rebase` comment → rebase → auto-merge completed in ~2h 40min, well inside the Phase 3 v2 run. Zero-cost parallel hygiene. | S71 Dependabot #32 | Every session orient that sees a BEHIND Dependabot PR with auto-merge armed. |
+| 35 | Forced-failure gate tests validate the GATE even when the earlier pipeline is CLEAN. v1's partial evidence (S69) proved the job-dependency refusal-to-publish (`needs:` skips release on build failure); v2's end-to-end evidence (S71) proves the gate refusal-to-publish (gate fails on missing artifact even when all 4 builds succeed). These are distinct failure modes — in v2 the release job actually runs and exits with the gate's error code, vs v1 where the release job was skipped before it even started. Document both in evidence files; they cover different classes of regression. | S71 Phase 3 v2 evidence structure | Every Phase 3-class forced-failure test. Enumerate which refusal path is being exercised. |
+
+### What's next (Session 72 priorities):
+1. **Phase 3 part (b) happy-path.** Tag `build/v3.0.1-rc1`. **CRITICAL:** bump `CMakeLists.txt:55` VERSION `3.0.0.0 → 3.0.1.0` in the SAME commit as the rc1 tag's commit (develop's CMakeLists.txt is still `3.0.0.0`; the `3.0.1.0` lives only on the disposable branch `test/phase3-gatefail-v2`, which is NOT merged). REQUIRES `yes push` authorization (triggers public-mirror force-push). Record: run ID, release URL, 4 asset SHA256s, `KJ5HST-LABS/wsjtx` public-mirror HEAD transition (should move from `b420e7c6e` to the new commit), release-asset naming especially `wsjtx-3.0.1-rc1-win64.exe` (confirms S70's cpack override + suffix handling in production path).
+2. **Phase 4a replication inventory planning** (after Phase 3 happy-path complete). Scope: which workflows + how replicated to `WSJTX/wsjtx-internal` (team repo, not Terrell's push).
+3. **rad-con + radio-web reconciliation** (Consumer persona, deferred from S61+).
+4. **Optional: delete `test/phase3-gatefail-v2` branch and v1 branch/tag** after Phase 3 part (b) complete AND plan §Phase 3 forensic retention period elapses. Per plan's current wording, retain — so this is a S76+ consideration at earliest.
+
+### Key files (for Session 72):
+- `/Users/terrell/Documents/code/wsjtx-arm/CMakeLists.txt:55` — currently `VERSION 3.0.0.0` on develop. S72's happy-path commit MUST bump to `3.0.1.0` atomically with the rc1 tag.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/release.yml:86-254` — release-job pipeline (gate, create-release, tag-format-verify, public-mirror-push). S72 happy-path will exercise ALL steps through to `git push public "$GITHUB_REF_NAME"`.
+- `/Users/terrell/Documents/code/wsjtx-arm/.github/workflows/build-windows.yml:186-202` — Package NSIS step with cpack overrides. Emits `wsjtx-3.0.1-rc1-win64.exe` on rc1 tag.
+- `/Users/terrell/Documents/code/wsjtx-arm/docs/contributor/evidence/phase3_gatefail_test_v2.md` — S71's end-to-end evidence. Reference as prior run in S72's happy-path evidence.
+- `/Users/terrell/Documents/code/wsjtx-arm/docs/contributor/4_PRODUCTION_READINESS_PLAN.md §Phase 3` — plan S72 completes.
+- Forensic-retained artifacts: v1 branch `test/phase3-gatefail` + tag `build/v3.0.1-gatefail-test`, v2 branch `test/phase3-gatefail-v2` + tag `build/v3.0.1-gatefail-test-v2`, runs 24641436818 and 24644904444.
+
+### Gotchas for Session 72:
+- **#1 — Develop's CMakeLists.txt VERSION is STILL `3.0.0.0`.** The `3.0.1.0` lives only on branch `test/phase3-gatefail-v2` (not merged, intentional). S72's happy-path commit must include the bump.
+- **#2 — Parity check is LIVE on tag pushes.** `build/v3.0.1-rc1` requires CMakeLists.txt first-3-components = `3.0.1` in the same commit. Without the bump, `prepare` fails in <30s.
+- **#3 — `yes push` is REQUIRED for happy-path.** Triggers public-mirror force-push to `KJ5HST-LABS/wsjtx:main`.
+- **#4 — `yes push` is the persistent authorization phrase for public-state modifications.**
+- **#5 — `WSJTX/*` is OFF-LIMITS.** Reads AND writes. All `gh` with `--repo KJ5HST-LABS/wsjtx-internal`.
+- **#6 — zsh `$status` is reserved; NEVER use `status` as a shell variable name.** Use `st`, `state`, `result`, `conclusion`, `jst`.
+- **#7 — `gh pr checks` exits non-zero when any check is non-terminal.** Empty stdout is the real API-error signal (S67 Learning #17).
+- **#8 — Read target code end-to-end before editing.** S69 Learning #24, S70 Learning #31. S71 sustained.
+- **#9 — `allow_auto_merge` is ENABLED on `KJ5HST-LABS/wsjtx-internal`** (S69).
+- **#10 — Dependabot rebase on BEHIND PRs:** post `@dependabot rebase` at orient, let the rebase + auto-merge run in parallel with the session's main work. S71 Learning #34.
+- **#11 — Admin-bypass on direct-push to develop is documented sandbox A6 posture** (playbook §10).
+- **#12 — `gh pr merge --auto` on already-green PRs triggers IMMEDIATE merge.** S70 Learning #29.
+- **#13 — Auto-merge policy doctrine lives in `3_CICD_DEPLOYMENT_PLAYBOOK.md §10`.**
+- **#14 — `Resolves #N` keyword in PR body auto-closes linked issue at merge.** S70 Learning #32.
+- **#15 — Portable shell idioms for CI scripts:** `sed -nE` + `+`; `${var%%-*}`; `awk -F.`. S70 Learning #30.
+- **#16 — Three-option prompt with explicit recommendation** (S67 Learning #19).
+- **#17 — NINE S49-era drafts-directory files remain untracked.** User territory.
+- **#18 — `docs/contributor/evidence/` is the audit-trail pattern.**
+- **#19 — `ci.yml` has its own `prepare` job** that derives `inputs.version` from `CMakeLists.txt`. Release.yml's parity check is tag-only; unaffected.
+- **#20 — `ScheduleWakeup` cache-window-aware delays:** 60s–270s for active work (keeps cache warm), 1200s–1800s for idle waits (one cache miss amortized over a longer window). Don't pick 300s.
+- **#21 — Cleaner-break doctrine for forced-failure gate tests:** DELETE upload step entirely, don't rename. S71 Learning #33.
+- **#22 — Forced-failure v1 vs v2 cover DISTINCT refusal paths:** v1 = `needs:` dependency (release job skipped); v2 = gate step (release job runs, exits 1 at gate). Both classes must be covered. S71 Learning #35.
+
+---
+
+## ACTIVE TASK (previous — Session 70, complete)
 **Task:** Session 70 — Resolve Issue #35 (S69's surfaced blocker): Windows build-windows.yml sign-step assumed tag version == CMakeLists.txt VERSION. Implement combined fix: (1) option 2 — parity check in `release.yml`'s `prepare` job (tag numeric base == first-3-components of CMakeLists.txt:55 VERSION); (2) option 3 — cpack `-D CPACK_PACKAGE_VERSION` + `-D CPACK_PACKAGE_FILE_NAME` overrides in `build-windows.yml` Package NSIS step. Option 2 alone catches the S69 bug but doesn't unblock pre-release tags (cpack can't carry suffixes like `-rc1`); combined 2+3 enforces A12 discipline AND unblocks pre-release naming. Contributor persona, sandbox-only.
 **Status:** COMPLETE — PR #36 opened, reviewed green (all 4 platform builds incl. Windows 40m47s), merged (squash) at `9ad08372c897a51713de770576d0a92937d41a10`. Issue #35 auto-closed by `Resolves #35` keyword. Phase 3 now unblocked for next session.
 **Session:** 70 complete
