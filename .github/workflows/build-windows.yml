@@ -238,11 +238,18 @@ jobs:
           EXTRA_ARGS=()
           if [ "${{ inputs.arch }}" = "x86" ]; then
             PREFIX_PATH="${PREFIX_PATH};${WORKSPACE}/fftw-prefix;${WORKSPACE}/libusb-prefix"
-            # Explicit hints: FindFFTW3.cmake uses FFTW3_ROOT_DIR as its
-            # primary HINTS source; FindUsb.cmake goes through
-            # libfind_pkg_detect → pkg-config, so libusb-prefix must be
-            # on PKG_CONFIG_PATH.
+            # Explicit hints to keep the project's Find modules happy:
+            #   FindFFTW3.cmake honors FFTW3_ROOT_DIR as HINTS.
+            #   FindUsb.cmake (libfind_pkg_detect) probes pkg-config under
+            #   the module name 'usb-1.0', but libusb installs
+            #   'libusb-1.0.pc' — the name mismatch makes the pkg-config
+            #   probe empty, so the fall-back find_path / find_library
+            #   rely on PATH_SUFFIXES that don't match an autotools-style
+            #   install. Pre-seed the cache variables directly; the
+            #   layout is fixed and known.
             EXTRA_ARGS+=("-DFFTW3_ROOT_DIR=${WORKSPACE}/fftw-prefix")
+            EXTRA_ARGS+=("-DUsb_INCLUDE_DIR=${WORKSPACE}/libusb-prefix/include/libusb-1.0")
+            EXTRA_ARGS+=("-DUsb_LIBRARY=${WORKSPACE}/libusb-prefix/lib/libusb-1.0.a")
             export PKG_CONFIG_PATH="${WORKSPACE}/libusb-prefix/lib/pkgconfig:${WORKSPACE}/fftw-prefix/lib/pkgconfig:${PKG_CONFIG_PATH}"
           fi
           echo "Resolved CMAKE_PREFIX_PATH: ${PREFIX_PATH}"
