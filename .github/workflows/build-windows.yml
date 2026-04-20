@@ -186,7 +186,19 @@ jobs:
       - name: Package NSIS installer
         run: |
           cd wsjtx-build
-          cpack -G NSIS -V
+          # Issue #35 — override CPACK_PACKAGE_VERSION and
+          # CPACK_PACKAGE_FILE_NAME so the NSIS installer filename
+          # matches the tag-derived version exactly, including any
+          # pre-release suffix (-rc1, -beta1, etc.). CMakeLists.txt
+          # VERSION is numeric-only (CMake won't accept suffixes), so
+          # without this override cpack produces wsjtx-<numeric>-win64.exe
+          # while the sign step and upload-artifact paths below expect
+          # wsjtx-<inputs.version>-win64.exe. release.yml's prepare job
+          # enforces numeric-base parity; this override covers the
+          # suffix gap.
+          cpack -G NSIS -V \
+            -D CPACK_PACKAGE_VERSION="${{ inputs.version }}" \
+            -D CPACK_PACKAGE_FILE_NAME="wsjtx-${{ inputs.version }}-win64"
           ls -la *.exe
 
       # Issue #23 — self-signed sandbox signing. Proves the signing step is
