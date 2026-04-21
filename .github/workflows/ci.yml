@@ -74,14 +74,12 @@ jobs:
     with:
       version: ${{ needs.prepare.outputs.version }}
       hamlib_branch: "4.7.1"
-      arch: "x86_64"
     secrets: inherit
 
   windows-x86:
     needs: prepare
-    uses: ./.github/workflows/build-windows.yml
+    uses: ./.github/workflows/build-windows-x86.yml
     with:
       version: ${{ needs.prepare.outputs.version }}
       hamlib_branch: "4.7.1"
-      arch: "x86"
     secrets: inherit
