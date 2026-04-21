@@ -115,20 +115,28 @@ jobs:
         run: |
           echo "=== bash / compiler / Qt probe ==="
           echo "bash:   $(command -v bash)"
-          echo "gcc:    $(command -v gcc) — $(gcc --version | head -1)"
+          echo "gcc:    $(command -v gcc) — $(gcc --version 2>&1 | head -1)"
           echo "g++:    $(command -v g++)"
-          echo "gfortran: $(command -v gfortran) — $(gfortran --version | head -1)"
-          echo "cmake:  $(command -v cmake) — $(cmake --version | head -1)"
+          echo "gfortran: $(command -v gfortran) — $(gfortran --version 2>&1 | head -1)"
+          echo "cmake:  $(command -v cmake) — $(cmake --version 2>&1 | head -1)"
           echo "make:   $(command -v make)"
           echo "qmake:  $(command -v qmake) — $(qmake --version 2>&1 | head -2)"
           echo "osslsigncode: $(command -v osslsigncode)"
           echo "nsis (makensis): $(command -v makensis)"
           echo
-          echo "=== /mingw32 layout ==="
-          ls /mingw32/bin | head -30
-          echo "…"
           echo "=== Qt5 cmake config ==="
-          find /mingw32 -name 'Qt5Config.cmake' 2>/dev/null | head -3 || true
+          find /c/JTSDK32-Tools -name 'Qt5Config.cmake' 2>/dev/null | head -5 || true
+          echo
+          echo "=== Boost ==="
+          find /c/JTSDK32-Tools -name 'BoostConfig.cmake' 2>/dev/null | head -5 || true
+          find /c/JTSDK32-Tools -maxdepth 6 -name 'boost' -type d 2>/dev/null | head -5 || true
+          find /c/JTSDK32-Tools -maxdepth 6 -name 'libboost_log*' 2>/dev/null | head -5 || true
+          echo
+          echo "=== FFTW ==="
+          find /c/JTSDK32-Tools -name 'libfftw3f*' 2>/dev/null | head -5 || true
+          echo
+          echo "=== libusb ==="
+          find /c/JTSDK32-Tools -name 'libusb*.a' -o -name 'libusb*.dll' -o -name 'libusb*.dll.a' 2>/dev/null | head -5 || true
 
       - name: Cache pFUnit
         id: pfunit-cache
