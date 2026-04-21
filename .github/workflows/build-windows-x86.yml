@@ -59,7 +59,10 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path C:\jtsdk-installer | Out-Null
-          $url = "https://downloads.sourceforge.net/project/hamlib-sdk/Windows/JTSDK-3.3-x86-Stream/JTSDK-3.3.1-x86-EXPERIMENT.exe"
+          # Use SourceForge's master.dl mirror directly — the downloads.sourceforge.net
+          # front door serves an HTML redirect page that Invoke-WebRequest
+          # saves as the "download" (145 KB instead of the expected 353 MB).
+          $url = "https://master.dl.sourceforge.net/project/hamlib-sdk/Windows/JTSDK-3.3-x86-Stream/JTSDK-3.3.1-x86-EXPERIMENT.exe?viasf=1"
           $dest = "C:\jtsdk-installer\jtsdk.exe"
           Write-Host "Downloading JTSDK 3.3.1-x86 installer…"
           Invoke-WebRequest -Uri $url -OutFile $dest -UseBasicParsing
