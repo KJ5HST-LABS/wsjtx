@@ -36,66 +36,39 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - uses: msys2/setup-msys2@v2
+      # MSYS2 delisted mingw-w64-i686 Qt5, FFTW, and libusb from the
+      # current i686 pacman database in late 2024. Pinning to an
+      # older setup-msys2 release + update: false keeps the bundled
+      # historical database, which still knows about those packages.
+      # The package files themselves remain hosted at repo.msys2.org,
+      # so pacman's fetch on the historical names succeeds. The
+      # x86_64 job uses the same pinned base — its packages haven't
+      # been removed and the old snapshot is a superset of what it
+      # needs.
+      - uses: msys2/setup-msys2@v2.24.0
         with:
           msystem: ${{ inputs.arch == 'x86' && 'MINGW32' || 'MINGW64' }}
-          update: true
+          update: false
           cache: true
-          # MSYS2 removed mingw-w64-i686 Qt5, FFTW, and libusb from its
-          # i686 repo in late 2024. They're still hosted as files on
-          # repo.msys2.org/mingw/mingw32/ — just de-indexed from the
-          # pacman database. For x86 we omit them from the install list
-          # here and pull them directly in the next step.
           install: >-
             git make tar
             ${{ env.PKG }}-gcc
             ${{ env.PKG }}-gcc-fortran
             ${{ env.PKG }}-cmake
+            ${{ env.PKG }}-qt5-base
+            ${{ env.PKG }}-qt5-multimedia
+            ${{ env.PKG }}-qt5-serialport
+            ${{ env.PKG }}-qt5-tools
+            ${{ env.PKG }}-qt5-websockets
+            ${{ env.PKG }}-qt5-activeqt
+            ${{ env.PKG }}-fftw
             ${{ env.PKG }}-boost
+            ${{ env.PKG }}-libusb
             ${{ env.PKG }}-portaudio
             ${{ env.PKG }}-pkg-config
             ${{ env.PKG }}-nsis
             ${{ env.PKG }}-osslsigncode
             autoconf automake libtool
-            ${{ inputs.arch != 'x86' && format('{0}-qt5-base {0}-qt5-multimedia {0}-qt5-serialport {0}-qt5-tools {0}-qt5-websockets {0}-qt5-activeqt {0}-fftw {0}-libusb', env.PKG) || '' }}
-
-      # ── x86-only: pull the i686 Qt5 / FFTW / libusb packages from
-      # MSYS2's archive CDN ──────────────────────────────────────────
-      # MSYS2 delisted these from the i686 pacman database in late
-      # 2024 but the .pkg.tar.zst files remain hosted at
-      # repo.msys2.org. Versions pinned to the last release present
-      # in the archive (verified via directory index before commit).
-      # qt5-serialport and qt5-websockets both cap at 5.15.14; Qt5
-      # patch-level ABI compatibility lets us use 5.15.14 across all
-      # components. pacman -U installs local .pkg.tar.zst files
-      # directly. --overwrite '*' tolerates files the base install
-      # may have already laid down.
-      - name: Install archived i686 Qt5/FFTW/libusb (x86 only)
-        if: inputs.arch == 'x86'
-        run: |
-          set -euo pipefail
-          MIRROR="https://repo.msys2.org/mingw/mingw32"
-          PKGS=(
-            "mingw-w64-i686-qt5-base-5.15.14%2Bkde%2Br143-1-any.pkg.tar.zst"
-            "mingw-w64-i686-qt5-multimedia-5.15.14-1-any.pkg.tar.zst"
-            "mingw-w64-i686-qt5-serialport-5.15.14-1-any.pkg.tar.zst"
-            "mingw-w64-i686-qt5-tools-5.15.14-1-any.pkg.tar.zst"
-            "mingw-w64-i686-qt5-websockets-5.15.14%2Bkde%2Br2-1-any.pkg.tar.zst"
-            "mingw-w64-i686-qt5-activeqt-5.15.14-1-any.pkg.tar.zst"
-            "mingw-w64-i686-fftw-3.3.10-5-any.pkg.tar.zst"
-            "mingw-w64-i686-libusb-1.0.26-1-any.pkg.tar.zst"
-          )
-          mkdir -p /tmp/archived-pkgs
-          cd /tmp/archived-pkgs
-          for pkg in "${PKGS[@]}"; do
-            # curl downloads to a file named with %2B preserved — rename
-            # to the decoded form so pacman sees a canonical local name.
-            local_name="${pkg//%2B/+}"
-            echo "Fetching ${local_name}…"
-            curl -fsSL -o "${local_name}" "${MIRROR}/${pkg}"
-          done
-          ls -lh
-          pacman -U --noconfirm --overwrite='*' ./*.pkg.tar.zst
 
       - name: Cache pFUnit
         id: pfunit-cache

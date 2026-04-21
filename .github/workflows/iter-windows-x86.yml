@@ -1,0 +1,34 @@
+name: Iter Windows x86
+
+# Dispatch-only workflow used while bringing up the Win32 build.
+# Runs ONLY the windows-x86 job — skips macOS/Linux/Win64 platforms
+# that are already passing, to avoid burning runner minutes during
+# iteration. Delete this file once the x86 path is stable.
+
+on:
+  workflow_dispatch:
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: v
+        run: |
+          VERSION=$(grep -E '^\s*VERSION\s+[0-9]' CMakeLists.txt | head -1 | awk '{print $2}' | cut -d. -f1-3)
+          if [ -z "$VERSION" ]; then
+            echo "::error::Could not derive VERSION from CMakeLists.txt"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+  windows-x86:
+    needs: prepare
+    uses: ./.github/workflows/build-windows.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      hamlib_branch: "4.7.1"
+      arch: "x86"
+    secrets: inherit
