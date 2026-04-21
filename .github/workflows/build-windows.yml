@@ -50,6 +50,10 @@ jobs:
           msystem: ${{ inputs.arch == 'x86' && 'MINGW32' || 'MINGW64' }}
           update: false
           cache: true
+          # libusb and osslsigncode were added to mingw32 AFTER the
+          # pinned v2.24.0 bundled database was cut, so they're not
+          # resolvable via the normal install list for x86. Pulled
+          # from repo.msys2.org archive via a separate step below.
           install: >-
             git make tar
             ${{ env.PKG }}-gcc
@@ -63,12 +67,33 @@ jobs:
             ${{ env.PKG }}-qt5-activeqt
             ${{ env.PKG }}-fftw
             ${{ env.PKG }}-boost
-            ${{ env.PKG }}-libusb
             ${{ env.PKG }}-portaudio
             ${{ env.PKG }}-pkg-config
             ${{ env.PKG }}-nsis
-            ${{ env.PKG }}-osslsigncode
             autoconf automake libtool
+            ${{ inputs.arch != 'x86' && format('{0}-libusb {0}-osslsigncode', env.PKG) || '' }}
+
+      # x86-only: libusb and osslsigncode via repo.msys2.org archive.
+      # Both are simple packages with lean dep chains (already
+      # satisfied by the base install above). All URLs verified 200
+      # before commit.
+      - name: Install libusb + osslsigncode from archive (x86 only)
+        if: inputs.arch == 'x86'
+        run: |
+          set -euo pipefail
+          MIRROR="https://repo.msys2.org/mingw/mingw32"
+          PKGS=(
+            "mingw-w64-i686-libusb-1.0.26-1-any.pkg.tar.zst"
+            "mingw-w64-i686-osslsigncode-2.13-1-any.pkg.tar.zst"
+          )
+          mkdir -p /tmp/archived-pkgs
+          cd /tmp/archived-pkgs
+          for pkg in "${PKGS[@]}"; do
+            echo "Fetching ${pkg}…"
+            curl -fsSL -o "${pkg}" "${MIRROR}/${pkg}"
+          done
+          ls -lh
+          pacman -U --noconfirm --overwrite='*' ./*.pkg.tar.zst
 
       - name: Cache pFUnit
         id: pfunit-cache
