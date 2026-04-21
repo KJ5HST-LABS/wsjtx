@@ -27,6 +27,16 @@ on:
 jobs:
   build:
     runs-on: windows-latest
+    # MSYS2's /etc/profile uses MSYSTEM to decide which subsystem PATH
+    # to configure. Without it the login shell falls back to plain MSYS
+    # (just /usr/bin + /usr/local/bin), which leaves /mingw32/bin
+    # invisible and strips gcc/cmake/qmake/etc. MSYS2_PATH_TYPE=inherit
+    # keeps the Windows PATH (so tools like git from the runner stay
+    # accessible).
+    env:
+      MSYSTEM: MINGW32
+      MSYS2_PATH_TYPE: inherit
+      CHERE_INVOKING: 1
     defaults:
       run:
         # JTSDK's bundled MSYS2 bash, --login reads /etc/profile which
