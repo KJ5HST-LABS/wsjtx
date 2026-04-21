@@ -184,9 +184,12 @@ jobs:
           # with the upstream 0.29.2 macro so autoreconf's
           # PKG_PROG_PKG_CONFIG version check passes. The path is the
           # MSYS2-standard aclocal dir; no detection needed.
+          # freedesktop.org GitLab's /-/raw/ endpoint returns 404 for
+          # this path; use pkgconf's GitHub mirror, which ships a
+          # pkg.m4 that defines PKG_MACROS_VERSION=0.29.2 (verified).
           curl -fsSL -o /usr/share/aclocal/pkg.m4 \
-            https://gitlab.freedesktop.org/pkg-config/pkg-config/-/raw/pkg-config-0.29.2/pkg.m4
-          echo "Updated /usr/share/aclocal/pkg.m4 to 0.29.2"
+            https://raw.githubusercontent.com/pkgconf/pkgconf/master/pkg.m4
+          echo "Updated /usr/share/aclocal/pkg.m4 (pkgconf pkg.m4, PKG_MACROS_VERSION=0.29.2)"
           git clone --depth 1 --branch "${{ inputs.hamlib_branch }}" \
             https://github.com/Hamlib/Hamlib.git hamlib-src
           cd hamlib-src
