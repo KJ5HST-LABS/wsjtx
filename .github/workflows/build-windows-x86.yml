@@ -177,19 +177,16 @@ jobs:
       - name: Build Hamlib
         if: steps.hamlib-cache.outputs.cache-hit != 'true'
         run: |
+          set -x
           WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
           # JTSDK 3.3.1-x86 ships pkgconf 0.29.1; Hamlib's configure.ac
-          # demands pkg.m4 >= 0.29.2. Drop the 0.29.2 macro from
-          # upstream pkg-config into the aclocal include dir so
-          # autoreconf's PKG_PROG_PKG_CONFIG macro version check passes.
-          ACLOCAL_DIR=$(aclocal --print-ac-dir)
-          if [ -f "${ACLOCAL_DIR}/pkg.m4" ]; then
-            CURRENT=$(grep -oE 'pkg_major_version=[0-9]+|pkg_minor_version=[0-9]+' "${ACLOCAL_DIR}/pkg.m4" | paste -sd. - | sed 's/pkg_major_version=//;s/pkg_minor_version=//')
-            echo "Existing pkg.m4 at ${ACLOCAL_DIR}: ${CURRENT:-unknown}"
-          fi
-          curl -fsSL -o "${ACLOCAL_DIR}/pkg.m4" \
+          # demands pkg.m4 >= 0.29.2. Overwrite /usr/share/aclocal/pkg.m4
+          # with the upstream 0.29.2 macro so autoreconf's
+          # PKG_PROG_PKG_CONFIG version check passes. The path is the
+          # MSYS2-standard aclocal dir; no detection needed.
+          curl -fsSL -o /usr/share/aclocal/pkg.m4 \
             https://gitlab.freedesktop.org/pkg-config/pkg-config/-/raw/pkg-config-0.29.2/pkg.m4
-          echo "Updated pkg.m4 to 0.29.2 at ${ACLOCAL_DIR}/pkg.m4"
+          echo "Updated /usr/share/aclocal/pkg.m4 to 0.29.2"
           git clone --depth 1 --branch "${{ inputs.hamlib_branch }}" \
             https://github.com/Hamlib/Hamlib.git hamlib-src
           cd hamlib-src
