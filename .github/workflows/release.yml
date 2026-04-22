@@ -10,7 +10,7 @@ jobs:
   # rather than "wsjtx-build/v3.0.1-rc1-*". RC/beta suffixes (e.g.
   # build/v3.0.1-rc1 → 3.0.1-rc1) are preserved so pre-release artifacts
   # are distinguishable from GA. All downstream jobs consume this
-  # single output so the four platform artifacts cannot disagree.
+  # single output so the five platform artifacts cannot disagree.
   prepare:
     runs-on: ubuntu-latest
     outputs:
@@ -27,7 +27,7 @@ jobs:
       # version stripped of any `-<suffix>` against the first three
       # dotted components of CMakeLists.txt VERSION. Mismatch means the
       # release commit forgot to bump CMakeLists.txt in lockstep with
-      # the tag; fail fast here before four platform builds burn ~30
+      # the tag; fail fast here before five platform builds burn ~30
       # minutes of CI.
       - name: Verify tag ↔ CMakeLists.txt version parity
         run: |
@@ -44,7 +44,7 @@ jobs:
           fi
           echo "Parity check PASSED."
 
-  # ── Build all four platforms ───────────────────────────────────────
+  # ── Build all five platforms ───────────────────────────────────────
   macos:
     needs: prepare
     uses: ./.github/workflows/build-macos.yml
@@ -131,7 +131,7 @@ jobs:
       # ── All-platforms-ready gate (Issue #25) ───────────────────────────
       # Refuse to publish unless every platform produced an installer-grade
       # artifact. The release job's `needs:` already enforces structural
-      # success (all 4 builds ran and exited 0), but a build can exit 0
+      # success (all 5 builds ran and exited 0), but a build can exit 0
       # without actually packaging — e.g. a packaging step behind an `if:`
       # that evaluated false, or an upload-artifact step that silently
       # matched zero files. This gate fails the release job BEFORE any
@@ -195,7 +195,7 @@ jobs:
         run: |
           TAG="${GITHUB_REF_NAME}"
           # Filter to user-facing release assets. `find artifacts -type f`
-          # without filtering pulls in 4× ctest-results.xml (one per
+          # without filtering pulls in 5× ctest-results.xml (one per
           # platform) and per-binary tarballs from individual-binaries-*
           # that collide on basename across architectures — `gh release
           # create` uses basenames as asset names and duplicates cause
