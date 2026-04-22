@@ -31,6 +31,7 @@ wsjtx-build/
 dashboard.html
 jt9_wisdom.dat
 timer.out
+aqtinstall.log
 
 # macOS
 .DS_Store
