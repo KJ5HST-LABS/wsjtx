@@ -57,16 +57,28 @@ jobs:
       - name: Resolve target SHA
         id: resolve
         env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           INPUT_SHA: ${{ inputs.target_sha }}
           INPUT_BRANCH: ${{ inputs.source_branch }}
         run: |
-          set -euo pipefail
+          set -uo pipefail
           if [ -n "$INPUT_SHA" ]; then
-            sha=$(git rev-parse "$INPUT_SHA^{commit}")
+            ref="$INPUT_SHA"
             source="explicit input ($INPUT_SHA)"
           else
-            sha=$(git rev-parse "origin/$INPUT_BRANCH^{commit}")
+            ref="$INPUT_BRANCH"
             source="tip of $INPUT_BRANCH"
+          fi
+          # GitHub API resolves any ref the repo can see (full SHA, short SHA,
+          # branch, tag) regardless of local fetch state. Avoids git rev-parse
+          # exit-128 noise on SHAs that exist in the repo's network but
+          # haven't been fetched into the runner's clone.
+          sha=$(gh api "repos/${GITHUB_REPOSITORY}/commits/$ref" --jq '.sha' 2>/dev/null || true)
+          if [ -z "$sha" ] || [ "$sha" = "null" ]; then
+            echo "::error::Could not resolve '$ref' to a commit in ${GITHUB_REPOSITORY}. Verify the SHA, branch, or tag exists in this repo."
+            echo "sha=" >> "$GITHUB_OUTPUT"
+            echo "source=$source (UNRESOLVED)" >> "$GITHUB_OUTPUT"
+            exit 1
           fi
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
           echo "source=$source" >> "$GITHUB_OUTPUT"
