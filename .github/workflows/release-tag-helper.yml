@@ -73,7 +73,14 @@ jobs:
           # branch, tag) regardless of local fetch state. Avoids git rev-parse
           # exit-128 noise on SHAs that exist in the repo's network but
           # haven't been fetched into the runner's clone.
-          sha=$(gh api "repos/${GITHUB_REPOSITORY}/commits/$ref" --jq '.sha' 2>/dev/null || true)
+          # Note: `gh api --jq` lets the error body through to stdout when
+          # the HTTP call fails, so check the exit code explicitly and run
+          # jq separately on the success body.
+          if response=$(gh api "repos/${GITHUB_REPOSITORY}/commits/$ref" 2>/dev/null); then
+            sha=$(echo "$response" | jq -r '.sha')
+          else
+            sha=""
+          fi
           if [ -z "$sha" ] || [ "$sha" = "null" ]; then
             echo "::error::Could not resolve '$ref' to a commit in ${GITHUB_REPOSITORY}. Verify the SHA, branch, or tag exists in this repo."
             echo "sha=" >> "$GITHUB_OUTPUT"
