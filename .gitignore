@@ -29,6 +29,7 @@ lib/tmp
 wsjtx-3.0.0-rc1/
 wsjtx-build/
 dashboard.html
+methodology_dashboard.py
 jt9_wisdom.dat
 timer.out
 aqtinstall.log
