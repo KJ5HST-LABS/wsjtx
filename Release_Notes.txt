@@ -11,7 +11,36 @@
 
 Copyright 2001 - 2026 by Joe Taylor, K1JT, and the WSJT Development Team
 
-                        Release: WSJT-X 3.0.0
+                        Release: WSJT-X 3.0.1
+                             May 4, 2026
+                      -------------------------
+
+WSJT-X 3.0.1 is a bug-fix release; installation packages include QMAP
+but not MAP65. Code has the following changes since release 3.0.0:
+
+ - In posts sent to PSKReporter, version 3.0.0 incorrectly identified
+   itself as "WSJT-X v3.0.0 i+". Corrected.
+
+ - Uploads to CloudLog are re-enabled.
+
+ - UI Compatibility mode is enabled for better display on macOS Tahoe.
+
+ - A bug sometimes affecting CW transmissions in Echo mode has been
+   fixed.
+
+ - A bug preventing callsign highlighting in some circumstances has
+   been fixed.
+
+ - Corrected band limits for the 2.5 mm and 2 mm bands.
+
+ - Correct faulty repositioning of SWR label in status bar, after a
+   mode switch.
+
+ - Fix stale Band Activity decodes after enabling SuperFox while in
+   Hound mode (reported by AF8C).
+
+
+			Release: WSJT-X 3.0.0
                             April 8, 2026
                       -------------------------
 

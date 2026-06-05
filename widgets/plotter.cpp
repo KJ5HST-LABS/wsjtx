@@ -14,13 +14,18 @@
 #include <iostream>
 
 #define MAX_SCREENSIZE 8192
+namespace
+{
+  // Matches WideGraph's m_swide capacity and dialog width limit.
+  constexpr int kWaterfallStorageWidth = 2048;
+}
 
 extern "C" {
   void flat4_(float swide[], int* iz, int* nflatten);
   void plotsave_(float swide[], int* m_w , int* m_h1, int* irow);
 }
 
-extern dec_data dec_data;
+extern dec_data_t& dec_data;
 
 CPlotter::CPlotter(QWidget *parent) :                  //CPlotter Constructor
   QFrame {parent},
@@ -109,11 +114,17 @@ void CPlotter::resizeEvent(QResizeEvent* )                    //resizeEvent()
     m_HoverOverlayPixmap.fill(Qt::transparent);
     m_2DPixmap = QPixmap(m_Size.width(), m_h2);
     m_2DPixmap.fill(Qt::black);
-    m_WaterfallPixmap = QPixmap(m_Size.width(), m_h1);
+    QPixmap const oldWaterfall = m_WaterfallPixmap;
+    m_WaterfallPixmap = QPixmap(kWaterfallStorageWidth, m_h1);
+    m_WaterfallPixmap.fill(Qt::black);
+    if(!oldWaterfall.isNull()) {
+      // The frequency-to-pixel mapping is width-independent and row 0 is the
+      // newest line, so the top-left overlap stays valid across a resize.
+      QPainter p(&m_WaterfallPixmap);
+      p.drawPixmap(0, 0, oldWaterfall);
+    }
     m_OverlayPixmap = QPixmap(m_Size.width(), m_h2);
     m_OverlayPixmap.fill(Qt::black);
-    m_WaterfallPixmap.fill(Qt::black);
-    m_2DPixmap.fill(Qt::black);
     m_ScalePixmap = QPixmap(m_w,30);
     m_ScalePixmap.fill(Qt::white);
     m_Percent2DScreen0 = m_Percent2DScreen;
@@ -130,7 +141,7 @@ void CPlotter::paintEvent(QPaintEvent *)                                // paint
   m_paintEventBusy=true;
   QPainter painter(this);
   painter.drawPixmap(0,0,m_ScalePixmap);
-  painter.drawPixmap(0,30,m_WaterfallPixmap);
+  painter.drawPixmap(0,30,m_WaterfallPixmap,0,0,m_w,m_h1);
   painter.drawPixmap(0,m_h1,m_2DPixmap);
   int x = XfromFreq(m_rxFreq);
   if (m_bars) {
@@ -148,6 +159,7 @@ void CPlotter::draw(float swide[], bool bScroll, bool bRed)
   if (!m_TRperiod) return;      // not ready to plot yet
   int j,j0;
   float y,y2,ymin;
+  bool const drawWaterfall = bScroll or bRed or m_bReplot;
   double fac = sqrt(m_binsPerPixel*m_waterfallAvg/15.0);
   double gain = fac*pow(10.0,0.015*m_plotGain);
   double gain2d = pow(10.0,0.02*(m_plot2dGain));
@@ -156,7 +168,11 @@ void CPlotter::draw(float swide[], bool bScroll, bool bRed)
   m_bReference0=m_bReference;
 
 //move current data down one line (must do this before attaching a QPainter object)
-  if(bScroll and !m_bReplot) m_WaterfallPixmap.scroll(0,1,0,0,m_w,m_h1);
+  int waterfallWidth = m_WaterfallPixmap.width();
+  if(waterfallWidth<1) return;
+  if(bScroll and !m_bReplot) {
+    m_WaterfallPixmap.scroll(0,1,0,0,waterfallWidth,m_h1);
+  }
   QPainter painter1(&m_WaterfallPixmap);
   if(m_bFirst or bRed or !m_bQ65_Sync or m_mode!=m_mode0
      or m_bResized or m_rxFreq!=m_rxFreq0) {
@@ -186,32 +202,47 @@ void CPlotter::draw(float swide[], bool bScroll, bool bRed)
   static QPoint LineBuf4[MAX_SCREENSIZE];
   j=0;
   j0=int(m_startFreq/m_fftBinWidth + 0.5);
+  int izWaterfall = int((5000.0 - m_startFreq)/(m_binsPerPixel*m_fftBinWidth) + 0.5);
+  if(izWaterfall<0) izWaterfall=0;
+  if(izWaterfall>waterfallWidth) izWaterfall=waterfallWidth;
   int iz=XfromFreq(5000.0);
-  int jz=iz*m_binsPerPixel;
+  if(iz>izWaterfall) iz=izWaterfall;
+  int jz=izWaterfall*m_binsPerPixel;
   m_fMax=FreqfromX(iz);
   if(bScroll and swide[0]<1.e29) {
-    flat4_(swide,&iz,&m_Flatten);
-    if(!m_bReplot) flat4_(&dec_data.savg[j0],&jz,&m_Flatten);
+    if(izWaterfall>0) flat4_(swide,&izWaterfall,&m_Flatten);
+    if(!m_bReplot) {
+      int savgBins = jz;
+      int availableBins = NSMAX - j0;
+      if(savgBins > availableBins) savgBins = availableBins;
+      if(savgBins > 0) flat4_(&dec_data.savg[j0],&savgBins,&m_Flatten);
+    }
   }
 
   ymin=1.e30;
   if(swide[0]>1.e29 and swide[0]< 1.5e30) painter1.setPen(Qt::green);
   if(swide[0]>1.4e30) painter1.setPen(Qt::red);
-  if(!m_bReplot) {
+  if(bScroll and !m_bReplot) {
     m_j=0;
     int irow=-1;
-    plotsave_(swide,&m_w,&m_h1,&irow);
+    plotsave_(swide,&waterfallWidth,&m_h1,&irow);
   }
   ymin = 0;
-  for(int i=0; i<iz; i++) {
-    y=swide[i];
-    int y1 = 10.0*gain*y + m_plotZero;
-    if (y1<0) y1=0;
-    if (y1>254) y1=254;
-    if (swide[i]<1.e29) painter1.setPen(g_ColorTbl[y1]);
-    painter1.drawPoint(i,m_j);
+  if(drawWaterfall) {
+    for(int i=0; i<izWaterfall; i++) {
+      y=swide[i];
+      if( y != y ) y=0.0;   // check for nan - a nan is not equal to itself
+      y = 10.0*gain*y + m_plotZero;
+      if (y<0.0) y=0.0;
+      if (y>254.0) y=254.0;
+      int y1 = y;
+      if (swide[i]<1.e29) painter1.setPen(g_ColorTbl[y1]);
+      painter1.drawPoint(i,m_j);
+    }
   }
-  m_line++;
+  if(drawWaterfall) m_line++;
+
+  if(m_bReplot and m_mode!="Q65") return;
 
   float y2min=1.e30;
   float y2max=-1.e30;
@@ -223,7 +254,7 @@ void CPlotter::draw(float swide[], bool bScroll, bool bRed)
     if(bScroll) {
       float sum=0.0;
       int j=j0+m_binsPerPixel*i;
-      for(int k=0; k<m_binsPerPixel; k++) {
+      for(int k=0; (k<m_binsPerPixel && j<NSMAX-1); k++) {
         sum+=dec_data.savg[j++];
       }
       m_sum[i]=sum;
@@ -234,10 +265,12 @@ void CPlotter::draw(float swide[], bool bScroll, bool bRed)
     if(m_bLinearAvg) {                                   //Linear Avg (yellow)
       float sum=0.0;
       int j=j0+m_binsPerPixel*i;
-      for(int k=0; k<m_binsPerPixel; k++) {
+      int n=0;
+      for(int k=0; k<m_binsPerPixel and j<NSMAX; k++) {
         sum+=spectra_.syellow[j++];
+        n++;
       }
-      y2=2.0*gain2d*sum/m_binsPerPixel + m_plot2dZero;
+      if(n>0) y2=2.0*gain2d*sum/n + m_plot2dZero;
     }
 
     if(m_bReference) {                                   //Reference (red)
@@ -257,7 +290,12 @@ void CPlotter::draw(float swide[], bool bScroll, bool bRed)
     if(y2>y2max) y2max=y2;
     j++;
   }
-  if(m_bReplot and m_mode!="Q65") return;
+
+  if(!drawWaterfall) {
+    update();
+    m_bScaleOK=true;
+    return;
+  }
 
   if(swide[0]>1.0e29) m_line=0;
   if(m_mode=="FT4" and m_line==34) m_line=0;
@@ -271,7 +309,7 @@ void CPlotter::draw(float swide[], bool bScroll, bool bRed)
     } else {
       auto hr = m_nUTC / 10000;
       auto start = QTime {hr, (m_nUTC - 10000 * hr) / 100, m_nUTC % 100}
-         .toString (m_TRperiod < 60. ? "hh:mm:ss" : "hh:mm");
+         .toString ((m_TRperiod < 60.0) or (m_mode=="JTTY") ? "hh:mm:ss" : "hh:mm");
       t = QString {"%1    %2"}.arg (start).arg (m_rxBand);
     }
     QRect rect{5, -2, m_w-10, painter1.fontMetrics().ascent()};
@@ -370,11 +408,13 @@ void CPlotter::drawRed(int ia, int ib, float swide[])
 void CPlotter::replot()
 {
   resizeEvent(NULL);
-  float swide[m_w];
+  int waterfallWidth = m_WaterfallPixmap.width();
+  if(waterfallWidth<1) return;
+  float *swide = new float [waterfallWidth];
   m_bReplot=true;
   for(int irow=0; irow<m_h1; irow++) {
     m_j=irow;
-    plotsave_(swide,&m_w,&m_h1,&irow);
+    plotsave_(swide,&waterfallWidth,&m_h1,&irow);
     draw(swide,false,false);
   }
   if(m_mode=="Q65" and m_bQ65_Sync) {
@@ -382,13 +422,15 @@ void CPlotter::replot()
   }
   update();                                    //trigger a new paintEvent
   m_bReplot=false;
+  delete [] swide; 
+  swide = NULL;
 }
 
 void CPlotter::DrawOverlay()                   //DrawOverlay()
 {
   if(m_OverlayPixmap.isNull()) return;
   if(m_WaterfallPixmap.isNull()) return;
-  int w = m_WaterfallPixmap.width();
+  int w = m_w;
   int x,y,x1,x2,x3,x4,x5,x6;
   float pixperdiv;
 
@@ -510,6 +552,7 @@ void CPlotter::DrawOverlay()                   //DrawOverlay()
   float bw=9.0*12000.0/m_nsps;               //JT9
   if(m_mode=="FT4") bw=3*12000.0/576.0;      //FT4  ### (3x, or 4x???) ###
   if(m_mode=="FT8") bw=7*12000.0/1920.0;     //FT8
+  if(m_mode=="JTTY") bw=3*12000.0/384.0;     //JTTY
   if(m_mode.startsWith("FST4")) {
     int h=int(pow(2.0,m_nSubMode));
     int nsps=800;
@@ -600,7 +643,7 @@ void CPlotter::DrawOverlay()                   //DrawOverlay()
   int yTxTop=12;
   int yRxBottom=yTxTop + 2*yh + 4;
   if(m_mode=="JT9" or m_mode=="JT65" or m_mode=="Q65" or m_mode=="FT8"
-     or m_mode=="FT4" or m_mode.startsWith("FST4")) {
+     or m_mode=="FT4" or m_mode.startsWith("FST4") or m_mode=="JTTY") {
 
     if(m_mode=="FST4" and !m_bSingleDecode) {
       x1=XfromFreq(m_nfa);
@@ -672,7 +715,8 @@ void CPlotter::DrawOverlay()                   //DrawOverlay()
   // red bars
   if(m_mode.startsWith("FT") or m_mode.startsWith("JT") or m_mode=="Q65" or m_mode.startsWith("FST4")
      or m_mode.mid(0,4)=="WSPR") {
-    x1=XfromFreq(m_txFreq); x2=XfromFreq(m_txFreq+bw);
+    x1=XfromFreq(m_txFreq);
+    x2=XfromFreq(m_txFreq+bw);
     if(m_mode=="FT8" and m_bSuperFox) x2=XfromFreq(m_txFreq+1500.0);
     if(m_mode=="WSPR") {
       bw=4*12000.0/8192.0;                  //WSPR
@@ -686,7 +730,7 @@ void CPlotter::DrawOverlay()                   //DrawOverlay()
 
   // red goal post
   if(m_mode=="JT9" or m_mode=="JT65" or m_mode.mid(0,4)=="WSPR" or m_mode=="Q65"
-     or m_mode=="FT8" or m_mode=="FT4" or m_mode.startsWith("FST4")) {
+     or m_mode=="FT8" or m_mode=="FT4" or m_mode.startsWith("FST4") or m_mode=="JTTY") {
     painter0.setPen(penRed);
     x1=XfromFreq(m_txFreq);
     if(m_mode=="FT8" and m_bSuperFox) {
@@ -734,6 +778,7 @@ void CPlotter::MakeFrequencyStrs()                       //MakeFrequencyStrs
   int f=(m_startFreq+m_freqPerDiv-1)/m_freqPerDiv;
   f*=m_freqPerDiv;
   m_xOffset=float(f-m_startFreq)/m_freqPerDiv;
+  m_HDivText.resize(m_hdivs + 1);
   for(int i=0; i<=m_hdivs; i++) {
     m_HDivText[i].setNum(f);
     f+=m_freqPerDiv;
@@ -813,7 +858,7 @@ int CPlotter::startFreq()                              //startFreq()
   return m_startFreq;
 }
 
-int CPlotter::plotWidth(){return m_WaterfallPixmap.width();}     //plotWidth
+int CPlotter::plotWidth(){return m_w;}                           //plotWidth
 void CPlotter::UpdateOverlay() {DrawOverlay();}                  //UpdateOverlay
 void CPlotter::setDataFromDisk(bool b) {m_dataFromDisk=b;}       //setDataFromDisk
 

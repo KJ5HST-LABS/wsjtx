@@ -46,10 +46,8 @@ include::system-requirements.adoc[]
 [[INSTALL]]
 == Installation
 
-Installation packages for released versions on Windows, Linux, and OS
-X are found on the {homepage}. Click on the _WSJT-X_ link at the
-left margin and select the appropriate package for your operating
-system.
+Installation packages for Windows, Linux, and macOS are found on the
+{downloads}.
 
 [[INSTALL_WIN]]
 === Windows

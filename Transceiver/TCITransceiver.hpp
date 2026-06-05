@@ -1,11 +1,14 @@
 #ifndef TCI_TRANSCEIVER_HPP__
 #define TCI_TRANSCEIVER_HPP__
 
+#include <algorithm>
+#include <cmath>
 #include <memory>
 
 #include "TransceiverFactory.hpp"
 #include "PollingTransceiver.hpp"
 #include "commons.h"
+#include "Modulator/JttyPcmFifo.hpp"
 
 #include <QtWebSockets/QWebSocket>
 #include <QTimer>
@@ -125,6 +128,8 @@ public slots:
   void sendTextMessage(const QString &message);
 //  void trxChanged(quint32 trx, bool state);
   void txAudioData(quint32 len, float * data);
+  void enqueue_jtty_pcm (QByteArray const& samples, qint64 sessionId) noexcept override;
+  void clear_jtty_pcm (qint64 sessionId) noexcept override;
 //  void setAudioSampleRate(const quint32 &sr);
 
 private slots:
@@ -133,6 +138,7 @@ private slots:
   void onError(QAbstractSocket::SocketError err);
   void onConnected();
   void onDisconnected();
+  void poll_jtty_drain ();
 
 signals:
   void sendIqData(int, quint32, float*, bool);
@@ -176,11 +182,20 @@ protected:
   void rig_split ();
   void rig_power (bool on);
   void stream_audio (bool on);
-  void store (float * source, size_t numFrames, qint16 * dest)
+  static qint16 tci_audio_sample_to_int16 (float sample)
   {
     static constexpr float K = 0x7FFF;
+    if (!std::isfinite (sample)) {
+      return 0;
+    }
+    sample = std::max (-1.0f, std::min (sample, 1.0f));
+    return static_cast<qint16> (K * sample);
+  }
+
+  void store (float * source, size_t numFrames, qint16 * dest)
+  {
     for (size_t i {0}; i < numFrames; ++i) {
-       dest[i] = static_cast<int16_t>(K*source[i*2]);
+       dest[i] = tci_audio_sample_to_int16 (source[i*2]);
     }
 
   }
@@ -313,6 +328,7 @@ private:
   static size_t const bytesPerFrame = 2;
   // from Modulator
   quint16 readAudioData (float * data, qint32 maxSize, qreal txVolume);
+  quint16 readJttyAudioData (float * data, qint32 maxSize, qreal txVolume);
   qint16 postProcessSample (qint16 sample) const;
   bool m_quickClose = false;
 
@@ -334,8 +350,12 @@ private:
   double m_TRperiod;
 
   qint64 m_silentFrames;
+  QString m_txMode;
   qint16 m_ramp;
   ModulatorState m_state;
+  JttyPcmFifo m_jttyPcmFifo;
+  QTimer * m_jttyDrainTimer;
+  qint64 m_jttyDrainGuard;
 
   bool m_tuning;
   bool m_addNoise;

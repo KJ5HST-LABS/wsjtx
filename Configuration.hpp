@@ -2,9 +2,11 @@
 #define CONFIGURATION_HPP_
 
 #include <QObject>
+#include <QByteArray>
 #include <QFont>
 #include <QString>
 
+#include "SpecialOperatingActivity.hpp"
 #include "Radio.hpp"
 #include "models/IARURegions.hpp"
 #include "Audio/AudioDevice.hpp"
@@ -146,6 +148,10 @@ public:
   QString Territory4() const;
   QString highlight_orange_callsigns() const;
   QString highlight_blue_callsigns() const;
+  QStringList pass_keywords () const;
+  QStringList blacklist_keywords () const;
+  QStringList whitelist_keywords () const;
+  QStringList territory_keywords () const;
   QString voicesPath() const;
   bool PWR_and_SWR() const;
   bool check_SWR() const;
@@ -315,7 +321,7 @@ public:
   bool ShowOTP() const;
   unsigned int OTPinterval() const;
 //                                      0       1      2         3       4       5      6     7        8           9
-  enum class SpecialOperatingActivity {NONE, NA_VHF, EU_VHF, FIELD_DAY, RTTY, WW_DIGI, FOX, HOUND, ARRL_DIGI, Q65_PILEUP};
+  using SpecialOperatingActivity = ::SpecialOperatingActivity;
   SpecialOperatingActivity special_op_id () const;
 
   struct CalibrationParams
@@ -399,7 +405,7 @@ public:
 
   // Set period for TCI audio
   //
-  Q_SLOT void transceiver_period (double = 15.0);
+  Q_SLOT void transceiver_period (double = 15.0, bool force = false);
 
   // Set blocksize for TCI audio.
   //
@@ -408,6 +414,9 @@ public:
   // Set modulation start TCI audio
   //
   Q_SLOT void transceiver_modulator_start (QString="FT8", unsigned = 79, double = 1920.0, double = 1500.0, double = -3.0, bool = true, bool=false, double = 99., double = 60.0);
+
+  Q_SLOT void transceiver_enqueue_jtty_pcm (QByteArray const&, qint64);
+  Q_SLOT void transceiver_clear_jtty_pcm (qint64);
 
   // Set modulation start TCI audio
   //
@@ -464,6 +473,8 @@ public:
   Q_SIGNAL void transceiver_update (Transceiver::TransceiverState const&) const;
   Q_SIGNAL void transceiver_TCIframesWritten (qint64) const;
   Q_SIGNAL void transceiver_TCImodActive (bool) const;
+  Q_SIGNAL void transceiver_jtty_drained (qint64 sessionId, qint64 totalAtDrain) const;
+  Q_SIGNAL void transceiver_jtty_enqueue_failed (qint64 sessionId) const;
   Q_SIGNAL void leavingSettings (bool) const;
 
   // Signals a failure of a control rig CAT or PTT connection.

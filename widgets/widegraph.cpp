@@ -193,7 +193,7 @@ void WideGraph::dataSink2(float s[], float df3, int ihsym, int ndiskdata, float 
     for (int j=0; j<jz; j++) {
       float ss=0.0;
       float smax=0;
-      for (int k=0; k<nbpp; k++) {
+      for (int k=0; (k<nbpp && i<NSMAX-1); k++) {
         float sp=splot[i++];
         ss += sp;
         smax=qMax(smax,sp);
@@ -497,9 +497,31 @@ bool WideGraph::useRef()                                              //Flatten
   return m_bRef;
 }
 
+void WideGraph::setReferenceSpectrumAvailable(bool available)
+{
+  if(!available) {
+    m_bRef=false;
+    ui->cbRef->setChecked(false);
+    ui->widePlot->setFlatten(m_bFlatten,m_bRef);
+  }
+  ui->cbRef->setEnabled(available);
+}
+
+void WideGraph::clearReferenceSpectrum(bool reference_spectrum_available)
+{
+  m_bRef=false;
+  ui->cbRef->setChecked(false);
+  ui->widePlot->setFlatten(m_bFlatten,m_bRef);
+  setReferenceSpectrumAvailable(reference_spectrum_available);
+  m_n=0;
+}
+
 void WideGraph::replot()
 {
-  if(ui->widePlot->scaleOK()) ui->widePlot->replot();
+  if(ui->widePlot->scaleOK()) {
+    ui->widePlot->replot();
+    ui->widePlot->draw(m_swide,false,false);
+  }
 }
 
 void WideGraph::on_gainSlider_valueChanged(int value)                 //Gain

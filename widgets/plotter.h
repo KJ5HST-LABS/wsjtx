@@ -126,7 +126,7 @@ private:
   bool    m_bReference;
   bool    m_bReference0;
   bool    m_bQ65_Sync;
-  bool    m_bTotalPower;
+  bool    m_bTotalPower=false;
   bool    m_bVHF;
   bool    m_bSingleDecode;
   bool    m_bFirst=true;
@@ -134,7 +134,7 @@ private:
   bool    m_bSuperFox=false;
   bool    m_bSuperHound=false;
   bool	  m_bars;
-  bool    m_freq;
+  bool    m_freq=false;
   float   m_fSpan;
   float   m_pdB=0.0;
   float   m_vpixperdiv;
@@ -166,7 +166,7 @@ private:
   QPoint  m_pos;
   QSize   m_Size;
   QString m_Str;
-  QString m_HDivText[483];
+  QVector<QString> m_HDivText;
   QString m_mode;
   QString m_mode0;
   QString m_rxBand;
