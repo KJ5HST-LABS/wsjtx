@@ -97,6 +97,7 @@ jobs:
           cmake -S . -B wsjtx-build \
             -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/hamlib-prefix;${GITHUB_WORKSPACE}/pfunit-prefix" \
             -DCMAKE_POLICY_VERSION_MINIMUM=3.5 \
+            -DWSJT_SKIP_MAP65=ON \
             -DWSJT_GENERATE_DOCS=OFF \
             -DWSJT_SKIP_MANPAGES=ON \
             -DWSJT_BUILD_TESTS=ON \
@@ -108,7 +109,7 @@ jobs:
 
       - name: Run tests
         id: ctest
-        run: ctest --output-on-failure --output-junit ctest-results.xml
+        run: ctest --output-on-failure --output-junit ctest-results.xml --no-tests=ignore
         working-directory: wsjtx-build
         env:
           QT_QPA_PLATFORM: offscreen

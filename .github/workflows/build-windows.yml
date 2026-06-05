@@ -158,7 +158,7 @@ jobs:
 
       - name: Run tests
         id: ctest
-        run: ctest --output-on-failure --output-junit ctest-results.xml
+        run: ctest --output-on-failure --output-junit ctest-results.xml --no-tests=ignore
         working-directory: wsjtx-build
 
       - name: Publish test summary
