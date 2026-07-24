@@ -1,0 +1,74 @@
+name: SignPath Smoke Test
+
+# Validates the complete SignPath round-trip (API token, org/project/policy
+# slugs, artifact configuration, trusted-build-system link, origin
+# verification) WITHOUT building or exposing any WSJT source: it compiles a
+# 5-line hello-world PE, submits it, and inspects the returned signature.
+#
+# Runs via workflow_dispatch in the labs sandbox (KJ5HST-LABS/wsjtx) for
+# iteration, and on the public repo (WSJTX/wsjtx) for final validation —
+# SignPath Foundation origin verification is bound to the public repo, so
+# a sandbox run proves workflow/token mechanics but may be rejected at
+# the origin-verification step; that rejection is itself a meaningful
+# result. Safe to re-run any time the SignPath configuration changes;
+# costs ~2 minutes.
+
+on:
+  workflow_dispatch:
+    inputs:
+      signing-policy-slug:
+        description: "SignPath signing policy to exercise"
+        required: false
+        type: choice
+        options:
+          - test-signing
+          - release-signing
+        default: test-signing
+
+jobs:
+  smoke:
+    # Never on wsjtx-internal — testing happens in the labs sandbox, and
+    # real signing only from the public repo.
+    if: github.repository == 'WSJTX/wsjtx' || github.repository == 'KJ5HST-LABS/wsjtx'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: read
+    steps:
+      - name: Build trivial PE file
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q gcc-mingw-w64-x86-64
+          cat > smoke.c <<'EOF'
+          #include <stdio.h>
+          int main(void) { puts("WSJT SignPath smoke test"); return 0; }
+          EOF
+          x86_64-w64-mingw32-gcc smoke.c -o signpath-smoke.exe
+          file signpath-smoke.exe
+
+      - name: Upload unsigned artifact
+        id: upload
+        uses: actions/upload-artifact@v7
+        with:
+          name: signpath-smoke
+          path: signpath-smoke.exe
+
+      - name: Submit signing request to SignPath
+        id: signpath
+        uses: signpath/github-action-submit-signing-request@v2
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: "4c211821-e011-48a2-8a84-2cc29a76a8bf"
+          project-slug: "wsjtx"
+          signing-policy-slug: ${{ inputs.signing-policy-slug }}
+          github-artifact-id: ${{ steps.upload.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      - name: Inspect returned signature
+        run: |
+          echo "Signing request: ${{ steps.signpath.outputs.signing-request-web-url }}"
+          sudo apt-get install -y -q osslsigncode
+          ls -la signed/
+          # Structural inspection only; chain trust is checked by the
+          # verify job in sign-windows-release.yml on real releases.
+          osslsigncode verify signed/signpath-smoke.exe || true
