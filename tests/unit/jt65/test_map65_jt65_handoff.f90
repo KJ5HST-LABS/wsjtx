@@ -3,7 +3,8 @@ program test_map65_jt65_handoff
   use iso_fortran_env, only: real32, real64
   use, intrinsic :: ieee_arithmetic, only: ieee_get_flag, ieee_invalid, ieee_is_finite, &
        ieee_quiet_nan, ieee_set_flag, ieee_value
-  use decode1a_mod
+  use decode1a_mod, only: decode1a, jt65_demod_bin, jt65_demod_sample_rate, &
+       jt65_fft_size, jt65c_center_offset
   use filbig_mod
   use afc65b_mod, only: afc65b
   use jt65_test_fixture
@@ -17,6 +18,7 @@ program test_map65_jt65_handoff
   allocate(dd(4, nsmax_active))
   call test_mono_filter_output(dd)
   call test_afc_zero_signal()
+  call test_demodulation_bins()
   call test_mode(dd, standard_tones, 1, 1, 'JT65A MAP65 handoff')
   call test_mode(dd, standard_tones, 2, 1, 'JT65B MAP65 handoff')
   call test_mode(dd, standard_tones, 4, 1, 'JT65C MAP65 handoff')
@@ -25,6 +27,32 @@ program test_map65_jt65_handoff
   print '(a)', 'MAP65 JT65 handoff tests passed'
 
 contains
+
+  subroutine test_demodulation_bins()
+    real(real64) :: frequency, mapped_frequency
+    integer :: bin, mode65, signed_bin, tone
+
+    do mode65=1,4
+       if(mode65.eq.3) cycle
+       do tone=1,66
+          bin=jt65_demod_bin(mode65,tone)
+          call require(bin.ge.1 .and. bin.le.jt65_fft_size, &
+               'JT65 demodulation bin is in range')
+          frequency=real((tone-1)*mode65,real64)*jt65_demod_sample_rate/ &
+               jt65_fft_size
+          if(mode65.eq.4) frequency=frequency-jt65c_center_offset
+          signed_bin=bin-1
+          if(signed_bin.gt.jt65_fft_size/2) signed_bin=signed_bin-jt65_fft_size
+          mapped_frequency=real(signed_bin,real64)*jt65_demod_sample_rate/ &
+               jt65_fft_size
+          call require(abs(mapped_frequency-frequency).lt. &
+               jt65_demod_sample_rate/jt65_fft_size, &
+               'JT65 tone frequency maps to the selected FFT bin')
+          call require(abs(frequency).lt.0.5_real64*jt65_demod_sample_rate, &
+               'JT65 data tone fits the demodulation passband')
+       enddo
+    enddo
+  end subroutine test_demodulation_bins
 
   subroutine require(condition, description)
     logical, intent(in) :: condition

@@ -1,6 +1,22 @@
 module decode1a_mod
+  use iso_fortran_env, only: real64
   implicit none
+
+  real(real64), parameter :: jt65_demod_sample_rate = 1378.125_real64
+  integer, parameter :: jt65_fft_size = 512
+  integer, parameter :: jt65c_center_bin_offset = 132
+  real(real64), parameter :: jt65c_center_offset = &
+       jt65c_center_bin_offset * jt65_demod_sample_rate / jt65_fft_size
 contains
+
+pure integer function jt65_demod_bin(mode65, tone) result(bin)
+  integer, intent(in) :: mode65, tone
+
+  bin = tone
+  if(mode65.eq.2) bin=2*tone-1
+  if(mode65.eq.4) bin=modulo(4*(tone-1)-jt65c_center_bin_offset, &
+       jt65_fft_size)+1
+end function jt65_demod_bin
 
 subroutine decode1a(dd,newdat,f0,nflip,mode65,nfsample,xpol,            &
      mycall,hiscall,hisgrid,neme,ndepth,nqd,dphi,ndphi,                 &
@@ -145,6 +161,16 @@ call afc65b(c5x(i0), c5y(i0), nz, fsample, nflip, ipol, xpol, ndphi, a, ccfbest,
   sq0=aa*aa*sqa + bb*bb*sqb
   sync2=3.7*ccfbest/sq0
 
+  ! AFC follows the sync-centered stream; JT65C message tones need the
+  ! separately centered stream to keep its full 700 Hz bandwidth.
+  if(mode65.eq.4) then
+     call timer('filbig  ',0)
+     call filbig(dd, nsmax_active, f0+jt65c_center_offset, newdat, &
+          nfsample, xpol, cx, cy, n5)
+     call timer('filbig  ',1)
+     if(xpol) cy(:n5)=z*cy(:n5)
+  endif
+
   ! TEMP diagnostic 2026-09-10 for the freq/time-sync-vs-false-decode investigation.
   call dbg('decode1a: afc65b fit at t=' // rtoa(sec_midn()) // &
            ' f0=' // rtoa(real(f0)) // ' dt00=' // rtoa(dt00) // ' dtbest=' // rtoa(dtbest) // &
@@ -185,9 +211,7 @@ call afc65b(c5x(i0), c5y(i0), nz, fsample, nflip, ipol, xpol, ndphi, a, ccfbest,
         if(n.eq.1) then
            do i=1,66
 !                  s2(i,k)=real(c5a(i))**2 + aimag(c5a(i))**2
-              jj=i
-              if(mode65.eq.2) jj=2*i-1
-              if(mode65.eq.4) jj=4*i-3
+              jj=jt65_demod_bin(mode65,i)
               s2(i,k)=real(c5a(jj))**2 + aimag(c5a(jj))**2
            enddo
         else
