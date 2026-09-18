@@ -25,14 +25,11 @@
 #include "qmap_ipc.h"
 #include "qmap_decode_record.h"
 #include "validators/LiveCQCallsign.hpp"
+#include "../Network/LiveCQUpload.hpp"
 
 #include <QCoreApplication>  //liveCQ
-#include <QNetworkAccessManager>  //liveCQ
-#include <QNetworkRequest>
-#include <QNetworkReply>
 #include <QUrl>
 #include <QUrlQuery>
-#include <QEventLoop>
 
 #define NFFT 32768
 
@@ -378,6 +375,10 @@ void MainWindow::readSettings()
   }
   m_w3szUrl=settings.value("w3szUrl",true).toBool();    //liveCQ
   m_otherUrl=settings.value("otherUrl","").toString();  //liveCQ
+  m_livecq = std::make_unique<LiveCQUpload>(this);
+  m_livecq->setUserAgent(http_user_agent().toUtf8());
+  connect(m_livecq.get(), &LiveCQUpload::errorOccurred, this,
+          [](QString const& error) { qDebug() << error; });
   ui->fAddComboBox->setVisible(ui->actionFadd_controls->isChecked());
   ui->fAdd_label->setVisible(ui->actionFadd_controls->isChecked());
   ui->pbSet->setVisible(ui->actionFadd_controls->isChecked());
@@ -1184,62 +1185,33 @@ void MainWindow::sendLiveCQData(QList<QStringList>decodeList)
     theUrl = m_otherUrl;
   }
 
-  QNetworkAccessManager *manager = new QNetworkAccessManager(this);
-  QUrl url(theUrl);
-  QNetworkRequest request(url);
-  QByteArray userAgent = (QCoreApplication::applicationName() + " v"
-                          + QCoreApplication::applicationVersion()).toUtf8();
-  request.setRawHeader("User-Agent", userAgent);
-  request.setRawHeader("X-Custom-User-Agent", userAgent);
-  request.setHeader(QNetworkRequest::ContentTypeHeader, "application/x-www-form-urlencoded");
+  if (!m_livecq->setEndpoint(QUrl {theUrl})) return;
 
   for (const QStringList &thePostLine : decodeList) {
 
     QString utcdatetimestringOriginal = thePostLine.at(11) + " " + thePostLine.at(3);
     QDateTime utcdatetimeUTC = QDateTime::fromString(utcdatetimestringOriginal, "yyyy MMM dd  HHmmss");
     utcdatetimeUTC.setTimeSpec((Qt::UTC));
-    QString utcdatetimeUTCString = utcdatetimeUTC.toString("yyyy-MM-ddTHH:mm:ss");
-    utcdatetimeUTCString = utcdatetimeUTCString + "Z";
+    QString utcdatetimeUTCString = utcdatetimeUTC.toString("yyyy-MM-ddTHH:mm:ss") + "Z";
 
-    QString postString =  "skedfreq=" + thePostLine.at(0) + "&rxfreq=" + thePostLine.at(1) + "&rpol=" + thePostLine.at(2) + "&dt="  +  thePostLine.at(4) + "&dB="  + thePostLine.at(5) + "&msgtype="  +  thePostLine.at(7) + "&callsign="  +  thePostLine.at(8) + "&grid="  +  thePostLine.at(9) + "&mode="  +  thePostLine.at(6) + "&utcdatetime="  +  utcdatetimeUTCString + "&spotter="  +  thePostLine.at(12) + "&spottergrid=" +  thePostLine.at(10)  + "&txpol=" + thePostLine.at(13) + "&apptype=QMAP";
+    QUrlQuery query;
+    query.addQueryItem("skedfreq", thePostLine.at(0));
+    query.addQueryItem("rxfreq", thePostLine.at(1));
+    query.addQueryItem("rpol", thePostLine.at(2));
+    query.addQueryItem("dt", thePostLine.at(4));
+    query.addQueryItem("dB", thePostLine.at(5));
+    query.addQueryItem("msgtype", thePostLine.at(7));
+    query.addQueryItem("callsign", thePostLine.at(8));
+    query.addQueryItem("grid", thePostLine.at(9));
+    query.addQueryItem("mode", thePostLine.at(6));
+    query.addQueryItem("utcdatetime", utcdatetimeUTCString);
+    query.addQueryItem("spotter", thePostLine.at(12));
+    query.addQueryItem("spottergrid", thePostLine.at(10));
+    query.addQueryItem("txpol", thePostLine.at(13));
+    query.addQueryItem("apptype", "QMAP");
 
-    QByteArray postByteArray = postString.toUtf8();
-    request.setRawHeader("Content-Length",QByteArray::number(postByteArray.size()));
-
-
-    try {
-	  QNetworkReply *reply = manager->post(request,postByteArray);		
-	  QObject::connect(reply, &QNetworkReply::finished, this, &MainWindow::handleReply);
-    }
-    catch (const std::exception& e) {
-        // Handle standard C++ exceptions
-        QMessageBox::critical(this, "Exception", "Exception at line 1165 MainWindow::sendLiveCQData " + QString::fromStdString(e.what()));   
-    }
-    catch (...) {
-        // Handle any other type of exception
-        QMessageBox::critical(this, "Exception", "Unknown Exception at line 1170 MainWindow::sendLiveCQData");   
-    }
+    m_livecq->postSpot(query);
   }
-}
-
-void MainWindow::handleReply()
-{
-  try {
-    QNetworkReply *reply = qobject_cast<QNetworkReply*>(sender());
-    if (reply->error() == QNetworkReply::NoError) {
-		qDebug() << reply->readAll();
-    } else {
-		qDebug() << reply->errorString();
-    }
-  }
-    catch (const std::exception& e) {
-        // Handle standard C++ exceptions
-        QMessageBox::critical(this, "Exception", "Exception at line 1188 MainWindow::handleReply " + QString::fromStdString(e.what()));   
-    }
-    catch (...) {
-        // Handle any other type of exception
-        QMessageBox::critical(this, "Exception", "Unknown Exception at line 1193 MainWindow::handleReply");   
-    }
 }
 
 

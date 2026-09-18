@@ -7,6 +7,7 @@
 #include <QLabel>
 #include <QDateTime>
 #include <QHash>
+#include <memory>
 #include "getfile.h"
 #include "soundin.h"
 #include "signalmeter.h"
@@ -26,6 +27,7 @@ class QTimer;
 class Astro;
 class WideGraph;
 class VertWaterfall;
+class LiveCQUpload;
 enum class DecodeClickGesture;
 
 class MainWindow : public QMainWindow
@@ -98,7 +100,6 @@ private slots:
   void on_fAddComboBox_activated();
   void on_pbSet_clicked();
   void on_pbAdd_clicked();
-  void handleReply(); //liveCQ
 
 private:
   Ui::MainWindow *ui;
@@ -200,6 +201,7 @@ private:
   SoundInThread soundInThread;             //Instantiate the audio threads
   bool doLiveCQ = true;  //liveCQ
   QFile *cqlfi;          //liveCQ
+  std::unique_ptr<LiveCQUpload> m_livecq;
 
   //---------------------------------------------------- private functions
   void readSettings();
