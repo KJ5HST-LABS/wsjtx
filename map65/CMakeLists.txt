@@ -13,6 +13,7 @@ set (map65_CXXSRCS
   getdev.cpp
 #  getfile.cpp
   liveCQSender.cpp
+  livecq_decode.cpp
 # map65_paths.cpp
   main.cpp
   mainwindow.cpp

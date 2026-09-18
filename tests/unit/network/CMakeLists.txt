@@ -29,6 +29,15 @@ add_executable (test_map65_pskreporter_decode
 target_link_libraries (test_map65_pskreporter_decode Qt5::Test)
 add_test (NAME test_map65_pskreporter_decode COMMAND test_map65_pskreporter_decode)
 
+add_executable (test_map65_livecq_decode
+  test_map65_livecq_decode.cpp
+  ${CMAKE_SOURCE_DIR}/map65/livecq_decode.cpp
+  ${CMAKE_SOURCE_DIR}/Network/DecodedTime.cpp
+  ${CMAKE_SOURCE_DIR}/validators/LiveCQCallsign.cpp
+)
+target_link_libraries (test_map65_livecq_decode Qt5::Test)
+add_test (NAME test_map65_livecq_decode COMMAND test_map65_livecq_decode)
+
 add_executable (test_wsprnet_upload
   test_wsprnet_upload.cpp
   ${CMAKE_SOURCE_DIR}/Network/wsprnet.cpp
