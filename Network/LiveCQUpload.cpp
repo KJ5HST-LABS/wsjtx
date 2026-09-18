@@ -2,6 +2,7 @@
 
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
+#include <QNetworkRequest>
 
 namespace
 {
@@ -100,9 +101,15 @@ void LiveCQUpload::abortOutstandingRequests ()
 void LiveCQUpload::handleReply (QNetworkReply *reply)
 {
   outstanding_.remove (reply);
+  int const http_status
+    = reply->attribute (QNetworkRequest::HttpStatusCodeAttribute).toInt ();
   if (reply->error () != QNetworkReply::NoError)
     {
       Q_EMIT errorOccurred (QString {"LiveCQ upload failed: %1"}.arg (reply->errorString ()));
+    }
+  else if (http_status >= 400)
+    {
+      Q_EMIT errorOccurred (QString {"LiveCQ upload failed: HTTP %1"}.arg (http_status));
     }
   else
     {

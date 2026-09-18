@@ -127,6 +127,17 @@ private slots:
     QCOMPARE(spots.first().transmitPolarization, QString {"V"});
   }
 
+  void mapsPolarizationWhenXpolEnabledForNoGridLayout()
+  {
+    QStringList seen;
+    auto const spots = Map65LiveCQ::parseSpots(
+      {decodeLine({"CQ", "K1ABC", "1200.0", "#A"}, "1234", "0.7")},
+      "N0CALL", "FN21", true, nowUtc(), seen);
+    QCOMPARE(spots.size(), 1);
+    QCOMPARE(spots.first().polarization, QString {"0.7"});
+    QCOMPARE(spots.first().transmitPolarization, QString {"--"});
+  }
+
   void timestampIsUtc()
   {
     QStringList seen;

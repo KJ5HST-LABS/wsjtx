@@ -50,6 +50,11 @@ namespace
       Q_EMIT finished ();
     }
 
+    void setHttpStatus (int status)
+    {
+      setAttribute (QNetworkRequest::HttpStatusCodeAttribute, status);
+    }
+
   protected:
     qint64 readData (char *, qint64) override
     {
@@ -205,6 +210,23 @@ private slots:
     QSignalSpy errors {&upload, &LiveCQUpload::errorOccurred};
     upload.postSpot (spotQuery ());
     QTRY_COMPARE (errors.count (), 1);
+  }
+
+  void reportsHttpErrorStatus ()
+  {
+    FakeTransport transport;
+    transport.auto_finish = false;
+    LiveCQUpload upload {&transport, false};
+    QVERIFY (upload.setEndpoint (QUrl {"https://w3sz.com/livecq_update.php"}));
+
+    QSignalSpy posted {&upload, &LiveCQUpload::spotPosted};
+    QSignalSpy errors {&upload, &LiveCQUpload::errorOccurred};
+    upload.postSpot (spotQuery ());
+    QCOMPARE (transport.replies.size (), 1);
+    transport.replies.first ()->setHttpStatus (500);
+    transport.replies.first ()->finish ();
+    QCOMPARE (posted.count (), 0);
+    QCOMPARE (errors.count (), 1);
   }
 
   void abortsOutstandingRequestsOnDestruction ()

@@ -65,6 +65,9 @@ namespace Map65LiveCQ
         callsign = tokens.at(6).trimmed().toUpper();
         spot.deltaTime = tokens.at(7).trimmed();
         modeToken = tokens.at(8).trimmed();
+        if (crossPolarization) {
+          polarization = tokens.at(2).trimmed();
+        }
       } else if (tokens.size() >= 10 && tokens.at(8).contains('.')) {
         auto const firstCandidate = tokens.at(6).trimmed().toUpper();
         if (LiveCQ::isValidCallsign(firstCandidate)) {
