@@ -90,8 +90,6 @@ TxTune*    g_pTxTune = NULL;
 
 std::atomic<bool> stop_m65{false};
 
-QString guiDate;         //liveCQ
-QStringList allDecodes;  //liveCQ
 QStringList allDecodes2;  //liveCQ
 QString m_otherUrl;
 bool m_w3szUrl;
@@ -2098,6 +2096,7 @@ void MainWindow::on_actionErase_Band_Map_and_Messages_triggered()
 {
   m_band_map_window->setText("");
   m_messages_window->setText("","");
+  m_messages_window->clearLiveCQHistory();
   // m_messagesText/m_bandmapText accumulate across decode cycles and are
   // only reset when a "!" line arrives (processStdOut). Without clearing
   // them here too, the next <EarlyFinished>/<DecodeFinished> redisplay
@@ -2651,7 +2650,6 @@ void MainWindow::guiUpdate()
     m_setftx=0;
     QString utc = t.date().toString(" yyyy MMM dd \n") + t.time().toString();
     ui->labUTC->setText(utc);
-    guiDate = ui->labUTC->text().trimmed().mid(0,12); //liveCQ
     if((!m_monitoring and !m_diskData) or (khsym==m_hsym0)) {
       xSignalMeter->setValue(0);
       ySignalMeter->setValue(0);

@@ -45,6 +45,13 @@ add_executable (test_wsprnet_upload
 target_link_libraries (test_wsprnet_upload Qt5::Test Qt5::Network)
 add_test (NAME test_wsprnet_upload COMMAND test_wsprnet_upload)
 
+add_executable (test_livecq_upload
+  test_livecq_upload.cpp
+  ${CMAKE_SOURCE_DIR}/Network/LiveCQUpload.cpp
+  )
+target_link_libraries (test_livecq_upload Qt5::Test Qt5::Network)
+add_test (NAME test_livecq_upload COMMAND test_livecq_upload)
+
 add_executable (test_message_client_replay
   test_message_client_replay.cpp
   )

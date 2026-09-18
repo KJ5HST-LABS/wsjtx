@@ -155,9 +155,7 @@ extern struct {                     //This is "common/datcom/..." in Fortran
   void snapshot_buffers();
 }
 
-extern QStringList allDecodes;
 extern QStringList allDecodes2;
-extern QString guiDate;
 
 extern bool m_w3szUrl;
 extern QString m_otherUrl;
