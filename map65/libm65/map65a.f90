@@ -14,7 +14,7 @@ contains
       use iso_c_binding
       use wideband_sync
       use timer_module, only: timer
-      use debug_log, only: dbg, itoa, rtoa
+      use debug_log, only: dbg, dbg_always, itoa, rtoa
       use sec_midn_mod, only: sec_midn
       use q65b_mod
       use decode1a_mod
@@ -276,8 +276,12 @@ contains
          thresh1 = 1.0
          if (ntol .le. 100) thresh1 = 0.
          nflip   = nint(flipk)
-         call dbg('map65a manual: best sync1=' // rtoa(sync1) // ' thresh1=' // rtoa(thresh1) // &
-                  ' ntol=' // itoa(ntol))
+         ! Logged even when dbg() is off: manual clicks are rare and this is
+         ! the evidence needed to tell why a double-click did not decode.
+         call dbg_always('map65a manual: click nutc=' // itoa(nutc) // ' mousefqso=' // itoa(mousefqso) // &
+                  ' mousedf=' // itoa(mousedf) // ' ntol=' // itoa(ntol) // &
+                  ' best sync1=' // rtoa(sync1) // ' thresh1=' // rtoa(thresh1) // &
+                  ' syncshort=' // rtoa(syncshort) // ' mode65=' // itoa(mode65))
 
          !===========================
          ! SHORTHAND DETECTION (JT65)
@@ -373,6 +377,7 @@ contains
             call timer('decode1a',1)
 
             abort_decode = abort_saved
+            call dbg_always('map65a manual: decode1a called, decoded=[' // trim(decoded_jt65) // ']')
 
             if (decoded_jt65 /= '                      ') then
                jt65_success = .true.
