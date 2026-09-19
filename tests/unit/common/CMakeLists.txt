@@ -49,6 +49,12 @@ add_executable (test_wf_palette
 target_link_libraries (test_wf_palette wsjt_qt Qt5::Test)
 add_test (NAME test_wf_palette COMMAND test_wf_palette)
 
+add_executable (test_decode_highlighting_model
+  test_decode_highlighting_model.cpp
+)
+target_link_libraries (test_decode_highlighting_model wsjt_qt Qt5::Test)
+add_test (NAME test_decode_highlighting_model COMMAND test_decode_highlighting_model)
+
 add_executable (test_waterfall_scale
   test_waterfall_scale.cpp
 )
