@@ -269,8 +269,15 @@ contains
          ipol2     = best_ipol2
          dt2       = best_dt2
 
+         ! Match the 3.0.1 double-click ("quick decode", nqd=1) rule: use a
+         ! lower sync threshold at the clicked frequency when ftol <= 100 Hz.
+         ! A fixed 1.0 here gates the click exactly like the wideband pass,
+         ! so a signal the wideband pass missed could never be decoded.
          thresh1 = 1.0
+         if (ntol .le. 100) thresh1 = 0.
          nflip   = nint(flipk)
+         call dbg('map65a manual: best sync1=' // rtoa(sync1) // ' thresh1=' // rtoa(thresh1) // &
+                  ' ntol=' // itoa(ntol))
 
          !===========================
          ! SHORTHAND DETECTION (JT65)
