@@ -690,8 +690,8 @@ private:
   void update_DXCC_control_availability ();
   Q_SLOT void on_PWR_and_SWR_check_box_toggled (bool);
   void update_PWR_and_SWR_control_availability ();
-  Q_SLOT void on_reset_highlighting_to_defaults_push_button_clicked (bool);
-  Q_SLOT void on_reset_highlighting_to_defaults2_push_button_clicked (bool);
+  void apply_color_preset (DecodeHighlightingModel::ColorPreset const& preset);
+  void reset_highlighting (QString const& confirmation, DecodeHighlightingModel::HighlightItems const& items);
   Q_SLOT void on_move_highlighting_up_push_button_clicked (bool = false);
   Q_SLOT void on_move_highlighting_down_push_button_clicked (bool = false);
   Q_SLOT void on_rescan_log_push_button_clicked (bool);
@@ -2250,11 +2250,16 @@ Configuration::impl::impl (Configuration * self, QNetworkAccessManager * network
   ui_->highlighting_list_view->setAccessibleName (tr ("Decode highlighting rules"));
   ui_->highlighting_list_view->setAccessibleDescription (tr ("Highlighting rules and priorities for decoded messages."));
   ui_->highlighting_actions_tool_button->setAccessibleName (tr ("Decode highlighting actions"));
-  ui_->highlighting_actions_tool_button->setAccessibleDescription (tr ("Change or reset colors for the selected highlighting rule."));
+  ui_->highlighting_actions_tool_button->setAccessibleDescription (
+    tr ("Change colors or restore Default 1 colors and enabled state for the selected highlighting rule."));
   ui_->move_highlighting_up_push_button->setAccessibleName (tr ("Move selected highlighting rule up"));
   ui_->move_highlighting_up_push_button->setAccessibleDescription (tr ("Move the selected highlighting rule earlier in priority order."));
   ui_->move_highlighting_down_push_button->setAccessibleName (tr ("Move selected highlighting rule down"));
   ui_->move_highlighting_down_push_button->setAccessibleDescription (tr ("Move the selected highlighting rule later in priority order."));
+  ui_->color_presets_tool_button->setAccessibleName (tr ("Decode highlighting color presets"));
+  ui_->color_presets_tool_button->setAccessibleDescription (tr ("Apply colors to all decode highlighting rules without changing which rules are enabled or their priority."));
+  ui_->reset_highlighting_tool_button->setAccessibleName (tr ("Reset decode highlighting"));
+  ui_->reset_highlighting_tool_button->setAccessibleDescription (tr ("Restore colors, enabled rules, and priority order to a complete default configuration."));
   ui_->highlight_orange_callsigns->setAccessibleName (tr ("Orange highlight callsigns and grids"));
   ui_->highlight_blue_callsigns->setAccessibleName (tr ("Blue highlight callsigns and grids"));
 
@@ -2415,8 +2420,8 @@ Configuration::impl::impl (Configuration * self, QNetworkAccessManager * network
     ui_->highlighting_actions_tool_button,
     ui_->move_highlighting_up_push_button,
     ui_->move_highlighting_down_push_button,
-    ui_->reset_highlighting_to_defaults_push_button,
-    ui_->reset_highlighting_to_defaults2_push_button,
+    ui_->color_presets_tool_button,
+    ui_->reset_highlighting_tool_button,
     ui_->rescan_log_push_button,
     ui_->highlight_by_mode_check_box,
     ui_->highlight_orange_check_box,
@@ -2841,6 +2846,56 @@ Configuration::impl::impl (Configuration * self, QNetworkAccessManager * network
         }
     });
   ui_->highlighting_actions_tool_button->setMenu (highlighting_actions_menu);
+
+  auto color_presets_menu = new QMenu {ui_->color_presets_tool_button};
+  auto default_colors_action = color_presets_menu->addAction (tr ("Default 1 colors (original)"));
+  connect (default_colors_action, &QAction::triggered, this, [this] {
+      apply_color_preset (DecodeHighlightingModel::default_color_preset ());
+    });
+  auto default2_colors_action = color_presets_menu->addAction (tr ("Default 2 colors (alternative)"));
+  connect (default2_colors_action, &QAction::triggered, this, [this] {
+      apply_color_preset (DecodeHighlightingModel::default2_color_preset ());
+    });
+  color_presets_menu->addSeparator ();
+  auto red_green_colors_action = color_presets_menu->addAction (tr ("Red/green color-vision friendly"));
+  connect (red_green_colors_action, &QAction::triggered, this, [this] {
+      apply_color_preset (DecodeHighlightingModel::red_green_color_vision_preset ());
+    });
+  auto blue_yellow_colors_action = color_presets_menu->addAction (tr ("Blue/yellow color-vision friendly"));
+  connect (blue_yellow_colors_action, &QAction::triggered, this, [this] {
+      apply_color_preset (DecodeHighlightingModel::blue_yellow_color_vision_preset ());
+    });
+  auto high_contrast_colors_action = color_presets_menu->addAction (tr ("High contrast"));
+  connect (high_contrast_colors_action, &QAction::triggered, this, [this] {
+      apply_color_preset (DecodeHighlightingModel::high_contrast_color_preset ());
+    });
+  color_presets_menu->addSeparator ();
+  auto dark_shack_colors_action = color_presets_menu->addAction (tr ("Dark shack"));
+  connect (dark_shack_colors_action, &QAction::triggered, this, [this] {
+      apply_color_preset (DecodeHighlightingModel::dark_shack_color_preset ());
+    });
+  auto solarized_colors_action = color_presets_menu->addAction (tr ("Solarized"));
+  connect (solarized_colors_action, &QAction::triggered, this, [this] {
+      apply_color_preset (DecodeHighlightingModel::solarized_color_preset ());
+    });
+  auto monochrome_colors_action = color_presets_menu->addAction (tr ("Monochrome"));
+  connect (monochrome_colors_action, &QAction::triggered, this, [this] {
+      apply_color_preset (DecodeHighlightingModel::monochrome_color_preset ());
+    });
+  ui_->color_presets_tool_button->setMenu (color_presets_menu);
+
+  auto reset_highlighting_menu = new QMenu {ui_->reset_highlighting_tool_button};
+  auto reset_default_action = reset_highlighting_menu->addAction (tr ("Default 1"));
+  connect (reset_default_action, &QAction::triggered, this, [this] {
+      reset_highlighting (tr ("Reset all decode highlighting and priorities to Default 1 values"),
+                          DecodeHighlightingModel::default_items ());
+    });
+  auto reset_default2_action = reset_highlighting_menu->addAction (tr ("Default 2"));
+  connect (reset_default2_action, &QAction::triggered, this, [this] {
+      reset_highlighting (tr ("Reset all decode highlighting and priorities to Default 2 values"),
+                          DecodeHighlightingModel::default_items2 ());
+    });
+  ui_->reset_highlighting_tool_button->setMenu (reset_highlighting_menu);
 
   {
     PerformanceTrace::Phase rig_models {"configuration.rig_models"};
@@ -4488,23 +4543,25 @@ void Configuration::impl::on_font_push_button_clicked ()
   next_font_ = QFontDialog::getFont (0, next_font_, this);
 }
 
-void Configuration::impl::on_reset_highlighting_to_defaults_push_button_clicked (bool /*checked*/)
+void Configuration::impl::apply_color_preset (DecodeHighlightingModel::ColorPreset const& preset)
 {
-  if (MessageBox::Yes == MessageBox::query_message (this
-                                                    , tr ("Reset Decode Highlighting")
-                                                    , tr ("Reset all decode highlighting and priorities to Default 1 values")))
+  if (!next_decode_highlighing_model_.apply_color_preset (preset))
     {
-      next_decode_highlighing_model_.items (DecodeHighlightingModel::default_items ());
+      MessageBox::warning_message (
+        this,
+        tr ("Color Preset Error"),
+        tr ("The selected color preset could not be applied. "
+            "Reset decode highlighting to a default configuration and try again."));
     }
 }
 
-void Configuration::impl::on_reset_highlighting_to_defaults2_push_button_clicked (bool /*checked*/)
+void Configuration::impl::reset_highlighting (QString const& confirmation, DecodeHighlightingModel::HighlightItems const& items)
 {
-    if (MessageBox::Yes == MessageBox::query_message (this
-                             , tr ("Reset Decode Highlighting")
-                             , tr ("Reset all decode highlighting and priorities to Default 2 values")))
+  if (MessageBox::Yes == MessageBox::query_message (this
+                                                    , tr ("Reset Decode Highlighting")
+                                                    , confirmation))
     {
-      next_decode_highlighing_model_.items (DecodeHighlightingModel::default_items2 ());
+      next_decode_highlighing_model_.items (items);
     }
 }
 

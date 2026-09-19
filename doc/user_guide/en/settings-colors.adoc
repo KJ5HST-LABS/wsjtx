@@ -6,14 +6,31 @@ image::colors.png[align="center",alt="Colors Screen"]
   interest.  Check the box *Show DXCC, grid, and worked-before status*
   on the *File |Settings | General* tab, and any boxes of interest to you on
   the *Colors* tab.  You can drag any line up or down to raise or
-  lower its logical priority.  Right-click any line to set a new
-  foreground or background color.  Foreground and background colors
+  lower its logical priority.  Select a line and use *Actions...*, or
+  right-click it, to set a new foreground or background color, or to
+  restore that rule's Default 1 colors and enabled state.
+  Foreground and background colors
   are applied separately, and careful choices of foreground,
   background, and priority can provide two indications of
   worked-before status.
 
-* Press the *Reset Highlighting* button to reset all of the color
-  settings to default values.
+* Use *Color presets...* to apply the original, alternative, accessibility,
+  or operating-environment color schemes to every highlighting rule. The
+  accessibility presets include red/green color-vision friendly,
+  blue/yellow color-vision friendly, and high-contrast choices. These
+  presets improve differentiation for common needs but may not suit every
+  user or display. Dark shack, Solarized, and monochrome schemes emphasize
+  direct calls and rarer all-band discoveries while giving more common
+  on-band and CQ indications less visual weight. The Solarized scheme adapts
+  link:https://ethanschoonover.com/solarized/[Ethan Schoonover's Solarized
+  palette] to complete foreground and background pairs suitable for decode
+  alerts. A color preset preserves which rules are enabled and
+  their priority order. The colors shown in the list are a preview; press
+  *OK* to save them or *Cancel* to discard them. You can customize
+  individual colors after applying a preset.
+
+* Use *Reset highlighting...* to restore colors, enabled rules, and
+  priority order to a complete Default 1 or Default 2 configuration.
 
 * Check *Highlight by Mode* if you wish worked-before status to be per
   <<INTRO,mode>>.
