@@ -29,7 +29,7 @@ contains
       use npar_ptrs_mod,  only: nsmax_active, nrate_active, nfft_active, t_start, abort_decode, &
                                manualDecodeFlag, active_input_generation
       use sec0_mod, only: sec0
-      use q65_decode, only: nsnr0
+      use q65_decode, only: nsnr0, msg0, xdt0, nfreq0
 
       implicit none
 
@@ -431,11 +431,21 @@ contains
             ! itself instead, from f0 (already unambiguous), leaving this
             ! mousedf untouched for f_mouse/k0 to keep working correctly.
 
+            ! Logged even when dbg() is off (manual clicks are rare).
+            call dbg_always('map65a manual: Q65 call nutc=' // itoa(nutc) // ' nqd=' // itoa(nqd) // &
+                     ' ikhz=' // itoa(ikhz) // ' mousedf=' // itoa(mousedf) // ' ntol=' // itoa(ntol) // &
+                     ' mode_q65=' // itoa(mode_q65) // ' f0=' // rtoa(real(f0)) // &
+                     ' newdat=' // itoa(newdat) // ' nagain=' // itoa(nagain) // &
+                     ' ndepth=' // itoa(ndepth) // ' max_drift=' // itoa(max_drift))
+
             call timer('q65b    ', 0)
             call q65b(nutc, nqd, nxant, fcenter, nfcal, nfsample, ikhz, mousedf, &
                       ntol, xpol, idphi, mycall, mygrid, hiscall, hisgrid, mode_q65, f0, fqso, &
                       newdat, nagain, max_drift, ndop00, idec)
             call timer('q65b    ', 1)
+
+            call dbg_always('map65a manual: Q65 result idec=' // itoa(idec) // ' nsnr0=' // itoa(nsnr0) // &
+                     ' nfreq0=' // itoa(nfreq0) // ' xdt0=' // rtoa(xdt0) // ' msg0=[' // trim(msg0) // ']')
 
             ! NB: idec, as returned by q65b, is not a trustworthy success flag:
             ! q65b derives it by parsing cq0(2:2) (see q65b.F90, label 900), and
