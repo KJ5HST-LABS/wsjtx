@@ -58,6 +58,7 @@ class QHBoxLayout;
 #include "Configuration.hpp"
 #include "JttyN1mmOutput.hpp"
 #include "JttyReceiveAudio.hpp"
+#include "JttyMmttyHandoff.hpp"
 #include "JttyTxLifecycle.hpp"
 #include "WSPR/WSPRBandHopping.hpp"
 #include "Transceiver/Transceiver.hpp"
@@ -825,9 +826,14 @@ private:
   void handleMmttyJttySessionDrained(qint64 sessionId);
   void completeMmttyJttyOutput(bool drained = false);
   void startPendingMmttyJttyTx();
+  void beginMmttyHandoff();
+  void resumeMmttyHandoff();
+  void finalizeMmttyExternalAbort();
+  bool mmttyNeedsHandoff() const;
   QString jttyRejectReasonText(JttyTxRejectReason reason) const;
 #endif
   void execute_jtty_tx(qint64 requestId, QString message);
+  bool prepareJttyTones(qint64 requestId, QString& message, int tones[], int& nsym);
   void execute_jtty_tones(qint64 requestId, QString const& message,
                           int const itone[], int nsym);
   qint64 jttyTxCommittedSamples() const;
@@ -1458,6 +1464,15 @@ private:
   qint64 m_jttyEnqueueId;
 #ifdef WIN32
   Jtty::N1mmOutput m_mmttyJttyOutput;
+  struct PendingMmttyJttyMessage
+  {
+    qint64 requestId;
+    QString message;
+    QVector<int> tones;
+  };
+  QVector<PendingMmttyJttyMessage> m_pendingMmttyJttyMessages;
+  Jtty::MmttyHandoff m_mmttyHandoff;
+  bool m_preserveMmttyOutputDuringStop {false};
 #endif
   bool m_block_pwr_tooltip;
   bool m_PwrBandSetOK;

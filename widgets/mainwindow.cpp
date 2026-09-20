@@ -1478,7 +1478,6 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
 
   m_jttyTxWatchdog.setSingleShot(true);
   connect(&m_jttyTxWatchdog, &QTimer::timeout, this, &MainWindow::handleJttyTxWatchdog);
-
   m_refSpecTimer.setInterval(1000);
   connect(&m_refSpecTimer, &QTimer::timeout, this, &MainWindow::updateReferenceSpectrumCountdown);
 
@@ -8465,8 +8464,11 @@ void MainWindow::noteTxModeChange (QString const& mode)
 
 void MainWindow::updateModeControlLock ()
 {
-  bool const enabled = !m_modeLocked && !m_transmitting
+  bool enabled = !m_modeLocked && !m_transmitting
     && !m_jttyTxLifecycle.active ();
+#ifdef WIN32
+  enabled = enabled && !m_mmttyHandoff.active ();
+#endif
   ui->menuMode->setEnabled (enabled);
   for (auto * button : {ui->houndButton, ui->ft8Button, ui->ft4Button,
                         ui->msk144Button, ui->q65Button, ui->jt65Button,
@@ -8564,6 +8566,11 @@ void MainWindow::stopTx()
     statusUpdate ();
   }
   stopTxEvidence (stopTxDelayMs);
+#ifdef WIN32
+  if (abnormalJttyStop && !m_preserveMmttyOutputDuringStop) {
+    finalizeMmttyExternalAbort ();
+  }
+#endif
 }
 
 void MainWindow::stopTx2()
@@ -8597,6 +8604,9 @@ void MainWindow::stopTx2()
     }
   keep_last_tx_label = true;
   last_tx_label.setText(tr ("Last Tx: %1").arg (m_currentMessage.trimmed()));
+#ifdef WIN32
+  resumeMmttyHandoff ();
+#endif
   m_delayedJttyStopContext = {};
 }
 
@@ -12659,6 +12669,9 @@ void MainWindow::handle_transceiver_closing (bool failed)
   m_jttyTxLifecycle.failAll ();
   m_pendingJttyMessages.clear ();
   stopTx ();
+#ifdef WIN32
+  finalizeMmttyExternalAbort ();
+#endif
 }
 
 void MainWindow::handle_transceiver_failure (QString const& reason)
@@ -12685,6 +12698,9 @@ void MainWindow::handle_transceiver_failure (QString const& reason)
   reset_transmit_controls_after_stop ();
   rigFailure (reason);
   rigFailed = true;
+#ifdef WIN32
+  finalizeMmttyExternalAbort ();
+#endif
 }
 
 void MainWindow::rigFailure (QString const& reason)
@@ -14280,6 +14296,9 @@ void MainWindow::tx_watchdog (bool triggered)
       QApplication::alert (this);
       if (SpecOp::HOUND == m_specOp) ui->txrb1->click ();   // Go back to Tx1
       if (m_jttyTxLifecycle.active ()) stopTx ();
+#ifdef WIN32
+      finalizeMmttyExternalAbort ();
+#endif
     }
   else
     {

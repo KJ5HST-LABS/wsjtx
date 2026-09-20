@@ -143,6 +143,15 @@ void MainWindow::submitJttyDraft(QString message)
 void MainWindow::execute_jtty_tx(qint64 requestId, QString message)
 {
   int itone[944];
+  int nsym = 0;
+  if (prepareJttyTones(requestId, message, itone, nsym)) {
+    execute_jtty_tones(requestId, message, itone, nsym);
+  }
+}
+
+bool MainWindow::prepareJttyTones(qint64 requestId, QString& message,
+                                  int itone[], int& nsym)
+{
   bool const isChainedMessage = m_jttyTxLifecycle.active ();
   if(ui->cbLowerCase->isChecked()) message = message.toLower();
 
@@ -153,7 +162,7 @@ void MainWindow::execute_jtty_tx(qint64 requestId, QString message)
   message = preparedMessage.text;
   if (message.isEmpty()) {
     Q_EMIT jttyTextRejected(requestId, JttyTxRejectReason::Empty);
-    return;
+    return false;
   }
 
   // Keep message as the logical text; the chained leading space is only
@@ -161,18 +170,18 @@ void MainWindow::execute_jtty_tx(qint64 requestId, QString message)
   // serial check in completeJttyTxEnqueue.
   auto transmitFrame = Jtty::transmitFrame(message, isChainedMessage).toLatin1();
 
-  int nsym=0;
+  nsym=0;
   int const exchangeProfile = static_cast<int>(jttyExchangeProfile(m_config));
   genjtty_profile_(transmitFrame.data(), &exchangeProfile,
                    &itone[0], &nsym, (FCL)80);
   if (nsym <= 0) {
     LOG_WARN("JTTY transmit message could not be encoded");
     Q_EMIT jttyTextRejected(requestId, JttyTxRejectReason::EncodingFailed);
-    return;
+    return false;
   }
 
   message = QString::fromLatin1(transmitFrame).trimmed();
-  execute_jtty_tones(requestId, message, itone, nsym);
+  return true;
 }
 
 void MainWindow::execute_jtty_tones(qint64 requestId, QString const& message,
@@ -398,6 +407,7 @@ void MainWindow::abort_jtty_tx()
    if (m_mmttyif) {
        m_mmttyif->report_ptt_state(false);
    }
+   finalizeMmttyExternalAbort ();
 #endif
 }
 
@@ -547,6 +557,7 @@ void MainWindow::handleJttyTxWatchdog()
   if (m_mmttyif) {
     m_mmttyif->report_ptt_state(false);
   }
+  finalizeMmttyExternalAbort ();
 #endif
 }
 
@@ -690,36 +701,16 @@ QString MainWindow::jttyRejectReasonText(JttyTxRejectReason reason) const
 
 void MainWindow::handleMmttyTxString(QString message)
 {
-  auto const context = jttyNativeMacroContext(
-    m_config, m_hisCall, ui->sbSerialNumber_2->value(), m_jttyHisCallSnr);
-  auto const compiled = Jtty::compileN1mmMessage(message, context);
-  if (m_mode != "JTTY") {
-    if (compiled.status == Jtty::N1mmCompileStatus::Literal) {
-      jtty_tx(compiled.literalText);
-      return;
-    }
-
-    qint64 const requestId = ++m_jttyTxRequestId;
-    m_mmttyJttyOutput.submit(requestId);
-    QString const reason = compiled.status == Jtty::N1mmCompileStatus::Error
-      ? compiled.error : QStringLiteral("tagged JTTY actions require JTTY mode");
-    logText(QStringLiteral("MMTTY/N1MM tagged JTTY request %1 rejected: %2")
-            .arg(requestId).arg(reason));
-    Q_EMIT jttyTextRejected(requestId, JttyTxRejectReason::NotAvailable);
-    return;
-  }
-
   if (m_mmttyJttyOutput.finishRequested()) {
     logText(QStringLiteral("MMTTY/N1MM JTTY text ignored after graceful OFF"));
     return;
   }
 
+  auto const context = jttyNativeMacroContext(
+    m_config, m_hisCall, ui->sbSerialNumber_2->value(), m_jttyHisCallSnr);
+  auto const compiled = Jtty::compileN1mmMessage(message, context);
   qint64 const requestId = ++m_jttyTxRequestId;
   m_mmttyJttyOutput.submit(requestId);
-  if (compiled.status == Jtty::N1mmCompileStatus::Literal) {
-    execute_jtty_tx(requestId, compiled.literalText);
-    return;
-  }
   if (compiled.status == Jtty::N1mmCompileStatus::Error) {
     logText(QStringLiteral("MMTTY/N1MM tagged JTTY request %1 rejected: %2")
             .arg(requestId).arg(compiled.error));
@@ -727,39 +718,64 @@ void MainWindow::handleMmttyTxString(QString message)
     return;
   }
 
-  int itone[944];
+  QString transmitText = compiled.status == Jtty::N1mmCompileStatus::Literal
+    ? compiled.literalText : compiled.canonicalText;
+  int itone[944] {};
   int nsym = 0;
-  int encodeStatus = static_cast<int>(Jtty::NativeEncodeStatus::InvalidDescriptor);
-  genjtty_atoms_c(compiled.atoms.constData(), compiled.atoms.size(), itone, &nsym,
-                  &encodeStatus);
+  int encodeStatus = 0;
+  if (compiled.status == Jtty::N1mmCompileStatus::Literal) {
+    if (!prepareJttyTones(requestId, transmitText, itone, nsym)) return;
+  } else {
+    encodeStatus = static_cast<int>(Jtty::NativeEncodeStatus::InvalidDescriptor);
+    genjtty_atoms_c(compiled.atoms.constData(), compiled.atoms.size(), itone, &nsym,
+                    &encodeStatus);
+  }
   if (nsym <= 0) {
     logText(QStringLiteral("MMTTY/N1MM tagged JTTY request %1 rejected: %2")
-            .arg(requestId).arg(jttyNativeEncodeError(encodeStatus)));
+            .arg(requestId)
+            .arg(compiled.status == Jtty::N1mmCompileStatus::Literal
+                   ? QStringLiteral("message could not be encoded")
+                   : jttyNativeEncodeError(encodeStatus)));
     Q_EMIT jttyTextRejected(requestId, JttyTxRejectReason::EncodingFailed);
     return;
   }
-  execute_jtty_tones(requestId, compiled.canonicalText, itone, nsym);
+
+  QVector<int> tones;
+  tones.reserve (nsym);
+  for (int i = 0; i < nsym; ++i) tones.append (itone[i]);
+
+  if (mmttyNeedsHandoff ()) {
+    if (!m_mmttyHandoff.queue (requestId)) {
+      Q_EMIT jttyTextRejected(requestId, JttyTxRejectReason::QueueFull);
+      return;
+    }
+    m_pendingMmttyJttyMessages.append ({requestId, transmitText, tones});
+    beginMmttyHandoff ();
+    return;
+  }
+
+  if (m_mode != QStringLiteral("JTTY")) set_mode (QStringLiteral("JTTY"));
+  execute_jtty_tones(requestId, transmitText, tones.constData (), tones.size ());
 }
 
 void MainWindow::handleMmttyStartTx()
 {
-  if (m_mode != "JTTY" && !m_mmttyJttyOutput.pending()) {
-    startTx2();
+  m_mmttyJttyOutput.start();
+  if (mmttyNeedsHandoff ()) {
+    beginMmttyHandoff ();
     return;
   }
-
-  m_mmttyJttyOutput.start();
+  if (m_mode != QStringLiteral("JTTY")) set_mode (QStringLiteral("JTTY"));
   startPendingMmttyJttyTx();
 }
 
 void MainWindow::handleMmttyStopTx()
 {
-  if (m_mode != "JTTY") {
+  if (m_mode != "JTTY" && !m_mmttyHandoff.active ()
+      && !m_jttyTxLifecycle.active ()) {
     noteTxStopReason (TxEvidence::TxStopReason::UserHalt);
-    stopTx();
-    if (!m_mmttyJttyOutput.pending()) return;
+    stopTx ();
   }
-
   m_mmttyJttyOutput.finish();
   logText(QStringLiteral("MMTTY/N1MM JTTY OFF requested; waiting for backend drain"));
   completeMmttyJttyOutput();
@@ -767,8 +783,13 @@ void MainWindow::handleMmttyStopTx()
 
 void MainWindow::handleMmttyAbortTx()
 {
+  bool const handoffWasActive = m_mmttyHandoff.active ();
+  m_pendingMmttyJttyMessages.clear ();
+  m_mmttyHandoff.abort ();
+  m_preserveMmttyOutputDuringStop = false;
   m_mmttyJttyOutput.abort();
-  abort_jtty_tx();
+  if (!handoffWasActive || m_jttyTxLifecycle.active ()) abort_jtty_tx();
+  updateModeControlLock ();
 }
 
 void MainWindow::handleMmttyJttyAccepted(qint64 requestId)
@@ -776,6 +797,7 @@ void MainWindow::handleMmttyJttyAccepted(qint64 requestId)
   if (!m_mmttyJttyOutput.accept(requestId)) return;
 
   logText(QStringLiteral("MMTTY/N1MM JTTY request %1 accepted").arg(requestId));
+  m_mmttyHandoff.submitted (requestId);
   startPendingMmttyJttyTx();
 }
 
@@ -786,6 +808,7 @@ void MainWindow::handleMmttyJttyRejected(qint64 requestId, JttyTxRejectReason re
   logText(QStringLiteral("MMTTY/N1MM JTTY request %1 rejected: %2")
           .arg(requestId)
           .arg(jttyRejectReasonText(reason)));
+  m_mmttyHandoff.submitted (requestId);
   // Backend rejection may reset the audio session after emitting this signal.
   QTimer::singleShot(0, this, [this] { completeMmttyJttyOutput(); });
 }
@@ -805,14 +828,16 @@ void MainWindow::handleMmttyJttySessionDrained(qint64 sessionId)
 
 void MainWindow::completeMmttyJttyOutput(bool drained)
 {
-  if (m_mmttyJttyOutput.takeCompletion(m_jttyTxLifecycle.active (), drained) && m_mmttyif) {
+  if (m_mmttyJttyOutput.takeCompletion(m_jttyTxLifecycle.active (), drained)
+      && m_mmttyif) {
     m_mmttyif->report_output_complete();
   }
 }
 
 void MainWindow::startPendingMmttyJttyTx()
 {
-  if (m_mode != "JTTY" || !m_mmttyJttyOutput.startRequested()) return;
+  if (m_mode != "JTTY" || !m_mmttyJttyOutput.startRequested()
+      || m_mmttyHandoff.active ()) return;
 
   if (!m_jttyTxLifecycle.active () || jttyTxCommittedSamples () <= 0) {
     logText(QStringLiteral("MMTTY/N1MM JTTY start deferred until text is accepted"));
@@ -827,6 +852,58 @@ void MainWindow::startPendingMmttyJttyTx()
 
   m_mmttyJttyOutput.started();
   startTx2();
+}
+
+bool MainWindow::mmttyNeedsHandoff() const
+{
+  if (m_mmttyHandoff.active ()) return true;
+  bool const busy = m_transmitting || m_tune || g_iptt == 1
+    || ptt0Timer.isActive ();
+  return Jtty::MmttyHandoff::SubmitAction::StopThenSubmit
+    == Jtty::MmttyHandoff::planSubmission (
+      true, m_jttyTxLifecycle.active (), busy);
+}
+
+void MainWindow::beginMmttyHandoff()
+{
+  if (m_mmttyHandoff.active ()) return;
+  m_mmttyHandoff.waitForStop ();
+  updateModeControlLock ();
+  m_preserveMmttyOutputDuringStop = true;
+  noteTxStopReason (TxEvidence::TxStopReason::ModeChange);
+  if (m_tune) stop_tuning ();
+  if (m_transmitting || g_iptt == 1 || m_jttyTxLifecycle.active ()) {
+    stopTx ();
+  } else if (!ptt0Timer.isActive ()) {
+    QTimer::singleShot (0, this, &MainWindow::resumeMmttyHandoff);
+  }
+}
+
+void MainWindow::resumeMmttyHandoff()
+{
+  if (!m_mmttyHandoff.stopCompleted ()) return;
+  m_preserveMmttyOutputDuringStop = false;
+  if (m_mode != QStringLiteral("JTTY")) set_mode (QStringLiteral("JTTY"));
+
+  auto const queued = m_pendingMmttyJttyMessages;
+  m_pendingMmttyJttyMessages.clear ();
+  for (auto const& pending : queued) {
+    execute_jtty_tones (pending.requestId, pending.message,
+                        pending.tones.constData (), pending.tones.size ());
+  }
+  startPendingMmttyJttyTx ();
+  updateModeControlLock ();
+}
+
+void MainWindow::finalizeMmttyExternalAbort()
+{
+  m_pendingMmttyJttyMessages.clear ();
+  m_mmttyHandoff.abort ();
+  m_preserveMmttyOutputDuringStop = false;
+  updateModeControlLock ();
+  if (!m_mmttyJttyOutput.pending ()) return;
+  m_mmttyJttyOutput.externalAbort ();
+  completeMmttyJttyOutput (true);
 }
 
 void MainWindow::initMMTTY(quint16 port) {
@@ -852,9 +929,8 @@ void MainWindow::initMMTTY(quint16 port) {
         close();
     });
 
-    // Auto-switch to JTTY mode after MMTTY connects
     QTimer::singleShot(3000, this, [this]() {
-         set_mode("JTTY");
+         if (m_mode != "JTTY") set_mode("JTTY");
     });
 }
 

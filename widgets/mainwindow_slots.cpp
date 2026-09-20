@@ -658,6 +658,10 @@ void MainWindow::reset_transmit_controls_after_stop ()
 void MainWindow::on_stopTxButton_clicked()                    // Stop Tx
 {
   noteTxStopReason (TxEvidence::TxStopReason::UserHalt);
+  if (m_jttyTxLifecycle.active ()) stopTx ();
+#ifdef WIN32
+  finalizeMmttyExternalAbort ();
+#endif
   if (m_beaconTxController.txLifecycle () == BeaconTx::TxLifecycle::Decided
       || m_beaconTxController.txLifecycle () == BeaconTx::TxLifecycle::StartRequested)
     {
