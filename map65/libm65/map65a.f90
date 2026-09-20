@@ -377,7 +377,17 @@ contains
             call timer('decode1a',1)
 
             abort_decode = abort_saved
-            call dbg_always('map65a manual: decode1a called, decoded=[' // trim(decoded_jt65) // ']')
+            ! Fit and averaging details, to tell a normal decode from a strange one
+            ! (e.g. an odd DT). dt_in is the DT decode1a was given (from ccf65 at the
+            ! best bin), dt_out the DT it returned. nsum > 0 means the single-period
+            ! decode failed and decode1a went on to try averaging saved spectra;
+            ! nkv >= 2 with a decode means the message came from that average.
+            call dbg_always('map65a manual: decode1a called, decoded=[' // trim(decoded_jt65) // ']' // &
+                     ' dt_in=' // rtoa(best_dt) // ' dt_out=' // rtoa(dt) // &
+                     ' sync2=' // rtoa(sync2) // ' a1_df=' // rtoa(a(1)) // &
+                     ' nkv=' // itoa(nkv) // ' nsum=' // itoa(nsum) // ' nsave=' // itoa(nsave) // &
+                     ' nhist=' // itoa(nhist) // ' qual=' // rtoa(qual) // &
+                     ' nflip=' // itoa(nflip) // ' f00=' // rtoa(real(f00)))
 
             if (decoded_jt65 /= '                      ') then
                jt65_success = .true.
