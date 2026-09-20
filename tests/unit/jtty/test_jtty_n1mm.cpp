@@ -102,7 +102,7 @@ private slots:
     QVERIFY (output.takeCompletion (false));
   }
 
-  void externalAbortCompletesOnce ()
+  void timeoutCompletesOnce ()
   {
     Jtty::N1mmOutput output;
     output.submit (1);
@@ -129,7 +129,8 @@ private slots:
 
   void mmttyHandoffWaitsForPriorStop ()
   {
-    Jtty::MmttyHandoff handoff;
+    Jtty::MmttyHandoff handoff {25};
+    QCOMPARE (handoff.timeoutMs (), 25);
     handoff.queue (11);
     handoff.waitForStop ();
 
@@ -166,6 +167,18 @@ private slots:
     QVERIFY (!handoff.queue (66));
     handoff.abort ();
     QVERIFY (handoff.queue (66));
+  }
+
+  void mmttyHandoffTimeoutRejectsAllQueuedRequests ()
+  {
+    Jtty::MmttyHandoff handoff;
+    handoff.queue (31);
+    handoff.queue (32);
+    handoff.waitForStop ();
+
+    QCOMPARE (handoff.expire (), QVector<qint64> ({31, 32}));
+    QVERIFY (handoff.empty ());
+    QVERIFY (!handoff.active ());
   }
 
   void activeFt8ValidTextStopsBeforeSubmission ()

@@ -1478,6 +1478,15 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
 
   m_jttyTxWatchdog.setSingleShot(true);
   connect(&m_jttyTxWatchdog, &QTimer::timeout, this, &MainWindow::handleJttyTxWatchdog);
+  m_jttyEnqueueWatchdog.setSingleShot (true);
+  connect (&m_jttyEnqueueWatchdog, &QTimer::timeout,
+           this, &MainWindow::handleJttyEnqueueTimeout);
+#ifdef WIN32
+  m_mmttyHandoffWatchdog.setSingleShot (true);
+  connect (&m_mmttyHandoffWatchdog, &QTimer::timeout,
+           this, &MainWindow::handleMmttyHandoffTimeout);
+#endif
+
   m_refSpecTimer.setInterval(1000);
   connect(&m_refSpecTimer, &QTimer::timeout, this, &MainWindow::updateReferenceSpectrumCountdown);
 
@@ -8545,6 +8554,7 @@ void MainWindow::stopTx()
   }
   if (jttyTx) {
     m_jttyTxWatchdog.stop ();
+    m_jttyEnqueueWatchdog.stop ();
     m_jttyTxLifecycle.markBackendStopRouted (*jttyStop);
     m_jttyTxLifecycle.reset ();
     m_pendingJttyMessages.clear ();
@@ -12668,6 +12678,7 @@ void MainWindow::handle_transceiver_closing (bool failed)
   rejectPendingJttyMessages (JttyTxRejectReason::NotAvailable);
   m_jttyTxLifecycle.failAll ();
   m_pendingJttyMessages.clear ();
+  m_jttyEnqueueWatchdog.stop ();
   stopTx ();
 #ifdef WIN32
   finalizeMmttyExternalAbort ();

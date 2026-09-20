@@ -2,6 +2,7 @@
 #define JTTY_TX_LIFECYCLE_HPP_
 
 #include <algorithm>
+#include <chrono>
 #include <optional>
 #include <utility>
 #include <vector>
@@ -26,6 +27,10 @@ public:
     Transmitting,
     Stopping
   };
+
+  using Clock = std::chrono::steady_clock;
+  using Duration = std::chrono::milliseconds;
+  using TimePoint = Clock::time_point;
 
   struct Pending
   {
@@ -58,6 +63,17 @@ public:
     std::optional<Drain> drain;
   };
 
+  static constexpr Duration defaultPreacceptanceTimeout () noexcept
+  {
+    return std::chrono::seconds {10};
+  }
+
+  explicit JttyTxLifecycle (
+    Duration preacceptance_timeout = defaultPreacceptanceTimeout ()) noexcept
+    : preacceptance_timeout_ {preacceptance_timeout}
+  {
+  }
+
   bool begin (Backend backend, TxAudioQueueEpoch epoch) noexcept
   {
     if (Phase::Idle != phase_ || Backend::None == backend || !epoch.isValid ()) {
@@ -78,13 +94,17 @@ public:
     return begin (backend, next_epoch) ? next_epoch : TxAudioQueueEpoch::invalid ();
   }
 
-  bool addPending (qint64 enqueue_id, qint64 request_id)
+  bool addPending (qint64 enqueue_id, qint64 request_id,
+                   TimePoint now = Clock::now ())
   {
     if (!canResolveEnqueue () || enqueue_id <= 0 || request_id <= 0
         || findPending (enqueue_id) != pending_.end ()) {
       return false;
     }
 
+    if (pending_.empty ()) {
+      preacceptance_deadline_ = now + preacceptance_timeout_;
+    }
     pending_.push_back (Pending {enqueue_id, request_id});
     return true;
   }
@@ -119,6 +139,7 @@ public:
     if (Phase::AwaitingEnqueue == phase_) {
       phase_ = Phase::Ready;
     }
+    clearDeadlineWhenSettled ();
     return result;
   }
 
@@ -148,6 +169,7 @@ public:
     if (pending_.empty ()) {
       result.drain = takeMatchingDeferredDrain ();
     }
+    clearDeadlineWhenSettled ();
     return result;
   }
 
@@ -165,6 +187,7 @@ public:
     } else {
       result.drain = takeMatchingDeferredDrain ();
     }
+    preacceptance_deadline_.reset ();
     return result;
   }
 
@@ -200,6 +223,7 @@ public:
     if (Phase::Stopping != phase_) {
       stop_context_ = StopContext {backend_, epoch_, progress_};
       backend_stop_routed_ = false;
+      preacceptance_deadline_.reset ();
       phase_ = Phase::Stopping;
     }
     return stop_context_;
@@ -228,6 +252,7 @@ public:
     deferred_drain_.reset ();
     stop_context_.reset ();
     backend_stop_routed_ = false;
+    preacceptance_deadline_.reset ();
     phase_ = Phase::Idle;
     return true;
   }
@@ -250,6 +275,19 @@ public:
     return stop_context_;
   }
   bool backendStopRouted () const noexcept {return backend_stop_routed_;}
+  Duration preacceptanceTimeout () const noexcept
+  {
+    return preacceptance_timeout_;
+  }
+  std::optional<TimePoint> const& preacceptanceDeadline () const noexcept
+  {
+    return preacceptance_deadline_;
+  }
+  bool preacceptanceTimedOut (TimePoint now = Clock::now ()) const noexcept
+  {
+    return preacceptance_deadline_ && now >= *preacceptance_deadline_;
+  }
+
 private:
   using PendingIterator = std::vector<Pending>::iterator;
 
@@ -278,6 +316,13 @@ private:
     return result;
   }
 
+  void clearDeadlineWhenSettled () noexcept
+  {
+    if (pending_.empty ()) {
+      preacceptance_deadline_.reset ();
+    }
+  }
+
   static bool sameStopContext (StopContext const& lhs,
                                StopContext const& rhs) noexcept
   {
@@ -288,6 +333,7 @@ private:
       && lhs.progress.total_samples == rhs.progress.total_samples;
   }
 
+  Duration preacceptance_timeout_;
   Phase phase_ {Phase::Idle};
   Backend backend_ {Backend::None};
   TxAudioQueueEpoch epoch_ {};
@@ -297,6 +343,7 @@ private:
   std::optional<Drain> deferred_drain_;
   std::optional<StopContext> stop_context_;
   bool backend_stop_routed_ {false};
+  std::optional<TimePoint> preacceptance_deadline_;
 };
 
 #endif

@@ -187,7 +187,8 @@ public:
     QueueFull,
     BackendRejected,
     Aborted,
-    NotAvailable
+    NotAvailable,
+    BackendTimedOut
   };
   Q_ENUM(JttyTxRejectReason)
 
@@ -828,6 +829,7 @@ private:
   void startPendingMmttyJttyTx();
   void beginMmttyHandoff();
   void resumeMmttyHandoff();
+  void handleMmttyHandoffTimeout();
   void finalizeMmttyExternalAbort();
   bool mmttyNeedsHandoff() const;
   QString jttyRejectReasonText(JttyTxRejectReason reason) const;
@@ -855,6 +857,7 @@ private:
                                     TxAudioQueueProgress progress);
   void onJttyBackendEnqueueFailed(TxAudioQueueEpoch epoch, qint64 enqueueId,
                                   TxAudioQueueEnqueueFailure failure);
+  void handleJttyEnqueueTimeout();
   void handleJttyTxWatchdog();
   void startJttyTxWatchdog(int durationMs);
   bool jtty_key_struck(QKeyEvent * e);
@@ -1284,6 +1287,7 @@ private:
   QTimer splashTimer;
   QTimer p1Timer;
   QTimer m_jttyTxWatchdog;
+  QTimer m_jttyEnqueueWatchdog;
   QTimer m_refSpecTimer;
   AutoRespondSelectionLatch m_autoRespondSelectionLatch;
   AutoRespondScores m_autoRespondScores;
@@ -1472,6 +1476,7 @@ private:
   };
   QVector<PendingMmttyJttyMessage> m_pendingMmttyJttyMessages;
   Jtty::MmttyHandoff m_mmttyHandoff;
+  QTimer m_mmttyHandoffWatchdog;
   bool m_preserveMmttyOutputDuringStop {false};
 #endif
   bool m_block_pwr_tooltip;

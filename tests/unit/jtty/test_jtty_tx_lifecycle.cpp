@@ -1,3 +1,5 @@
+#include <chrono>
+
 #include <QtTest>
 
 #include "widgets/JttyTxLifecycle.hpp"
@@ -125,6 +127,29 @@ private slots:
     QCOMPARE (failed.pending.size (), std::size_t {1});
     QCOMPARE (failed.pending.front ().request_id, 11);
     QVERIFY (!failed.drain.has_value ());
+  }
+
+  void preacceptanceTimeoutIsConfigurableAndStartsWithFirstPending ()
+  {
+    using namespace std::chrono_literals;
+
+    JttyTxLifecycle lifecycle {25ms};
+    auto const epoch = lifecycle.begin (JttyTxLifecycle::Backend::Local);
+    auto const start = JttyTxLifecycle::TimePoint {1s};
+
+    QVERIFY (!lifecycle.preacceptanceDeadline ().has_value ());
+    QVERIFY (lifecycle.addPending (1, 1, start));
+    QCOMPARE (lifecycle.preacceptanceTimeout (), 25ms);
+    QCOMPARE (*lifecycle.preacceptanceDeadline (), start + 25ms);
+    QVERIFY (!lifecycle.preacceptanceTimedOut (start + 24ms));
+    QVERIFY (lifecycle.preacceptanceTimedOut (start + 25ms));
+
+    QVERIFY (lifecycle.addPending (2, 2, start + 20ms));
+    QCOMPARE (*lifecycle.preacceptanceDeadline (), start + 25ms);
+    QVERIFY (lifecycle.accept (epoch, 1, 10).pending.has_value ());
+    QVERIFY (lifecycle.preacceptanceDeadline ().has_value ());
+    QVERIFY (lifecycle.fail (epoch, 2).pending.has_value ());
+    QVERIFY (!lifecycle.preacceptanceDeadline ().has_value ());
   }
 
   void resetRequiresBackendStopRouting ()

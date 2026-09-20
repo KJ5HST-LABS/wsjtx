@@ -17,6 +17,12 @@ namespace Jtty
       StopThenSubmit
     };
 
+    explicit MmttyHandoff (int timeoutMs = 10000)
+      : timeoutMs_ {timeoutMs}
+    {
+    }
+
+    int timeoutMs () const noexcept {return timeoutMs_;}
     bool active () const noexcept {return waitingForStop_;}
     bool empty () const noexcept {return requestIds_.isEmpty ();}
     QVector<qint64> const& requestIds () const noexcept {return requestIds_;}
@@ -46,6 +52,13 @@ namespace Jtty
       return true;
     }
 
+    QVector<qint64> expire ()
+    {
+      auto const ids = requestIds_;
+      reset ();
+      return ids;
+    }
+
     void submitted (qint64 requestId) {requestIds_.removeOne (requestId);}
     void abort () {reset ();}
 
@@ -56,6 +69,7 @@ namespace Jtty
       waitingForStop_ = false;
     }
 
+    int timeoutMs_;
     QVector<qint64> requestIds_;
     bool waitingForStop_ {false};
   };

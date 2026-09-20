@@ -243,6 +243,7 @@ void MainWindow::execute_jtty_tones(qint64 requestId, QString const& message,
                    samples.size () * int (sizeof (qint16)));
   auto const epoch = m_jttyTxLifecycle.epoch ();
   qint64 const enqueueId = ++m_jttyEnqueueId;
+  bool const firstPending = !m_jttyTxLifecycle.hasPending ();
   if (!m_jttyTxLifecycle.addPending (enqueueId, requestId)) {
     Q_EMIT jttyTextRejected(requestId, JttyTxRejectReason::Aborted);
     return;
@@ -251,6 +252,10 @@ void MainWindow::execute_jtty_tones(qint64 requestId, QString const& message,
     epoch, enqueueId, requestId, samples.size (), message, newSession
   });
   m_jttyTxWatchdog.stop ();
+  if (firstPending) {
+    m_jttyEnqueueWatchdog.start (
+      int (m_jttyTxLifecycle.preacceptanceTimeout ().count ()));
+  }
   updateModeControlLock ();
 
   if (m_jttyTxLifecycle.backend () == JttyTxLifecycle::Backend::Tci) {
@@ -431,6 +436,7 @@ void MainWindow::interruptJttyTx()
   rejectPendingJttyMessages(JttyTxRejectReason::Aborted);
   m_jttyTxLifecycle.failAll ();
   m_pendingJttyMessages.clear();
+  m_jttyEnqueueWatchdog.stop ();
   auto const resetEpoch = TxAudioQueueEpoch {stop->epoch.value () + 1};
   if (stop->backend == JttyTxLifecycle::Backend::Tci) {
     Q_EMIT m_config.transceiver_clear_jtty_pcm(resetEpoch);
@@ -477,6 +483,7 @@ void MainWindow::onJttyBackendEnqueueAccepted(qint64 enqueueId, qint64 sampleCou
                                                      progress);
     if (!resolved.pending) return;
     m_pendingJttyMessages.remove (i);
+    if (!m_jttyTxLifecycle.hasPending ()) m_jttyEnqueueWatchdog.stop ();
     if (sampleCount != pending.sampleCount) {
       LOG_WARN("JTTY transmit backend accepted unexpected PCM sample count");
     }
@@ -502,6 +509,7 @@ void MainWindow::onJttyBackendEnqueueFailed(TxAudioQueueEpoch epoch,
     auto const resolved = m_jttyTxLifecycle.fail (epoch, enqueueId);
     if (!resolved.pending) return;
     m_pendingJttyMessages.remove (i);
+    if (!m_jttyTxLifecycle.hasPending ()) m_jttyEnqueueWatchdog.stop ();
     JttyTxRejectReason reason {JttyTxRejectReason::BackendRejected};
     switch (failure) {
     case TxAudioQueueEnqueueFailure::Capacity:
@@ -542,6 +550,22 @@ void MainWindow::rejectPendingJttyMessages(JttyTxRejectReason reason)
   for (auto const& pending : m_pendingJttyMessages) {
     Q_EMIT jttyTextRejected(pending.requestId, reason);
   }
+}
+
+void MainWindow::handleJttyEnqueueTimeout()
+{
+  if (!m_jttyTxLifecycle.hasPending ()) return;
+
+  LOG_WARN("JTTY transmit backend enqueue acknowledgement timed out");
+  noteTxStopReason (TxEvidence::TxStopReason::Watchdog);
+  rejectPendingJttyMessages(JttyTxRejectReason::BackendTimedOut);
+  m_jttyTxLifecycle.failAll ();
+  m_pendingJttyMessages.clear ();
+  stopTx ();
+#ifdef WIN32
+  if (m_mmttyif) m_mmttyif->report_ptt_state(false);
+  finalizeMmttyExternalAbort ();
+#endif
 }
 
 void MainWindow::handleJttyTxWatchdog()
@@ -695,6 +719,7 @@ QString MainWindow::jttyRejectReasonText(JttyTxRejectReason reason) const
   case JttyTxRejectReason::BackendRejected: return QStringLiteral("backend rejected");
   case JttyTxRejectReason::Aborted: return QStringLiteral("aborted");
   case JttyTxRejectReason::NotAvailable: return QStringLiteral("not available");
+  case JttyTxRejectReason::BackendTimedOut: return QStringLiteral("backend timed out");
   }
   return QStringLiteral("unknown");
 }
@@ -784,6 +809,7 @@ void MainWindow::handleMmttyStopTx()
 void MainWindow::handleMmttyAbortTx()
 {
   bool const handoffWasActive = m_mmttyHandoff.active ();
+  m_mmttyHandoffWatchdog.stop ();
   m_pendingMmttyJttyMessages.clear ();
   m_mmttyHandoff.abort ();
   m_preserveMmttyOutputDuringStop = false;
@@ -798,6 +824,9 @@ void MainWindow::handleMmttyJttyAccepted(qint64 requestId)
 
   logText(QStringLiteral("MMTTY/N1MM JTTY request %1 accepted").arg(requestId));
   m_mmttyHandoff.submitted (requestId);
+  if (m_mmttyHandoff.empty () && !m_mmttyHandoff.active ()) {
+    m_mmttyHandoffWatchdog.stop ();
+  }
   startPendingMmttyJttyTx();
 }
 
@@ -809,6 +838,9 @@ void MainWindow::handleMmttyJttyRejected(qint64 requestId, JttyTxRejectReason re
           .arg(requestId)
           .arg(jttyRejectReasonText(reason)));
   m_mmttyHandoff.submitted (requestId);
+  if (m_mmttyHandoff.empty () && !m_mmttyHandoff.active ()) {
+    m_mmttyHandoffWatchdog.stop ();
+  }
   // Backend rejection may reset the audio session after emitting this signal.
   QTimer::singleShot(0, this, [this] { completeMmttyJttyOutput(); });
 }
@@ -869,6 +901,9 @@ void MainWindow::beginMmttyHandoff()
   if (m_mmttyHandoff.active ()) return;
   m_mmttyHandoff.waitForStop ();
   updateModeControlLock ();
+  if (!m_mmttyHandoffWatchdog.isActive ()) {
+    m_mmttyHandoffWatchdog.start (m_mmttyHandoff.timeoutMs ());
+  }
   m_preserveMmttyOutputDuringStop = true;
   noteTxStopReason (TxEvidence::TxStopReason::ModeChange);
   if (m_tune) stop_tuning ();
@@ -885,6 +920,10 @@ void MainWindow::resumeMmttyHandoff()
   m_preserveMmttyOutputDuringStop = false;
   if (m_mode != QStringLiteral("JTTY")) set_mode (QStringLiteral("JTTY"));
 
+  if (m_pendingMmttyJttyMessages.isEmpty ()) {
+    m_mmttyHandoffWatchdog.stop ();
+  }
+
   auto const queued = m_pendingMmttyJttyMessages;
   m_pendingMmttyJttyMessages.clear ();
   for (auto const& pending : queued) {
@@ -895,8 +934,23 @@ void MainWindow::resumeMmttyHandoff()
   updateModeControlLock ();
 }
 
+void MainWindow::handleMmttyHandoffTimeout()
+{
+  auto const notSubmitted = m_pendingMmttyJttyMessages;
+  m_pendingMmttyJttyMessages.clear ();
+  m_mmttyHandoff.expire ();
+  m_preserveMmttyOutputDuringStop = false;
+  for (auto const& pending : notSubmitted) {
+    Q_EMIT jttyTextRejected (pending.requestId,
+                             JttyTxRejectReason::BackendTimedOut);
+  }
+  if (m_jttyTxLifecycle.hasPending ()) handleJttyEnqueueTimeout ();
+  finalizeMmttyExternalAbort ();
+}
+
 void MainWindow::finalizeMmttyExternalAbort()
 {
+  m_mmttyHandoffWatchdog.stop ();
   m_pendingMmttyJttyMessages.clear ();
   m_mmttyHandoff.abort ();
   m_preserveMmttyOutputDuringStop = false;
@@ -930,7 +984,10 @@ void MainWindow::initMMTTY(quint16 port) {
     });
 
     QTimer::singleShot(3000, this, [this]() {
-         if (m_mode != "JTTY") set_mode("JTTY");
+         bool const idle = !m_transmitting && !m_tune && g_iptt != 1
+           && !ptt0Timer.isActive () && !m_jttyTxLifecycle.active ()
+           && !m_mmttyHandoff.active ();
+         if (idle && m_mode != "JTTY") set_mode("JTTY");
     });
 }
 
