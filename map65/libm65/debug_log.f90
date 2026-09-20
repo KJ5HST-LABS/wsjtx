@@ -20,16 +20,6 @@ contains
     flush(dbg_unit)
   end subroutine dbg
 
-  ! Like dbg(), but ignores dbg_enabled. For a small number of low-volume,
-  ! user-triggered events (e.g. a manual double-click decode) that should
-  ! always leave a trace without turning on all dbg() output.
-  subroutine dbg_always(msg)
-    character(len=*), intent(in) :: msg
-    call ensure_log_open()
-    write(dbg_unit,'(A)') trim(msg)
-    flush(dbg_unit)
-  end subroutine dbg_always
-
   pure function itoa(i) result(s)
     integer, intent(in) :: i
     character(len=32) :: s

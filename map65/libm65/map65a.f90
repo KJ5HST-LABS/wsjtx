@@ -14,7 +14,7 @@ contains
       use iso_c_binding
       use wideband_sync
       use timer_module, only: timer
-      use debug_log, only: dbg, dbg_always, itoa, rtoa
+      use debug_log, only: dbg, itoa, rtoa
       use sec_midn_mod, only: sec_midn
       use q65b_mod
       use decode1a_mod
@@ -276,9 +276,9 @@ contains
          thresh1 = 1.0
          if (ntol .le. 100) thresh1 = 0.
          nflip   = nint(flipk)
-         ! Logged even when dbg() is off: manual clicks are rare and this is
-         ! the evidence needed to tell why a double-click did not decode.
-         call dbg_always('map65a manual: click nutc=' // itoa(nutc) // ' mousefqso=' // itoa(mousefqso) // &
+         ! Manual-click diagnostics: written to w3sz_debug.log only when dbg()
+         ! is enabled (dbg_enabled in run_m65.f90).
+         call dbg('map65a manual: click nutc=' // itoa(nutc) // ' mousefqso=' // itoa(mousefqso) // &
                   ' mousedf=' // itoa(mousedf) // ' ntol=' // itoa(ntol) // &
                   ' best sync1=' // rtoa(sync1) // ' thresh1=' // rtoa(thresh1) // &
                   ' syncshort=' // rtoa(syncshort) // ' mode65=' // itoa(mode65))
@@ -382,7 +382,7 @@ contains
             ! best bin), dt_out the DT it returned. nsum > 0 means the single-period
             ! decode failed and decode1a went on to try averaging saved spectra;
             ! nkv >= 2 with a decode means the message came from that average.
-            call dbg_always('map65a manual: decode1a called, decoded=[' // trim(decoded_jt65) // ']' // &
+            call dbg('map65a manual: decode1a called, decoded=[' // trim(decoded_jt65) // ']' // &
                      ' dt_in=' // rtoa(best_dt) // ' dt_out=' // rtoa(dt) // &
                      ' sync2=' // rtoa(sync2) // ' a1_df=' // rtoa(a(1)) // &
                      ' nkv=' // itoa(nkv) // ' nsum=' // itoa(nsum) // ' nsave=' // itoa(nsave) // &
@@ -441,8 +441,8 @@ contains
             ! itself instead, from f0 (already unambiguous), leaving this
             ! mousedf untouched for f_mouse/k0 to keep working correctly.
 
-            ! Logged even when dbg() is off (manual clicks are rare).
-            call dbg_always('map65a manual: Q65 call nutc=' // itoa(nutc) // ' nqd=' // itoa(nqd) // &
+            ! Manual-click Q65 diagnostics (only when dbg() is enabled).
+            call dbg('map65a manual: Q65 call nutc=' // itoa(nutc) // ' nqd=' // itoa(nqd) // &
                      ' ikhz=' // itoa(ikhz) // ' mousedf=' // itoa(mousedf) // ' ntol=' // itoa(ntol) // &
                      ' mode_q65=' // itoa(mode_q65) // ' f0=' // rtoa(real(f0)) // &
                      ' newdat=' // itoa(newdat) // ' nagain=' // itoa(nagain) // &
@@ -454,7 +454,7 @@ contains
                       newdat, nagain, max_drift, ndop00, idec)
             call timer('q65b    ', 1)
 
-            call dbg_always('map65a manual: Q65 result idec=' // itoa(idec) // ' nsnr0=' // itoa(nsnr0) // &
+            call dbg('map65a manual: Q65 result idec=' // itoa(idec) // ' nsnr0=' // itoa(nsnr0) // &
                      ' nfreq0=' // itoa(nfreq0) // ' xdt0=' // rtoa(xdt0) // ' msg0=[' // trim(msg0) // ']')
 
             ! NB: idec, as returned by q65b, is not a trustworthy success flag:
