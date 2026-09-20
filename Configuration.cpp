@@ -6505,6 +6505,14 @@ void Configuration::impl::transceiver_enqueue_jtty_pcm (QByteArray const& sample
                                                          TxAudioQueueEpoch epoch,
                                                          qint64 enqueueId)
 {
+  if (!can_control_rig ("transceiver_enqueue_jtty_pcm"))
+    {
+      // Without an active transceiver nothing consumes the enqueue signal.
+      // Report the failure so the submission is rejected instead of hanging.
+      Q_EMIT self_->transceiver_jtty_enqueue_failed (
+        epoch, enqueueId, TxAudioQueueEnqueueFailure::BackendUnavailable);
+      return;
+    }
   Q_EMIT enqueue_jtty_pcm (samples, epoch, enqueueId);
 }
 

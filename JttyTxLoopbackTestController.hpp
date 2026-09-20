@@ -32,6 +32,7 @@ private:
   void prepareWhenReady ();
   void submitSecondMessage ();
   void maybeFinish ();
+  bool verifyModeControlsEnabled (bool expected, QString * error) const;
   bool validateCapture (QString * error) const;
   void fail (QString const& reason);
   void checkForUnexpectedModal ();
@@ -48,6 +49,7 @@ private:
   QTimer m_modalTimer;
   qint64 m_firstRequestId {0};
   qint64 m_secondRequestId {0};
+  qint64 m_modeChangeProbeId {0};
   qint64 m_capturedFrames {0};
   qint64 m_expectedAudioFrames {0};
   qint64 m_firstNonSilentFrame {0};
@@ -55,6 +57,8 @@ private:
   int m_captureStopCount {0};
   int m_sessionDrainCount {0};
   bool m_prepared {false};
+  bool m_modeChangeProbeStarted {false};
+  bool m_modeChangeProbeComplete {false};
   bool m_nonSilentAudioSeen {false};
   bool m_finished {false};
   bool m_succeeded {false};

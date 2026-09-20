@@ -354,8 +354,9 @@ QString MainWindow::checkLiveAudioTestJttyDrain()
     QTimer heartbeat;
     connect(this, &MainWindow::endTransmitMessage, &heartbeat, [&] { playbackStopped = true; });
     if (missingAcknowledgement) {
-      m_jttyTxUsesTciAudio = false;
-      m_jttyTxActive = true;
+      auto const epoch = m_jttyTxLifecycle.begin (JttyTxLifecycle::Backend::Local);
+      if (!epoch.isValid () || !m_jttyTxLifecycle.addPending (1, 1))
+        error = "Could not initialize the synthetic JTTY transmit session.";
     }
     connect(&heartbeat, &QTimer::timeout, this, [&] {
       if (!state.draining) return;
@@ -386,7 +387,8 @@ QString MainWindow::checkLiveAudioTestJttyDrain()
       error = "JTTY drain did not yield between decoder work slices.";
     if (missingAcknowledgement && !latePublication)
       error = "The missing-acknowledgement drain did not exercise its input cutoff.";
-    if (missingAcknowledgement && (!playbackStopped || m_jttyTxActive || m_monitoring))
+    if (missingAcknowledgement && (!playbackStopped
+        || m_jttyTxLifecycle.active () || m_monitoring))
       error = "JTTY drain did not stop pending playback without restarting reception.";
     lateEndNotified = source.end(JttyReceiveReason::MonitorStopped);
     if (missingAcknowledgement && !lateEndNotified)
@@ -415,7 +417,8 @@ void MainWindow::drainJttyReceive()
   state.draining = true;
   state.drainCutoff = false;
   if (m_wav_load_coordinator.isLoading()) m_discardJttyWavLoad = true;
-  if (m_mode == "JTTY" && (m_jttyTxActive || m_transmitting || m_tune)) {
+  if (m_mode == "JTTY"
+      && (m_jttyTxLifecycle.active () || m_transmitting || m_tune)) {
     noteTxStopReason(m_closing ? TxEvidence::TxStopReason::UserHalt : TxEvidence::TxStopReason::ModeChange);
     stopTx();
   }

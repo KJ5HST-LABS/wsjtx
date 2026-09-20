@@ -1025,9 +1025,14 @@ void TCITransceiver::enqueue_jtty_pcm (QByteArray const& samples,
                                        TxAudioQueueEpoch epoch,
                                        qint64 enqueueId) noexcept
 {
-  qint64 const count = samples.size () / int (sizeof (qint16));
-  if (count <= 0) return;
+  if (samples.isEmpty () || samples.size () % int (sizeof (qint16)))
+    {
+      Q_EMIT jtty_enqueue_failed (
+        epoch, enqueueId, TxAudioQueueEnqueueFailure::Capacity);
+      return;
+    }
 
+  qint64 const count = samples.size () / int (sizeof (qint16));
   qint16 const * pcm = reinterpret_cast<qint16 const *> (samples.constData ());
   auto const result = m_txAudioQueue.enqueue (pcm, count, epoch);
   if (!result.accepted)
@@ -1040,7 +1045,7 @@ void TCITransceiver::enqueue_jtty_pcm (QByteArray const& samples,
         {
           CAT_DEBUG ("JTTY TCI transmit queue epoch changed; rejecting stale PCM enqueue\n");
         }
-      Q_EMIT jtty_enqueue_failed (epoch, enqueueId);
+      Q_EMIT jtty_enqueue_failed (epoch, enqueueId, result.failure);
       return;
     }
   Q_EMIT jtty_enqueue_accepted (enqueueId, count, result.progress);
@@ -1049,6 +1054,7 @@ void TCITransceiver::enqueue_jtty_pcm (QByteArray const& samples,
 void TCITransceiver::clear_jtty_pcm (TxAudioQueueEpoch epoch) noexcept
 {
   m_txAudioQueue.clear (epoch);
+  m_txAudioQueue.applyPendingReset ();
 }
 
 void TCITransceiver::poll_jtty_drain ()

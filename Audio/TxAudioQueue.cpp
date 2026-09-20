@@ -63,13 +63,19 @@ TxAudioQueueEnqueueResult TxAudioQueue::enqueue (
 TxAudioQueueEnqueueResult TxAudioQueue::enqueue (
     qint16 const * samples, qint64 count, TxAudioQueueEpoch epoch)
 {
-  bool accepted {false};
+  TxAudioQueueEnqueueFailure failure {TxAudioQueueEnqueueFailure::StaleEpoch};
   TxAudioQueueEpoch current_epoch;
   if (impl_->tryEpoch (current_epoch) && epoch == current_epoch)
     {
-      accepted = impl_->fifo.enqueue (samples, count, epoch.value ());
+      failure = impl_->fifo.enqueue (samples, count, epoch.value ())
+        ? TxAudioQueueEnqueueFailure::None
+        : TxAudioQueueEnqueueFailure::Capacity;
     }
-  return TxAudioQueueEnqueueResult {accepted, progress ()};
+  return TxAudioQueueEnqueueResult {
+    failure == TxAudioQueueEnqueueFailure::None,
+    failure,
+    progress ()
+  };
 }
 
 void TxAudioQueue::clear (TxAudioQueueEpoch epoch)

@@ -194,6 +194,10 @@ target_link_libraries (test_jtty_receive_line Qt5::Test Qt5::Gui)
 add_test (NAME test_jtty_receive_line COMMAND test_jtty_receive_line)
 set_tests_properties (test_jtty_receive_line PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+add_executable (test_jtty_tx_lifecycle test_jtty_tx_lifecycle.cpp)
+target_link_libraries (test_jtty_tx_lifecycle Qt5::Test)
+add_test (NAME test_jtty_tx_lifecycle COMMAND test_jtty_tx_lifecycle)
+
 add_executable (test_jtty_n1mm test_jtty_n1mm.cpp)
 target_link_libraries (test_jtty_n1mm Qt5::Test)
 add_test (NAME test_jtty_n1mm COMMAND test_jtty_n1mm)

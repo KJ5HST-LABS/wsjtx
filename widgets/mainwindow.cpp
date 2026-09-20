@@ -679,12 +679,8 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
   m_transmitting {false},
   m_tune {false},
   m_tx_watchdog {false},
-  m_jttyTxActive {false},
-  m_jttyTxUsesTciAudio {false},
-  m_jttyTxQueueEpoch {},
-  m_jttyTxQueueProgress {},
   m_jttyTxRequestId {0},
-  m_jttyTciEnqueueId {0},
+  m_jttyEnqueueId {0},
   m_block_pwr_tooltip {false},
   m_PwrBandSetOK {true},
   m_toneSpacing {0.},
@@ -839,6 +835,14 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
   connect (m_jttyTxStream, &JttyTxStream::txSourceCommitted,
            this, &MainWindow::recordTxSourceCommit, Qt::QueuedConnection);
   connect (this, &MainWindow::endJttyStream, m_jttyTxStream, &JttyTxStream::stop);
+  connect (this, &MainWindow::clearJttyStream, m_jttyTxStream,
+           &JttyTxStream::clearQueue, Qt::QueuedConnection);
+  connect (this, &MainWindow::enqueueJttyStream, m_jttyTxStream,
+           &JttyTxStream::queuePcm, Qt::DirectConnection);
+  connect (m_jttyTxStream, &JttyTxStream::enqueueAccepted, this,
+           &MainWindow::onJttyBackendEnqueueAccepted, Qt::QueuedConnection);
+  connect (m_jttyTxStream, &JttyTxStream::enqueueFailed, this,
+           &MainWindow::onJttyBackendEnqueueFailed, Qt::QueuedConnection);
   connect (m_jttyTxStream, &JttyTxStream::drained, this, &MainWindow::onJttyBackendDrained);
   connect (&m_audioThread, &QThread::finished, m_jttyTxStream, &QObject::deleteLater);
 
@@ -3501,7 +3505,7 @@ void MainWindow::monitor (bool state)
   if (state && jttyDrainInProgress()) return;
   if (state && !m_monitoring && m_mode == "JTTY") updateJttyReceiveContext();
   if (!state && m_mode == "JTTY") {
-    auto const reason = m_jttyTxActive ? JttyReceiveReason::Transmission
+    auto const reason = m_jttyTxLifecycle.active () ? JttyReceiveReason::Transmission
                                      : JttyReceiveReason::MonitorStopped;
     m_detector->setInputStopReason(reason);
     m_config.transceiver_receive_stop_reason(reason);
@@ -8297,13 +8301,14 @@ void MainWindow::useNextCall()
 bool MainWindow::startTx2()
 {
   if (jttyDrainInProgress()) return false;
+  bool const jtty = m_jttyTxLifecycle.active () && !m_tune;
   if (m_mode == "JTTY" && !m_tune
-      && (!m_jttyTxActive || jttyTxCommittedSamples () <= 0)) {
+      && (!jtty || jttyTxCommittedSamples () <= 0)) {
     return false;
   }
   bool modulator_active;
-  bool const tci_active = (m_mode == "JTTY" && m_jttyTxActive)
-      ? m_jttyTxUsesTciAudio
+  bool const tci_active = jtty
+      ? m_jttyTxLifecycle.backend () == JttyTxLifecycle::Backend::Tci
       : m_tci_audio;
   if (tci_active) modulator_active=m_tci_mod_active;
   else modulator_active=m_modulator->isActive ();
@@ -8450,16 +8455,31 @@ void MainWindow::noteTxModeChange (QString const& mode)
     {
       processBeaconActions (m_beaconTxController.exitMode ());
     }
-  if (mode != m_mode && (m_transmitting || g_iptt == 1 || m_jttyTxActive))
+  if (mode != m_mode && (m_transmitting || g_iptt == 1
+                         || m_jttyTxLifecycle.active ()))
     {
       noteTxStopReason (TxEvidence::TxStopReason::ModeChange);
+      if (m_jttyTxLifecycle.active ()) stopTx ();
+    }
+}
+
+void MainWindow::updateModeControlLock ()
+{
+  bool const enabled = !m_modeLocked && !m_transmitting
+    && !m_jttyTxLifecycle.active ();
+  ui->menuMode->setEnabled (enabled);
+  for (auto * button : {ui->houndButton, ui->ft8Button, ui->ft4Button,
+                        ui->msk144Button, ui->q65Button, ui->jt65Button,
+                        ui->echoButton})
+    {
+      button->setEnabled (enabled);
     }
 }
 
 int MainWindow::txStopTailMs (bool tciAudio) const
 {
   return TxEvidence::TxPlaybackDiagnostics::decisionFor (
-    m_pendingTxStopReason, tciAudio || m_mode == "JTTY").tail_ms;
+    m_pendingTxStopReason, tciAudio || m_jttyTxLifecycle.active ()).tail_ms;
 }
 
 void MainWindow::stopTxEvidence (int tailMs)
@@ -8503,21 +8523,35 @@ void MainWindow::captureJttyTxEvidenceTotals (qint64 servedSamples,
 
 void MainWindow::stopTx()
 {
-  bool const tciAudio = (m_mode == "JTTY" && m_transmitting)
-      ? m_jttyTxUsesTciAudio
-      : m_tci_audio;
+  auto const jttyStop = m_jttyTxLifecycle.beginStop ();
+  bool const jttyTx = bool (jttyStop);
+#ifdef WIN32
+  bool const abnormalJttyStop = jttyTx
+    && m_pendingTxStopReason != TxEvidence::TxStopReason::NormalEnd;
+#endif
+  bool const tciAudio = jttyTx
+      ? jttyStop->backend == JttyTxLifecycle::Backend::Tci : m_tci_audio;
   int const stopTxDelayMs = txStopTailMs (tciAudio);
-  if (m_mode == "JTTY" && m_jttyTxActive) {
+  if (jttyTx) {
+    m_delayedJttyStopContext = *jttyStop;
     interruptJttyTx();
   }
   if (tciAudio) Q_EMIT m_config.transceiver_modulator_stop();
   else Q_EMIT endTransmitMessage ();
-  if (m_mode == "JTTY" && !tciAudio) {
+  if (jttyTx && !tciAudio) {
     Q_EMIT endJttyStream ();
+  }
+  if (jttyTx) {
+    m_jttyTxWatchdog.stop ();
+    m_jttyTxLifecycle.markBackendStopRouted (*jttyStop);
+    m_jttyTxLifecycle.reset ();
+    m_pendingJttyMessages.clear ();
+    m_acceptedJttyTxRequests.clear ();
   }
   m_btxok = false;
   m_transmitting = false;
   g_iptt=0;
+  updateModeControlLock ();
   if (!m_tx_watchdog && !m_generated_message_error) {
     tx_status_label.setStyleSheet("");
     tx_status_label.setText("");
@@ -8538,7 +8572,11 @@ void MainWindow::stopTx2()
   // mode may no longer be the mode that started Tx or Tune.
   auto const beaconTxPlanId = m_beaconTxController.txPlanId ();
   auto const beaconTunePlanId = m_beaconTxController.tunePlanId ();
-  bool const tciAudio = (m_mode == "JTTY") ? m_jttyTxUsesTciAudio : m_tci_audio;
+  bool const delayedJtty = m_delayedJttyStopContext.backend
+    != JttyTxLifecycle::Backend::None;
+  bool const tciAudio = delayedJtty
+    ? m_delayedJttyStopContext.backend == JttyTxLifecycle::Backend::Tci
+    : m_tci_audio;
   if (tciAudio) {
       Q_EMIT m_config.transceiver_ptt (false);      //Lower PTT
       monitor (true);
@@ -8559,6 +8597,7 @@ void MainWindow::stopTx2()
     }
   keep_last_tx_label = true;
   last_tx_label.setText(tr ("Last Tx: %1").arg (m_currentMessage.trimmed()));
+  m_delayedJttyStopContext = {};
 }
 
 QString MainWindow::expandTxMacros(QString const& message) const
@@ -12608,14 +12647,17 @@ void MainWindow::handle_transceiver_closing (bool failed)
       m_receiveConsumer.invalidate ();
       m_receiveQueue.clear ();
     }
-  if (m_closing || m_mode != "JTTY" || !m_jttyTxActive
-      || !m_jttyTxUsesTciAudio)
+  if (!m_jttyTxLifecycle.active ()
+      || m_jttyTxLifecycle.backend () != JttyTxLifecycle::Backend::Tci)
     {
       return;
     }
 
   noteTxStopReason (failed ? TxEvidence::TxStopReason::Error
                            : TxEvidence::TxStopReason::UserHalt);
+  rejectPendingJttyMessages (JttyTxRejectReason::NotAvailable);
+  m_jttyTxLifecycle.failAll ();
+  m_pendingJttyMessages.clear ();
   stopTx ();
 }
 
@@ -12698,7 +12740,8 @@ void MainWindow::rigFailure (QString const& reason)
 void MainWindow::dispatchTxRequest (TxEvidence::TxRequest const& request)
 {
   bool const useTciAudio = request.mode == QStringLiteral ("JTTY")
-    ? m_jttyTxUsesTciAudio : m_tci_audio;
+    ? m_jttyTxLifecycle.backend () == JttyTxLifecycle::Backend::Tci
+    : m_tci_audio;
   if (useTciAudio)
     {
       if (!request.tuning && rigTuneTimer.isActive ())
@@ -12725,20 +12768,23 @@ void MainWindow::dispatchTxRequest (TxEvidence::TxRequest const& request)
 
 void MainWindow::transmit (double snr)
 {
+  bool const jttyTx = m_jttyTxLifecycle.active () && !m_tune
+    && jttyTxCommittedSamples () > 0;
   qint64 const jttyCommittedSamples = jttyTxCommittedSamples ();
-  beginTxEvidenceGeneration (m_mode == "JTTY" && jttyCommittedSamples > 0
+  beginTxEvidenceGeneration (jttyTx
                                ? jttyCommittedSamples - 1 : -1,
                              false);
   auto const txSessionId = m_txEvidenceSourceSession;
   auto const txGeneration = m_txEvidenceGeneration;
   TxEvidence::TxRequest request;
-  request.mode = m_mode;
+  request.mode = jttyTx ? QStringLiteral ("JTTY") : m_mode;
   request.channel = m_config.audio_output_channel ();
   request.snr_db = snr;
   request.tr_period_s = m_TRperiod;
   request.session_id = txSessionId;
   request.generation = txGeneration;
-  request.queue_epoch = m_jttyTxQueueEpoch;
+  request.queue_epoch = jttyTx ? m_jttyTxLifecycle.epoch ()
+                               : TxAudioQueueEpoch::invalid ();
   request.tuning = m_tune;
   int const cwSymbols = qBound (0, int (icw[0]), NUM_CW_SYMBOLS - 1);
   request.cw_id.reserve (cwSymbols);
@@ -12797,7 +12843,8 @@ void MainWindow::transmit (double snr)
     dispatchTxRequest (request);
   }
 
-  if (m_mode == "JTTY") {
+  if (request.mode == "JTTY") {
+    m_jttyTxLifecycle.markTransmitting ();
     m_dateTimeSentTx3=QDateTime::currentDateTimeUtc();
     toneSpacing=-2.0;                     //Transmit a pre-computed, filtered waveform.
     double txt=m_nsym_jtty*384.0/12000.0;
@@ -13086,7 +13133,7 @@ void MainWindow::transmitDisplay (bool transmitting)
     }
 
     // the following are always disallowed in transmit
-    ui->menuMode->setEnabled (!transmitting && !m_modeLocked);
+    updateModeControlLock ();
   }
 }
 
@@ -13922,7 +13969,7 @@ RigFrequencyChangePolicy::Activity MainWindow::rigFrequencyActivity () const
     m_tx_when_ready,
     m_transmitting,
     m_tune,
-    m_jttyTxActive,
+    m_jttyTxLifecycle.active (),
     ptt1Timer.isActive (),
     ptt0Timer.isActive (),
     m_rigState.ptt (),
@@ -14232,6 +14279,7 @@ void MainWindow::tx_watchdog (bool triggered)
       tx_status_label.setText (tr (" Runaway Tx watchdog "));
       QApplication::alert (this);
       if (SpecOp::HOUND == m_specOp) ui->txrb1->click ();   // Go back to Tx1
+      if (m_jttyTxLifecycle.active ()) stopTx ();
     }
   else
     {
@@ -17478,12 +17526,6 @@ void MainWindow::set_mode_from_command_line(const QString& mode, bool lock_mode)
     
     if (lock_mode) {
         m_modeLocked = true;
-        ui->menuMode->setEnabled(false);
-        ui->ft8Button->setEnabled(false);
-        ui->ft4Button->setEnabled(false);
-        ui->msk144Button->setEnabled(false);
-        ui->q65Button->setEnabled(false);
-        ui->jt65Button->setEnabled(false);
-        ui->houndButton->setEnabled(false);
+        updateModeControlLock ();
     }
 }

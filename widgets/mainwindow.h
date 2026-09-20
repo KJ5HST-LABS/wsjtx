@@ -58,6 +58,7 @@ class QHBoxLayout;
 #include "Configuration.hpp"
 #include "JttyN1mmOutput.hpp"
 #include "JttyReceiveAudio.hpp"
+#include "JttyTxLifecycle.hpp"
 #include "WSPR/WSPRBandHopping.hpp"
 #include "Transceiver/Transceiver.hpp"
 #include "DisplayManual.hpp"
@@ -247,6 +248,10 @@ public:
   bool startLiveAudioTestJttyWav(QString const& path);
   QString checkLiveAudioTestJttyMailboxOverflow();
   QString checkLiveAudioTestJttyDrain();
+  bool liveAudioTestJttyStreamActive () const
+  {
+    return m_jttyTxStream && m_jttyTxStream->isActive ();
+  }
   LiveAudioTestFt8TransmitRequest startLiveAudioTestFt8Transmit (
     qint64 targetPeriodStartMs);
 #endif
@@ -766,6 +771,10 @@ private:
   Q_SIGNAL void sendMessage (TxEvidence::TxRequest, SoundOutput *) const;
   Q_SIGNAL void startJttyStream (TxEvidence::TxRequest, SoundOutput *);
   Q_SIGNAL void endJttyStream () const;
+  Q_SIGNAL void clearJttyStream (TxAudioQueueEpoch epoch) const;
+  Q_SIGNAL void enqueueJttyStream (QByteArray const& samples,
+                                   TxAudioQueueEpoch epoch,
+                                   qint64 enqueueId) const;
   Q_SIGNAL void outAttenuationChanged (qreal) const;
   Q_SIGNAL void toggleShorthand () const;
   Q_SIGNAL void reset_audio_input_stream (bool report_dropped_frames) const;
@@ -780,6 +789,7 @@ private:
   void recordRawTxPlayout (TxEvidence::TxRawPlayoutSnapshot const& snapshot);
   void noteTxStopReason (TxEvidence::TxStopReason reason);
   void noteTxModeChange (QString const& mode);
+  void updateModeControlLock ();
   int txStopTailMs (bool tciAudio) const;
   void stopTxEvidence (int tailMs);
   void captureJttyTxEvidenceTotals (qint64 servedSamples, qint64 totalSamples,
@@ -820,7 +830,6 @@ private:
   void execute_jtty_tx(qint64 requestId, QString message);
   void execute_jtty_tones(qint64 requestId, QString const& message,
                           int const itone[], int nsym);
-  void advanceJttyTxQueueEpoch();
   qint64 jttyTxCommittedSamples() const;
   void completeJttyTxEnqueue(qint64 requestId, QString const& message,
                              TxAudioQueueProgress progress, bool newSession,
@@ -832,14 +841,15 @@ private:
   void handleJttyContestSerial(QString const& message);
   void abort_jtty_tx();
   void interruptJttyTx();
-  void rejectPendingJttyTciMessages(JttyTxRejectReason reason);
+  void rejectPendingJttyMessages(JttyTxRejectReason reason);
   void sync_tci_tx_volume (bool force = false);
   void onJttyBackendDrained(TxAudioQueueDrainState drain);
+  void finishJttyDrain(JttyTxLifecycle::Drain const& drain);
   void onJttyBackendEnqueueAccepted(qint64 enqueueId, qint64 sampleCount,
                                     TxAudioQueueProgress progress);
-  void onJttyBackendEnqueueFailed(TxAudioQueueEpoch epoch, qint64 enqueueId);
+  void onJttyBackendEnqueueFailed(TxAudioQueueEpoch epoch, qint64 enqueueId,
+                                  TxAudioQueueEnqueueFailure failure);
   void handleJttyTxWatchdog();
-  void resetJttyTxState();
   void startJttyTxWatchdog(int durationMs);
   bool jtty_key_struck(QKeyEvent * e);
   bool sendJttyFunctionKey(int index);
@@ -1424,11 +1434,9 @@ private:
   qint64 m_liveAudioTestFt8StartSessionId {-1};
   qint64 m_liveAudioTestFt8StartGeneration {-1};
 #endif
-  bool m_jttyTxActive;
-  bool m_jttyTxUsesTciAudio;
-  TxAudioQueueEpoch m_jttyTxQueueEpoch;
-  TxAudioQueueProgress m_jttyTxQueueProgress;
-  struct PendingJttyTciMessage
+  JttyTxLifecycle m_jttyTxLifecycle;
+  JttyTxLifecycle::StopContext m_delayedJttyStopContext;
+  struct PendingJttyMessage
   {
     TxAudioQueueEpoch epoch;
     qint64 enqueueId;
@@ -1437,7 +1445,7 @@ private:
     QString message;
     bool newSession;
   };
-  QVector<PendingJttyTciMessage> m_pendingJttyTciMessages;
+  QVector<PendingJttyMessage> m_pendingJttyMessages;
   struct AcceptedJttyTxRequest
   {
     TxAudioQueueEpoch epoch;
@@ -1447,7 +1455,7 @@ private:
   QVector<AcceptedJttyTxRequest> m_acceptedJttyTxRequests;
   JttyDraftAcceptanceTracker m_jttyDraftAcceptanceTracker;
   qint64 m_jttyTxRequestId;
-  qint64 m_jttyTciEnqueueId;
+  qint64 m_jttyEnqueueId;
 #ifdef WIN32
   Jtty::N1mmOutput m_mmttyJttyOutput;
 #endif

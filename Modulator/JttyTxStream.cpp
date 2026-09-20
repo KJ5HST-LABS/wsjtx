@@ -2,6 +2,7 @@
 
 #include "Audio/soundout.h"
 #include "Logger.hpp"
+#include <QSemaphore>
 
 #include "moc_JttyTxStream.cpp"
 
@@ -14,6 +15,12 @@ namespace
   constexpr qint64 DEFAULT_DRAIN_GUARD = 9600;   // 200 ms at 48 kHz
   constexpr qint64 DRAIN_GUARD_MARGIN  = 4800;   // 100 ms safety margin
 }
+
+struct JttyTxStream::PendingEnqueues
+{
+  QSemaphore samples {int (TxAudioQueue::defaultCapacity ())};
+  QSemaphore requests {64};
+};
 
 TxEvidence::TxStartSnapshot makeJttyTxStartSnapshot (TxEvidence::TxRequest const& request,
                                                       qint64 committedEndSample)
@@ -31,6 +38,7 @@ TxEvidence::TxStartSnapshot makeJttyTxStartSnapshot (TxEvidence::TxRequest const
 
 JttyTxStream::JttyTxStream (TxAudioQueue& queue, QObject * parent)
   : AudioDevice {parent}
+  , m_pendingEnqueues {std::make_shared<PendingEnqueues> ()}
   , m_queue {queue}
   , m_drainGuard {DEFAULT_DRAIN_GUARD}
   , m_drainTimer {new QTimer {this}}
@@ -91,6 +99,64 @@ void JttyTxStream::stop ()
   AudioDevice::close ();
   // Do not drop queued PCM here. A GUI stop for the previous session can cross
   // with the next enqueue; clear() is the explicit abort path.
+}
+
+void JttyTxStream::clearQueue (TxAudioQueueEpoch epoch)
+{
+  stop ();
+  m_queue.clear (epoch);
+  m_queue.applyPendingReset ();
+}
+
+void JttyTxStream::queuePcm (QByteArray const& samples,
+                             TxAudioQueueEpoch epoch, qint64 enqueueId)
+{
+  int const count = samples.size () / int (sizeof (qint16));
+  auto const pending = m_pendingEnqueues;
+  if (samples.isEmpty () || samples.size () % int (sizeof (qint16))
+      || !pending->requests.tryAcquire ()) {
+    Q_EMIT enqueueFailed (epoch, enqueueId, TxAudioQueueEnqueueFailure::Capacity);
+    return;
+  }
+  if (!pending->samples.tryAcquire (count)) {
+    pending->requests.release ();
+    Q_EMIT enqueueFailed (epoch, enqueueId, TxAudioQueueEnqueueFailure::Capacity);
+    return;
+  }
+
+  // The reservation follows the event, including across aborts and destruction.
+  auto pcm = std::shared_ptr<QByteArray> {
+    new QByteArray {samples}, [pending, count] (QByteArray * payload) {
+      delete payload;
+      pending->samples.release (count);
+      pending->requests.release ();
+    }};
+  QMetaObject::invokeMethod (this, [this, pcm, epoch, enqueueId] {
+    enqueuePcm (*pcm, epoch, enqueueId);
+  }, Qt::QueuedConnection);
+}
+
+void JttyTxStream::enqueuePcm (QByteArray const& samples,
+                               TxAudioQueueEpoch epoch,
+                               qint64 enqueueId)
+{
+  if (samples.isEmpty () || samples.size () % int (sizeof (qint16)))
+    {
+      Q_EMIT enqueueFailed (
+        epoch, enqueueId, TxAudioQueueEnqueueFailure::Capacity);
+      return;
+    }
+
+  qint64 const count = samples.size () / int (sizeof (qint16));
+  qint16 const * pcm = reinterpret_cast<qint16 const *> (samples.constData ());
+  auto const result = m_queue.enqueue (pcm, count, epoch);
+  if (!result.accepted)
+    {
+      Q_EMIT enqueueFailed (epoch, enqueueId, result.failure);
+      return;
+    }
+
+  Q_EMIT enqueueAccepted (enqueueId, count, result.progress);
 }
 
 qint64 JttyTxStream::readData (char * data, qint64 maxSize)

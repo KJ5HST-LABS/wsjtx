@@ -16,7 +16,9 @@
 #include <QByteArray>
 #include <QFileInfo>
 #include <QMessageBox>
+#include <QStringList>
 #include <QSysInfo>
+#include <QWidget>
 
 #include "moc_JttyTxLoopbackTestController.cpp"
 
@@ -58,13 +60,31 @@ JttyTxLoopbackTestController::JttyTxLoopbackTestController (
                  fail (tr ("JTTY request %1 was accepted more than once.")
                        .arg (requestId));
                  return;
-             }
+               }
+             if (requestId == m_modeChangeProbeId)
+               {
+                 fail (tr ("The programmatic mode-change probe was accepted after abort."));
+                 return;
+               }
              m_acceptedRequests.insert (requestId);
              m_acceptedOrder.append (requestId);
+             QString controlsError;
+             if (!verifyModeControlsEnabled (false, &controlsError))
+               {
+                 fail (controlsError);
+                 return;
+               }
              maybeFinish ();
            });
   connect (m_window, &MainWindow::jttyTextRejected,
            this, [this] (qint64 requestId, MainWindow::JttyTxRejectReason reason) {
+             if (requestId == m_modeChangeProbeId
+                 && reason == MainWindow::JttyTxRejectReason::Aborted)
+               {
+                 m_modeChangeProbeComplete = true;
+                 m_prepareTimer.start (100);
+                 return;
+               }
              fail (tr ("JTTY request %1 was rejected with reason %2.")
                    .arg (requestId).arg (static_cast<int> (reason)));
            });
@@ -185,6 +205,50 @@ void JttyTxLoopbackTestController::prepareWhenReady ()
       return;
     }
 
+  if (!m_modeChangeProbeStarted)
+    {
+      jttyAction->trigger ();
+      m_modeChangeProbeId = m_window->submitJttyText (
+        QStringLiteral ("MODE CHANGE PROBE"));
+      m_modeChangeProbeStarted = true;
+      QString controlsError;
+      if (!verifyModeControlsEnabled (false, &controlsError))
+        {
+          fail (controlsError);
+          return;
+        }
+      auto * ft8Action = m_window->findChild<QAction *> ("actionFT8");
+      if (!ft8Action)
+        {
+          fail (tr ("The FT8 mode action was not found."));
+          return;
+        }
+      bool const invoked = QMetaObject::invokeMethod (
+        m_window, "on_actionFT8_triggered", Qt::DirectConnection);
+      if (!invoked)
+        {
+          fail (tr ("The programmatic FT8 mode change could not be invoked."));
+          return;
+        }
+      if (!ft8Action->isChecked ())
+        {
+          fail (tr ("The programmatic mode change did not enter FT8."));
+          return;
+        }
+      return;
+    }
+  if (!m_modeChangeProbeComplete)
+    {
+      m_prepareTimer.start (50);
+      return;
+    }
+  if (m_window->liveAudioTestJttyStreamActive ()
+      || m_output->restartCount () != 0)
+    {
+      fail (tr ("The JTTY stream remained active after a programmatic mode change."));
+      return;
+    }
+
   jttyAction->trigger ();
   if (!jttyAction->isChecked ())
     {
@@ -201,14 +265,20 @@ void JttyTxLoopbackTestController::prepareWhenReady ()
       return;
     }
   m_firstRequestId = m_window->submitJttyText (contestExchangeMessage ());
-  if (m_firstRequestId <= 0 || !m_acceptedRequests.contains (m_firstRequestId))
+  if (m_firstRequestId <= 0)
     {
-      fail (tr ("The first JTTY text request was not accepted synchronously."));
+      fail (tr ("The first JTTY text request did not receive an identifier."));
+      return;
+    }
+  QString controlsError;
+  if (!verifyModeControlsEnabled (false, &controlsError))
+    {
+      fail (controlsError);
       return;
     }
 
-  std::cerr << "WSJT-X JTTY TX loopback test: first request accepted, "
-               "waiting for real audio consumption"
+  std::cerr << "WSJT-X JTTY TX loopback test: first request submitted, "
+               "waiting for backend acceptance and real audio consumption"
             << std::endl;
 }
 
@@ -235,10 +305,9 @@ void JttyTxLoopbackTestController::submitSecondMessage ()
 
   m_secondRequestId = m_window->submitJttyText (
     adjacentStructuredFramesMessage ());
-  if (m_secondRequestId <= 0 || m_secondRequestId == m_firstRequestId
-      || !m_acceptedRequests.contains (m_secondRequestId))
+  if (m_secondRequestId <= 0 || m_secondRequestId == m_firstRequestId)
     {
-      fail (tr ("The second JTTY text request was not accepted during playback."));
+      fail (tr ("The second JTTY text request did not receive a unique identifier."));
       return;
     }
   if (m_output->restartCount () != 1 || m_output->stopCount () != 0)
@@ -288,6 +357,12 @@ void JttyTxLoopbackTestController::maybeFinish ()
       fail (tr ("The output stream lifecycle was not one start, one drain, and one stop."));
       return;
     }
+  QString controlsError;
+  if (!verifyModeControlsEnabled (true, &controlsError))
+    {
+      fail (controlsError);
+      return;
+    }
   if (m_output->maxInternalSilentFrames () > sampleRate / 100)
     {
       fail (tr ("The captured JTTY session contains an unexpected internal audio gap."));
@@ -313,6 +388,33 @@ void JttyTxLoopbackTestController::maybeFinish ()
             << " capture=" << m_capturePath.toStdString () << std::endl;
   m_window->close ();
   QCoreApplication::exit (EXIT_SUCCESS);
+}
+
+bool JttyTxLoopbackTestController::verifyModeControlsEnabled (
+  bool expected, QString * error) const
+{
+  QStringList const controlNames {
+    QStringLiteral ("menuMode"), QStringLiteral ("houndButton"),
+    QStringLiteral ("ft8Button"), QStringLiteral ("ft4Button"),
+    QStringLiteral ("msk144Button"), QStringLiteral ("q65Button"),
+    QStringLiteral ("jt65Button"), QStringLiteral ("echoButton")
+  };
+  for (auto const& name : controlNames)
+    {
+      auto * control = m_window->findChild<QWidget *> (name);
+      if (!control)
+        {
+          *error = tr ("Mode control %1 was not found.").arg (name);
+          return false;
+        }
+      if (control->isEnabled () != expected)
+        {
+          *error = tr ("Mode control %1 was unexpectedly %2.")
+            .arg (name, control->isEnabled () ? tr ("enabled") : tr ("disabled"));
+          return false;
+        }
+    }
+  return true;
 }
 
 bool JttyTxLoopbackTestController::validateCapture (QString * error) const

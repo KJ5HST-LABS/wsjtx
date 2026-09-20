@@ -496,7 +496,8 @@ public:
   Q_SIGNAL void transceiver_jtty_enqueue_accepted (qint64 enqueueId, qint64 sampleCount,
                                                    TxAudioQueueProgress progress) const;
   Q_SIGNAL void transceiver_jtty_enqueue_failed (TxAudioQueueEpoch epoch,
-                                                 qint64 enqueueId) const;
+                                                  qint64 enqueueId,
+                                                  TxAudioQueueEnqueueFailure failure) const;
   Q_SIGNAL void tx_inhibit_status_changed (
     bool supported, bool inhibited, QString const& holder,
     quint32 hold_rx, quint32 release_rx, quint32 expiries, quint32 invalid) const;

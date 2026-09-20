@@ -2,6 +2,8 @@
 #define JTTY_TX_STREAM_HPP__
 
 #include <atomic>
+#include <memory>
+#include <QByteArray>
 #include <QPointer>
 #include <QTimer>
 #include <QVector>
@@ -35,9 +37,19 @@ public:
 
   Q_SLOT void start (TxEvidence::TxRequest request, SoundOutput * stream);
   Q_SLOT void stop ();
+  Q_SLOT void clearQueue (TxAudioQueueEpoch epoch);
+  // Reserve queued payload capacity before posting to the audio thread.
+  void queuePcm (QByteArray const& samples, TxAudioQueueEpoch epoch,
+                 qint64 enqueueId);
+  Q_SLOT void enqueuePcm (QByteArray const& samples, TxAudioQueueEpoch epoch,
+                          qint64 enqueueId);
 
   Q_SIGNAL void drained (TxAudioQueueDrainState drain);
   Q_SIGNAL void txSourceCommitted (TxEvidence::TxStartSnapshot snapshot);
+  Q_SIGNAL void enqueueAccepted (qint64 enqueueId, qint64 sampleCount,
+                                 TxAudioQueueProgress progress);
+  Q_SIGNAL void enqueueFailed (TxAudioQueueEpoch epoch, qint64 enqueueId,
+                               TxAudioQueueEnqueueFailure failure);
 
 protected:
   qint64 readData (char * data, qint64 maxSize) override;
@@ -47,6 +59,8 @@ protected:
   }
 
 private:
+  struct PendingEnqueues;
+  std::shared_ptr<PendingEnqueues> m_pendingEnqueues;
   Q_SLOT void pollDrain ();
 
   TxAudioQueue& m_queue;

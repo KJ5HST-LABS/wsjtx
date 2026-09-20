@@ -270,7 +270,8 @@ public:
   Q_SIGNAL void jtty_drained (TxAudioQueueDrainState drain);
   Q_SIGNAL void jtty_enqueue_accepted (qint64 enqueueId, qint64 sampleCount,
                                        TxAudioQueueProgress progress);
-    Q_SIGNAL void jtty_enqueue_failed (TxAudioQueueEpoch epoch, qint64 enqueueId);
+  Q_SIGNAL void jtty_enqueue_failed (TxAudioQueueEpoch epoch, qint64 enqueueId,
+                                     TxAudioQueueEnqueueFailure failure);
 
   // rig state changed
   Q_SIGNAL void update (Transceiver::TransceiverState const&,
