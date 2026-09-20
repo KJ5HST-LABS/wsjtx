@@ -276,8 +276,6 @@ contains
          thresh1 = 1.0
          if (ntol .le. 100) thresh1 = 0.
          nflip   = nint(flipk)
-         ! Manual-click diagnostics: written to w3sz_debug.log only when dbg()
-         ! is enabled (dbg_enabled in run_m65.f90).
          call dbg('map65a manual: click nutc=' // itoa(nutc) // ' mousefqso=' // itoa(mousefqso) // &
                   ' mousedf=' // itoa(mousedf) // ' ntol=' // itoa(ntol) // &
                   ' best sync1=' // rtoa(sync1) // ' thresh1=' // rtoa(thresh1) // &
@@ -441,7 +439,6 @@ contains
             ! itself instead, from f0 (already unambiguous), leaving this
             ! mousedf untouched for f_mouse/k0 to keep working correctly.
 
-            ! Manual-click Q65 diagnostics (only when dbg() is enabled).
             call dbg('map65a manual: Q65 call nutc=' // itoa(nutc) // ' nqd=' // itoa(nqd) // &
                      ' ikhz=' // itoa(ikhz) // ' mousedf=' // itoa(mousedf) // ' ntol=' // itoa(ntol) // &
                      ' mode_q65=' // itoa(mode_q65) // ' f0=' // rtoa(real(f0)) // &
