@@ -13928,7 +13928,9 @@ void MainWindow::astroUpdate ()
     }
 
     auto correction = m_astroWidget->astroUpdate(QDateTime::currentDateTimeUtc (),
-         m_config.my_grid(), m_hisGrid,m_operatingFrequency.rx (),"Echo" == m_mode,
+         m_config.my_grid(), m_hisGrid, m_config.has_precise_home_coordinates (),
+         m_config.home_latitude (), m_config.home_longitude (),
+         m_operatingFrequency.rx (),"Echo" == m_mode,
          m_transmitting,m_auto,!m_config.tx_frequency_corrections_allowed (),m_TRperiod);
     m_fDop=correction.dop;
     m_fSpread=correction.width;

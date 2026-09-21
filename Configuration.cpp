@@ -164,7 +164,10 @@
 #include <QLineEdit>
 #include <QRegularExpression>
 #include <QRegularExpressionValidator>
+#include <QKeyEvent>
 #include <QIntValidator>
+#include <QDoubleValidator>
+#include <QLocale>
 #include <QThread>
 #include <QTimer>
 #include <QStandardPaths>
@@ -229,6 +232,30 @@
 
 namespace
 {
+  class LocationLineEditEnterFilter final : public QObject
+  {
+  public:
+    explicit LocationLineEditEnterFilter (QObject * parent) : QObject {parent} {}
+
+  protected:
+    bool eventFilter (QObject * watched, QEvent * event) override
+    {
+      if (event->type () == QEvent::KeyPress)
+        {
+          auto key_event = static_cast<QKeyEvent *> (event);
+          if (key_event->key () == Qt::Key_Return || key_event->key () == Qt::Key_Enter)
+            {
+              if (auto edit = qobject_cast<QLineEdit *> (watched))
+                {
+                  edit->clearFocus ();
+                  return true;
+                }
+            }
+        }
+      return QObject::eventFilter (watched, event);
+    }
+  };
+
   // these undocumented flag values when stored in (Qt::UserRole - 1)
   // of a ComboBox item model index allow the item to be enabled or
   // disabled
@@ -669,6 +696,9 @@ private:
   Q_SLOT void on_delete_macro_push_button_clicked (bool = false);
   Q_SLOT void on_move_macro_up_push_button_clicked (bool = false);
   Q_SLOT void on_move_macro_down_push_button_clicked (bool = false);
+  Q_SLOT void on_grid_line_edit_editingFinished ();
+  Q_SLOT void on_latitude_line_edit_editingFinished ();
+  Q_SLOT void on_longitude_line_edit_editingFinished ();
   Q_SLOT void on_add_macro_line_edit_editingFinished ();
   Q_SLOT void delete_macro ();
   void delete_selected_macros (QModelIndexList);
@@ -883,6 +913,9 @@ private:
   // configuration fields that we publish
   QString my_callsign_;
   QString my_grid_;
+  double home_latitude_ {0.};
+  double home_longitude_ {0.};
+  bool have_home_coordinates_ {false};
   QString FD_exchange_;
   QString RTTY_exchange_;
   QString Contest_Name_;
@@ -1544,6 +1577,21 @@ QString Configuration::my_grid() const
     the_grid = m_->dynamic_grid_;
   }
   return the_grid;
+}
+
+bool Configuration::has_precise_home_coordinates () const
+{
+  return m_->have_home_coordinates_ && !(m_->use_dynamic_grid_ && m_->dynamic_grid_.size () >= 4);
+}
+
+double Configuration::home_latitude () const
+{
+  return m_->home_latitude_;
+}
+
+double Configuration::home_longitude () const
+{
+  return m_->home_longitude_;
 }
 
 QString Configuration::Field_Day_Exchange() const
@@ -2665,6 +2713,20 @@ Configuration::impl::impl (Configuration * self, QNetworkAccessManager * network
   //
   ui_->callsign_line_edit->setValidator (new CallsignValidator {this});
   ui_->grid_line_edit->setValidator (new MaidenheadLocatorValidator {this});
+  auto latitude_validator = new QDoubleValidator {-90.0, 90.0, 8, this};
+  latitude_validator->setNotation (QDoubleValidator::StandardNotation);
+  latitude_validator->setLocale (QLocale::c ());
+  ui_->latitude_line_edit->setValidator (latitude_validator);
+  auto longitude_validator = new QDoubleValidator {-180.0, 180.0, 8, this};
+  longitude_validator->setNotation (QDoubleValidator::StandardNotation);
+  longitude_validator->setLocale (QLocale::c ());
+  ui_->longitude_line_edit->setValidator (longitude_validator);
+
+  auto location_enter_filter = new LocationLineEditEnterFilter {this};
+  ui_->grid_line_edit->installEventFilter (location_enter_filter);
+  ui_->latitude_line_edit->installEventFilter (location_enter_filter);
+  ui_->longitude_line_edit->installEventFilter (location_enter_filter);
+
   ui_->add_macro_line_edit->setValidator (new QRegularExpressionValidator {message_alphabet, this});
   ui_->Field_Day_Exchange->setValidator (new QRegularExpressionValidator {field_day_exchange_re, this});
   ui_->RTTY_Exchange->setValidator (new QRegularExpressionValidator {RTTY_roundup_exchange_re, this});
@@ -2981,6 +3043,9 @@ void Configuration::impl::initialize_models ()
   ui_->grid_line_edit->setPalette (pal);
   ui_->callsign_line_edit->setText (my_callsign_);
   ui_->grid_line_edit->setText (my_grid_);
+  ui_->latitude_line_edit->setText (have_home_coordinates_ ? QString::number (home_latitude_, 'f', 6) : QString {});
+  ui_->longitude_line_edit->setText (have_home_coordinates_ ? QString::number (home_longitude_, 'f', 6) : QString {});
+  if (!have_home_coordinates_) on_grid_line_edit_editingFinished ();
   ui_->use_dynamic_grid->setChecked(use_dynamic_grid_);
   ui_->CW_id_interval_spin_box->setValue (id_interval_);
   ui_->align_spin_box->setValue (align_steps_);
@@ -3206,6 +3271,14 @@ void Configuration::impl::read_settings ()
 
   my_callsign_ = settings_->value ("MyCall", QString {}).toString ();
   my_grid_ = settings_->value ("MyGrid", QString {}).toString ();
+  have_home_coordinates_ = settings_->contains ("HomeLatitude") && settings_->contains ("HomeLongitude");
+  if (have_home_coordinates_)
+    {
+      home_latitude_ = settings_->value ("HomeLatitude").toDouble ();
+      home_longitude_ = settings_->value ("HomeLongitude").toDouble ();
+      have_home_coordinates_ = home_latitude_ >= -90. && home_latitude_ <= 90.
+        && home_longitude_ >= -180. && home_longitude_ <= 180.;
+    }
   FD_exchange_ = settings_->value ("Field_Day_Exchange",QString {}).toString ();
   RTTY_exchange_ = settings_->value ("RTTY_Exchange",QString {}).toString ();
   Contest_Name_ = settings_->value ("Contest_Name",QString {}).toString ();
@@ -3612,6 +3685,16 @@ void Configuration::impl::write_settings ()
 
   settings_->setValue ("MyCall", my_callsign_);
   settings_->setValue ("MyGrid", my_grid_);
+  if (have_home_coordinates_)
+    {
+      settings_->setValue ("HomeLatitude", home_latitude_);
+      settings_->setValue ("HomeLongitude", home_longitude_);
+    }
+  else
+    {
+      settings_->remove ("HomeLatitude");
+      settings_->remove ("HomeLongitude");
+    }
   settings_->setValue ("Field_Day_Exchange", FD_exchange_);
   settings_->setValue ("RTTY_Exchange", RTTY_exchange_);
   settings_->setValue ("Contest_Name", Contest_Name_);
@@ -4031,6 +4114,24 @@ bool Configuration::impl::validate ()
 {
   auto const radio_error = validate_radio_settings ();
 
+  // Latitude/longitude are conventional signed decimal degrees.  Allow both
+  // fields to be empty (legacy/grid-only configuration), but if either is
+  // supplied require a complete, in-range pair before accepting Settings.
+  auto const latitude_text = ui_->latitude_line_edit->text ().trimmed ();
+  auto const longitude_text = ui_->longitude_line_edit->text ().trimmed ();
+  if (!latitude_text.isEmpty () || !longitude_text.isEmpty ())
+    {
+      if (!ui_->latitude_line_edit->hasAcceptableInput ()
+          || !ui_->longitude_line_edit->hasAcceptableInput ())
+        {
+          find_tab (ui_->latitude_line_edit);
+          MessageBox::critical_message (this, tr ("Invalid station coordinates"),
+                                        tr ("Latitude must be between -90 and +90 degrees, "
+                                            "and longitude between -180 and +180 degrees."));
+          return false;
+        }
+    }
+
   if (ui_->sound_input_combo_box->currentIndex () < 0
       && next_audio_input_device_.isNull ())
     {
@@ -4283,6 +4384,16 @@ void Configuration::impl::accept ()
 
   my_callsign_ = ui_->callsign_line_edit->text ();
   my_grid_ = ui_->grid_line_edit->text ();
+  bool lat_ok {false};
+  bool lon_ok {false};
+  auto lat = ui_->latitude_line_edit->text ().toDouble (&lat_ok);
+  auto lon = ui_->longitude_line_edit->text ().toDouble (&lon_ok);
+  have_home_coordinates_ = lat_ok && lon_ok && lat >= -90. && lat <= 90. && lon >= -180. && lon <= 180.;
+  if (have_home_coordinates_)
+    {
+      home_latitude_ = lat;
+      home_longitude_ = lon;
+    }
   FD_exchange_= ui_->Field_Day_Exchange->text ().toUpper ();
   RTTY_exchange_= ui_->RTTY_Exchange->text ().toUpper ();
   Contest_Name_= ui_->Contest_Name->text ().toUpper ();
@@ -5114,6 +5225,109 @@ void Configuration::impl::on_TCI_spin_box_valueChanged(double a)
   volume_ = a;
 }
 
+
+void Configuration::impl::on_grid_line_edit_editingFinished ()
+{
+  auto grid = ui_->grid_line_edit->text ().trimmed ();
+  if (grid.size () < 4) return;
+  grid = grid.left (6);
+  if (grid.size () < 6) grid += "mm";
+  if (grid.size () != 6) return;
+  grid[0] = grid[0].toUpper ();
+  grid[1] = grid[1].toUpper ();
+  grid[4] = grid[4].toLower ();
+  grid[5] = grid[5].toLower ();
+  if (grid[0] < 'A' || grid[0] > 'R' || grid[1] < 'A' || grid[1] > 'R'
+      || !grid[2].isDigit () || !grid[3].isDigit ()
+      || grid[4] < 'a' || grid[4] > 'x' || grid[5] < 'a' || grid[5] > 'x') return;
+
+  // If the currently displayed precise coordinates already lie in this
+  // six-character square, re-entering the same locator must not discard
+  // their extra precision.
+  bool lat_ok {false};
+  bool lon_ok {false};
+  auto current_lat = ui_->latitude_line_edit->text ().toDouble (&lat_ok);
+  auto current_lon = ui_->longitude_line_edit->text ().toDouble (&lon_ok);
+  if (lat_ok && lon_ok && current_lat >= -90. && current_lat <= 90.
+      && current_lon >= -180. && current_lon <= 180.)
+    {
+      auto east = current_lon;
+      auto lat_for_grid = current_lat;
+      if (east == 180.) east = std::nextafter (180., 0.);
+      if (lat_for_grid == 90.) lat_for_grid = std::nextafter (90., 0.);
+      auto x = east + 180.;
+      auto y = lat_for_grid + 90.;
+      int field_lon = static_cast<int> (std::floor (x / 20.));
+      int field_lat = static_cast<int> (std::floor (y / 10.));
+      x -= field_lon * 20.;
+      y -= field_lat * 10.;
+      int square_lon = static_cast<int> (std::floor (x / 2.));
+      int square_lat = static_cast<int> (std::floor (y));
+      x -= square_lon * 2.;
+      y -= square_lat;
+      int sub_lon = static_cast<int> (std::floor (x * 12.));
+      int sub_lat = static_cast<int> (std::floor (y * 24.));
+      QString coordinate_grid;
+      coordinate_grid += QChar::fromLatin1 (static_cast<char> ('A' + field_lon));
+      coordinate_grid += QChar::fromLatin1 (static_cast<char> ('A' + field_lat));
+      coordinate_grid += QChar::fromLatin1 (static_cast<char> ('0' + square_lon));
+      coordinate_grid += QChar::fromLatin1 (static_cast<char> ('0' + square_lat));
+      coordinate_grid += QChar::fromLatin1 (static_cast<char> ('a' + sub_lon));
+      coordinate_grid += QChar::fromLatin1 (static_cast<char> ('a' + sub_lat));
+      if (coordinate_grid.compare (grid, Qt::CaseInsensitive) == 0) return;
+    }
+
+  // Centre of the six-character Maidenhead subsquare.  The legacy Fortran
+  // grid2deg routine returns west-positive longitude; the UI uses the
+  // conventional east-positive geographic sign.
+  auto west = 180. - 20. * (grid[0].unicode () - 'A')
+    - 2. * (grid[2].unicode () - '0')
+    - 5. * ((grid[4].unicode () - 'a') + .5) / 60.;
+  auto lat = -90. + 10. * (grid[1].unicode () - 'A')
+    + (grid[3].unicode () - '0')
+    + 2.5 * ((grid[5].unicode () - 'a') + .5) / 60.;
+  ui_->latitude_line_edit->setText (QString::number (lat, 'f', 6));
+  ui_->longitude_line_edit->setText (QString::number (-west, 'f', 6));
+}
+
+void Configuration::impl::on_latitude_line_edit_editingFinished ()
+{
+  on_longitude_line_edit_editingFinished ();
+}
+
+void Configuration::impl::on_longitude_line_edit_editingFinished ()
+{
+  bool lat_ok {false};
+  bool lon_ok {false};
+  auto lat = ui_->latitude_line_edit->text ().toDouble (&lat_ok);
+  auto lon = ui_->longitude_line_edit->text ().toDouble (&lon_ok);
+  if (!lat_ok || !lon_ok || lat < -90. || lat > 90. || lon < -180. || lon > 180.) return;
+
+  // Equivalent to deg2grid(), with conventional east-positive longitude.
+  auto east = lon;
+  if (east == 180.) east = std::nextafter (180., 0.);
+  if (lat == 90.) lat = std::nextafter (90., 0.);
+  auto x = east + 180.;
+  auto y = lat + 90.;
+  int field_lon = static_cast<int> (std::floor (x / 20.));
+  int field_lat = static_cast<int> (std::floor (y / 10.));
+  x -= field_lon * 20.;
+  y -= field_lat * 10.;
+  int square_lon = static_cast<int> (std::floor (x / 2.));
+  int square_lat = static_cast<int> (std::floor (y));
+  x -= square_lon * 2.;
+  y -= square_lat;
+  int sub_lon = static_cast<int> (std::floor (x * 12.));
+  int sub_lat = static_cast<int> (std::floor (y * 24.));
+  QString grid;
+  grid += QChar::fromLatin1 (static_cast<char> ('A' + field_lon));
+  grid += QChar::fromLatin1 (static_cast<char> ('A' + field_lat));
+  grid += QChar::fromLatin1 (static_cast<char> ('0' + square_lon));
+  grid += QChar::fromLatin1 (static_cast<char> ('0' + square_lat));
+  grid += QChar::fromLatin1 (static_cast<char> ('a' + sub_lon));
+  grid += QChar::fromLatin1 (static_cast<char> ('a' + sub_lat));
+  ui_->grid_line_edit->setText (grid);
+}
 
 void Configuration::impl::on_add_macro_line_edit_editingFinished ()
 {

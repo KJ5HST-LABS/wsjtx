@@ -490,7 +490,7 @@ contains
          outputs(5),outputs(6),outputs(7),outputs(8),outputs(9),   &
          outputs(10),outputs(11),outputs(12),outputs(13),          &
          outputs(14),outputs(15),outputs(16),outputs(17),          &
-         outputs(18),outputs(19),result)
+         outputs(18),outputs(19),result,.false.,0.d0,0.d0)
   end subroutine direct_astro_values
 
   subroutine astro_values(uth,dfdt,dfdt0,result)
@@ -502,6 +502,7 @@ contains
     character(len=6) :: mygrid='FN20qi',hisgrid='JN18du'
 
     call astro0(2024,1,1,uth,144000000.0_real64,mygrid,hisgrid,      &
+         .false.,0.d0,0.d0,                                        &
          output(1),output(2),output(3),output(4),output(5),          &
          output(6),ntsky,ndop,ndop00,output(7),output(8),output(9), &
          output(10),output(11),output(12),output(13),output(14),    &
@@ -515,7 +516,8 @@ contains
     integer, intent(out) :: integer_values(3),result
 
     call astro0(2024,1,1,12.0_real64,144000000.0_real64,mygrid,      &
-         hisgrid,values(1),values(2),values(3),values(4),values(5),  &
+         hisgrid,.false.,0.d0,0.d0,                                 &
+         values(1),values(2),values(3),values(4),values(5),          &
          values(6),integer_values(1),integer_values(2),              &
          integer_values(3),values(7),values(8),values(9),values(10),&
          values(11),values(12),values(13),values(14),values(15),    &
@@ -537,6 +539,7 @@ contains
     call assign_c_string(jpl_path,jpl_path_c)
     call astrosub(2024_c_int,1_c_int,1_c_int,12.0_c_double,           &
          144000000.0_c_double,c_loc(mygrid_c),c_loc(hisgrid_c),      &
+         .false._c_bool,0.0_c_double,0.0_c_double,                   &
          values(1),values(2),values(3),values(4),values(5),          &
          values(6),integer_values(1),integer_values(2),              &
          integer_values(3),values(7),values(8),values(9),values(10),&

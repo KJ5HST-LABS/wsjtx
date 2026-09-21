@@ -121,6 +121,15 @@
            </layout>
           </item>
           <item>
+           <layout class="QHBoxLayout" name="home_coordinates_layout">
+            <item><widget class="QLabel" name="latitude_label"><property name="text"><string>Latitude:</string></property><property name="buddy"><cstring>latitude_line_edit</cstring></property></widget></item>
+            <item><widget class="QLineEdit" name="latitude_line_edit"><property name="toolTip"><string>Home-station latitude in decimal degrees. North is positive; south is negative.</string></property><property name="maximumWidth"><number>120</number></property></widget></item>
+            <item><widget class="QLabel" name="longitude_label"><property name="text"><string>Longitude:</string></property><property name="buddy"><cstring>longitude_line_edit</cstring></property></widget></item>
+            <item><widget class="QLineEdit" name="longitude_line_edit"><property name="toolTip"><string>Home-station longitude in decimal degrees. East is positive; west is negative.</string></property><property name="maximumWidth"><number>120</number></property></widget></item>
+            <item><spacer name="home_coordinates_spacer"><property name="orientation"><enum>Qt::Horizontal</enum></property><property name="sizeHint" stdset="0"><size><width>40</width><height>20</height></size></property></spacer></item>
+           </layout>
+          </item>
+          <item>
            <layout class="QFormLayout" name="formLayout_13">
             <item row="0" column="0">
              <widget class="QLabel" name="label_5">

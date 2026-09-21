@@ -22,7 +22,8 @@
 
 extern "C" {
   void astrosub(int nyear, int month, int nday, double uth, double freqMoon,
-                const char * mygrid, const char * hisgrid,
+                const char * mygrid, const char * hisgrid, bool use_home_coordinates,
+                double home_latitude, double home_longitude,
                 double * azsun, double * elsun, double * azmoon,
                 double * elmoon, double * azmoondx, double * elmoondx, int * ntsky,
                 int * ndop, int * ndop00, double * ramoon, double * decmoon, double * dgrd,
@@ -108,7 +109,8 @@ void Astro::write_settings ()
   settings_->setValue ("LockSkedFreq",ui_->cbLockSkedFreq->isChecked());
 }
 
-auto Astro::astroUpdate(QDateTime const& t, QString const& mygrid, QString const& hisgrid, Frequency freq,
+auto Astro::astroUpdate(QDateTime const& t, QString const& mygrid, QString const& hisgrid,
+     bool use_home_coordinates, double home_latitude, double home_longitude, Frequency freq,
      bool bEchoMode, bool bTx, bool bAuto, bool no_tx_QSY, double TR_period) -> Correction
 {
   Frequency freq_moon {freq};
@@ -133,7 +135,7 @@ auto Astro::astroUpdate(QDateTime const& t, QString const& mygrid, QString const
   // changed argument from &dgrd to &m_dgrd added for Bob KA1GT 
   astrosub(nyear, month, nday, uth, static_cast<double> (freq_moon),
            mygrid.toLatin1 ().data (),
-           hisgrid.toLatin1().data(),
+           hisgrid.toLatin1().data(), use_home_coordinates, home_latitude, home_longitude,
            &azsun, &elsun, &azmoon, &elmoon,
            &azmoondx, &elmoondx, &ntsky, &m_dop, &m_dop00, &ramoon, &decmoon,
            &m_dgrd, &poloffset, &xnr, extraazel, &techo, &width1, &width2,
@@ -308,7 +310,7 @@ auto Astro::astroUpdate(QDateTime const& t, QString const& mygrid, QString const
         double uth {nhr + nmin/60.0 + sec/3600.0};
         astrosub(nyear, month, nday, uth, static_cast<double> (freq_moon),
                   mygrid.toLatin1 ().data (),
-                  hisgrid.toLatin1().data(),
+                  hisgrid.toLatin1().data(), use_home_coordinates, home_latitude, home_longitude,
                   &azsun, &elsun, &azmoon, &elmoon,
                   &azmoondx, &elmoondx, &ntsky, &m_dop, &m_dop00, &ramoon, &decmoon,
                   &dgrd, &poloffset, &xnr, extraazel, &techo, &width1, &width2,
