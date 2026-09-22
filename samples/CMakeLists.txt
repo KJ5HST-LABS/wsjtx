@@ -52,7 +52,7 @@ find_program (RSYNC_EXECUTABLE rsync)
 add_custom_command (
   OUTPUT upload.timestamp
   COMMAND ${CMAKE_COMMAND} ARGS -E copy_if_different ${contents_file} ${web_tree}/samples/${contents_file_name}
-  COMMAND ${RSYNC_EXECUTABLE} ARGS -avz --progress ${CMAKE_CURRENT_BINARY_DIR}/web/samples ${PROJECT_SAMPLES_UPLOAD_DEST}
+  COMMAND ${RSYNC_EXECUTABLE} ARGS -avz --progress web/samples ${PROJECT_SAMPLES_UPLOAD_DEST}
   COMMAND ${CMAKE_COMMAND} ARGS -E touch upload.timestamp
   DEPENDS ${contents_file}
   COMMENT "Uploading WSJT-X samples to web server"
