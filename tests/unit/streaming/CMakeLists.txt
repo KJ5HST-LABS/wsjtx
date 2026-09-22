@@ -14,3 +14,8 @@ if (WSJT_ENABLE_TSAN)
   set_tests_properties (test_streaming_consumers PROPERTIES
     ENVIRONMENT "TSAN_OPTIONS=${wsjt_tsan_fortran_options}")
 endif ()
+
+add_executable (test_streaming_period test_streaming_period.f90)
+wsjt_link_common_fortran (test_streaming_period)
+add_test (NAME test_streaming_period COMMAND test_streaming_period)
+set_tests_properties (test_streaming_period PROPERTIES LABELS "streaming")

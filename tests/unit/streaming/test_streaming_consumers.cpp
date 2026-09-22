@@ -10,7 +10,8 @@ namespace
 {
 constexpr quint32 Jt9AudioCapacityBytes = 30u * 60u * 12000u * 2u;
 constexpr quint32 WsprdAudioCapacityBytes = 8u * 114u * 12000u * 2u;
-constexpr int Ft4PeriodSamples = 21 * 3456;
+// FT4's 7.5 s period at 12 kHz.
+constexpr int Ft4PeriodSamples = 90000;
 constexpr int Jt9TenSecondPeriodSamples = 10 * 12000;
 
 struct ProcessResult
@@ -158,16 +159,6 @@ ParsedEvents parseEvents (QByteArray const& output)
               return parsed;
             }
         }
-      if (type == "warning" &&
-          (!event.value ("code").isString () ||
-           event.value ("code").toString ().isEmpty () ||
-           !event.value ("discarded_samples").isDouble () ||
-           event.value ("discarded_samples").toDouble () < 0.0))
-        {
-          parsed.error = QString {"invalid warning event: %1"}.arg (
-            QString::fromUtf8 (line));
-          return parsed;
-        }
       parsed.values.append (event);
     }
   return parsed;
@@ -280,10 +271,8 @@ private slots:
     verifyCompleted (result, 0);
     auto const events = verifyEvents (result);
     QCOMPARE (eventsMatching (events.values, "error", "unknown_mode").size (), 1);
-    auto const warnings = eventsMatching (
-      events.values, "warning", "period_boundary_discard");
-    QCOMPARE (warnings.size (), 1);
-    QCOMPARE (warnings.front ().value ("discarded_samples").toInt (), 2);
+    // The two samples past the 10 s period open the next period, drained at EOF.
+    QCOMPARE (eventsMatching (events.values, "decode_finished").size (), 2);
   }
 
   void jt9RejectsOutOfRangeTrperiod_data ()
@@ -306,22 +295,59 @@ private slots:
     QCOMPARE (eventsMatching (events.values, "decode").size (), 0);
   }
 
-  void jt9ReportsBoundaryDiscardOnce ()
+  // A straddling frame carries its remainder into the next period.
+  void jt9CarriesStraddlingFrameIntoNextPeriod ()
   {
     auto const exact = runJt9 (sessionHeader () +
                                silentAudioFrame (Ft4PeriodSamples), {"--ft4"});
     verifyCompleted (exact, 0);
     auto const exactEvents = verifyEvents (exact);
-    QCOMPARE (eventsMatching (exactEvents.values, "warning").size (), 0);
+    QCOMPARE (eventsMatching (exactEvents.values, "decode_finished").size (), 1);
 
-    auto const overflow = runJt9 (
+    auto const straddle = runJt9 (
       sessionHeader () + silentAudioFrame (Ft4PeriodSamples + 2), {"--ft4"});
-    verifyCompleted (overflow, 0);
-    auto const overflowEvents = verifyEvents (overflow);
-    auto const warnings = eventsMatching (
-      overflowEvents.values, "warning", "period_boundary_discard");
-    QCOMPARE (warnings.size (), 1);
-    QCOMPARE (warnings.front ().value ("discarded_samples").toInt (), 2);
+    verifyCompleted (straddle, 0);
+    auto const straddleEvents = verifyEvents (straddle);
+    QCOMPARE (eventsMatching (straddleEvents.values, "decode_finished").size (), 2);
+
+    // The decoder's share alone is not a period; the EOF drain reports it.
+    auto const decoderOnly = runJt9 (
+      sessionHeader () + silentAudioFrame (21 * 3456), {"--ft4"});
+    verifyCompleted (decoderOnly, 0);
+    auto const decoderOnlyEvents = verifyEvents (decoderOnly);
+    QCOMPARE (eventsMatching (decoderOnlyEvents.values, "decode_finished").size (), 1);
+  }
+
+  // A configure that changes the period starts a new one; nothing of the
+  // old period drains at the new length.
+  void jt9StartsANewPeriodOnATrperiodChange ()
+  {
+    // Half a 10 s period, a change to 20 s, then exactly one 20 s period.
+    auto const result = runJt9 (
+      sessionHeader () +
+      controlFrame (R"({"t":"configure","trperiod":10})") +
+      silentAudioFrame (Jt9TenSecondPeriodSamples / 2) +
+      controlFrame (R"({"t":"configure","trperiod":20})") +
+      silentAudioFrame (2 * Jt9TenSecondPeriodSamples), {"-9"});
+    verifyCompleted (result, 0);
+    auto const events = verifyEvents (result);
+    QCOMPARE (eventsMatching (events.values, "decode_finished").size (), 1);
+  }
+
+  // Repeating the current configuration mid-period leaves the period alone.
+  void jt9KeepsThePeriodOnAnUnchangedConfigure ()
+  {
+    // Half a 10 s period, the same configuration again, then the other half
+    // plus two samples: one full period, and the two samples open the next.
+    auto const result = runJt9 (
+      sessionHeader () +
+      controlFrame (R"({"t":"configure","mode":"JT9","trperiod":10})") +
+      silentAudioFrame (Jt9TenSecondPeriodSamples / 2) +
+      controlFrame (R"({"t":"configure","mode":"JT9","trperiod":10})") +
+      silentAudioFrame (Jt9TenSecondPeriodSamples / 2 + 2), {"-9"});
+    verifyCompleted (result, 0);
+    auto const events = verifyEvents (result);
+    QCOMPARE (eventsMatching (events.values, "decode_finished").size (), 2);
   }
 
   void wsprdRejectsOversizedFrames_data ()
