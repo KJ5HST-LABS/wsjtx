@@ -259,6 +259,7 @@ set (wsjt_FSRCS
   lib/fftw3mod.f90
   lib/hashing.f90
   lib/iso_c_utilities.f90
+  lib/streaming_period.f90
   lib/streaming_emit.f90
   lib/streaming_control.f90
   lib/jt9_params_init.f90
