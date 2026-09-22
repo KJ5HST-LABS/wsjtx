@@ -2,7 +2,7 @@
 
 ## Summary
 
-N1MM Logger+ can send either literal JTTY text or an explicit native action. Ordinary TXTEXT uses the literal source interface: an exact whole-message registered control phrase uses its CONTROL atom, while other text uses TEXT5. Other native encoding is opt-in through a leading `[[JTTY:<ACTION>]]` marker in the transmitted text. The marker is consumed by WSJT-X and is never put on the air.
+N1MM Logger+ can send either literal JTTY text or an explicit native action. Ordinary TXTEXT uses automatic minimum-frame packing that preserves its normalized text exactly, combining recognized compact forms with TEXT5. Explicit typed exchanges use a leading `[[JTTY:<ACTION>]]` marker in the transmitted text. The marker is consumed by WSJT-X and is never put on the air.
 
 The bundled `JTTY Messages.mc` uses tagged actions for its common Run and S&P messages. This provides compact Call8 and STRUCT30 transmission without asking WSJT-X to infer meaning from visible logger text.
 
@@ -24,10 +24,10 @@ N1MM expands logger macros before passing TXTEXT to WSJT-X. An untagged result u
 - lowercase letters become uppercase;
 - leading, trailing, and repeated spaces are removed;
 - unsupported characters become `#`;
-- an exact whole-message registered control phrase uses one CONTROL frame;
-- other input is divided into five-character TEXT5 frames after normalization.
+- recognized calls, control phrases, generic numbers, full generic QTH exchanges, grids, and class/section pairs compete with TEXT5 for the minimum frame count;
+- every compact candidate must preserve its source text exactly after normalization.
 
-Apart from exact registered control phrases, no visible pattern selects native encoding. `CQ N9ADG CQ`, `N9ADG`, and `599 123` remain literal unless TXTEXT begins with an assigned JTTY action marker. This prevents contest inference or semantic rewriting of customized messages.
+`CQ N9ADG CQ`, `N9ADG`, `599 123`, `599 MA`, `599 FN42`, and `1D EMA` each use one frame without a tag. Recognition works at token boundaries inside longer messages as well. It does not infer contest-specific meanings: `599 05` and `599 001` retain their leading zeros and take two frames. Tagged exchanges can be more compact when their type is explicitly supplied. The full recognition policy and spacing constraints are in [`jtty_design.md`](jtty_design.md).
 
 The former `i2=2` shortcut for literal `599 ` plus five characters has been replaced by STRUCT30. There is no compatibility discriminator: an old receiver displays new STRUCT30 bits as `599` text, and some old type-2 frames are valid new STRUCT30 words with a different meaning. JTTY is unreleased, so no legacy decoder mode is retained.
 
@@ -74,7 +74,7 @@ local WSJT-X RTTY `%E` configuration.
 
 `GRID` accepts exactly one valid four-character Maidenhead locator. `CONTROL` accepts exactly one of the 18 registered phrases, including spaces and punctuation where shown in `jtty_source_encoding.txt`.
 
-An unknown or malformed leading JTTY marker, unsupported action, missing field, invalid call, invalid profile exchange, invalid grid, or unregistered control phrase is rejected. It never falls back to literal transmission. Untagged messages, including customized N1MM macros, use the literal source interface; only an exact registered control phrase is contracted to CONTROL. A tag-shaped substring later in the text is just literal text.
+An unknown or malformed leading JTTY marker, unsupported action, missing field, invalid call, invalid profile exchange, invalid grid, or unregistered control phrase is rejected. It never falls back to literal transmission. Untagged messages, including customized N1MM macros, use automatic text packing without consulting the contest profile. A tag-shaped substring later in the text is just literal text.
 
 An all-rejected transaction receives `OUTPUTCOMPLETE` at `XMIT OFF`. When a transaction also contains accepted or pending audio, completion waits until that audio has drained. `ABORT` clears the transaction without reporting a successful output completion.
 
@@ -124,12 +124,12 @@ The WSJT-X JTTY editor offers the same native subset without an N1MM tag. The sh
 
 `%E` is the configured profile exchange. `%G` is a field-only GRID4, while the exact template `599 %G` selects full-role GRID4. Current templates and control phrases match before expansion after case and whitespace normalization.
 
-The exact former F2, F6, and F8 defaults (`%H 599 %N`, `TU NOW %Q 599 %N`, and `599 %N`) remain recognized during migration and are replaced by `%E` only when unchanged in saved settings. An edited old default is a customized literal template. Likewise, an unrecognized current template falls back to literal TEXT5 after normal expansion. A recognized native template with invalid runtime data is rejected rather than changing semantics through fallback.
+The exact former F2, F6, and F8 defaults (`%H 599 %N`, `TU NOW %Q 599 %N`, and `599 %N`) remain recognized during migration and are replaced by `%E` only when unchanged in saved settings. An edited old default is a customized literal template. Likewise, an unrecognized current template uses automatic text packing after normal expansion. A recognized native template with invalid runtime data is rejected rather than changing semantics through fallback.
 
 Clickable F1-F8 buttons and keyboard shortcuts select the same actions. Native sequences set EOM only on their final atom and do not add a TEXT5 spacing frame between queued messages.
 
 ## Current scope
 
-The practical tagged and GUI transmit subset includes Call8, serial and RTTY state/province exchanges, Field Day class/section, GRID4, and registered controls. The full wire codec also validates and canonically renders other STRUCT30 number/location kinds, ZONE_LOC3, and EXCH_NUM_TIME. Those forms are receive-only in the current operator-facing integration unless an explicit native codec caller constructs them; they are never inferred from literal text.
+The practical tagged and GUI native transmit subset includes Call8, serial and RTTY state/province exchanges, Field Day class/section, GRID4, and registered controls. Automatic text packing additionally uses GENERIC_NUMERIC and GENERIC_QTH. The full wire codec also validates and canonically renders other STRUCT30 number/location kinds, ZONE_LOC3, and EXCH_NUM_TIME. Those remaining forms are receive-only in the current operator-facing integration unless an explicit native codec caller constructs them; they are not inferred from ordinary text.
 
 The complete wire definition is in [`jtty_source_encoding.txt`](jtty_source_encoding.txt).
