@@ -319,12 +319,14 @@ void TCITransceiver::onConnected()
 void TCITransceiver::onDisconnected()
 {
   inConnected = false;
+  receive_discontinuity (JttyReceiveReason::InputError);
   CAT_TRACE ("TCITransceiver entered TCI onDisonnected and inConnected==false\n");
 }
 
 
 void TCITransceiver::onError(QAbstractSocket::SocketError err)
 {
+  receive_discontinuity (JttyReceiveReason::InputError);
   qDebug() << "WebInThread::onError";
   CAT_TRACE ("TCITransceiver entered TCI onError and ErrorNumber is " + QString::number(err) + '\n');
   auto const error_index = static_cast<int> (err);
@@ -531,6 +533,13 @@ int TCITransceiver::do_start ()
 
 void TCITransceiver::do_stop ()
 {
+  bool const endingContinuous = m_receivePolicy == ReceivePolicy::ContinuousJtty;
+  if (m_receivePolicy == ReceivePolicy::ContinuousJtty) audio_ = false;
+  receive_discontinuity (JttyReceiveReason::SourceChanged);
+  m_receivePolicy = ReceivePolicy::Timed;
+  m_receiveContext = 0;
+  m_jttyPublisher.setContext (0);
+  if (endingContinuous) Q_EMIT continuousReceptionStopped (m_jttyPublisher.mailbox ());
   CAT_TRACE ("TCITransceiver TCI close\n");
   if (!commander_) return;
   if (stream_audio_ && tci_Ready && inConnected && _power_) {
@@ -946,6 +955,7 @@ void TCITransceiver::onBinaryReceived(const QByteArray &data)
     qDebug() << "IQ" << data.size() << pStream->length;
   } else if (pStream->type == TciStream::RxAudioStream && audio_  && pStream->receiver == rx_.toUInt()) {
     if (!TciStream::has_complete_float_payload (data, pStream->length)) {
+      receive_discontinuity (JttyReceiveReason::InputError);
       return;
     }
     writeAudioData(const_cast<float *> (TciStream::float_payload (data)),pStream->length);
@@ -1060,18 +1070,28 @@ void TCITransceiver::clear ()
 
 quint32 TCITransceiver::writeAudioData (float * data, qint32 maxSize)
 {
-  if (dec_data_input_blocked ()) return maxSize;
+  if (dec_data_input_blocked ())
+    {
+      receive_discontinuity (JttyReceiveReason::Replay);
+      return maxSize;
+    }
 
   QVector<qint64> frame_counts;
   QVector<ReceiveAudio> audio;
-  qint64 ms0 = (receive_clock_ ? receive_clock_ ()
-                              : QDateTime::currentMSecsSinceEpoch ()) % 86400000;
-  unsigned mstr = ms0 % int(1000.0*m_period); // ms into the nominal Tx start time
+  bool continuousNotify = false;
+  bool const continuous = m_receivePolicy == ReceivePolicy::ContinuousJtty;
+  qint64 const now = receive_clock_ ? receive_clock_ () : QDateTime::currentMSecsSinceEpoch ();
+  qint64 const packetFrames = maxSize / static_cast<qint32> (rxChannels);
+  qint64 const packetDurationMs = audioSampleRate
+    ? qRound64 (1000.0 * packetFrames / audioSampleRate) : 0;
+  qint64 const packetStartUtc = now - packetDurationMs;
+  qint64 ms0 = now % 86400000;
+  unsigned mstr = continuous ? 0 : ms0 % int(1000.0*m_period);
 
   if(data == NULL) {
     QMutexLocker lock {&dec_data_mutex ()};
     if (dec_data_input_blocked ()) return maxSize;
-    if(mstr < m_lastPeriodOffsetMs/2) { //When mstr has wrapped around to 0, restart the buffer
+    if(!continuous && mstr < m_lastPeriodOffsetMs/2) { //When mstr has wrapped around to 0, restart the buffer
       clear ();
     }
     m_lastPeriodOffsetMs=mstr;
@@ -1084,18 +1104,22 @@ quint32 TCITransceiver::writeAudioData (float * data, qint32 maxSize)
   {
     QMutexLocker lock {&dec_data_mutex ()};
     auto& producer = m_receiveAudioProducer.data ();
-    if (dec_data_input_blocked ()) return maxSize;
+    if (dec_data_input_blocked ()) {
+      receive_discontinuity (JttyReceiveReason::Replay);
+      return maxSize;
+    }
 
-    if(mstr < m_lastPeriodOffsetMs/2) { //When mstr has wrapped around to 0, restart the buffer
+    if(!continuous && mstr < m_lastPeriodOffsetMs/2) { //When mstr has wrapped around to 0, restart the buffer
       clear ();
     }
     m_lastPeriodOffsetMs=mstr;
+    if (continuous) continuousNotify = m_jttyPublisher.begin (packetStartUtc);
 
     // no torn frames
     Q_ASSERT (!(maxSize % static_cast<qint32> (rxChannels)));
 
     // these are in terms of input frames (not down sampled)
-    size_t framesAcceptable ((sizeof producer.d2 /
+    size_t framesAcceptable (continuous ? maxSize / rxChannels : (sizeof producer.d2 /
                                  sizeof producer.d2[0] - m_receiveAudioProducer.frames ()) * m_downSampleFactor);
     size_t framesAccepted (qMin (static_cast<size_t> (maxSize /
                                                       rxChannels), framesAcceptable));
@@ -1118,7 +1142,12 @@ quint32 TCITransceiver::writeAudioData (float * data, qint32 maxSize)
         if(m_bufferPos==m_samplesPerFFT*m_downSampleFactor) {
           qint32 framesToProcess (m_samplesPerFFT * m_downSampleFactor);
           qint32 framesAfterDownSample (m_samplesPerFFT);
-          if(m_downSampleFactor > 1 && m_receiveAudioProducer.frames ()>=0 &&
+          if (continuous) {
+            fil4_state_ (m_buffer.data (), &framesToProcess, m_jttyOutput.data (),
+                         &framesAfterDownSample, m_downsampleState.data ());
+            continuousNotify = m_jttyPublisher.append (m_jttyOutput.data (), framesAfterDownSample)
+              || continuousNotify;
+          } else if(m_downSampleFactor > 1 && m_receiveAudioProducer.frames ()>=0 &&
               m_receiveAudioProducer.frames () < (NTMAX*12000 - framesAfterDownSample)) {
             fil4_state_(&m_buffer[0], &framesToProcess,
                   &producer.d2[m_receiveAudioProducer.frames ()],
@@ -1129,20 +1158,27 @@ quint32 TCITransceiver::writeAudioData (float * data, qint32 maxSize)
             qDebug() << "receive audio frames = " << m_receiveAudioProducer.frames ();
             qDebug() << "framesAfterDownSample" << framesAfterDownSample;
           }
-          frame_counts << m_receiveAudioProducer.frames ();
-          audio << m_receiveAudioProducer.capture (m_receiveAudioProducer.frames (), m_period);
+          if (!continuous) {
+            frame_counts << m_receiveAudioProducer.frames ();
+            audio << m_receiveAudioProducer.capture (m_receiveAudioProducer.frames (), m_period);
+          }
           m_bufferPos = 0;
         }
 
       } else {
         store (&data[(framesAccepted - remaining) * rxChannels],
-              numFramesProcessed, &producer.d2[m_receiveAudioProducer.frames ()],
-              receiveGain);
+              numFramesProcessed, continuous ? m_jttyOutput.data () + m_bufferPos
+                : &producer.d2[m_receiveAudioProducer.frames ()], receiveGain);
         m_bufferPos += numFramesProcessed;
-        m_receiveAudioProducer.setFrames (m_receiveAudioProducer.frames () + numFramesProcessed);
+        if (!continuous) m_receiveAudioProducer.setFrames (m_receiveAudioProducer.frames () + numFramesProcessed);
         if (m_bufferPos == static_cast<unsigned> (m_samplesPerFFT)) {
-          frame_counts << m_receiveAudioProducer.frames ();
-          audio << m_receiveAudioProducer.capture (m_receiveAudioProducer.frames (), m_period);
+          if (continuous) {
+            continuousNotify = m_jttyPublisher.append (m_jttyOutput.data (), m_bufferPos)
+              || continuousNotify;
+          } else {
+            frame_counts << m_receiveAudioProducer.frames ();
+            audio << m_receiveAudioProducer.capture (m_receiveAudioProducer.frames (), m_period);
+          }
           m_bufferPos = 0;
         }
       }
@@ -1154,6 +1190,7 @@ quint32 TCITransceiver::writeAudioData (float * data, qint32 maxSize)
     Q_EMIT tciframeswritten (frames);
   }
   for (auto const& block : audio) Q_EMIT receiveAudio (block);
+  if (continuousNotify) Q_EMIT continuousAudioAvailable (m_jttyPublisher.mailbox ());
 
   return maxSize;    // we drop any data past the end of the buffer on
   // the floor until the next period starts
@@ -1217,12 +1254,19 @@ void TCITransceiver::stream_audio (bool on)
 void TCITransceiver::do_audio (bool on)
 {
   TRACE_CAT ("TCITransceiver", on << state ());
+  receive_discontinuity (on ? JttyReceiveReason::SourceChanged : m_inputStopReason);
   if (on) {
     QMutexLocker lock {&dec_data_mutex ()};
     m_bufferPos = 0;
     if (!dec_data_input_blocked ()) clear ();
   }
   audio_ = on;
+  if (!on)
+    {
+      m_inputStopReason = JttyReceiveReason::MonitorStopped;
+      if (m_receivePolicy == ReceivePolicy::ContinuousJtty)
+        Q_EMIT continuousReceptionStopped (m_jttyPublisher.mailbox ());
+    }
 }
 
 void TCITransceiver::do_period (double period)
@@ -1232,8 +1276,47 @@ void TCITransceiver::do_period (double period)
     {
       QMutexLocker lock {&dec_data_mutex ()};
       m_period = period;
-      if (!dec_data_input_blocked ()) clear ();
+      if (m_receivePolicy == ReceivePolicy::Timed && !dec_data_input_blocked ()) clear ();
     }
+}
+
+void TCITransceiver::do_receive_policy (ReceivePolicy policy)
+{
+  if (policy == m_receivePolicy) return;
+  bool const endingContinuous = m_receivePolicy == ReceivePolicy::ContinuousJtty;
+  receive_discontinuity (JttyReceiveReason::ModeChanged);
+  m_receivePolicy = policy;
+  m_downsampleState.fill (0);
+  QMutexLocker lock {&dec_data_mutex ()};
+  clear ();
+  if (endingContinuous) Q_EMIT continuousReceptionStopped (m_jttyPublisher.mailbox ());
+}
+
+void TCITransceiver::do_receive_context (quint64 context)
+{
+  if (context == m_receiveContext) return;
+  receive_discontinuity (JttyReceiveReason::SourceChanged);
+  m_receiveContext = context;
+  m_jttyPublisher.setContext (context);
+}
+
+void TCITransceiver::receive_discontinuity (JttyReceiveReason reason)
+{
+  if (m_receivePolicy != ReceivePolicy::ContinuousJtty) return;
+  bool notify = false;
+  if (m_jttyPublisher.active () && m_bufferPos)
+    {
+      qint32 inputFrames = m_bufferPos - m_bufferPos % m_downSampleFactor;
+      qint32 outputFrames = inputFrames / m_downSampleFactor;
+      if (m_downSampleFactor > 1 && inputFrames)
+        fil4_state_ (m_buffer.data (), &inputFrames, m_jttyOutput.data (),
+                     &outputFrames, m_downsampleState.data ());
+      notify = m_jttyPublisher.append (m_jttyOutput.data (), outputFrames);
+    }
+  notify = m_jttyPublisher.end (reason) || notify;
+  m_bufferPos = 0;
+  m_downsampleState.fill (0);
+  if (notify) Q_EMIT continuousAudioAvailable (m_jttyPublisher.mailbox ());
 }
 
 void TCITransceiver::do_volume (qreal volume)
@@ -1250,6 +1333,11 @@ void TCITransceiver::do_txvolume (qreal txvolume)
 void TCITransceiver::do_blocksize (qint32 blocksize)
 {
   TRACE_CAT ("TCITransceiver", blocksize << state ());
+  if (blocksize <= 0 || size_t (blocksize) > max_buffer_size
+      || blocksize == m_samplesPerFFT) return;
+  // Finish partial continuous audio before changing the block's write boundary.
+  receive_discontinuity (JttyReceiveReason::SourceChanged);
+  m_bufferPos = 0;
   m_samplesPerFFT = blocksize;
 }
 

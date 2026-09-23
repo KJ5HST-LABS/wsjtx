@@ -917,12 +917,17 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
              if (!m_tci_audio) live_data_sink (std::move (audio));
            });
   connect (&m_audioThread, &QThread::finished, m_detector, &QObject::deleteLater);
+  connect(m_detector, &Detector::continuousAudioAvailable, this,
+          [this](JttyReceiveMailboxPtr mailbox) {
+            consumeJttyAudio(std::move(mailbox));
+          });
 
   // setup the waterfall
   connect(m_wideGraph.data (), SIGNAL(freezeDecode2(int)),this,SLOT(freezeDecode(int)));
   connect(m_wideGraph.data (), SIGNAL(f11f12(int)),this,SLOT(bumpFqso(int)));
   connect(m_wideGraph.data (), SIGNAL(setXIT2(int)),this,SLOT(setXIT(int)));
-  connect(m_wideGraph.data (), SIGNAL(jttyDecodeAgainAt2(float)),this,SLOT(jttyDecodeAgainAt(float)));
+  connect(m_wideGraph.data(), &WideGraph::jttyDecodeAgainAtSample,
+          this, &MainWindow::jttyDecodeAgainAtSample);
   m_wideGraph->setReferenceSpectrumAvailable(
         QFile::exists(m_config.writeable_data_dir ().absoluteFilePath ("refspec.dat")));
 
@@ -1346,6 +1351,10 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
              if (m_tci_audio) live_data_sink (std::move (audio));
            });
   connect (&m_config, &Configuration::transceiver_TCImodActive, this, &MainWindow::tci_mod_active);
+  connect(&m_config, &Configuration::continuousAudioAvailable, this,
+          [this](JttyReceiveMailboxPtr mailbox) {
+            consumeJttyAudio(std::move(mailbox));
+          });
   connect (&m_config, &Configuration::txSourceCommitted,
            this, &MainWindow::recordTxSourceCommit, Qt::QueuedConnection);
   connect (&m_config, &Configuration::rawTxPlayoutSnapshot,
@@ -2475,6 +2484,10 @@ void MainWindow::fixStop()
 //-------------------------------------------------------------- dataSink()
 void MainWindow::dataSink(qint64 frames)
 {
+  if (m_mode == "JTTY") {
+    if (m_diskData) decodeJttyDisk(int(frames));
+    return;
+  }
   static float s[NSMAX];
   char line[80];
   int k(frames);
@@ -2508,7 +2521,6 @@ void MainWindow::dataSink(qint64 frames)
     if(m_bFastMode) return;
   }
 
-  if(m_mode=="JTTY") fastSink(frames);
 
 // Get power, spectrum, and ihsym
   dec_data.params.nfa=m_wideGraph->nStartFreq();
@@ -2532,14 +2544,6 @@ void MainWindow::dataSink(qint64 frames)
     m_wideGraph->dataSink2(s,m_df3,m_ihsym,m_diskData,m_px);
   }
   if(m_mode=="MSK144") return;
-  if(m_mode=="JTTY") {
-    if(m_ihsym >= m_hsymStop and (m_saveAll or m_saveDecoded)) {
-      monitor(false);
-      jtty_save_wav();
-      if(!m_diskData) monitor(true);
-    }
-    return;
-  }
 
   fixStop();
   if (m_mode == "FreqCal"
@@ -2909,24 +2913,6 @@ void MainWindow::fastSink(qint64 frames)
   ui->signal_meter_widget->setValue(rmsNoGain,pxmax); // Update thermometer
   m_fastGraph->plotSpec(m_diskData,m_UTCdisk);
 
-  if(m_mode=="JTTY") {
-    jtty_decode(k);
-#if defined (WSJT_ENABLE_LIVE_AUDIO_TEST)
-    if (m_automated_test)
-      {
-        Q_EMIT liveAudioTestJttyFramesConsumed (k);
-      }
-#endif
-    int detectorFrames = dec_data.params.kin;
-    if (!m_diskData)
-      {
-        QMutexLocker lock {&dec_data_mutex ()};
-        detectorFrames = m_activeReceiveAudio
-          ? m_activeReceiveAudio->sourceFrames () : k;
-      }
-    if(detectorFrames - k < 10240) fast_decode_done();
-    return;
-  }
 
   if(bmsk144 and (line[0]!=0)) {
     QString message {QString::fromLatin1 (line)};
@@ -3502,6 +3488,14 @@ void MainWindow::on_actionSettings_triggered()           // Setup Dialog (Settin
 
 void MainWindow::monitor (bool state)
 {
+  if (state && jttyDrainInProgress()) return;
+  if (state && !m_monitoring && m_mode == "JTTY") updateJttyReceiveContext();
+  if (!state && m_mode == "JTTY") {
+    auto const reason = m_jttyTxActive ? JttyReceiveReason::Transmission
+                                     : JttyReceiveReason::MonitorStopped;
+    m_detector->setInputStopReason(reason);
+    m_config.transceiver_receive_stop_reason(reason);
+  }
   ui->monitorButton->setChecked (state);
   if (state) {
     m_diskData = false;	// no longer reading WAV files
@@ -4368,6 +4362,10 @@ void MainWindow::paintEvent (QPaintEvent * event)
 
 void MainWindow::closeEvent(QCloseEvent * e)
 {
+  if (jttyDrainInProgress()) { closeAfterJttyDrain(); e->ignore(); return; }
+  if (m_closing) { e->accept(); return; }
+  m_closing = true;
+  drainJttyReceive();
   auto const active_run = PerformanceTrace::current_run ();
   if (active_run == m_startup_trace_run)
     {
@@ -4412,7 +4410,7 @@ void MainWindow::closeEvent(QCloseEvent * e)
   m_shortcuts.reset ();
   m_mouseCmnds.reset ();
   m_colorHighlighting.reset ();
-  if(m_mode!="MSK144" and m_mode!="FT8") killWaveFile();
+  if(m_mode!="MSK144" and m_mode!="FT8" and m_mode!="JTTY") killWaveFile();
   float sw=0.0;
   int nw=400;
   int nh=100;
@@ -4861,6 +4859,7 @@ void MainWindow::on_actionOpen_triggered()                     //Open File
 
 void MainWindow::read_wav_file (QString const& fname)
 {
+  if (jttyDrainInProgress()) return;
   if (m_wav_load_coordinator.isLoading ()) return;
 
   if (m_mode=="FT8" && (m_multithreadFT8 or m_operatingFrequency.rx ()>45000000)) {
@@ -4920,6 +4919,7 @@ void MainWindow::read_wav_file (QString const& fname)
 
 void MainWindow::wav_file_loaded ()
 {
+  if (m_discardJttyWavLoad || jttyDrainInProgress()) { m_discardJttyWavLoad = false; return; }
   if (!m_valid) return;
 
   auto const result=m_wav_load_coordinator.result ();
@@ -4941,6 +4941,10 @@ void MainWindow::wav_file_loaded ()
     }
   }
   m_fileDateTime=result->fileDateTime;
+  if (m_mode == "JTTY") {
+    if (result->firstSampleUtc.isValid()) m_UTCdiskDateTime = result->firstSampleUtc;
+    beginJttyDisk();
+  }
   diskDat ();
   if (!m_valid) return;
 }
@@ -5005,6 +5009,16 @@ void MainWindow::diskDat()                                   //diskDat()
     float db=m_config.degrade();
     float bw=m_config.RxBandwidth();
     if(db > 0.0) degrade_snr_(dec_data.d2,&dec_data.params.kin,&db,&bw);
+    if (m_mode == "JTTY") {
+      for (int first = 0; first < dec_data.params.kin; first += kstep) {
+        dataSink(std::min(first + kstep, dec_data.params.kin));
+        qApp->processEvents(QEventLoop::ExcludeUserInputEvents);
+        if (!m_valid || m_mode != "JTTY" || !m_diskData || !jttyDiskActive()) { finishJttyDisk(); return; }
+      }
+      finishJttyDisk();
+      finishDecodeUi();
+      return;
+    }
     for(int n=1; n<=m_hsymStop; n++) {                      // Do the waterfall spectra
       k=n*kstep;
       if(k > dec_data.params.kin) break;
@@ -5049,6 +5063,7 @@ void MainWindow::on_actionNone_triggered()                    //Save None
   m_saveDecoded=false;
   m_saveAll=false;
   ui->actionNone->setChecked(true);
+  updateJttySavePolicy();
 }
 
 void MainWindow::on_actionSave_decoded_triggered()
@@ -5056,6 +5071,7 @@ void MainWindow::on_actionSave_decoded_triggered()
   m_saveDecoded=true;
   m_saveAll=false;
   ui->actionSave_decoded->setChecked(true);
+  updateJttySavePolicy();
 }
 
 void MainWindow::on_actionSave_all_triggered()                //Save All
@@ -5063,6 +5079,7 @@ void MainWindow::on_actionSave_all_triggered()                //Save All
   m_saveDecoded=false;
   m_saveAll=true;
   ui->actionSave_all->setChecked(true);
+  updateJttySavePolicy();
 }
 
 void MainWindow::on_actionKeyboard_shortcuts_triggered()
@@ -5625,7 +5642,6 @@ void::MainWindow::fast_decode_done()
   float t,tmax=-99.0;
   dec_data.params.nagain=false;
   dec_data.params.ndiskdat=false;
-  if(m_mode=="JTTY" && m_diskData) flushJttyDecodeLines();
   for(int i=0; i<100 && m_msg[i][0]; i++) {
     QString message=QString::fromLatin1(m_msg[i], 80);
     m_msg[i][0]=0;
@@ -6330,6 +6346,12 @@ void MainWindow::recoverDecoderAtBoundary (QString const& reason, bool manual)
 
 void MainWindow::finishDecodeUi ()
 {
+  if (m_mode == "JTTY") {
+    ui->DecodeButton->setChecked(false);
+    if (m_diskData) m_startAnother = m_loopall;
+    update_wav_file_actions();
+    return;
+  }
   if(m_mode=="Q65") m_wideGraph->drawRed(0,0);
   if ("FST4W" == m_mode)
     {
@@ -7307,15 +7329,12 @@ void MainWindow::rx_frequency_activity_cleared ()
 {
   m_QSOText.clear();
   set_dateTimeQSO(-1);          // G4WJS: why do we do this?
-  // decodedTextBrowser2's document just lost every block; drop our cached
-  // JTTY per-transmission QTextBlock handles along with it.
-  m_jttyQsoLines.clear();
-  m_jttyQsoGroupEndPosition = -1;
 }
 
 //------------------------------------------------------------- //guiUpdate()
 void MainWindow::guiUpdate()
 {
+  if (jttyDrainInProgress()) return;
   static char message[38];
   static char msgsent[38];
   double txDuration;
@@ -8070,7 +8089,7 @@ void MainWindow::guiUpdate()
       }
     }
 
-    progressBar.setVisible(true);
+    progressBar.setVisible(m_mode != "JTTY");
     // turn the progressbar red during transmission
     if(m_config.progressBar_red()) {
       if(m_transmitting) {
@@ -8121,7 +8140,7 @@ void MainWindow::guiUpdate()
       if(m_transmitting or m_monitoring) n=int(m_s6)%3;
       progressBar.setValue(n);
     }
-    if(m_mode!="Echo") {
+    if(m_mode!="Echo" && m_mode!="JTTY") {
       if(m_monitoring or m_transmitting) {
         progressBar.setMaximum(m_TRperiod);
         int isec=int(fmod(tsec,m_TRperiod));
@@ -8211,7 +8230,7 @@ void MainWindow::guiUpdate()
       transmitDisplay(false);
     } else if (!m_diskData && !m_tx_watchdog) {
       tx_status_label.setStyleSheet("");
-      tx_status_label.setText("");
+      tx_status_label.setText(m_mode == "JTTY" ? tr("Stopped") : QString{});
     }
     if (m_tx_inhibited && !m_tx_watchdog && !m_generated_message_error) {
       tx_status_label.setStyleSheet (
@@ -8267,6 +8286,7 @@ void MainWindow::useNextCall()
 
 bool MainWindow::startTx2()
 {
+  if (jttyDrainInProgress()) return false;
   if (m_mode == "JTTY" && !m_tune
       && (!m_jttyTxActive || jttyTxCommittedSamples () <= 0)) {
     return false;
@@ -8407,6 +8427,14 @@ void MainWindow::noteTxStopReason (TxEvidence::TxStopReason reason)
 
 void MainWindow::noteTxModeChange (QString const& mode)
 {
+  if (m_mode == "JTTY" && mode != m_mode) {
+    bool const resume = m_monitoring;
+    // Drain the old stream before a timed mode can reuse reference-filter history.
+    drainJttyReceive();
+    if (resume) QTimer::singleShot(0, this, [this, mode] {
+      if (!m_closing && m_mode == mode) monitor(true);
+    });
+  }
   if (mode != m_mode) cancelPendingFt8Decode ("mode changed");
   if (mode != m_mode && m_beaconTxController.active ())
     {
@@ -10685,6 +10713,7 @@ void MainWindow::setDecodeHeadings(QString const& lh, QString const& rh)
 
 void MainWindow::on_actionFST4_triggered()
 {
+  if (jttyDrainInProgress()) { ui->actionJTTY->setChecked(true); return; }
   noteTxModeChange (QStringLiteral ("FST4"));
   QTimer::singleShot (50, this, [=] {
     ui->TxFreqSpinBox->setValue(m_settings->value("TxFreq_old",1500).toInt());
@@ -10748,6 +10777,7 @@ void MainWindow::on_actionFST4_triggered()
 
 void MainWindow::on_actionFST4W_triggered()
 {
+  if (jttyDrainInProgress()) { ui->actionJTTY->setChecked(true); return; }
   noteTxModeChange (QStringLiteral ("FST4W"));
   m_mode="FST4W";
   if(m_specOp==SpecOp::HOUND) {
@@ -10783,6 +10813,7 @@ void MainWindow::on_actionFST4W_triggered()
 
 void MainWindow::on_actionFT4_triggered()
 {
+  if (jttyDrainInProgress()) { ui->actionJTTY->setChecked(true); return; }
   noteTxModeChange (QStringLiteral ("FT4"));
   if (m_mode=="MSK144") QTimer::singleShot (75, this, [=] {on_actionFT4_triggered();});
   QTimer::singleShot (50, this, [=] {
@@ -10836,6 +10867,7 @@ void MainWindow::on_actionFT4_triggered()
 
 void MainWindow::on_actionFT8_triggered()
 {
+  if (jttyDrainInProgress()) { ui->actionJTTY->setChecked(true); return; }
   noteTxModeChange (QStringLiteral ("FT8"));
   if (m_mode=="MSK144") QTimer::singleShot (75, this, [=] {on_actionFT8_triggered();});
   QTimer::singleShot (50, this, [=] {
@@ -11007,6 +11039,7 @@ void MainWindow::on_actionFT8_triggered()
 
 void MainWindow::on_actionJT4_triggered()
 {
+  if (jttyDrainInProgress()) { ui->actionJTTY->setChecked(true); return; }
   noteTxModeChange (QStringLiteral ("JT4"));
   QTimer::singleShot (50, this, [=] {
     ui->TxFreqSpinBox->setValue(m_settings->value("TxFreq_old",1500).toInt());
@@ -11075,6 +11108,7 @@ void MainWindow::on_actionJT4_triggered()
 
 void MainWindow::on_actionJT9_triggered()
 {
+  if (jttyDrainInProgress()) { ui->actionJTTY->setChecked(true); return; }
   noteTxModeChange (QStringLiteral ("JT9"));
   m_mode="JT9";
   if(m_specOp==SpecOp::HOUND) {
@@ -11164,6 +11198,7 @@ void MainWindow::on_actionJT9_triggered()
 
 void MainWindow::on_actionJT65_triggered()
 {
+  if (jttyDrainInProgress()) { ui->actionJTTY->setChecked(true); return; }
   noteTxModeChange (QStringLiteral ("JT65"));
   if (m_mode=="MSK144") QTimer::singleShot (75, this, [=] {on_actionJT65_triggered();});
   QTimer::singleShot (50, this, [=] {
@@ -11244,6 +11279,7 @@ void MainWindow::on_actionJT65_triggered()
 
 void MainWindow::on_actionQ65_triggered()
 {
+  if (jttyDrainInProgress()) { ui->actionJTTY->setChecked(true); return; }
   noteTxModeChange (QStringLiteral ("Q65"));
   if (m_mode=="MSK144") QTimer::singleShot (75, this, [=] {on_actionQ65_triggered();});
   QTimer::singleShot (50, this, [=] {
@@ -11324,6 +11360,7 @@ void MainWindow::on_actionQ65_triggered()
 
 void MainWindow::on_actionJTTY_triggered()
 {
+  if (jttyDrainInProgress()) { ui->actionJTTY->setChecked(true); return; }
   noteTxModeChange (QStringLiteral ("JTTY"));
   on_stopButton_clicked();
   m_mode = "JTTY";
@@ -11340,7 +11377,7 @@ void MainWindow::on_actionJTTY_triggered()
   m_FFTSize = m_nsps / 2;
   if (m_tci_audio) Q_EMIT m_config.transceiver_blocksize (m_FFTSize);
   else Q_EMIT FFTSize (m_FFTSize);
-  m_TRperiod=180;                   //We need a nonzero setting for WideGraph plotter to work.
+  m_TRperiod=180;                   // Legacy timed interfaces; JTTY receive uses sample coordinates.
   m_hsymStop=620;
   m_wideGraph->setPeriod(m_TRperiod,m_nsps);
   m_detector->setTRPeriod(m_TRperiod); // marshals to the audio thread
@@ -11376,6 +11413,7 @@ void MainWindow::on_actionJTTY_triggered()
 
 void MainWindow::on_actionMSK144_triggered()
 {
+  if (jttyDrainInProgress()) { ui->actionJTTY->setChecked(true); return; }
   m_hsymStop=105;
   m_TRperiod=ui->sbTR->value();
   if(SpecOp::EU_VHF < m_specOp) {
@@ -11468,6 +11506,7 @@ void MainWindow::on_actionMSK144_triggered()
 
 void MainWindow::on_actionWSPR_triggered()
 {
+  if (jttyDrainInProgress()) { ui->actionJTTY->setChecked(true); return; }
   noteTxModeChange (QStringLiteral ("WSPR"));
   m_mode="WSPR";
   if(m_specOp==SpecOp::HOUND) {
@@ -11504,6 +11543,7 @@ void MainWindow::on_actionWSPR_triggered()
 
 void MainWindow::on_actionEcho_triggered()
 {
+  if (jttyDrainInProgress()) { ui->actionJTTY->setChecked(true); return; }
   noteTxModeChange (QStringLiteral ("Echo"));
   int nd=int(m_ndepth&3);
   on_actionJT4_triggered();
@@ -11563,6 +11603,7 @@ void MainWindow::on_actionEcho_triggered()
 
 void MainWindow::on_actionFreqCal_triggered()
 {
+  if (jttyDrainInProgress()) { ui->actionJTTY->setChecked(true); return; }
   noteTxModeChange (QStringLiteral ("FreqCal"));
   on_actionJT9_triggered();
   m_mode="FreqCal";
@@ -11604,6 +11645,8 @@ void MainWindow::switch_mode (Mode mode)
   // Sit just under the decoded-text panes, outside the per-mode
   // displayWidgets()/ModeUiControl mechanism -- only meaningful for JTTY.
   bool const jtty = m_mode=="JTTY";
+  updateJttyReceivePolicy(jtty);
+  progressBar.setVisible(!jtty);
   ui->cbLowerCase->setVisible(jtty);
   ui->cbIncludeTime->setVisible(jtty);
   if (mode != Modes::MSK144) m_msk144basefreq = 0;
@@ -12424,6 +12467,7 @@ void MainWindow::applyOperatingFrequencyTransition (OperatingFrequency::Transiti
 {
   if (transition.before.rx != transition.after.rx)
     {
+      if (m_mode == "JTTY") updateJttyReceiveContext();
       cancelPendingFt8Decode ("dial frequency changed");
       genCQMsg ();
     }
@@ -13917,11 +13961,13 @@ bool MainWindow::dispatchNominalFrequency (Frequency corrected,
 bool MainWindow::requestNominalFrequencyChange (Frequency frequency,
                                                 FrequencyRequestOrigin origin)
 {
+  auto const previous = m_operatingFrequency.rx();
   if (!m_operatingFrequency.requestNominal (frequency, m_astroCorrection.rx,
         [this, origin] (Frequency corrected) {
           return dispatchNominalFrequency (corrected, origin, m_monitoring);
         })) return false;
 
+  if (m_mode == "JTTY" && previous != m_operatingFrequency.rx()) updateJttyReceiveContext();
   genCQMsg ();
   if (m_astroWidget)
     {

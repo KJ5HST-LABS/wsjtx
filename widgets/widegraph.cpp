@@ -44,8 +44,8 @@ WideGraph::WideGraph(QSettings * settings, QWidget *parent) :
   connect(ui->widePlot, SIGNAL(setFreq1(int,int)),this,
           SLOT(setFreq2(int,int)));
 
-  connect(ui->widePlot, SIGNAL(jttyDecodeAgainAt(float)),this,
-          SLOT(wideJttyDecodeAgainAt(float)));
+  connect (ui->widePlot, &CPlotter::jttyDecodeAgainAtSample,
+           this, &WideGraph::jttyDecodeAgainAtSample);
 
   {
     //Restore user's settings
@@ -230,8 +230,60 @@ void WideGraph::on_bppSpinBox_valueChanged(int n)                            //b
   ui->widePlot->setBinsPerPixel(n);
 }
 
+void WideGraph::jttyDataSink (JttySpectrumFrame const& frame)
+{
+  if (m_jttyLastRow.reception &&
+      (m_jttyLastRow.reception != frame.row.reception ||
+       m_jttyLastRow.endSample != frame.row.beginSample)) {
+    jttyReceptionEnded ();
+  }
+  ui->widePlot->setJttySpectrum (frame.cumulative, frame.linearAverage);
+  if (ui->widePlot->TotalPower ()) ui->widePlot->drawTotalPower (frame.powerDb);
+  if (!m_jttySpectrumCount) m_jttyAverageRow = frame.row;
+  m_jttyAverageRow.endSample = frame.row.endSample;
+  m_jttyAverageRow.utcEndMs = frame.row.utcEndMs;
+  m_jttyLastRow = frame.row;
+  for (int i = 0; i < JttySpectrumFrame::BinCount; ++i) m_jttySpectrumSum[i] += frame.bins[i];
+  if (++m_jttySpectrumCount >= std::max (1, m_waterfallAvg)) drawJttyAverage ();
+}
+
+void WideGraph::drawJttyAverage ()
+{
+  if (!m_jttySpectrumCount) return;
+  int const nbpp = ui->widePlot->binsPerPixel ();
+  int bin = int (ui->widePlot->startFreq () / JttySpectrumFrame::BinWidth + 0.5);
+  m_jz = std::min (MAX_SCREENSIZE, int (5000.0f / (nbpp * JttySpectrumFrame::BinWidth)));
+  std::fill (std::begin (m_swide), std::end (m_swide), 0);
+  for (int pixel = 0; pixel < m_jz; ++pixel) {
+    double sum = 0;
+    for (int k = 0; k < nbpp; ++k, ++bin) {
+      if (bin >= 0 && bin < JttySpectrumFrame::BinCount - 1) sum += m_jttySpectrumSum[bin];
+    }
+    m_swide[pixel] = nbpp * sum / m_jttySpectrumCount;
+  }
+  ui->widePlot->setJttyRow (m_jttyAverageRow);
+  ui->widePlot->draw (m_swide, true, false);
+  m_jttySpectrumCount = 0;
+  m_jttySpectrumSum.fill (0);
+}
+
+void WideGraph::jttyReceptionEnded ()
+{
+  drawJttyAverage ();
+  if (m_jttyLastRow.reception) {
+    auto gap = m_jttyLastRow;
+    gap.beginSample = gap.endSample;
+    gap.gap = true;
+    std::fill (std::begin (m_swide), std::end (m_swide), 1.0e30f);
+    ui->widePlot->setJttyRow (gap);
+    ui->widePlot->draw (m_swide, true, false);
+  }
+  m_jttyLastRow = {};
+}
+
 void WideGraph::on_waterfallAvgSpinBox_valueChanged(int n)                  //Navg
 {
+  if (m_mode == "JTTY") drawJttyAverage ();
   m_waterfallAvg = n;
   ui->widePlot->setWaterfallAvg(n);
 }
@@ -277,11 +329,6 @@ void WideGraph::wideFreezeDecode(int n)                              //wideFreez
   emit freezeDecode2(n);
 }
 
-void WideGraph::wideJttyDecodeAgainAt(float secondsAgo)                //wideJttyDecodeAgainAt
-{
-  emit jttyDecodeAgainAt2(secondsAgo);
-}
-
 int WideGraph::Fmin()                                              //Fmin
 {
   return "60m" == m_rxBand ? 0 : m_fMinPerBand.value (m_rxBand, 2500).toUInt ();
@@ -323,6 +370,7 @@ void WideGraph::setTxFreq(int n)                                   //setTxFreq
 
 void WideGraph::setMode(QString mode)                              //setMode
 {
+  if (m_mode == "JTTY" && mode != m_mode) jttyReceptionEnded ();
   m_mode=mode;
   ui->fSplitSpinBox->setVisible(m_mode.startsWith("FST4"));
   ui->fSplitSpinBox->setEnabled(m_mode.startsWith("FST4"));

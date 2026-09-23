@@ -180,6 +180,7 @@ void FixtureAudioInput::suspend ()
 {
   m_suspended = true;
   m_timer->stop ();
+  if (m_sink) m_sink->finishInput ();
   Q_EMIT status (tr ("Synthetic audio input suspended"));
 }
 
@@ -192,8 +193,9 @@ void FixtureAudioInput::resume ()
   m_suspended = false;
   if (m_emitting && m_framesEmitted)
     {
-      m_periodStartMs = QDateTime::currentMSecsSinceEpoch ()
+      m_pacingStartMs = QDateTime::currentMSecsSinceEpoch ()
         - (m_framesEmitted * 1000 / m_inputSampleRate);
+      if (Profile::Jtty != m_profile) m_periodStartMs = m_pacingStartMs;
       publishCaptureAnchor (m_framesEmitted);
     }
   Q_EMIT status (tr ("Synthetic audio input receiving"));
@@ -203,6 +205,11 @@ void FixtureAudioInput::resume ()
 qint64 FixtureAudioInput::captureTimestamp (qint64 frameIndex) const
 {
   return m_periodStartMs + frameIndex * 1000 / m_inputSampleRate;
+}
+
+qint64 FixtureAudioInput::pacingTimestamp (qint64 frameIndex) const
+{
+  return m_pacingStartMs + frameIndex * 1000 / m_inputSampleRate;
 }
 
 void FixtureAudioInput::publishCaptureAnchor (qint64 firstFrame)
@@ -218,12 +225,14 @@ void FixtureAudioInput::publishCaptureAnchor (qint64 firstFrame)
 void FixtureAudioInput::stop ()
 {
   m_timer->stop ();
+  if (m_sink) m_sink->finishInput ();
   m_sink.clear ();
   m_pcm.clear ();
   m_leadInFrames = 0;
   m_tailFrames = 0;
   m_framesEmitted = 0;
   m_periodStartMs = 0;
+  m_pacingStartMs = 0;
   m_jttyAcknowledgedInputFrames = 0;
   m_chunkIndex = 0;
   m_started = false;
@@ -358,18 +367,14 @@ void FixtureAudioInput::maybeSchedule ()
     }
   else
     {
-      constexpr qint64 periodMs = 180000;
-      auto const fixtureDurationMs = (totalFrames () * 1000 + m_inputSampleRate - 1)
-        / m_inputSampleRate;
-      auto const periodOffsetMs = now % periodMs;
-      m_periodStartMs = periodOffsetMs + fixtureDurationMs <= periodMs
-        ? now : ((now / periodMs) + 1) * periodMs;
+      m_periodStartMs = (now / 180000) * 180000 + jttyCaptureOffsetMs ();
     }
+  m_pacingStartMs = Profile::Jtty == m_profile ? now : m_periodStartMs;
   m_emitting = true;
   publishCaptureAnchor (m_framesEmitted);
   if (Profile::ReceiveHandoff == m_profile) return;
   auto const delay = Profile::ReceiveHandoff == m_profile ? qint64 {0}
-    : std::max<qint64> (0, m_periodStartMs - now);
+    : std::max<qint64> (0, m_pacingStartMs - now);
   m_timer->start (static_cast<int> (delay));
 }
 
@@ -380,7 +385,7 @@ void FixtureAudioInput::scheduleNextChunk ()
       m_timer->start (0);
       return;
     }
-  auto const target = captureTimestamp (m_framesEmitted);
+  auto const target = pacingTimestamp (m_framesEmitted);
   auto const delay = std::max<qint64> (0, target - QDateTime::currentMSecsSinceEpoch ());
   m_timer->start (static_cast<int> (delay));
 }
@@ -392,7 +397,7 @@ void FixtureAudioInput::emitNextChunk ()
       return;
     }
 
-  auto const target = captureTimestamp (m_framesEmitted);
+  auto const target = pacingTimestamp (m_framesEmitted);
   auto const now = QDateTime::currentMSecsSinceEpoch ();
   if (Profile::ReceiveHandoff != m_profile && now < target)
     {
@@ -460,6 +465,7 @@ void FixtureAudioInput::emitNextChunk ()
   if (m_framesEmitted == totalFrames ())
     {
       m_emitting = false;
+      if (Profile::Jtty == m_profile) m_sink->finishInput ();
       Q_EMIT status (tr ("Synthetic audio fixture exhausted"));
       Q_EMIT emissionFinished (m_framesEmitted);
       return;

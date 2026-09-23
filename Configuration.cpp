@@ -772,6 +772,9 @@ private:
   Q_SIGNAL void stop_transceiver () const;
   Q_SIGNAL void enqueue_jtty_pcm (QByteArray const&, TxAudioQueueEpoch, qint64) const;
   Q_SIGNAL void clear_jtty_pcm (TxAudioQueueEpoch) const;
+  Q_SIGNAL void receive_discontinuity (JttyReceiveReason) const;
+  Q_SIGNAL void receive_stop_reason (JttyReceiveReason) const;
+  Q_SIGNAL void receive_drain (quint64 requestId) const;
 
   PerformanceTrace::Phase construction_trace_;
   Configuration * const self_;  // back pointer to public interface
@@ -1350,6 +1353,40 @@ void Configuration::transceiver_period (double period)
 
   if (!m_->can_control_rig ("transceiver_period")) return;
   m_->transceiver_period (period);
+}
+
+void Configuration::transceiver_receive_policy (ReceivePolicy policy)
+{
+  m_->cached_rig_state_.receive_policy (policy);
+  if (m_->cached_rig_state_.online () && m_->can_control_rig ("transceiver_receive_policy"))
+    Q_EMIT m_->set_transceiver (m_->cached_rig_state_, ++m_->transceiver_command_number_);
+}
+
+void Configuration::transceiver_receive_discontinuity (JttyReceiveReason reason)
+{
+  Q_EMIT m_->receive_discontinuity (reason);
+}
+
+void Configuration::transceiver_receive_context (quint64 context)
+{
+  m_->cached_rig_state_.receive_context (context);
+  if (m_->cached_rig_state_.online () && m_->can_control_rig ("transceiver_receive_context"))
+    Q_EMIT m_->set_transceiver (m_->cached_rig_state_, ++m_->transceiver_command_number_);
+}
+
+void Configuration::transceiver_receive_stop_reason (JttyReceiveReason reason)
+{
+  Q_EMIT m_->receive_stop_reason (reason);
+}
+
+void Configuration::requestContinuousReceiveDrain (quint64 requestId)
+{
+  if (!m_->rig_active_)
+    {
+      Q_EMIT continuousReceiveDrained (requestId, {});
+      return;
+    }
+  Q_EMIT m_->receive_drain (requestId);
 }
 
 void Configuration::transceiver_blocksize (qint32 blocksize)
@@ -6014,11 +6051,15 @@ bool Configuration::impl::open_rig (bool force)
           close_rig ();
 
           auto const txvolume = cached_rig_state_.txvolume ();
+          auto const receive_policy = cached_rig_state_.receive_policy ();
+          auto const receive_context = cached_rig_state_.receive_context ();
 
           // create a new Transceiver object
           auto rig = transceiver_factory_.create (rig_data, transceiver_thread_);
           cached_rig_state_ = Transceiver::TransceiverState {};
           cached_rig_state_.txvolume (txvolume);
+          cached_rig_state_.receive_policy (receive_policy);
+          cached_rig_state_.receive_context (receive_context);
 
           // hook up Configuration transceiver control signals to Transceiver slots
           //
@@ -6029,6 +6070,12 @@ bool Configuration::impl::open_rig (bool force)
                                        rig.get (), &Transceiver::enqueue_jtty_pcm);
           rig_connections_ << connect (this, &Configuration::impl::clear_jtty_pcm,
                                        rig.get (), &Transceiver::clear_jtty_pcm);
+          rig_connections_ << connect (this, &Configuration::impl::receive_discontinuity,
+                                       rig.get (), &Transceiver::receive_discontinuity);
+          rig_connections_ << connect (this, &Configuration::impl::receive_stop_reason,
+                                       rig.get (), &Transceiver::receive_stop_reason);
+          rig_connections_ << connect (this, &Configuration::impl::receive_drain,
+                                       rig.get (), &Transceiver::requestContinuousReceiveDrain);
 
           // hook up Transceiver signals to Configuration signals
           //
@@ -6038,6 +6085,12 @@ bool Configuration::impl::open_rig (bool force)
             });
           rig_connections_ << connect (rig.get (), &Transceiver::tciframeswritten, this, &Configuration::impl::handle_transceiver_tciframeswritten);
           rig_connections_ << connect (rig.get (), &Transceiver::receiveAudio, self_, &Configuration::transceiverReceiveAudio);
+          rig_connections_ << connect (rig.get (), &Transceiver::continuousAudioAvailable,
+                                       self_, &Configuration::continuousAudioAvailable);
+          rig_connections_ << connect (rig.get (), &Transceiver::continuousReceptionStopped,
+                                       self_, &Configuration::continuousReceptionStopped);
+          rig_connections_ << connect (rig.get (), &Transceiver::continuousReceiveDrained,
+                                       self_, &Configuration::continuousReceiveDrained);
           rig_connections_ << connect (rig.get (), &Transceiver::tci_mod_active, this, &Configuration::impl::handle_transceiver_tci_mod_active);
           rig_connections_ << connect (rig.get (), &Transceiver::txSourceCommitted, self_, &Configuration::txSourceCommitted);
           rig_connections_ << connect (rig.get (), &Transceiver::rawTxPlayoutSnapshot, self_, &Configuration::rawTxPlayoutSnapshot);

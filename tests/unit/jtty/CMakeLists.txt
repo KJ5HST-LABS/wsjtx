@@ -155,6 +155,45 @@ add_executable (test_jtty_draft_acceptance test_jtty_draft_acceptance.cpp)
 target_link_libraries (test_jtty_draft_acceptance Qt5::Test)
 add_test (NAME test_jtty_draft_acceptance COMMAND test_jtty_draft_acceptance)
 
+add_executable (test_jtty_continuous_decode test_jtty_continuous_decode.f90)
+target_include_directories (test_jtty_continuous_decode PRIVATE ${CMAKE_BINARY_DIR})
+wsjt_link_common_fortran (test_jtty_continuous_decode)
+add_test (NAME test_jtty_continuous_decode COMMAND test_jtty_continuous_decode)
+set_tests_properties (test_jtty_continuous_decode PROPERTIES
+  PASS_REGULAR_EXPRESSION "test_jtty_continuous_decode: all checks passed"
+  TIMEOUT 120
+)
+
+add_executable (test_jtty_spectrum
+  test_jtty_spectrum.cpp
+  ${CMAKE_SOURCE_DIR}/widgets/JttySpectrum.cpp)
+target_link_libraries (test_jtty_spectrum PRIVATE Qt5::Test)
+wsjt_link_common_fortran (test_jtty_spectrum)
+add_test (NAME test_jtty_spectrum COMMAND test_jtty_spectrum)
+
+add_executable (test_jtty_waterfall
+  test_jtty_waterfall.cpp
+  ${CMAKE_SOURCE_DIR}/widgets/plotter.cpp)
+target_link_libraries (test_jtty_waterfall PRIVATE wsjt_qt Qt5::Test)
+wsjt_link_common_fortran (test_jtty_waterfall)
+add_test (NAME test_jtty_waterfall COMMAND test_jtty_waterfall)
+set_tests_properties (test_jtty_waterfall PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
+add_executable (test_jtty_recording
+  test_jtty_recording.cpp
+  ${CMAKE_SOURCE_DIR}/JttyRecording.cpp)
+target_link_libraries (test_jtty_recording wsjt_qt wsjt_qtmm Qt5::Test Qt5::Multimedia)
+add_test (NAME test_jtty_recording COMMAND test_jtty_recording)
+
+add_executable (test_jtty_receive_history test_jtty_receive_history.cpp)
+target_link_libraries (test_jtty_receive_history Qt5::Test)
+add_test (NAME test_jtty_receive_history COMMAND test_jtty_receive_history)
+
+add_executable (test_jtty_receive_line test_jtty_receive_line.cpp)
+target_link_libraries (test_jtty_receive_line Qt5::Test Qt5::Gui)
+add_test (NAME test_jtty_receive_line COMMAND test_jtty_receive_line)
+set_tests_properties (test_jtty_receive_line PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 add_executable (test_jtty_n1mm test_jtty_n1mm.cpp)
 target_link_libraries (test_jtty_n1mm Qt5::Test)
 add_test (NAME test_jtty_n1mm COMMAND test_jtty_n1mm)

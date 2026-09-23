@@ -147,6 +147,12 @@ protected:
   void do_audio (bool on) override;
   void do_tune (bool on) override;
   void do_period(double period) override;
+  void do_receive_policy (ReceivePolicy) override;
+  void do_receive_context (quint64) override;
+  void receive_discontinuity (JttyReceiveReason) override;
+  void receive_stop_reason (JttyReceiveReason reason) override { m_inputStopReason = reason; }
+  void requestContinuousReceiveDrain (quint64 requestId) override
+  { Q_EMIT continuousReceiveDrained (requestId, m_jttyPublisher.mailbox ()); }
   void do_blocksize(qint32 blocksize) override;
   void do_spread(double spread) override {m_fSpread=spread;}
   void do_nsym(int nsym) override {m_symbolsLength=nsym;}
@@ -289,6 +295,11 @@ private:
   double m_period = 15.0;
   ReceiveClock receive_clock_;
   ReceiveAudioProducer m_receiveAudioProducer;
+  ReceivePolicy m_receivePolicy = ReceivePolicy::Timed;
+  quint64 m_receiveContext = 0;
+  JttyReceiveReason m_inputStopReason = JttyReceiveReason::MonitorStopped;
+  JttyReceivePublisher m_jttyPublisher;
+  std::array<short, 7 * 512> m_jttyOutput {};
   std::array<float, 49> m_downsampleState {};
   unsigned m_lastPeriodOffsetMs = 999999;
   unsigned m_downSampleFactor;

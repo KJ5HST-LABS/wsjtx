@@ -23,6 +23,8 @@ QDebug operator << (QDebug d, Transceiver::TransceiverState const& s)
     << "; TUNE: " << (s.tune_ ? "on" : "off")
     << "; QUICK: " << (s.quick_ ? "on" : "off")
     << "; PERIOD: " << s.period_ << "sec."
+    << "; RECEIVE_POLICY: " << int (s.receive_policy_)
+    << "; RECEIVE_CONTEXT: " << s.receive_context_
     << "; BLOCKSIZE: " << s.blocksize_
     << "; SYMBOLSLENGTH: " << s.tx_request_.symbols_length
     << "; FRAMESPERSYMBOL: " << s.tx_request_.frames_per_symbol
@@ -83,6 +85,8 @@ bool operator != (Transceiver::TransceiverState const& lhs, Transceiver::Transce
     || lhs.tune_ != rhs.tune_
     || lhs.quick_ != rhs.quick_
     || lhs.period_ != rhs.period_
+    || lhs.receive_policy_ != rhs.receive_policy_
+    || lhs.receive_context_ != rhs.receive_context_
     || lhs.blocksize_ != rhs.blocksize_
     || lhs.tx_request_ != rhs.tx_request_
     || lhs.spread_ != rhs.spread_

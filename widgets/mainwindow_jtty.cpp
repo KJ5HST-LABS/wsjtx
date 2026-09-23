@@ -4,14 +4,10 @@
 #include "commons.h"
 #include "JttyMessages.hpp"
 #include "JttyN1mm.hpp"
-#include "JttyReplay.hpp"
 #include "Logger.hpp"
 #include <QByteArray>
 #include <QDateTime>
 #include "Modulator/Modulator.hpp"
-#include <algorithm>
-#include <array>
-#include <iostream>
 #include <vector>
 #ifdef WIN32
 #include "MMTTYIF.hpp"
@@ -19,7 +15,6 @@
 #endif
 
 
-extern dec_data_t& dec_data;
 extern qint32 g_iptt;
 
 namespace
@@ -71,32 +66,7 @@ namespace
 
 #define FCL fortran_charlen_t
 
-namespace
-{
-  constexpr int jttyMaxUpdates = 30;
-  constexpr int jttyMessageSize = Jtty::maxMessageLength;
-  constexpr int jttyUpdateBufferSize = jttyMaxUpdates * jttyMessageSize;
-
-  QString formatJttyDecodeLine (float frequency, QString const& message)
-  {
-    QString const frequencyText = QStringLiteral("%1").arg(qRound(frequency), 4);
-    return message.isEmpty() ? frequencyText : frequencyText + QStringLiteral("  ") + message;
-  }
-}
-
 extern "C" {
-  void rjtty_sub_(short int d2[], int* k, int* nsps, int* nfa, int*nfb,
-                  float* f0, float* ftol);
-
-  // Bounds the scan to [istart0,istop] (sample indices into d2) instead of
-  // the whole buffer -- see MainWindow::jtty_decode_windowed().
-  void rjtty_sub_windowed_(short int d2[], int* k, int* nsps, int* nfa, int*nfb,
-                  float* f0, float* ftol, int* istart0, int* istop);
-
-  void jtty_get_updates_(char text_blocks[], qint64 message_ids[],
-                         float frequencies[], float start_tsync[], bool eom[],
-                         int* count, fortran_charlen_t);
-
   void genjtty_profile_(char * msg, int const* exchange_profile,
                        int itone[], int* nsym, fortran_charlen_t);
   void genjtty_atoms_c(Jtty::NativeAtomDescriptor const atoms[], int natoms,
@@ -118,26 +88,7 @@ static QString append_separator(QString message) {
 }
 #endif
 
-void MainWindow::jtty_save_wav()
-{
-  // Reject callers that arrive before a real JTTY capture exists; m_k0 is
-  // still the initial sentinel, or is stale from an earlier interval.
-  if (!Jtty::wavCaptureValid (m_k0)) return;
-  if (m_k0 == m_jttyLastSavedWavK0) return;  //Guard against re-saving same audio under a new timestamp
-  m_jttyLastSavedWavK0 = m_k0;
 
-  //Save JTTY data to a .wav file
-  QDateTime now {QDateTime::currentDateTimeUtc ()};
-  qint64 ms = m_k0/12;
-  auto const& tstart=now.addMSecs(-ms);
-  m_fnameWE=m_config.save_directory().absoluteFilePath (tstart.toString("yyMMdd_hhmmss"));
-  int samples=m_k0;
-  QString dgrd = "jtty";
-  save_wave_file (m_fnameWE, samples, m_freqNominalPeriod, dgrd);
-  // "Save decoded" keeps the file only if something was decoded; give the
-  // decoder a further 3 seconds to finish before killWaveFile() decides.
-  if (m_saveDecoded) killFileTimer.start (3000);
-}
 
 void MainWindow::updateJttyDecodeHeadings()
 {
@@ -151,242 +102,8 @@ void MainWindow::on_cbIncludeTime_toggled(bool)
 {
   if (m_mode == "JTTY") {
     updateJttyDecodeHeadings();
-    renderJttyAllFreqLines();
-    renderJttyQsoLines();
+    refreshJttyReceiveLines();
   }
-}
-
-void MainWindow::renderJttyAllFreqLines()
-{
-  if (m_jttyAllFreqLines.isEmpty()) return;
-
-  QStringList displayLines;
-  for (auto const& line : m_jttyAllFreqLines) {
-    QString displayLine = formatJttyDecodeLine (
-      line.frequency, Jtty::wrapMessage (line.text));
-    if (ui->cbLowerCase->isChecked ()) displayLine = displayLine.toLower ();
-    if (ui->cbIncludeTime->isChecked ()) {
-      QString const time = Jtty::jttyLineTimeLabel (line.messageStartUtc);
-      if (!time.isEmpty ()) displayLine = time + " " + displayLine;
-    }
-    displayLines.append (displayLine);
-  }
-
-  QTextCharFormat format;
-  format.setFont (ui->decodedTextBrowser->contentFont ());
-
-  QTextCursor cursor = ui->decodedTextBrowser->textCursor ();
-  if (m_jttyAllFreqsGroupStart.isValid ()) {
-    cursor.setPosition (m_jttyAllFreqsGroupStart.position ());
-    cursor.movePosition (QTextCursor::End, QTextCursor::KeepAnchor);
-    cursor.removeSelectedText ();
-  } else {
-    cursor.movePosition (QTextCursor::End);
-    if (cursor.position () > 0) cursor.insertBlock ();
-  }
-  m_jttyAllFreqsGroupStart = cursor.block ();
-  cursor.insertText (displayLines.join (QChar {'\n'}), format);
-  ui->decodedTextBrowser->setTextCursor (cursor);
-  ui->decodedTextBrowser->ensureCursorVisible ();
-}
-
-void MainWindow::renderJttyQsoLines()
-{
-  if (m_jttyQsoLines.isEmpty ()) {
-    m_jttyQsoRenderedLowerCase = ui->cbLowerCase->isChecked ();
-    m_jttyQsoRenderedIncludeTime = ui->cbIncludeTime->isChecked ();
-    return;
-  }
-
-  QTextCursor cursor = ui->decodedTextBrowser2->textCursor ();
-  if (m_jttyQsoGroupStart.isValid () && m_jttyQsoGroupEnd.isValid ()
-      && m_jttyQsoGroupEndPosition >= m_jttyQsoGroupStart.position ()) {
-    cursor.setPosition (m_jttyQsoGroupStart.position ());
-    cursor.setPosition (m_jttyQsoGroupEndPosition, QTextCursor::KeepAnchor);
-    cursor.removeSelectedText ();
-  } else {
-    cursor.movePosition (QTextCursor::End);
-    if (cursor.position () > 0) cursor.insertBlock ();
-  }
-
-  QTextCharFormat format;
-  format.setFont (ui->decodedTextBrowser2->contentFont ());
-  m_jttyQsoGroupStart = cursor.block ();
-  QStringList renderedLines;
-  for (auto const& line : m_jttyQsoLines) {
-    QString display = formatJttyDecodeLine (
-      line.frequency, Jtty::wrapMessage (line.text));
-    if (ui->cbLowerCase->isChecked ()) display = display.toLower ();
-    if (ui->cbIncludeTime->isChecked ()) {
-      QString const time = Jtty::jttyLineTimeLabel (line.messageStartUtc);
-      if (!time.isEmpty ()) display = time + " " + display;
-    }
-    renderedLines.append (display);
-  }
-  cursor.insertText (renderedLines.join (QChar {'\n'}), format);
-  m_jttyQsoGroupEnd = cursor.block ();
-  m_jttyQsoGroupEndPosition = cursor.position ();
-  ui->decodedTextBrowser2->setTextCursor (cursor);
-  m_jttyQsoRenderedLowerCase = ui->cbLowerCase->isChecked ();
-  m_jttyQsoRenderedIncludeTime = ui->cbIncludeTime->isChecked ();
-}
-
-bool MainWindow::jtty_decode(int k, int istart0, int istop)
-{
-  auto jttyLineDateTimeUtc = [this, k] (float tsync) -> QDateTime {
-    if (m_diskData && m_UTCdiskDateTime.isValid()) {
-      return m_UTCdiskDateTime.addMSecs(qRound64(1000.0 * tsync)).toUTC();
-    }
-    double const elapsed = qMax(0.0, double(k) / 12000.0 - double(tsync));
-    return QDateTime::currentDateTimeUtc().addMSecs(-qRound64(1000.0 * elapsed));
-  };
-  auto jttyLineDisplayDateTimeUtc = [this, &jttyLineDateTimeUtc] (float tsync) -> QDateTime {
-    if (m_diskData) {
-      return Jtty::jttyLineStartTimeUtc (m_UTCdiskDateTime, m_UTCdisk, tsync);
-    }
-    return jttyLineDateTimeUtc (tsync);
-  };
-  int nsps=384;
-  // A non-advancing sample position starts a distinct displayed decode session.
-  bool const newAllFreqsSession = (k <= m_jttyLastAllFreqsK);
-  m_jttyLastAllFreqsK = k;
-  if (newAllFreqsSession) {
-      flushJttyDecodeLines();
-      m_jttyAllFreqsGroupStart = QTextBlock();
-      m_jttyQsoGroupStart = QTextBlock();
-      m_jttyQsoGroupEnd = QTextBlock();
-      m_jttyQsoGroupEndPosition = -1;
-      m_jttyQsoLines.clear();
-      m_jttyAllFreqLines.clear();
-      m_bDecoded = false;
-      m_jttyLastSavedWavK0 = -1;
-  }
-  float f0 = ui->RxFreqSpinBox_2->value();
-  float ftol = ui->sbFtol_2->value();
-  int nfa = m_wideGraph->nStartFreq();
-  int nfb = m_wideGraph->Fmax();
-
-  if (istart0 < 0) {
-    rjtty_sub_(dec_data.d2,&k,&nsps,&nfa,&nfb,&f0,&ftol);
-  } else {
-    rjtty_sub_windowed_(dec_data.d2,&k,&nsps,&nfa,&nfb,&f0,&ftol,&istart0,&istop);
-  }
-
-  QVector<Jtty::MessageUpdate> updates;
-  int updateCount {0};
-  do {
-      std::array<char, jttyUpdateBufferSize> textBlocks {};
-      std::array<qint64, jttyMaxUpdates> messageIds {};
-      std::array<float, jttyMaxUpdates> frequencies {};
-      std::array<float, jttyMaxUpdates> sequenceStarts {};
-      std::array<bool, jttyMaxUpdates> complete {};
-      jtty_get_updates_(textBlocks.data(), messageIds.data(), frequencies.data(),
-                        sequenceStarts.data(), complete.data(), &updateCount,
-                        (FCL)jttyUpdateBufferSize);
-      for (int i = 0; i < updateCount; ++i) {
-          QString const text = QString::fromLatin1(
-              textBlocks.data() + i * jttyMessageSize, jttyMessageSize).trimmed();
-          if (messageIds[i] <= 0) continue;
-          updates.append({messageIds[i], frequencies[i], text,
-                          sequenceStarts[i], complete[i]});
-      }
-  } while (updateCount == jttyMaxUpdates);
-
-  bool const allHistoryChanged = Jtty::mergeMessageUpdates(
-      m_jttyAllFreqLines, updates,
-      [this, &jttyLineDateTimeUtc, &jttyLineDisplayDateTimeUtc] (Jtty::MessageUpdate const& update) {
-          JttyDecodeLine decodeLine;
-          decodeLine.messageId = update.messageId;
-          decodeLine.frequency = update.frequency;
-          decodeLine.text = update.text;
-          decodeLine.sequenceStart = update.sequenceStart;
-          decodeLine.messageStartUtc = jttyLineDisplayDateTimeUtc (update.sequenceStart);
-          decodeLine.complete = update.complete;
-          decodeLine.context = currentDecodeOperatingContext();
-          decodeLine.context.sequenceStart = jttyLineDateTimeUtc(update.sequenceStart);
-          return decodeLine;
-      });
-
-  if (allHistoryChanged) renderJttyAllFreqLines ();
-
-  for (auto& known : m_jttyAllFreqLines) {
-      if (known.complete && !known.written) {
-          write_all("Rx", formatJttyDecodeLine(known.frequency, known.text), &known.context);
-          known.written = true;
-      }
-  }
-
-  bool const qsoDisplayOptionsChanged = !m_jttyQsoLines.isEmpty()
-      && (m_jttyQsoRenderedLowerCase != ui->cbLowerCase->isChecked()
-          || m_jttyQsoRenderedIncludeTime != ui->cbIncludeTime->isChecked());
-  bool anyEom {false};
-  bool anyLineChanged {false};
-  for (auto const& update : updates) {
-      auto known = std::find_if(m_jttyQsoLines.begin(), m_jttyQsoLines.end(),
-                                [&update] (JttyQsoLine const& line) {
-                                  return line.messageId == update.messageId;
-                                });
-      bool const alreadyPresent = known != m_jttyQsoLines.end();
-      if (!Jtty::shouldApplyToQsoHistory(
-              alreadyPresent, update.frequency, f0, ftol)) {
-          continue;
-      }
-      if (update.complete) anyEom = true;
-
-      QString delta;
-#ifdef WIN32
-      bool startNew{false};       //Set to "true" when N1MM should start display of text on a new line
-#endif
-      if (alreadyPresent) {
-          auto const change = Jtty::compareMessages(known->text, update.text);
-          bool const frequencyChanged = known->frequency != update.frequency;
-          if (!change.messageChanged && !frequencyChanged) continue;
-          if (change.messageChanged) {
-              if (change.extendsMessage) {
-                  delta = change.appendedText;
-#ifdef WIN32
-                  startNew = change.startsMessage;
-#endif
-              } else {
-                  delta = update.text;
-#ifdef WIN32
-                  startNew = true;
-#endif
-              }
-          }
-          known->frequency = update.frequency;
-          known->text = update.text;
-      } else {
-#ifdef WIN32
-          startNew = true;
-#endif
-          delta = update.text;
-          auto const allLine = std::find_if (
-            m_jttyAllFreqLines.cbegin (), m_jttyAllFreqLines.cend (),
-            [&update] (JttyDecodeLine const& line) {
-              return line.messageId == update.messageId;
-            });
-          QDateTime const messageStartUtc = allLine != m_jttyAllFreqLines.cend ()
-            ? allLine->messageStartUtc
-            : jttyLineDisplayDateTimeUtc (update.sequenceStart);
-          m_jttyQsoLines.append({update.messageId, update.frequency, update.text,
-                                 update.sequenceStart, messageStartUtc});
-      }
-      anyLineChanged = true;
-      m_bDecoded = true;
-
-#ifdef WIN32
-      if (m_mmttyif && !delta.isEmpty()) {
-//            m_mmttyif->echo_message_to_n1mm(append_separator(delta));
-        if(ui->cbLowerCase->isChecked()) delta = delta.toLower();
-        if(startNew) delta = "\r\n" + delta;
-        m_mmttyif->echo_message_to_n1mm(delta);
-      }
-#endif
-  }
-
-  if (anyLineChanged || qsoDisplayOptionsChanged) renderJttyQsoLines ();
-  return anyEom;
 }
 
 void MainWindow::jtty_tx(QString message)
@@ -459,6 +176,10 @@ void MainWindow::execute_jtty_tx(qint64 requestId, QString message)
 void MainWindow::execute_jtty_tones(qint64 requestId, QString const& message,
                                     int const itone[], int nsym)
 {
+  if (jttyDrainInProgress()) {
+    Q_EMIT jttyTextRejected(requestId, JttyTxRejectReason::NotAvailable);
+    return;
+  }
   m_nsym_jtty=nsym;
 
   int nsps4=4*384;
@@ -591,8 +312,9 @@ void MainWindow::completeJttyTxEnqueue(qint64 requestId, QString const& message,
   write_all("Tx", message);
   Q_EMIT jttyTextAccepted(requestId);
 
-  ui->decodedTextBrowser2->insertText(" ");
   QTextCursor cursor = ui->decodedTextBrowser2->textCursor();
+  cursor.movePosition(QTextCursor::End);
+  if (cursor.position()) cursor.insertBlock();
   QTextCharFormat format = cursor.charFormat();
   format.setBackground(QBrush(QColor(Qt::yellow)));
   cursor.setCharFormat(format);
@@ -611,9 +333,6 @@ void MainWindow::completeJttyTxEnqueue(qint64 requestId, QString const& message,
   startJttyTxWatchdog(pendingMs + 1000 * m_config.txDelay() + 10000);
 
   monitor(false);
-  if(!m_diskData && (m_saveAll || m_saveDecoded) && Jtty::wavCaptureValid (m_k0)) {
-    jtty_save_wav();
-  }
 
 #ifdef WIN32
   if (m_mmttyif) {
@@ -850,57 +569,12 @@ void MainWindow::startJttyTxWatchdog(int durationMs)
 
 void MainWindow::jtty_again()
 {
-  ui->DecodeButton->setChecked (true);
-  qApp->processEvents();                                //Update the DecodeButton highlight
-  replayJttyFrames (dec_data.params.kin, [this] (int k) {
-    jtty_decode(k);
-    return false;
-  });
-  flushJttyDecodeLines();
-  finishDecodeUi();
+  startJttyReview(0, 0, false);
 }
 
-// Triggered by double-clicking WideGraph's waterfall in JTTY mode: starts
-// the rescan jttyPickLookbackSecs before the clicked time (a message can
-// start just before the click) and stops as soon as jtty_decode reports a
-// completed (EOM) message, rather than scanning a fixed window. A safety
-// cap (jttyPickSafetyCapSecs forward of istart0) bounds how long it keeps
-// looking if nothing ever completes -- e.g. the click landed on noise, or
-// sync was lost partway through. secondsAgo is relative to m_k0 (the
-// buffer position at the last processed block, i.e. "now"). Calls where k
-// hasn't yet reached istart0 are cheap no-ops on the Fortran side, so the
-// outer loop doesn't need to special-case its own starting point.
-void MainWindow::jttyDecodeAgainAt(float secondsAgo)
+void MainWindow::jttyDecodeAgainAtSample(quint64 reception, qint64 sample)
 {
-  constexpr int jttyPickLookbackSecs = 5;
-  constexpr int jttyPickSafetyCapSecs = 40;
-  qint64 const center = qint64(m_k0) - qint64(qMax(0.0f, secondsAgo) * 12000.0f);
-  int const istart0 = int(qMax(qint64(1), center - qint64(jttyPickLookbackSecs) * 12000));
-  int const frames = snapshotJttyFrames (dec_data.params.kin);
-  int const istop = int(qMin(qint64(frames),
-                             qint64(istart0) + qint64(jttyPickSafetyCapSecs) * 12000));
-  if (istop < istart0) return;   // clicked time is no longer in the buffer at all
-
-  ui->DecodeButton->setChecked (true);
-  qApp->processEvents();                                //Update the DecodeButton highlight
-  replayJttyFrames (frames, [this, istart0, istop] (int k) {
-    bool const eom = jtty_decode(k, istart0, istop);
-    return eom || k >= istop;
-  });
-  flushJttyDecodeLines();
-  finishDecodeUi();
-}
-
-void MainWindow::flushJttyDecodeLines()
-{
-  // Called at a definite session end (new session starting, or true end of file); unconditional.
-  for (auto& line : m_jttyAllFreqLines) {
-    if (line.written) continue;
-    QString const text = line.text.trimmed();
-    if (text.isEmpty()) continue;
-    write_all("Rx", formatJttyDecodeLine(line.frequency, text), &line.context);
-    line.written = true;
-  }
+  startJttyReview(reception, sample, true);
 }
 
 bool MainWindow::jtty_key_struck(QKeyEvent * e)

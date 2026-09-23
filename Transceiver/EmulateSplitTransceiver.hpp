@@ -41,6 +41,12 @@ public:
   // forward everything else to wrapped Transceiver
   void start (unsigned sequence_number) noexcept override {wrapped_->start (sequence_number);}
   void stop () noexcept override {wrapped_->stop ();}
+  void receive_discontinuity (JttyReceiveReason reason) override
+  { wrapped_->receive_discontinuity (reason); }
+  void receive_stop_reason (JttyReceiveReason reason) override
+  { wrapped_->receive_stop_reason (reason); }
+  void requestContinuousReceiveDrain (quint64 requestId) override
+  { wrapped_->requestContinuousReceiveDrain (requestId); }
 
 private:
   void handle_update (TransceiverState const&, unsigned seqeunce_number);

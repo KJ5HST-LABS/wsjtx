@@ -1,6 +1,7 @@
 #include "LiveAudioTestController.hpp"
 
 #include "Audio/FixtureAudioInput.hpp"
+#include "Audio/BWFFile.hpp"
 #include "DecoderIpc.hpp"
 #include "Decoder/decodedtext.h"
 #include "widgets/mainwindow.h"
@@ -19,10 +20,20 @@ extern dec_data_t& dec_data;
 #include <QAbstractButton>
 #include <QAction>
 #include <QApplication>
+#include <QAudioFormat>
 #include <QFile>
+#include <QFileInfo>
+#include <QDir>
+#include <QLabel>
+#include <QProgressBar>
+#include <QRegularExpression>
+#include <QStandardPaths>
+#include <QStatusBar>
 #include <QEvent>
 #include <QMetaObject>
 #include <QTextEdit>
+#include <QTextCursor>
+#include <QTextDocument>
 #include <QTextStream>
 
 #include "moc_LiveAudioTestController.cpp"
@@ -87,6 +98,23 @@ LiveAudioTestController::LiveAudioTestController (
   m_jttyPollTimer.setInterval (50);
   connect (&m_jttyPollTimer, &QTimer::timeout,
            this, &LiveAudioTestController::pollJttyDisplay);
+
+  m_jttyStageTimer.setSingleShot (true);
+  m_jttyStageTimer.setInterval (20000);
+  connect (&m_jttyStageTimer, &QTimer::timeout, this, [this] {
+    if (m_window->decoderBusy ())
+      {
+        m_jttyStageTimer.start ();
+        return;
+      }
+    auto const stage = m_jttyCheckStage;
+    if (stage == JttyCheckStage::Live)
+      maybeFinishJtty ();
+    else
+      checkJttyReviewAndStatus ();
+    if (!m_finished && m_jttyCheckStage == stage)
+      fail (tr ("JTTY post-input checks did not advance for 20 seconds."));
+  });
 
   connect (m_window, &MainWindow::decoderBackendStarted,
            this, &LiveAudioTestController::prepareWhenReady);
@@ -229,7 +257,14 @@ LiveAudioTestController::LiveAudioTestController (
                                        block->samples.begin (), block->samples.end ());
            });
   connect (m_fixture, &FixtureAudioInput::emissionStarted,
-           this, [] (qint64 utcStartMilliseconds) {
+           this, [this] (qint64 utcStartMilliseconds) {
+             m_captureStartMs = utcStartMilliseconds;
+             if (Mode::Jtty == m_mode
+                 && utcStartMilliseconds % 180000 != FixtureAudioInput::jttyCaptureOffsetMs ())
+               {
+                 fail (tr ("JTTY fixture did not begin at its boundary-crossing capture offset."));
+                 return;
+               }
              std::cerr << "WSJT-X live audio test: PCM emission started at UTC epoch "
                        << utcStartMilliseconds << " ms" << std::endl;
            });
@@ -245,14 +280,9 @@ LiveAudioTestController::LiveAudioTestController (
                }
              m_fixtureFinished = true;
              maybeFinish ();
-             if (Mode::Jtty == m_mode)
+             if (Mode::Jtty == m_mode && !m_finished)
                {
-                 QTimer::singleShot (8000, this, [this] {
-                   if (!m_finished)
-                     {
-                       fail (tr ("JTTY display did not settle to the expected text after input ended."));
-                     }
-                 });
+                 m_jttyStageTimer.start ();
                }
            });
   if (Mode::Jtty == m_mode)
@@ -573,6 +603,41 @@ void LiveAudioTestController::prepareJttyWhenReady ()
       return;
     }
 
+  auto * savePath = m_window->findChild<QLabel *> ("save_path_display_label");
+  auto * saveDecoded = m_window->findChild<QAction *> ("actionSave_decoded");
+  auto * unsplitLog = m_window->findChild<QAction *> ("actionDon_t_split_ALL_TXT");
+  QDir const dataDirectory {QStandardPaths::writableLocation (QStandardPaths::DataLocation)};
+  if (!savePath || !saveDecoded || !unsplitLog) {
+    fail (tr ("JTTY recording or logging controls were not found."));
+    return;
+  }
+  m_jttySaveDirectory = QFileInfo (savePath->text ()).canonicalFilePath ();
+  auto const dataRoot = QFileInfo (dataDirectory.absolutePath ()).canonicalFilePath ();
+  if (!QCoreApplication::applicationName ().endsWith (" - test") || dataRoot.isEmpty ()
+      || !m_jttySaveDirectory.startsWith (dataRoot + QDir::separator ())) {
+    fail (tr ("JTTY recording validation requires a save directory inside the isolated test data directory."));
+    return;
+  }
+  for (auto const& name : QDir (m_jttySaveDirectory).entryList ({"*.wav"}, QDir::Files))
+    m_jttyInitialRecordings.insert (name);
+  m_jttyLogPath = dataDirectory.absoluteFilePath ("ALL.TXT");
+  m_jttyInitialLogSize = QFileInfo (m_jttyLogPath).size ();
+  unsplitLog->trigger ();
+  saveDecoded->trigger ();
+
+  auto const frequencyError = m_window->checkLiveAudioTestJttyFrequencyChanges ();
+  if (!frequencyError.isEmpty ()) {
+    fail (frequencyError);
+    return;
+  }
+  auto const mailboxError = m_window->checkLiveAudioTestJttyMailboxOverflow ();
+  if (!mailboxError.isEmpty ()) { fail (mailboxError); return; }
+  auto * includeTime = m_window->findChild<QAbstractButton *> ("cbIncludeTime");
+  auto * lowerCase = m_window->findChild<QAbstractButton *> ("cbLowerCase");
+  if (!includeTime || !lowerCase) { fail (tr ("JTTY display options were not found.")); return; }
+  includeTime->setChecked (true);
+  lowerCase->setChecked (false);
+
   m_armed = QMetaObject::invokeMethod (
     m_fixture, "arm", Qt::QueuedConnection);
   if (!m_armed)
@@ -706,10 +771,14 @@ void LiveAudioTestController::pollJttyDisplay ()
   if (m_jttyAllFinals.isEmpty () && allText.contains (m_expectedJttyPrefix))
     {
       m_jttyAllSawPrefix = true;
+      if (!m_jttyAllPrefixBlock.isValid ())
+        m_jttyAllPrefixBlock = m_jttyAllDecodes->document ()->find (m_expectedJttyPrefix).block ();
     }
   if (m_jttyQsoFinals.isEmpty () && qsoText.contains (m_expectedJttyPrefix))
     {
       m_jttyQsoSawPrefix = true;
+      if (!m_jttyQsoPrefixBlock.isValid ())
+        m_jttyQsoPrefixBlock = m_jttyQsoFrequency->document ()->find (m_expectedJttyPrefix).block ();
     }
   maybeFinishJtty ();
 }
@@ -722,6 +791,10 @@ void LiveAudioTestController::maybeFinishJtty ()
     {
       return;
     }
+  if (m_jttyCheckStage != JttyCheckStage::Live) {
+    checkJttyReviewAndStatus ();
+    return;
+  }
   auto const messagesAppearInOrder = [this] (QString const& text) {
     int offset = 0;
     for (auto const& message : m_expectedJtty)
@@ -746,15 +819,240 @@ void LiveAudioTestController::maybeFinishJtty ()
       return;
     }
 
+  for (auto const& message : m_expectedJtty)
+    {
+      if (allText.count (message) != 1 || qsoText.count (message) != 1)
+        {
+          fail (tr ("A JTTY message appeared more than once across the receive boundary."));
+          return;
+        }
+      auto const line = m_jttyAllDecodes->document ()->find (message).block ().text ();
+      if (!QRegularExpression {QStringLiteral ("^[0-9]{6} +[0-9]{3,4}  ")}.match (line).hasMatch ()) {
+        fail (tr ("JTTY timestamps do not match the six-digit UTC column."));
+        return;
+      }
+    }
+  if (m_expectedJtty.size () == 1)
+    {
+      auto const& message = m_expectedJtty.constFirst ();
+      if (!m_jttyAllPrefixBlock.isValid () || !m_jttyQsoPrefixBlock.isValid ()
+          || m_jttyAllDecodes->document ()->find (message).block () != m_jttyAllPrefixBlock
+          || m_jttyQsoFrequency->document ()->find (message).block () != m_jttyQsoPrefixBlock)
+        {
+          fail (tr ("A growing JTTY message changed display lines across the receive boundary."));
+          return;
+        }
+    }
+  auto const sampleRate = m_fixture->streamDescriptor ().sample_rate_hz;
+  if (sampleRate <= 0 || m_captureStartMs <= 0
+      || m_captureStartMs % 180000 + m_emittedFrames * 1000 / sampleRate <= 180000)
+    {
+      fail (tr ("The JTTY fixture did not cross the artificial receive boundary."));
+      return;
+    }
+
+  auto const progress = m_window->statusBar ()->findChildren<QProgressBar *> ();
+  if (progress.size () != 1 || !progress.front ()->isHidden ()) {
+    fail (tr ("JTTY still displays a cyclic progress indicator during reception."));
+    return;
+  }
+  QFile log {m_jttyLogPath};
+  if (!log.open (QIODevice::ReadOnly)) {
+    fail (tr ("JTTY live reception did not create a readable ALL.TXT."));
+    return;
+  }
+  m_jttyLogBeforeReview = log.readAll ();
+  auto const liveLog = QString::fromUtf8 (m_jttyLogBeforeReview.mid (m_jttyInitialLogSize)).toUpper ();
+  for (auto const& message : m_expectedJtty) {
+    if (liveLog.count (message) != 1) {
+      fail (tr ("JTTY live reception did not log each expected message exactly once."));
+      return;
+    }
+    m_jttyAllLiveBlocks.append (m_jttyAllDecodes->document ()->find (message).block ());
+    m_jttyQsoLiveBlocks.append (m_jttyQsoFrequency->document ()->find (message).block ());
+  }
+  m_jttyAllBeforeReview = m_jttyAllDecodes->toPlainText ();
+  m_jttyQsoBeforeReview = m_jttyQsoFrequency->toPlainText ();
+  auto * decode = m_window->findChild<QAbstractButton *> ("DecodeButton");
+  if (!decode || !decode->isEnabled ()) {
+    fail (tr ("JTTY historical review is not available after live reception."));
+    return;
+  }
+  m_jttyCheckStage = JttyCheckStage::Review;
+  m_jttyCheckElapsed.start ();
+  m_jttyStageTimer.start ();
+  decode->click ();
+}
+
+void LiveAudioTestController::checkJttyReviewAndStatus ()
+{
+  auto const progress = m_window->statusBar ()->findChildren<QProgressBar *> ();
+  if (progress.size () != 1) {
+    fail (tr ("The status progress control was not found."));
+    return;
+  }
+  if (m_jttyCheckStage == JttyCheckStage::Review) {
+    auto * decode = m_window->findChild<QAbstractButton *> ("DecodeButton");
+    if (!decode || decode->isChecked () || m_window->decoderBusy ()) return;
+    auto const allText = m_jttyAllDecodes->toPlainText ();
+    auto const qsoText = m_jttyQsoFrequency->toPlainText ();
+    auto const heading = QCoreApplication::translate ("MainWindow", "JTTY review");
+    auto const allReview = allText.mid (m_jttyAllBeforeReview.size ()).simplified ().toUpper ();
+    auto const qsoReview = qsoText.mid (m_jttyQsoBeforeReview.size ()).simplified ().toUpper ();
+    if (!allText.startsWith (m_jttyAllBeforeReview) || !qsoText.startsWith (m_jttyQsoBeforeReview)
+        || !allReview.contains (heading.toUpper ()) || !qsoReview.contains (heading.toUpper ())) {
+      fail (tr ("Historical JTTY review did not preserve live history in a separate review group."));
+      return;
+    }
+    for (int i = 0; i < m_expectedJtty.size (); ++i) {
+      auto const& message = m_expectedJtty[i];
+      if (allReview.count (message) != 1 || qsoReview.count (message) != 1
+          || m_jttyAllDecodes->document ()->find (message).block () != m_jttyAllLiveBlocks[i]
+          || m_jttyQsoFrequency->document ()->find (message).block () != m_jttyQsoLiveBlocks[i]) {
+        fail (tr ("Historical JTTY review altered live message identity or produced duplicate review text."));
+        return;
+      }
+    }
+    QFile log {m_jttyLogPath};
+    if (!log.open (QIODevice::ReadOnly) || log.readAll () != m_jttyLogBeforeReview) {
+      fail (tr ("Historical JTTY review changed ALL.TXT."));
+      return;
+    }
+    auto * monitor = m_window->findChild<QAbstractButton *> ("monitorButton");
+    if (!monitor || !monitor->isEnabled ()) {
+      fail (tr ("JTTY monitoring cannot be stopped after historical review."));
+      return;
+    }
+    m_jttyCheckStage = JttyCheckStage::Stopped;
+    m_jttyCheckElapsed.restart ();
+    m_jttyStageTimer.start ();
+    if (monitor->isChecked ()) monitor->click ();
+    return;
+  }
+  if (m_jttyCheckElapsed.elapsed () < 1200) return;
+  if (m_jttyCheckStage == JttyCheckStage::Stopped) {
+    bool stopped = false;
+    for (auto * label : m_window->statusBar ()->findChildren<QLabel *> ()) {
+      if (label->accessibleName () == QCoreApplication::translate ("MainWindow", "Transmit status"))
+        stopped = label->text () == QCoreApplication::translate ("MainWindow", "Stopped");
+    }
+    if (m_window->monitoringActive () || !stopped || !progress.front ()->isHidden ()) {
+      fail (tr ("Stopped JTTY reception did not retain its stopped status and hidden progress indicator."));
+      return;
+    }
+    QString saved;
+    QDir const directory {m_jttySaveDirectory};
+    for (auto const& name : directory.entryList ({"*.wav"}, QDir::Files)) {
+      if (m_jttyInitialRecordings.contains (name)) continue;
+      BWFFile file {QAudioFormat {}, directory.absoluteFilePath (name)};
+      if (file.open (QIODevice::ReadOnly) && file.size () > 12000 * 2)
+        saved = directory.absoluteFilePath (name);
+    }
+    if (saved.isEmpty ()) return;
+    m_jttyCheckStage = JttyCheckStage::Wav;
+    m_jttyStageTimer.start ();
+    if (!m_window->startLiveAudioTestJttyWav (saved))
+      fail (tr ("Unable to decode the isolated JTTY recording."));
+    return;
+  }
+  if (m_jttyCheckStage == JttyCheckStage::Wav) {
+    if (m_window->decoderBusy ()) return;
+    QFile log {m_jttyLogPath};
+    if (!log.open (QIODevice::ReadOnly)) { fail (tr ("Cannot read JTTY replay log.")); return; }
+    auto const contents = log.readAll ();
+    if (contents.size () == m_jttyLogBeforeReview.size ()) return;
+    auto const replayLog = QString::fromUtf8 (contents.mid (m_jttyLogBeforeReview.size ())).toUpper ();
+    for (auto const& message : m_expectedJtty) {
+      if (replayLog.count (message) != 1) {
+        fail (tr ("Automatic JTTY WAV decoding did not log each message exactly once."));
+        return;
+      }
+    }
+    auto * includeTime = m_window->findChild<QAbstractButton *> ("cbIncludeTime");
+    auto * lowerCase = m_window->findChild<QAbstractButton *> ("cbLowerCase");
+    if (!includeTime || !lowerCase) { fail (tr ("JTTY display options were not found.")); return; }
+    QStringList const before {m_jttyAllDecodes->toPlainText (), m_jttyQsoFrequency->toPlainText ()};
+    QList<QTextEdit *> const panes {m_jttyAllDecodes, m_jttyQsoFrequency};
+    QRegularExpression const timestamp {QStringLiteral ("^[0-9]{6} "),
+                                        QRegularExpression::MultilineOption};
+    includeTime->setChecked (false);
+    for (int i = 0; i < panes.size (); ++i) {
+      auto expected = before[i];
+      expected.remove (timestamp);
+      if (panes[i]->toPlainText () != expected) {
+        fail (tr ("Include Time did not immediately refresh retained JTTY history."));
+        return;
+      }
+    }
+    lowerCase->setChecked (true);
+    for (int i = 0; i < panes.size (); ++i) {
+      auto const text = panes[i]->toPlainText ().simplified ();
+      for (auto const& message : m_expectedJtty) {
+        auto const count = before[i].simplified ().count (message);
+        if (count < 3 || text.count (message.toLower ()) != count || text.contains (message)) {
+          fail (tr ("Lowercase did not immediately refresh live, reviewed, and WAV JTTY history."));
+          return;
+        }
+      }
+    }
+    includeTime->setChecked (true);
+    lowerCase->setChecked (false);
+    if (panes[0]->toPlainText () != before[0] || panes[1]->toPlainText () != before[1]
+        || !log.seek (0) || log.readAll () != contents) {
+      fail (tr ("Refreshing JTTY display options changed message history or ALL.TXT."));
+      return;
+    }
+    auto * ft8 = m_window->findChild<QAction *> ("actionFT8");
+    if (!ft8 || !ft8->isEnabled ()
+        || !QMetaObject::invokeMethod (m_fixture, "stop", Qt::BlockingQueuedConnection)) {
+      fail (tr ("Cannot prepare the isolated fixture for the timed-mode UI check."));
+      return;
+    }
+    auto const drainError = m_window->checkLiveAudioTestJttyDrain ();
+    if (!drainError.isEmpty ()) { fail (drainError); return; }
+    auto * decode = m_window->findChild<QAbstractButton *> ("DecodeButton");
+    if (!decode || !decode->isEnabled ()) {
+      fail (tr ("JTTY review is unavailable for cancellation validation."));
+      return;
+    }
+    decode->click ();
+    if (!decode->isChecked () || !m_window->decoderBusy ()) {
+      fail (tr ("JTTY review did not start before mode-switch cancellation."));
+      return;
+    }
+    m_jttyCheckStage = JttyCheckStage::TimedMode;
+    m_jttyCheckElapsed.restart ();
+    m_jttyStageTimer.start ();
+    ft8->trigger ();
+    if (decode->isChecked () || m_window->decoderBusy ()) {
+      fail (tr ("Switching modes did not cancel JTTY review and clear its Decode state."));
+      return;
+    }
+    return;
+  }
+  if (progress.front ()->isHidden ()) {
+    fail (tr ("Switching from JTTY to FT8 did not restore timed-mode progress."));
+    return;
+  }
+  completeJttyTest ();
+}
+
+void LiveAudioTestController::completeJttyTest ()
+{
   m_finished = true;
   m_succeeded = true;
   m_timeout.stop ();
   m_modalTimer.stop ();
   m_jttyPollTimer.stop ();
+  m_jttyStageTimer.stop ();
   std::cout << "WSJT-X JTTY live audio test passed: expected="
             << m_expectedJtty.size ()
             << " all_prefix=" << m_jttyAllSawPrefix
             << " qso_prefix=" << m_jttyQsoSawPrefix
+            << " capture_offset_ms=" << m_captureStartMs % 180000
+            << " boundary_crossed=1"
+            << " review_isolated=1 recording_saved=1 wav_logged=1 frequency_policy=1 status_verified=1"
+            << " retained_options_refreshed=1 review_cancelled=1 drain_verified=1"
             << " frames=" << m_emittedFrames << std::endl;
   m_window->close ();
   QCoreApplication::exit (EXIT_SUCCESS);
@@ -767,6 +1065,7 @@ void LiveAudioTestController::fail (QString const& reason)
   m_timeout.stop ();
   m_prepareTimer.stop ();
   m_modalTimer.stop ();
+  m_jttyStageTimer.stop ();
   std::cerr << "WSJT-X live audio test failed: " << reason.toStdString ()
             << " expected=" << m_expected.size ()
             << " observed=" << m_observed.size ()

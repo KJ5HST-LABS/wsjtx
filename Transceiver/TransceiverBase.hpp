@@ -117,6 +117,8 @@ protected:
   virtual void do_audio (bool = false) {}
   virtual void do_tune (bool = false) {}
   virtual void do_period (double) {}
+  virtual void do_receive_policy (ReceivePolicy) {}
+  virtual void do_receive_context (quint64) {}
   virtual void do_blocksize (qint32) {}
   virtual void do_spread(double) {}
   virtual void do_nsym(int) {}

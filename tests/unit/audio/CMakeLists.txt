@@ -58,6 +58,16 @@ target_link_libraries (test_audio_input_stream_descriptor
 add_test (NAME test_audio_input_stream_descriptor
   COMMAND test_audio_input_stream_descriptor)
 
+add_executable (test_sound_input
+  test_sound_input.cpp
+  ${CMAKE_SOURCE_DIR}/Audio/AudioDevice.cpp
+  ${CMAKE_SOURCE_DIR}/Audio/AudioInputSource.hpp
+  ${CMAKE_SOURCE_DIR}/Audio/soundin.cpp
+  ${CMAKE_SOURCE_DIR}/Logger.cpp)
+target_link_libraries (test_sound_input
+  wsjt_qtmm wsjt_qt Boost::log_setup Qt5::Test Qt5::Multimedia)
+add_test (NAME test_sound_input COMMAND test_sound_input)
+
 add_executable (test_receive_audio_handoff
   test_receive_audio_handoff.cpp
   receive_reference_probe.f90
@@ -68,6 +78,12 @@ target_link_libraries (test_receive_audio_handoff
   wsjt_fort_common Qt5::Core Qt5::Test Qt5::Multimedia)
 target_include_directories (test_receive_audio_handoff PRIVATE ${CMAKE_BINARY_DIR})
 set (receive_handoff_scenarios
+    block_size_changes_preserve_captured_partial_audio
+    continuous_end_overflow_keeps_original_session
+    continuous_detached_batch_excludes_later_publications
+    continuous_receive_preserves_partial_block_across_clock_wrap
+    continuous_stop_flushes_only_captured_downsampled_audio
+    continuous_mailbox_overrun_is_explicit_and_rearms_notification
     downsamplersRetainIndependentHistory
     producersRemainIsolatedAcrossSourceSwitch
     queued_prefix_without_reuse
