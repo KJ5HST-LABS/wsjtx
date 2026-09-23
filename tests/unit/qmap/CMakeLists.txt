@@ -48,3 +48,7 @@ add_executable (test_qmap_candidates test_qmap_candidates.f90)
 target_include_directories (test_qmap_candidates PRIVATE ${CMAKE_BINARY_DIR}/qmap/libqmap)
 target_link_libraries (test_qmap_candidates PRIVATE qmap_impl)
 add_test (NAME test_qmap_candidates COMMAND test_qmap_candidates)
+
+add_executable (test_qmap_symspec_contract test_qmap_symspec_contract.f90)
+target_link_libraries (test_qmap_symspec_contract PRIVATE qmap_impl)
+add_test (NAME test_qmap_symspec_contract COMMAND test_qmap_symspec_contract)
