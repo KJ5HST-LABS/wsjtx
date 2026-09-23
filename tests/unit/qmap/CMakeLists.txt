@@ -52,3 +52,15 @@ add_test (NAME test_qmap_candidates COMMAND test_qmap_candidates)
 add_executable (test_qmap_symspec_contract test_qmap_symspec_contract.f90)
 target_link_libraries (test_qmap_symspec_contract PRIVATE qmap_impl)
 add_test (NAME test_qmap_symspec_contract COMMAND test_qmap_symspec_contract)
+
+add_executable (test_qmap_q65_handoff test_qmap_q65_handoff.f90)
+target_include_directories (test_qmap_q65_handoff PRIVATE ${CMAKE_BINARY_DIR}/qmap/libqmap)
+target_link_libraries (test_qmap_q65_handoff PRIVATE qmap_impl)
+add_test (NAME test_qmap_q65_handoff COMMAND test_qmap_q65_handoff)
+
+add_executable (test_qmap_q65_connection
+  ${CMAKE_SOURCE_DIR}/tests/unit/q65/q65_test_fixture.f90
+  test_qmap_q65_connection.f90)
+target_include_directories (test_qmap_q65_connection PRIVATE ${CMAKE_BINARY_DIR}/qmap/libqmap)
+target_link_libraries (test_qmap_q65_connection PRIVATE qmap_impl)
+add_test (NAME test_qmap_q65_connection COMMAND test_qmap_q65_connection)

@@ -6,8 +6,60 @@
 ! on stdout.
 
       module q65b_mod
+      use iso_fortran_env, only: int16
       implicit none
       contains
+
+   subroutine build_q65_samples(k0, nfft2, df, xpol, configured_dphi_deg, combine_poldeg, iwave)
+      use cacb_mod, only: ca, cb
+      use four2a_mod, only: four2a
+      integer, intent(in) :: k0, nfft2, configured_dphi_deg
+      real, intent(in) :: df, combine_poldeg
+      logical, intent(in) :: xpol
+      integer(int16), intent(out) :: iwave(:)
+      integer, parameter :: MAXFFT2 = 336000*2
+      real, parameter :: RAD = 57.2957795
+      complex :: cx(0:MAXFFT2-1), cy(0:MAXFFT2-1), cz(0:MAXFFT2)
+      save cx, cy, cz
+      integer :: i, j, ja, jb
+      real :: dphi, fac, r
+
+      fac = 1.0/nfft2
+      cx(0:nfft2 - 1) = ca(k0:k0 + nfft2 - 1)
+      cx = fac*cx
+      if (xpol) then
+         cy(0:nfft2 - 1) = cb(k0:k0 + nfft2 - 1)
+         cy = fac*cy
+         if (configured_dphi_deg .ne. 0) then
+            dphi = configured_dphi_deg/RAD
+            cy(0:nfft2 - 1) = cmplx(cos(dphi), sin(dphi))*cy(0:nfft2 - 1)
+         endif
+      endif
+
+      if (xpol) then
+         cz(0:MAXFFT2 - 1) = cos(combine_poldeg/RAD)*cx + sin(combine_poldeg/RAD)*cy
+      else
+         cz(0:MAXFFT2 - 1) = cx
+      endif
+
+      cz(MAXFFT2) = 0.
+      ja = nint(500.0/df)
+      jb = nint(2500.0/df)
+      do i = 0, ja
+         r = 0.5*(1.0 + cos(i*3.14159/ja))
+         cz(ja - i) = r*cz(ja - i)
+         cz(jb + i) = r*cz(jb + i)
+      enddo
+      cz(ja + jb + 1:) = 0.
+
+      call four2a(cz, 2*nfft2, 1, 1, -1)
+      do i = 0, nfft2 - 1
+         j = nfft2 - 1 - i
+         iwave(2*i + 2) = int(max(-32768, min(32767, nint(real(cz(j))))), kind=2)
+         iwave(2*i + 1) = int(max(-32768, min(32767, nint(aimag(cz(j))))), kind=2)
+      enddo
+      iwave(2*nfft2 + 1:) = 0
+   end subroutine build_q65_samples
 
    subroutine write_wav_header(unit, nsamp, fs)
       integer, intent(in) :: unit, nsamp, fs
@@ -90,7 +142,6 @@
 
       !==== Local variables =====================================================
       integer(int16) :: iwave(300*12000)
-      complex   :: cx(0:MAXFFT2-1), cy(0:MAXFFT2-1), cz(0:MAXFFT2)
       integer   :: ipk1(1)
       ! Small, fixed bin radius for the automatic-candidate ipk search (see
       ! the note below at "for a wideband candidate"). Deliberately
@@ -98,13 +149,13 @@
       ! wb_sync's own low-SNR bin-selection noise, not accommodate arbitrary
       ! user-configured search widths.
       integer, parameter :: IPK_LOCAL_BINS = 5
-      integer   :: i, ia, ib, ifreq, ikhz1, ipk, ipol
-      integer   :: j, ja, jb, k0, mhz, ndf, nfft1, nfft2
+      integer   :: ia, ib, ifreq, ikhz1, ipk, ipol
+      integer   :: k0, mhz, ndf, nfft1, nfft2
       integer   :: npol, nq65df, nsubmode, ntxpol, nutc00, nh
       integer   :: nfa, nfb
       integer   :: k0_click, mousedf_gate
-      real      :: df, df3, dphi, f_ipk, f_mouse, fac
-      real      :: combine_poldeg, freq1_00, frx, fsked, poldeg, r, snr1
+      real      :: df, df3, f_ipk, f_mouse
+      real      :: combine_poldeg, freq1_00, frx, fsked, poldeg, snr1
       real(real64)    :: freq0, freq1
       character(len=12) :: mycall, hiscall
       character(len=4)  :: grid4
@@ -272,62 +323,16 @@
       ! (below) determine success or failure instead.
       if (snr1 .lt. 1.5 .and. manualDecodeFlag .eq. 0) go to 900                      !### Threshold needs work? ###
 
-      fac = 1.0/nfft2
-      cx(0:nfft2 - 1) = ca(k0:k0 + nfft2 - 1)
-      cx = fac*cx
-      if (xpol) then
-         cy(0:nfft2 - 1) = cb(k0:k0 + nfft2 - 1)
-         cy = fac*cy
-         if (configured_dphi_deg .ne. 0) then
-            dphi = configured_dphi_deg/RAD
-            ! The sync weights describe the phase-corrected basis from symspec.
-            cy(0:nfft2 - 1) = cmplx(cos(dphi), sin(dphi))*cy(0:nfft2 - 1)
-         endif
-      endif
-
-! Here cx and cy (if xpol) are frequency-domain data around the selected
-! QSO frequency, taken from the full-length FFT computed in filbig().
-! Values for fsample, nfft1, nfft2, df, and the downsampled data rate
-! are as follows:
-
-!  fSample  nfft1       df        nfft2  fDownSampled
-!    (Hz)              (Hz)                 (Hz)
-!----------------------------------------------------
-!   96000  5376000  0.017857143  336000   6000.000
-!   95238  5120000  0.018601172  322560   5999.994
-
       poldeg = 0.
+      combine_poldeg = 0.
       if (xpol) then
          ! NB: still uses the (possibly wrong-bin, see k0 above) ipk for
          ! manual clicks in xpol mode -- not exercised by current testing,
          ! but worth revisiting if xpol manual decode misbehaves similarly.
          poldeg = sync(ipk)%pol
          combine_poldeg = sync(ipk)%combine_pol
-         cz(0:MAXFFT2 - 1) = cos(combine_poldeg/RAD)*cx + sin(combine_poldeg/RAD)*cy
-      else
-         cz(0:MAXFFT2 - 1) = cx
       endif
-
-      cz(MAXFFT2) = 0.
-! Roll off below 500 Hz and above 2500 Hz.
-      ja = nint(500.0/df)
-      jb = nint(2500.0/df)
-      do i = 0, ja
-         r = 0.5*(1.0 + cos(i*3.14159/ja))
-         cz(ja - i) = r*cz(ja - i)
-         cz(jb + i) = r*cz(jb + i)
-      enddo
-      cz(ja + jb + 1:) = 0.
-
-!Transform to time domain (real), fsample=12000 Hz
-      call four2a(cz, 2*nfft2, 1, 1, -1)
-      do i = 0, nfft2 - 1
-         j = nfft2 - 1 - i
-         iwave(2*i + 2) = int(max(-32768, min(32767, nint(real(cz(j))))), kind=2)
-         iwave(2*i + 1) = int(max(-32768, min(32767, nint(aimag(cz(j))))), kind=2)
-      enddo
-
-      iwave(2*nfft2 + 1:) = 0
+      call build_q65_samples(k0, nfft2, df, xpol, configured_dphi_deg, combine_poldeg, iwave)
 
       nsubmode = mode_q65 - 1
       nfa = 990                   !Tight limits around ipk for the wideband decode

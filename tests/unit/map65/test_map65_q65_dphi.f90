@@ -22,6 +22,8 @@ program test_map65_q65_dphi
   integer, allocatable :: seed(:)
   type(candidate) :: candidates(MAX_CANDIDATES)
   character(len=24) :: sent_message
+  character(len=12) :: hiscall
+  character(len=6) :: hisgrid
   integer(int8) :: lstrong(0:1023)
   integer :: i, k, nwave, seed_size, ncand, selected, newdat, n4, idec
   integer :: nb, nbslider, ihsym, nzap, nkh
@@ -70,6 +72,8 @@ program test_map65_q65_dphi
   idphi = 180
   fcenter = 144.125_real64
   nkhz_center = 125
+  hiscall = ' '
+  hisgrid = ' '
 
   nb = 0
   nbslider = 40
@@ -103,12 +107,23 @@ program test_map65_q65_dphi
        sample_rate, .true., c4a, c4b, n4)
   call system_clock(t_start)
   call q65b(1, 0, 0, fcenter, 0, sample_rate, nkhz_center, 0, 100, .true., idphi, &
-       'N0CALL      ', 'FN31  ', '            ', '      ', 2, &
+       'N0CALL      ', 'FN31  ', hiscall, hisgrid, 2, &
        real(candidates(selected)%f, real64), 1.270, newdat, 0, 0, 0, idec)
 
   call require(.not. logical(abort_decode), 'decode within the time budget')
   call require(nsnr0 > -99 .and. trim(msg0) == trim(message), &
        'recover the Q65 message despite opposite-phase receiver channels')
+
+  manualDecodeFlag = 1
+  hiscall = ' '
+  hisgrid = ' '
+  call system_clock(t_start)
+  call q65b(1, 0, 0, fcenter, 0, sample_rate, nkhz_center, 0, 100, .true., idphi, &
+       'N0CALL      ', 'FN31  ', hiscall, hisgrid, 2, &
+       real(candidates(selected)%f, real64) + 0.040_real64, 1.270, 0, 1, 0, 0, idec)
+  call require(nsnr0 > -99 .and. trim(msg0) == trim(message), &
+       'manual center recovers Q65 when f0 is displaced from the clicked frequency')
+  call require(.not. logical(abort_decode), 'manual decode stays within the time budget')
   call fini_timer()
   print '(a)', 'MAP65 Q65 Dphi test passed.'
 
