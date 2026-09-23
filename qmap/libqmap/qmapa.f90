@@ -7,14 +7,7 @@ subroutine qmapa(dd,ss,savg,newdat,nutc,fcenter,ntol,nfa,nfb,         &
 
   use timer_module, only: timer
   use qmap_decode_ipc, only: ndecodes, ncand2
-
-  type candidate
-     real :: snr          !Relative S/N of sync detection
-     real :: f            !Freq of sync tone, 0 to 96000 Hz
-     real :: xdt          !DT of matching sync pattern, -1.0 to +4.0 s
-     integer :: ntrperiod !60 for Q65-60x, 30 for Q65-30x
-     integer :: iseq      !0 for first half-minute, 1 for second half
-  end type candidate
+  use qmap_candidates_mod, only: candidate, getcand2
 
   type good_decode
      real :: f            !Freq of sync tone, 0 to 96000 Hz

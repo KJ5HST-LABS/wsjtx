@@ -1,8 +1,4 @@
-subroutine getcand2(ss,savg0,nts_q65,nagain,nhsym,ntx30a,ntx30b,     &
-     ntol,f0_selected,bAlso30,cand,ncand2)
-
-! Get candidates for Q65 decodes, based on presence of sync tone.
-  
+module qmap_candidates_mod
   type candidate
      real :: snr          !Relative S/N of sync detection
      real :: f            !Freq of sync tone, 0 to 96000 Hz
@@ -10,6 +6,13 @@ subroutine getcand2(ss,savg0,nts_q65,nagain,nhsym,ntx30a,ntx30b,     &
      integer :: ntrperiod !60 for Q65-60x, 30 for Q65-30x
      integer :: iseq      !0 for first half-minute, 1 for second half
   end type candidate
+
+contains
+
+subroutine getcand2(ss,savg0,nts_q65,nagain,nhsym,ntx30a,ntx30b,     &
+     ntol,f0_selected,bAlso30,cand,ncand2)
+
+! Get candidates for Q65 decodes, based on presence of sync tone.
 
   parameter (NFFT=32768)                !FFTs done in symspec()
   parameter (MAX_CANDIDATES=50)
@@ -118,3 +121,4 @@ subroutine getcand2(ss,savg0,nts_q65,nagain,nhsym,ntx30a,ntx30b,     &
 
   return
 end subroutine getcand2
+end module qmap_candidates_mod
