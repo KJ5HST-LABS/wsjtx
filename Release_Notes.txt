@@ -273,9 +273,9 @@ release, including Matt Manjos (W5MMW); Arek Czak (SP1AKU), Petro Ostapuk
 (UR3PKI), and Cedric (EA4AC) for translations; Jeff Millar (WA1HCO)
 for the original TX Inhibit proposal and field reports; and
 Carl-Johan Kjellander, Jaroslav Škarvada, Laurence Howell (KL7L),
-Tony (EI7BMB), Gary (N8CQ),
-Marco Calistri (PY1ZRJ), Mike (KK7ER), Hasan (N0AN), Leigh (KG7WED),
-Jim (K1JH), Michael (W9IP), and Glenn (AF8C) for reports and testing.
+Tony (EI7BMB), Gary (N8CQ), Marco Calistri (PY1ZRJ), Mike (KK7ER),
+Hasan (N0AN), Leigh (KG7WED), Jim (K1JH), Michael (W9IP), and
+Glenn (AF8C) for reports and testing.
 We also thank the many other operators who helped test corrections
 through the WSJT-X mailing lists and user forums.
 
