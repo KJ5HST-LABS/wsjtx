@@ -22,7 +22,7 @@ subroutine four2avar(a,nfft,ndim,isign,iform)
   parameter (NPMAX=2100)                 !Max numberf of stored plans
   parameter (NSMALL=16385)               !Max size of "small" FFTs
   complex a(nfft)                        !Array to be transformed
-  complex aa(NSMALL)                     !Local copy of "small" a()
+  complex, allocatable :: aa(:)          !Local copy of "small" a()
   integer nn(NPMAX),ns(NPMAX),nf(NPMAX)  !Params of stored plans 
   integer*8 nl(NPMAX),nloc               !More params of plans
   integer*8 plan(NPMAX)                  !Pointers to stored plans
@@ -76,6 +76,7 @@ subroutine four2avar(a,nfft,ndim,isign,iform)
      if(nfft.le.NSMALL) then
         jz=nfft
         if(iform.le.0) jz=nfft/2+1
+        allocate(aa(jz))
         aa(1:jz)=a(1:jz)
      endif
 
