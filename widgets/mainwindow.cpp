@@ -11353,6 +11353,8 @@ void MainWindow::on_actionJTTY_triggered()
   // state directly rather than relying on that signal to reach it.
   m_wideGraph->setRxFreq(ui->RxFreqSpinBox_2->value());
   m_wideGraph->setTol(ui->sbFtol_2->value());
+  m_fastGraph->hide();
+  m_wideGraph->showNormal();
   setDecodeHeadings("", "");
   updateJttyDecodeHeadings();
   setDecodeTitles(tr ("All Decodes"), tr ("QSO Frequency"));
