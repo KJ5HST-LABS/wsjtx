@@ -6,8 +6,9 @@
 ! on stdout.
 
       module q65b_mod
-      use iso_fortran_env, only: int16
+      use iso_fortran_env, only: int16, real64
       implicit none
+      integer, parameter, private :: MAXFFT2 = 336000*2
       contains
 
    subroutine build_q65_samples(k0, nfft2, df, xpol, configured_dphi_deg, combine_poldeg, iwave)
@@ -17,8 +18,7 @@
       real, intent(in) :: df, combine_poldeg
       logical, intent(in) :: xpol
       integer(int16), intent(out) :: iwave(:)
-      integer, parameter :: MAXFFT2 = 336000*2
-      real, parameter :: RAD = 57.2957795
+      real(real64), parameter :: RAD = 57.2957795
       complex :: cx(0:MAXFFT2-1), cy(0:MAXFFT2-1), cz(0:MAXFFT2)
       save cx, cy, cz
       integer :: i, j, ja, jb
@@ -136,9 +136,7 @@
       ! MAXFFT1 must be = nfft_big_active; MAXFFT2 must be = the
       ! downsampled-FFT length at the highest supported rate.
       integer, parameter :: MAXFFT1 = 56*192000
-      integer, parameter :: MAXFFT2 = 336000*2
       integer, parameter :: NMAX    = 60*12000
-      real(real64), parameter  :: RAD     = 57.2957795
 
       !==== Local variables =====================================================
       integer(int16) :: iwave(300*12000)

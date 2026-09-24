@@ -64,3 +64,4 @@ add_executable (test_qmap_q65_connection
 target_include_directories (test_qmap_q65_connection PRIVATE ${CMAKE_BINARY_DIR}/qmap/libqmap)
 target_link_libraries (test_qmap_q65_connection PRIVATE qmap_impl)
 add_test (NAME test_qmap_q65_connection COMMAND test_qmap_q65_connection)
+add_test (NAME test_qmap_q65_connection_30_second_half COMMAND test_qmap_q65_connection 30)

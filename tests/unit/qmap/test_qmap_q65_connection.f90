@@ -9,19 +9,38 @@ program test_qmap_q65_connection
 
   integer, parameter :: nfft=32768, nsmax=5760000, sample_rate=96000
   integer, parameter :: max_candidates=50
-  real, parameter :: sync_hz=16817.0*sample_rate/nfft
+  real(real64), parameter :: sync_hz=16817.0_real64*sample_rate/nfft
+  real(real64), parameter :: twopi=2.0_real64*acos(-1.0_real64)
   real :: dd(2,nsmax),ss(400,nfft),savg(nfft)
   real(real64) :: fcenter
   integer :: nutc
   integer :: junk(42)
   common/datcom/dd,ss,savg,fcenter,nutc,junk
-  real :: display(nfft),savg_fresh(nfft),phase,omega,amplitude,frequency
+  real :: display(nfft),savg_fresh(nfft)
+  real(real64) :: phase,omega,amplitude,frequency
   logical(kind=1) :: also30,click,lstrong(0:1023)
   type(candidate) :: cand(max_candidates)
   integer :: seed_size,symbol,i,k,nb,nbslider,nkh,ihsym,nzap,ncand,selected,idec
+  integer :: period,iseq,symbol_samples,first_sample,nts_q65
   integer, allocatable :: seed(:)
   real :: pxdb,slimit
   character(len=20) :: datetime
+  character(len=8) :: period_arg
+
+  period=60
+  call get_command_argument(1,period_arg)
+  if(len_trim(period_arg)>0) then
+     if(trim(period_arg)/='30') error stop 'Expected a 30-second Q65 period'
+     period=30
+  endif
+  iseq=0
+  nts_q65=1
+  if(period==30) then
+     iseq=1
+     nts_q65=2
+  endif
+  symbol_samples=period*sample_rate/100
+  first_sample=(1+30*iseq)*sample_rate
 
   call random_seed(size=seed_size)
   allocate(seed(seed_size))
@@ -34,17 +53,17 @@ program test_qmap_q65_connection
   fcenter=144.125_real64
   nutc=100
 
-  phase=0.0
-  amplitude=160.0
+  phase=0.0_real64
+  amplitude=160.0_real64
   do symbol=1,q65_nsymbols
-     frequency=sync_hz+real(q65_tones(symbol))*12000.0/7200.0
-     omega=2.0*acos(-1.0)*frequency/real(sample_rate)
-     do i=1,57600
-        k=sample_rate+(symbol-1)*57600+i
+     frequency=sync_hz+real(q65_tones(symbol),real64)*real(sample_rate,real64)/real(symbol_samples,real64)
+     omega=twopi*frequency/real(sample_rate,real64)
+     do i=1,symbol_samples
+        k=first_sample+(symbol-1)*symbol_samples+i
         phase=phase+omega
-        if(phase > 2.0*acos(-1.0)) phase=phase-2.0*acos(-1.0)
-        dd(1,k)=dd(1,k)+amplitude*cos(phase)
-        dd(2,k)=dd(2,k)-amplitude*sin(phase)
+        if(phase>twopi) phase=phase-twopi
+        dd(1,k)=dd(1,k)+real(amplitude*cos(phase))
+        dd(2,k)=dd(2,k)-real(amplitude*sin(phase))
      enddo
   enddo
 
@@ -60,12 +79,13 @@ program test_qmap_q65_connection
   call require(ihsym==390, 'complete QMAP symbol spectra')
 
   savg_fresh=savg
-  also30=.false.
-  call getcand2(ss,savg_fresh,1,1,ihsym,0,0,15,sync_hz/1000.0,also30,cand,ncand)
+  also30=period==30
+  call getcand2(ss,savg_fresh,nts_q65,1,ihsym,0,0,15,real(sync_hz/1000.0_real64), &
+       also30,cand,ncand)
   selected=0
   do i=1,ncand
-     if(cand(i)%ntrperiod/=60 .or. cand(i)%iseq/=0) cycle
-     if(abs(1000.0*cand(i)%f-sync_hz)>10.0) cycle
+     if(cand(i)%ntrperiod/=period .or. cand(i)%iseq/=iseq) cycle
+     if(abs(1000.0*cand(i)%f-real(sync_hz))>10.0) cycle
      selected=i
      exit
   enddo
@@ -77,7 +97,7 @@ program test_qmap_q65_connection
   datetime='2026-09-23 12:00:00 '
   click=.false.
   idec=-1
-  call q65b(nutc,0,fcenter,0,sample_rate,125,0,100,60,0, &
+  call q65b(nutc,0,fcenter,0,sample_rate,125,0,100,period,iseq, &
        'N0CALL      ','            ','      ',1,cand(selected)%f,1.270,125, &
        1,0,click,0,0,3,datetime,0,0,ihsym,idec)
   call require(nsnr0 > -99, 'decode generated Q65 signal')
@@ -86,8 +106,9 @@ program test_qmap_q65_connection
   call require(abs(xdt0)<0.5, 'QMAP decoder reports generated timing')
   call require(ndecodes==1 .and. index(result(1),'K1ABC W9XYZ FN42')>0, &
        'QMAP publishes decoded message')
+  if(period==30) call require(result(1)(1:6)=='010030', 'second-half decode uses the :30 time')
   call fini_timer()
-  print '(a)', 'QMAP generated Q65 connection passed.'
+  print '(a,i0,a)', 'QMAP generated Q65 ',period,'-second connection passed.'
 
 contains
 
