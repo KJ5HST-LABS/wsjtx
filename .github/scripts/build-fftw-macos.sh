@@ -19,7 +19,7 @@ cd "fftw-${version}"
   --enable-single \
   --enable-threads \
   --enable-shared --disable-static \
-  CFLAGS="-mmacosx-version-min=${deployment_target}" \
+  CFLAGS="-O3 -mmacosx-version-min=${deployment_target}" \
   LDFLAGS="-mmacosx-version-min=${deployment_target}"
 make -j"$(sysctl -n hw.ncpu)"
 make install
