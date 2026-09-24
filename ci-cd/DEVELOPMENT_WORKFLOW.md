@@ -367,7 +367,7 @@ This is the simplest possible policy for v1. If a flaky test emerges, the team c
 
 ## 6. The Release Process
 
-Releases are tag-defined and require an explicit promotion decision. The internal `build/v...` tag fixes the candidate revision; it does not publish source or binaries. A release manager reviews the candidate and dispatches `Promote Release Source` with `operation=promote`. The public workflow then verifies its artifacts and publishes the release automatically.
+Releases are tag-defined and use two deliberate approvals. The internal `build/v...` tag fixes the candidate revision; it does not publish source or binaries. A release manager reviews the candidate and dispatches `Promote Release Source` with `operation=promote`, approving publication of the exact source commit. After the public workflow builds, verifies, and summarizes the bundle, a release manager approves the final `publish` job through the `public-release` environment.
 
 ### Overview
 
@@ -377,7 +377,8 @@ release/3.2 metadata commit
         └─→ manual source promotion
               └─→ public v3.2.0-rc1 tag
                     └─→ public all-platform builds and policy checks
-                          └─→ public GitHub prerelease
+                          └─→ bundle summary and final publication approval
+                                └─→ public GitHub prerelease
 ```
 
 ### Step by step
@@ -398,7 +399,7 @@ Inspect the candidate run and installable validation artifacts. Record its run I
 
 From the same release branch and SHA, run **Promote Release Source** with the same version, the candidate run ID, and `operation=validate`. After reviewing its summary, rerun with `operation=promote`. The workflow verifies the immutable tag, commit, release metadata, current release-branch tip, candidate run, and artifacts before creating public tag `v3.2.0-rc1` at the same commit.
 
-The public tag exposes the corresponding source required for public distribution and triggers fresh public distribution builds. RC promotion does not move public `master`; GA promotion advances `master` to the same commit with a guarded update.
+The public tag exposes the corresponding source required for public distribution and triggers fresh public distribution builds. Promotion approves public source; it does not approve publishing release assets. RC promotion does not move public `master`; GA promotion advances `master` to the same commit with a guarded update.
 
 The sample downloader reads `samples/contents_X.Y.json` from SourceForge. After adding a sample, run the `upload-samples` target from a configured build of the tagged source and verify the published catalog lists the new file. The Help menu's Release Notes and Online User Guide are served from the public `feat-web-pages` branch; publish `Release_Notes.txt` and a guide generated from the tagged source there. Update the legacy `https://wsjt.sourceforge.io/Release_Notes.txt` document for already released binaries that still open it. These remote files are separate from the GitHub Release assets and are not updated by the public release workflow.
 
@@ -406,9 +407,11 @@ The sample downloader reads `samples/contents_X.Y.json` from SourceForge. After 
 
 The public workflow builds all supported targets. Windows installers use SignPath production signing by default; a tagged release can explicitly select a genuinely unsigned installer in `release-state.txt`. The release manifest records that mode. When hosted Apple signing is enabled, both RC and GA macOS installers are Developer ID-signed, notarized, stapled, and verified before publication.
 
-With `MACOS_DISTRIBUTION_SIGNING_ENABLED=false`, the workflow publishes validated unsigned macOS packages under their final release filenames. Those two packages are marked as manually replaceable, excluded from `SHA256SUMS` and the manifest's immutable asset list, and preserved rather than compared on workflow reruns. A release manager must replace both with Developer ID-signed, notarized, and stapled packages. Enable the variable after `apple-release-signing` is configured to restore fully automated macOS signing and immutable package hashes.
+With `MACOS_DISTRIBUTION_SIGNING_ENABLED=false`, the workflow builds validated unsigned macOS packages under their final release filenames. Those two packages are marked as manually replaceable, excluded from `SHA256SUMS` and the manifest's immutable asset list, and preserved rather than compared on workflow reruns. A release manager must replace both with Developer ID-signed, notarized, and stapled packages after publication. Enable the variable after `apple-release-signing` is configured to restore fully automated macOS signing and immutable package hashes.
 
-Review the private candidate artifacts, provenance, and validation summary before running `operation=promote`. The public workflow assembles `release-bundle-<version>`, verifies its checksums, manifest, available signing reports, public tag, and expected SHA, then publishes an RC as a GitHub prerelease or GA as the latest release. There is no separate public environment approval in the current repository configuration.
+Before using this flow, configure public `WSJTX/wsjtx` environment `public-release` with one or more eligible release managers as required reviewers and leave **Prevent self-review** off. GitHub requires only one listed reviewer to approve. The public workflow checks this rule with `Actions: read` before starting long builds and fails closed if the rule is missing, malformed, blocks self-review, or cannot be read.
+
+Review the private candidate artifacts, provenance, and validation summary before running `operation=promote`. After all public builds and verification finish, inspect the assemble job's **Verified public release bundle** summary: public tag, full source SHA, workflow run, signing modes, release asset names, and SHA-256 values. The two manually replaceable macOS packages are clearly listed without hashes when distribution signing is disabled. The final `publish` job waits on `public-release`; the same eligible maintainer can approve their own run because self-review is allowed. Only then does the workflow recheck the bundle and exact public tag and publish an RC as a GitHub prerelease or GA as the latest release.
 
 #### 5. Recover without moving tags
 

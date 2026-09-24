@@ -9,6 +9,8 @@ JOB_PATTERN = re.compile(
     r"^  (?P<quote>[\"']?)(?P<name>[A-Za-z_][A-Za-z0-9_-]*)(?P=quote):"
     r"(?:\s+&[A-Za-z_][A-Za-z0-9_-]*)?(?:\s*#.*)?$"
 )
+TIMEOUT_PATTERN = re.compile(r"^    timeout-minutes:\s*(\d+)\s*(?:#.*)?$")
+MINIMUM_JOB_TIMEOUTS = {("build-macos.yml", "build"): 180}
 
 
 def unbounded_jobs(path: Path) -> list[str]:
@@ -18,10 +20,18 @@ def unbounded_jobs(path: Path) -> list[str]:
     job_line = 0
     has_runner = False
     has_timeout = False
+    timeout_minutes: int | None = None
 
     def finish_job() -> None:
         if job_name is not None and has_runner and not has_timeout:
             failures.append(f"{path}:{job_line}: job '{job_name}' has runs-on but no timeout-minutes")
+        minimum = MINIMUM_JOB_TIMEOUTS.get((path.name, job_name or ""))
+        if job_name is not None and has_runner and minimum is not None and (
+            timeout_minutes is None or timeout_minutes < minimum
+        ):
+            failures.append(
+                f"{path}:{job_line}: job '{job_name}' timeout-minutes must be at least {minimum}"
+            )
 
     for line_number, line in enumerate(path.read_text().splitlines(), start=1):
         if line == "jobs:":
@@ -40,6 +50,7 @@ def unbounded_jobs(path: Path) -> list[str]:
             job_line = line_number
             has_runner = False
             has_timeout = False
+            timeout_minutes = None
         elif (
             line.startswith("  ")
             and not line.startswith("    ")
@@ -54,6 +65,9 @@ def unbounded_jobs(path: Path) -> list[str]:
         elif job_name is not None:
             has_runner = has_runner or line.startswith("    runs-on:")
             has_timeout = has_timeout or line.startswith("    timeout-minutes:")
+            timeout_match = TIMEOUT_PATTERN.match(line)
+            if timeout_match:
+                timeout_minutes = int(timeout_match.group(1))
     else:
         finish_job()
 

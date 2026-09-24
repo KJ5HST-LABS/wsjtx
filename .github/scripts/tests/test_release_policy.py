@@ -19,6 +19,46 @@ SPEC.loader.exec_module(release_policy)
 
 
 class ReleasePolicyTest(unittest.TestCase):
+    def test_accepts_publication_environment_with_one_or_more_reviewers_and_self_review(self):
+        release_policy.validate_publication_environment({
+            "name": "public-release",
+            "protection_rules": [{
+                "type": "required_reviewers",
+                "prevent_self_review": False,
+                "reviewers": [
+                    {"type": "User", "reviewer": {"id": 42}},
+                    {"type": "Team", "reviewer": {"id": 7}},
+                ],
+            }],
+        })
+
+    def test_rejects_missing_publication_reviewers(self):
+        with self.assertRaisesRegex(ValueError, "one required-reviewers rule"):
+            release_policy.validate_publication_environment({
+                "name": "public-release",
+                "protection_rules": [],
+            })
+
+    def test_rejects_malformed_or_self_review_blocking_publication_rule(self):
+        for rule in (
+            {"type": "required_reviewers", "reviewers": [{"type": "User", "reviewer": {"id": 42}}]},
+            {
+                "type": "required_reviewers",
+                "prevent_self_review": True,
+                "reviewers": [{"type": "User", "reviewer": {"id": 42}}],
+            },
+            {
+                "type": "required_reviewers",
+                "prevent_self_review": False,
+                "reviewers": [{"type": "User", "reviewer": {"id": "42"}}],
+            },
+        ):
+            with self.subTest(rule=rule), self.assertRaises(ValueError):
+                release_policy.validate_publication_environment({
+                    "name": "public-release",
+                    "protection_rules": [rule],
+                })
+
     def test_classifies_ga_and_rc(self):
         self.assertEqual(release_policy.classify("3.2.0")["channel"], "GA")
         identity = release_policy.classify("3.2.0-rc2")

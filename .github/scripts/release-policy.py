@@ -34,6 +34,37 @@ def classify(version: str) -> dict[str, str]:
     }
 
 
+def validate_publication_environment(environment: object) -> None:
+    if not isinstance(environment, dict) or environment.get("name") != "public-release":
+        raise ValueError("public-release environment response is malformed")
+    rules = environment.get("protection_rules")
+    if not isinstance(rules, list):
+        raise ValueError("public-release environment has no protection_rules list")
+    reviewer_rules = [
+        rule for rule in rules
+        if isinstance(rule, dict) and rule.get("type") == "required_reviewers"
+    ]
+    if len(reviewer_rules) != 1:
+        raise ValueError("public-release environment must have one required-reviewers rule")
+    rule = reviewer_rules[0]
+    if rule.get("prevent_self_review") is not False:
+        raise ValueError("public-release required-reviewers rule must allow self-review")
+    reviewers = rule.get("reviewers")
+    if not isinstance(reviewers, list) or not reviewers:
+        raise ValueError("public-release required-reviewers rule must list eligible reviewers")
+    for reviewer in reviewers:
+        identity = reviewer.get("reviewer") if isinstance(reviewer, dict) else None
+        reviewer_type = reviewer.get("type") if isinstance(reviewer, dict) else None
+        if (
+            not isinstance(reviewer_type, str)
+            or reviewer_type not in {"User", "Team"}
+            or not isinstance(identity, dict)
+            or type(identity.get("id")) is not int
+            or identity["id"] <= 0
+        ):
+            raise ValueError("public-release required-reviewers rule contains a malformed reviewer")
+
+
 def parse_state(contents: str, *, expected_revision: str | None = None) -> dict[str, str]:
     state = {}
     for line in contents.splitlines():
@@ -329,6 +360,8 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
     classify_parser = subparsers.add_parser("classify")
     classify_parser.add_argument("version")
+    environment_parser = subparsers.add_parser("validate-publication-environment")
+    environment_parser.add_argument("environment_json")
     state_parser = subparsers.add_parser("read-state")
     state_parser.add_argument("--root", default=".")
     validate_parser = subparsers.add_parser("validate-source")
@@ -372,6 +405,9 @@ def main() -> int:
     try:
         if args.command == "classify":
             print(json.dumps(classify(args.version)))
+        elif args.command == "validate-publication-environment":
+            validate_publication_environment(json.loads(Path(args.environment_json).read_text(encoding="utf-8")))
+            print("Validated public-release required-reviewer protection")
         elif args.command == "read-state":
             print(json.dumps(read_state(Path(args.root))))
         elif args.command == "validate-source":

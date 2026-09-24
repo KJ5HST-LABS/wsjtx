@@ -120,10 +120,11 @@ release/X.Y metadata commit
        └─→ release.yml builds the private candidate
             └─→ release manager validates/promotes that candidate
                  └─→ public vX.Y.Z[-rcN] builds and checks all distributions
-                      └─→ verified GitHub Release publication
+                          └─→ assembled bundle summary and final `public-release` approval
+                                └─→ verified GitHub Release publication
 ```
 
-The explicit source promotion approves disclosure and publication of the reviewed candidate. The public workflow checks the built artifacts before publishing automatically. An RC publishes a public tag without moving `master`; GA also advances `master` to the promoted commit.
+The explicit source promotion approves disclosure of the reviewed source. After the public workflow builds, verifies, and summarizes its exact bundle, a release manager gives final publication approval on the `public-release` environment. An RC publishes a public tag without moving `master`; GA also advances `master` to the promoted commit.
 
 ### Build Strategy
 
@@ -248,7 +249,7 @@ The release-related files have distinct responsibilities:
 | `release-tag-helper.yml` | Validate the release-branch tip and CI, create an immutable private candidate tag, then call the candidate build |
 | `release.yml` | Build private validation artifacts only; never publish or copy source |
 | `promote-release.yml` | Validate the candidate run and manually copy its exact commit to the public tag; update public `master` only for GA |
-| `public-release.yml` | Rebuild from public source, enforce the tagged signing policy, verify the bundle, and publish automatically |
+| `public-release.yml` | Rebuild from public source, enforce the tagged signing policy, verify and summarize the bundle, then wait for final publication approval |
 
 `release-state.txt` is the version source of truth. Keep `revision=$Format:%H$` literal in Git; Git expands it in exported archives. The workflows reject a tag whose version/channel does not match the tracked state.
 
@@ -262,7 +263,17 @@ rg -n 'hamlib_branch:' .github/workflows
 
 ## 5. Phase 3: Create Repository Secrets
 
-Use environments to keep signing credentials out of ordinary build jobs. The current private `source-promotion` environment has no protection rules or secrets; `CROSS_REPO_TOKEN` is a repository secret. The public repository has no `public-release` environment. The `operation=promote` dispatch is the explicit publication decision. Restricting the private promotion token to an environment remains a recommended hardening task for a repository administrator.
+Use environments to keep signing credentials out of ordinary build jobs. The current private `source-promotion` environment has no protection rules or secrets; `CROSS_REPO_TOKEN` is a repository secret. The public `public-release` environment exists, but currently has no protection rules. The public workflow checks this configuration before starting its build jobs and fails closed if it cannot read a required-reviewer rule that allows self-review. The `operation=promote` dispatch approves public source promotion; a separate approval on the final `publish` job authorizes release publication. Restricting the private promotion token to an environment remains a recommended hardening task for a repository administrator.
+
+### Public Final Publication Approval
+
+Before a public release, a repository administrator must configure `WSJTX/wsjtx` → **Settings → Environments → `public-release`**:
+
+1. Select **Required reviewers** and add one or more eligible release managers. GitHub requires only one of the listed reviewers to approve.
+2. Leave **Prevent self-review** unchecked so the release manager who promoted the source can approve their own workflow run.
+3. Save the protection rules. If deployment branches or tags are restricted, allow public release tags matching `v*`.
+
+The public workflow reads the environment through GitHub's API using only `Actions: read`. Its first job stops before the platform builds if the environment is missing, the reviewer rule is absent or malformed, self-review is blocked, or the API cannot be read. Do not add `public-release` to candidate, source-promotion, dependency-build, or signing jobs; only the final `publish` job waits for this approval.
 
 When migrating a repository secret to a restricted environment, verify the environment copy before deleting the repository-level secret. GitHub can otherwise fall back to a same-named repository secret when a job references `secrets.NAME`, defeating the intended ref restriction. Keep Apple signing credentials environment-only.
 
@@ -623,13 +634,13 @@ Run **Prepare Release Candidate** from the `release/X.Y` branch at the expected 
 
 Inspect the successful Prepare Release Candidate run and record its run ID. From the same `release/X.Y` branch and SHA, run **Promote Release Source** with that run ID, version, and `operation=validate`; after reviewing the checks, repeat with `operation=promote`. The workflow creates public `v...` at the same SHA and starts the public distribution builds. RC promotion leaves public `master` unchanged; GA promotion advances it with a guarded, fast-forward-only update.
 
-### Step 4: Verify Publication
+### Step 4: Review and Approve Final Publication
 
-Confirm every public target build and report is green. Windows installers must match the signing mode recorded in tagged `release-state.txt`. In hosted-signing mode, macOS RC and GA packages must be Developer ID-signed, notarized, stapled, and Gatekeeper-accepted before publication.
+Wait for all public target builds, verification, and assembly to finish. Review the assemble job's **Verified public release bundle** summary before approving: it shows the public tag, full source SHA, workflow run, Windows and macOS signing modes, and every release asset's SHA-256. If manual macOS signing is selected, the two replaceable `.pkg` assets are listed with their hashes intentionally absent from `SHA256SUMS`. Windows uses SignPath by default; an explicitly source-pinned unsigned release is identified in the summary and does not require SignPath readiness. In hosted-signing mode, macOS packages must be Developer ID-signed, notarized, stapled, and Gatekeeper-accepted before publication.
 
-If `MACOS_DISTRIBUTION_SIGNING_ENABLED` is false, inspect the validated unsigned packages after publication. Download both `.pkg` assets, sign and notarize them outside GitHub, verify their signatures and installed behavior, then replace the release assets without changing their filenames. They are intentionally absent from `SHA256SUMS`; the manifest records them as manually replaceable. After the `apple-release-signing` environment is fully populated, enable the variable for future tags.
+The final `publish` job waits on the public `public-release` environment. An eligible release manager approves the run there; GitHub needs only one listed reviewer, and with **Prevent self-review** off the same maintainer can approve the run they triggered by promoting source. This second deliberate click happens after the exact verified bundle is ready and before the workflow creates or updates the GitHub Release and uploads assets. The publish job then rechecks bundle checksums, manifest identity, signing modes, and the immutable public tag. RCs publish as prereleases; GAs publish as the latest release.
 
-Review the private candidate artifacts before selecting `operation=promote`. The public workflow verifies the publication bundle's manifest, asset hashes, source SHA, and available signing reports before publishing. Verify that an RC is marked prerelease and does not move `master`; verify that GA is the latest release and does move `master`.
+If `MACOS_DISTRIBUTION_SIGNING_ENABLED` is false, after publication download both `.pkg` assets, sign and notarize them outside GitHub, verify their signatures and installed behavior, then replace the assets without changing their filenames. They are intentionally absent from `SHA256SUMS`; the manifest and assemble summary identify them as manually replaceable. Enable the variable after the `apple-release-signing` environment is fully configured.
 
 ### Step 5: Verify the Artifacts
 
@@ -724,7 +735,7 @@ Protect `develop` and `release/*` from force-push and deletion, and apply the te
 
 On the public repository, add a tag ruleset for `v*` that blocks update and deletion and limits creation to the source-promotion identity. Protect `master` from force-push and deletion. `promote-release.yml` additionally requires GA to advance the prior public `master` and updates the branch and new tag atomically.
 
-Restrict `candidate-tagging` and `source-promotion` to protected private `release/*` branches, `apple-release-signing` to public `v*` tags, and `windows-release-signing` to protected public `master` plus `v*` tags. These restrictions keep modified workflow code on an arbitrary branch from receiving a release credential after secrets have been migrated into those environments. The current public workflow publishes after its verification jobs; adding a second approval would require a configured public environment and an intentional workflow change.
+Restrict `candidate-tagging` and `source-promotion` to protected private `release/*` branches, `apple-release-signing` to public `v*` tags, and `windows-release-signing` to protected public `master` plus `v*` tags. These restrictions keep modified workflow code on an arbitrary branch from receiving a release credential after secrets have been migrated into those environments. Configure `public-release` with eligible release-manager reviewers, one approval, and **Prevent self-review** off; the public workflow verifies this rule before building and gates only its final publish job.
 
 ### Dependabot & Auto-merge Policy
 
