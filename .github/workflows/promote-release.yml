@@ -36,7 +36,6 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-          persist-credentials: false
       - name: Validate candidate run and immutable tag
         id: candidate
         env:
@@ -63,17 +62,13 @@ jobs:
           RUN_SHA=$(jq -r .head_sha <<<"$RUN")
           git fetch origin "+refs/tags/$TAG:refs/tags/$TAG" "+refs/heads/$BRANCH:refs/remotes/origin/$BRANCH"
           TAG_SHA=$(git rev-parse "$TAG^{commit}")
-          if [ "$GITHUB_SHA" != "$TAG_SHA" ]; then
-            echo "::error::Run this workflow from $BRANCH at $TAG_SHA"
+          BRANCH_SHA=$(git rev-parse "origin/$BRANCH^{commit}")
+          if [ "$GITHUB_REF" != "refs/heads/$BRANCH" ] || [ "$GITHUB_SHA" != "$BRANCH_SHA" ]; then
+            echo "::error::Run this workflow from the current $BRANCH tip at $BRANCH_SHA"
             exit 1
           fi
           if [ "$TAG_SHA" != "$RUN_SHA" ]; then
             echo "::error::$TAG resolves to $TAG_SHA but run $RUN_ID built $RUN_SHA"
-            exit 1
-          fi
-          BRANCH_SHA=$(git rev-parse "origin/$BRANCH^{commit}")
-          if [ "$TAG_SHA" != "$BRANCH_SHA" ]; then
-            echo "::error::$TAG is $TAG_SHA but the current $BRANCH tip is $BRANCH_SHA"
             exit 1
           fi
           git checkout --detach "$TAG_SHA"
