@@ -249,7 +249,7 @@ jobs:
               artifacts/wsjtx-*-windows-signing-verification \
               release-bundle/verification/
           fi
-      - name: Upload publication bundle for approval
+      - name: Upload publication bundle
         uses: actions/upload-artifact@v7
         with:
           name: release-bundle-${{ needs.prepare.outputs.version }}
@@ -261,7 +261,6 @@ jobs:
     needs: [prepare, assemble]
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment: public-release
     permissions:
       actions: read
       contents: write
