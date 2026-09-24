@@ -400,7 +400,7 @@ From the same release branch and SHA, run **Promote Release Source** with the sa
 
 The public tag exposes the corresponding source required for public distribution and triggers fresh public distribution builds. RC promotion does not move public `master`; GA promotion advances `master` to the same commit with a guarded update.
 
-The sample downloader reads `samples/contents_X.Y.json` from SourceForge. After adding a sample, run the `upload-samples` target from a configured build of the tagged source and verify the published catalog lists the new file. The Help menu's online guide is served from the public `feat-web-pages` branch; publish the guide generated from the tagged source there. Update the legacy `https://wsjt.sourceforge.io/Release_Notes.txt` document for already released binaries that still open it. These remote files are separate from the GitHub Release assets and are not updated by the public release workflow.
+The sample downloader reads `samples/contents_X.Y.json` from SourceForge. After adding a sample, run the `upload-samples` target from a configured build of the tagged source and verify the published catalog lists the new file. The Help menu's Release Notes and Online User Guide are served from the public `feat-web-pages` branch; publish `Release_Notes.txt` and a guide generated from the tagged source there. Update the legacy `https://wsjt.sourceforge.io/Release_Notes.txt` document for already released binaries that still open it. These remote files are separate from the GitHub Release assets and are not updated by the public release workflow.
 
 #### 4. Verify publication
 

@@ -4447,10 +4447,7 @@ void MainWindow::closeEvent(QCloseEvent * e)
 
 void MainWindow::on_actionRelease_Notes_triggered ()
 {
-  QString const notes_url = version ().endsWith ("-devel")
-    ? QString {"https://github.com/WSJTX/wsjtx/releases/latest"}
-    : QString {"https://raw.githubusercontent.com/WSJTX/wsjtx/v%1/Release_Notes.txt"}.arg (version ());
-  QDesktopServices::openUrl (QUrl {notes_url});
+  QDesktopServices::openUrl (QUrl {"https://wsjtx.github.io/wsjtx/Release_Notes.txt"});
 }
 
 void MainWindow::on_actionFT8_DXpedition_Mode_User_Guide_triggered()
