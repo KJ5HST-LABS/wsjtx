@@ -61,7 +61,7 @@ For a version such as `3.2.0-rc1`:
 1. `build/v3.2.0-rc1` identifies an immutable internal candidate and builds validation artifacts
 2. A release manager inspects that run and manually promotes its exact commit as public tag `v3.2.0-rc1`
 3. The public repository builds and signs the distribution artifacts from that tag
-4. A final `public-release` approval publishes the GitHub prerelease or release
+4. The public workflow verifies the artifacts and publishes the GitHub prerelease or release
 
 An RC promotion publishes only its tag, so public `master` remains the latest GA source. GA promotion also advances public `master` to the same commit. This keeps public source, signed binaries, and the release page bound to one reviewed revision.
 
@@ -312,7 +312,7 @@ CI/CD serves two purposes: **quality gates** (does it compile?) and **release au
 **What CI checks:**
 - Default PR and branch CI compiles and tests Linux x86_64; `full-ci`, manual CI, and release candidates provide broader coverage
 - On macOS, ordinary CI uses ad-hoc signing for validation. Public RC and GA packages use hosted Developer ID signing when it is enabled; otherwise a release manager replaces the validated packages with manually signed packages.
-- On Windows, public RC and GA installers are Authenticode-signed through SignPath. Ordinary CI may use a per-run ephemeral self-signed certificate.
+- On Windows, public RC and GA installers use SignPath by default. A tagged release can explicitly select an unsigned installer. Ordinary CI may use a per-run ephemeral self-signed certificate.
 - Build artifacts are uploaded for inspection
 - **Tests pass on every platform** (Qt helpers, decoder smoke tests, pFUnit Fortran unit tests — registered via ctest). See [Test Failure Policy](#test-failure-policy) below.
 
@@ -328,7 +328,7 @@ CI/CD serves two purposes: **quality gates** (does it compile?) and **release au
 
 ### Release: Build and Publish
 
-The release pipeline is separate from CI. An internal candidate tag builds without publishing; manual source promotion starts public distribution builds, and a second approval publishes them. See [Section 6](#6-the-release-process).
+The release pipeline is separate from CI. An internal candidate tag builds without publishing; manual source promotion starts public distribution builds and their automatic publication checks. See [Section 6](#6-the-release-process).
 
 ### Where CI runs
 
@@ -367,7 +367,7 @@ This is the simplest possible policy for v1. If a flaky test emerges, the team c
 
 ## 6. The Release Process
 
-Releases are tag-defined but approval-driven. The internal `build/v...` tag fixes the candidate revision; it does not publish source or binaries. A release manager separately approves copying that exact revision to the public `v...` tag, and the public release waits for one final approval after its publication artifacts are available for inspection.
+Releases are tag-defined and require an explicit promotion decision. The internal `build/v...` tag fixes the candidate revision; it does not publish source or binaries. A release manager reviews the candidate and dispatches `Promote Release Source` with `operation=promote`. The public workflow then verifies its artifacts and publishes the release automatically.
 
 ### Overview
 
@@ -376,9 +376,8 @@ release/3.2 metadata commit
   └─→ internal build/v3.2.0-rc1 candidate and validation artifacts
         └─→ manual source promotion
               └─→ public v3.2.0-rc1 tag
-                    └─→ public all-platform builds and signing
-                          └─→ public-release approval
-                                └─→ public GitHub prerelease
+                    └─→ public all-platform builds and policy checks
+                          └─→ public GitHub prerelease
 ```
 
 ### Step by step
@@ -403,11 +402,11 @@ The public tag exposes the corresponding source required for public distribution
 
 #### 4. Review builds and approve publication
 
-The public workflow builds all supported targets. Both RC and GA Windows installers use SignPath production signing. When hosted Apple signing is enabled, both RC and GA macOS installers are Developer ID-signed, notarized, stapled, and verified before publication.
+The public workflow builds all supported targets. Windows installers use SignPath production signing by default; a tagged release can explicitly select a genuinely unsigned installer in `release-state.txt`. The release manifest records that mode. When hosted Apple signing is enabled, both RC and GA macOS installers are Developer ID-signed, notarized, stapled, and verified before publication.
 
 With `MACOS_DISTRIBUTION_SIGNING_ENABLED=false`, the workflow publishes validated unsigned macOS packages under their final release filenames. Those two packages are marked as manually replaceable, excluded from `SHA256SUMS` and the manifest's immutable asset list, and preserved rather than compared on workflow reruns. A release manager must replace both with Developer ID-signed, notarized, and stapled packages. Enable the variable after `apple-release-signing` is configured to restore fully automated macOS signing and immutable package hashes.
 
-Download and review `release-bundle-<version>`, including its checksums, manifest, and signing reports. Approve the waiting `public-release` environment only when they all correspond to the public tag and expected SHA. This final approval publishes an RC as a GitHub prerelease or GA as the latest release.
+Review the private candidate artifacts, provenance, and validation summary before running `operation=promote`. The public workflow assembles `release-bundle-<version>`, verifies its checksums, manifest, available signing reports, public tag, and expected SHA, then publishes an RC as a GitHub prerelease or GA as the latest release. There is no separate public environment approval in the current repository configuration.
 
 #### 5. Recover without moving tags
 
@@ -415,7 +414,7 @@ Rerun a failed workflow against the existing immutable tag after fixing transien
 
 ### Release candidates
 
-Before a final release, cut one or more RCs and let the team exercise the same public, signed distribution path. An RC uses a SemVer suffix such as `3.2.0-rc1` and is published as a GitHub prerelease, so it does not replace the latest GA release.
+Before a final release, cut one or more RCs and let the team exercise the same public distribution path and tagged signing policy. An RC uses a SemVer suffix such as `3.2.0-rc1` and is published as a GitHub prerelease, so it does not replace the latest GA release.
 
 #### When to cut an RC
 
@@ -438,7 +437,7 @@ If an RC fails testing, push a fix to the release branch, update the metadata to
 
 #### Promoting an RC to GA
 
-Change the tracked state from `RC n` to `GA` in a metadata-only commit, wait for CI, and create a new `3.2.0` candidate through the same validate/create/promote/approve sequence. Even when application source is unchanged, the GA commit is intentionally distinct so ordinary builds from its GitHub source archive report GA rather than RC.
+Change the tracked state from `RC n` to `GA` in a metadata-only commit, wait for CI, and create a new `3.2.0` candidate through the same validate/create/promote sequence. Even when application source is unchanged, the GA commit is intentionally distinct so ordinary builds from its GitHub source archive report GA rather than RC.
 
 ### What the release produces
 
@@ -457,7 +456,7 @@ GitHub also adds automatic **Source code (zip)** and **Source code (tar.gz)** li
 
 ### Who can trigger a release?
 
-Team members can run candidate validation. Creating the candidate, promoting its source, and approving the `public-release` environment are explicit release-manager actions; repository protection and environment access determine who can perform each one.
+Team members can run candidate validation. Creating the candidate and promoting its source are explicit release-manager actions; repository permissions determine who can perform them.
 
 ---
 
@@ -653,17 +652,16 @@ The Prepare Release Candidate run calls internal `release.yml` to build validati
                 └─→ public v3.2.0-rc1
                       └─→ public Linux, macOS, and Windows builds
                             └─→ signing and provenance checks
-                                  └─→ public-release approval
-                                        └─→ public prerelease
+                                  └─→ automatic public prerelease
 ```
 
-### 5. Promote, verify, and approve
+### 5. Promote and verify
 
 ```bash
 # After running Promote Release Source with validate and then promote:
 gh api repos/WSJTX/wsjtx/git/ref/tags/v3.2.0-rc1 --jq .object.sha
 
-# After reviewing the public signing reports and approving public-release:
+# After the public workflow verifies artifacts and publishes:
 gh release view v3.2.0-rc1 --repo WSJTX/wsjtx
 ```
 
