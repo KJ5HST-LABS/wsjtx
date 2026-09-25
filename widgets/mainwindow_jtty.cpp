@@ -8,6 +8,7 @@
 #include "Logger.hpp"
 #include <QByteArray>
 #include <QDateTime>
+#include <QSettings>
 #include "Modulator/Modulator.hpp"
 #include <algorithm>
 #include <array>
@@ -37,13 +38,15 @@ namespace
   }
 
   Jtty::NativeMacroContext jttyNativeMacroContext(
-      Configuration const& configuration, QString const& hisCall, int serialNumber)
+      Configuration const& configuration, QString const& hisCall, int serialNumber,
+      int snr)
   {
     Jtty::NativeMacroContext context;
     context.myCall = configuration.my_callsign();
     context.hisCall = hisCall;
     context.serialNumber = serialNumber;
     context.grid = configuration.my_grid();
+    context.snr = snr;
     context.exchangeProfile = jttyExchangeProfile(configuration);
 
     switch (context.exchangeProfile) {
@@ -95,7 +98,7 @@ extern "C" {
 
   void jtty_get_updates_(char text_blocks[], qint64 message_ids[],
                          float frequencies[], float start_tsync[], bool eom[],
-                         int* count, fortran_charlen_t);
+                         int snr[], int* count, fortran_charlen_t);
 
   void genjtty_profile_(char * msg, int const* exchange_profile,
                        int itone[], int* nsym, fortran_charlen_t);
@@ -280,15 +283,17 @@ bool MainWindow::jtty_decode(int k, int istart0, int istop)
       std::array<float, jttyMaxUpdates> frequencies {};
       std::array<float, jttyMaxUpdates> sequenceStarts {};
       std::array<bool, jttyMaxUpdates> complete {};
+      std::array<int, jttyMaxUpdates> snrValues {};
       jtty_get_updates_(textBlocks.data(), messageIds.data(), frequencies.data(),
-                        sequenceStarts.data(), complete.data(), &updateCount,
-                        (FCL)jttyUpdateBufferSize);
+                        sequenceStarts.data(), complete.data(), snrValues.data(),
+                        &updateCount, (FCL)jttyUpdateBufferSize);
       for (int i = 0; i < updateCount; ++i) {
           QString const text = QString::fromLatin1(
               textBlocks.data() + i * jttyMessageSize, jttyMessageSize).trimmed();
           if (messageIds[i] <= 0) continue;
           updates.append({messageIds[i], frequencies[i], text,
                           sequenceStarts[i], complete[i]});
+          m_jttyLastSnr = snrValues[i];
       }
   } while (updateCount == jttyMaxUpdates);
 
@@ -931,7 +936,7 @@ bool MainWindow::sendJttyFunctionKey(int index)
   if(macro.simplified().isEmpty()) return false;
 
   auto const context = jttyNativeMacroContext(
-    m_config, m_hisCall, ui->sbSerialNumber_2->value());
+    m_config, m_hisCall, ui->sbSerialNumber_2->value(), m_jttyLastSnr);
   auto const compiled=Jtty::compileNativeMacro(macro,context);
   if(compiled.status == Jtty::NativeMacroStatus::LiteralFallback) {
     jtty_tx(compiled.text);
@@ -963,7 +968,7 @@ bool MainWindow::sendJttyFunctionKey(int index)
 QString MainWindow::jtty_msg_expand(QString t)
 {
   auto const context = jttyNativeMacroContext(
-    m_config, m_hisCall, ui->sbSerialNumber_2->value());
+    m_config, m_hisCall, ui->sbSerialNumber_2->value(), m_jttyLastSnr);
   return Jtty::expandLiteralMacro(t, context);
 }
 
@@ -980,6 +985,30 @@ void MainWindow::on_TxFreqSpinBox_2_valueChanged(int n)
 void MainWindow::on_sbFtol_2_valueChanged (int n)
 {
   m_wideGraph->setTol(n);
+}
+
+void MainWindow::on_comboBoxJttyStyle_currentIndexChanged(int index)
+{
+  auto const previousStyle = static_cast<Jtty::MessageStyle>(m_jttyMessageStyle);
+  auto const newStyle = static_cast<Jtty::MessageStyle>(index);
+  QLineEdit* const msgFields[8] = {ui->msg1, ui->msg2, ui->msg3, ui->msg4,
+                                    ui->msg5, ui->msg6, ui->msg7, ui->msg8};
+
+  m_settings->beginGroup("MainWindow");
+  for (int i = 0; i < 8; ++i) {
+    // Save the outgoing style's currently displayed text before switching away,
+    // so in-session edits aren't lost.
+    m_settings->setValue(Jtty::messageStyleSettingsKey(previousStyle, i + 1),
+                          msgFields[i]->text());
+  }
+  for (int i = 0; i < 8; ++i) {
+    int const functionKey = i + 1;
+    msgFields[i]->setText(m_settings->value(
+      Jtty::messageStyleSettingsKey(newStyle, functionKey),
+      Jtty::messageStyleDefaultTemplate(newStyle, functionKey)).toString());
+  }
+  m_settings->endGroup();
+  m_jttyMessageStyle = index;
 }
 
 #ifdef WIN32
@@ -1003,7 +1032,7 @@ QString MainWindow::jttyRejectReasonText(JttyTxRejectReason reason) const
 void MainWindow::handleMmttyTxString(QString message)
 {
   auto const context = jttyNativeMacroContext(
-    m_config, m_hisCall, ui->sbSerialNumber_2->value());
+    m_config, m_hisCall, ui->sbSerialNumber_2->value(), m_jttyLastSnr);
   auto const compiled = Jtty::compileN1mmMessage(message, context);
   if (m_mode != "JTTY") {
     if (compiled.status == Jtty::N1mmCompileStatus::Literal) {

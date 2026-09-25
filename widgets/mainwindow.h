@@ -645,6 +645,7 @@ private slots:
   void on_sbTR_FST4W_valueChanged (int);
   void on_sbFtol_valueChanged (int);
   void on_sbFtol_2_valueChanged (int);
+  void on_comboBoxJttyStyle_currentIndexChanged (int index);
   void on_cbFast9_clicked(bool b);
   void on_sbCQTxFreq_valueChanged(int n);
   void on_cbCQTx_toggled(bool b);
@@ -1257,6 +1258,8 @@ private:
   QString m_baseCall;
   QString m_hisCall;
   QString m_hisGrid;
+  int m_jttyLastSnr = -10;  // SNR of most recent JTTY decode, for %R; stubbed for now
+  int m_jttyMessageStyle = 0;  // Jtty::MessageStyle: 0=Contest, 1=Ft8 (see JttyMessages.hpp)
   QString m_appDir;
   QString m_cqStr;
   QString m_palette;

@@ -15,6 +15,7 @@
 #include "JttyMessages.hpp"
 
 #include <QSettings>
+#include <QSignalBlocker>
 #include <QVariant>
 #include <QThread>
 #include <QTimer>
@@ -85,14 +86,18 @@ void MainWindow::writeSettings()
   m_settings->setValue("FoxNslots",m_Nslots0);
   m_settings->setValue("SerialNumber",ui->sbSerialNumber->value ());
   m_settings->setValue("SerialNumberJTTY",ui->sbSerialNumber_2->value ());
-  m_settings->setValue("JTTY_msg1",ui->msg1->text());
-  m_settings->setValue("JTTY_msg2",ui->msg2->text());
-  m_settings->setValue("JTTY_msg3",ui->msg3->text());
-  m_settings->setValue("JTTY_msg4",ui->msg4->text());
-  m_settings->setValue("JTTY_msg5",ui->msg5->text());
-  m_settings->setValue("JTTY_msg6",ui->msg6->text());
-  m_settings->setValue("JTTY_msg7",ui->msg7->text());
-  m_settings->setValue("JTTY_msg8",ui->msg8->text());
+  m_settings->setValue("JTTY_MessageStyle", ui->comboBoxJttyStyle->currentIndex());
+  {
+    // Only the currently active style's displayed text needs saving here --
+    // the inactive style's templates were already saved at its last
+    // switch-away (see MainWindow::on_comboBoxJttyStyle_currentIndexChanged).
+    auto const style = static_cast<Jtty::MessageStyle>(ui->comboBoxJttyStyle->currentIndex());
+    QLineEdit* const msgFields[8] = {ui->msg1, ui->msg2, ui->msg3, ui->msg4,
+                                      ui->msg5, ui->msg6, ui->msg7, ui->msg8};
+    for (int i = 0; i < 8; ++i) {
+      m_settings->setValue(Jtty::messageStyleSettingsKey(style, i + 1), msgFields[i]->text());
+    }
+  }
   m_settings->setValue("FoxTextMsg", m_freeTextMsg0);
   m_settings->setValue("WorkDupes", ui->cbWorkDupes->isChecked());
   m_settings->setValue("JTTY_LowerCase",ui->cbLowerCase->isChecked());
@@ -315,10 +320,21 @@ void MainWindow::readSettings()
   if(!m_config.superFox()) ui->sbNslots->setValue(m_Nslots);
   ui->sbSerialNumber->setValue (m_settings->value ("SerialNumber", 1).toInt ());
   ui->sbSerialNumber_2->setValue (m_settings->value ("SerialNumberJTTY", 1).toInt ());
-  auto const jttyTemplate = [this] (int functionKey) {
-    QString const key = QStringLiteral("JTTY_msg%1").arg(functionKey);
+  int const jttyStyleIndex = m_settings->value("JTTY_MessageStyle", 0).toInt();
+  {
+    // Restoring the index would otherwise fire on_comboBoxJttyStyle_currentIndexChanged,
+    // which saves/reloads msg1-8 itself -- redundant and premature here, and it would
+    // nest another "MainWindow" settings group inside this function's own.
+    QSignalBlocker const blocker {ui->comboBoxJttyStyle};
+    ui->comboBoxJttyStyle->setCurrentIndex(jttyStyleIndex);
+  }
+  m_jttyMessageStyle = jttyStyleIndex;
+  auto const jttyStyle = static_cast<Jtty::MessageStyle>(jttyStyleIndex);
+  auto const jttyTemplate = [this, jttyStyle] (int functionKey) {
+    QString const key = Jtty::messageStyleSettingsKey(jttyStyle, functionKey);
     QString const saved = m_settings->value(
-      key, Jtty::nativeMacroTemplate(functionKey)).toString();
+      key, Jtty::messageStyleDefaultTemplate(jttyStyle, functionKey)).toString();
+    if (jttyStyle != Jtty::MessageStyle::Contest) return saved;
     QString const migrated = Jtty::migratedNativeMacroTemplate(functionKey, saved);
     if (m_settings->contains(key) && migrated != saved) {
       m_settings->setValue(key, migrated);

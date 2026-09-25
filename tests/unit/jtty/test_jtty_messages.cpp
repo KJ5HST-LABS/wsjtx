@@ -86,10 +86,10 @@ private slots:
     QCOMPARE (int {movedDefault.atoms.at (0).subtype},
               static_cast<int> (Jtty::CallAction::Call));
 
-    auto const unknownPlaceholder = Jtty::compileNativeMacro (
+    auto const knownSnrPlaceholder = Jtty::compileNativeMacro (
         8, QString {"599 %R"}, context);
-    QCOMPARE (unknownPlaceholder.status, Jtty::NativeMacroStatus::LiteralFallback);
-    QCOMPARE (unknownPlaceholder.text, QString {"599 %R"});
+    QCOMPARE (knownSnrPlaceholder.status, Jtty::NativeMacroStatus::LiteralFallback);
+    QCOMPARE (knownSnrPlaceholder.text, QString {"599 -10"});
 
     auto const editedLegacyCase = Jtty::compileNativeMacro (
         2, QString {"%h 599 %n"}, context);
@@ -931,6 +931,59 @@ private slots:
     QVERIFY (Jtty::shouldApplyToQsoHistory (false, 1504.f, 1500.f, 5.f));
     QVERIFY (!Jtty::shouldApplyToQsoHistory (false, 1505.f, 1500.f, 5.f));
     QVERIFY (Jtty::shouldApplyToQsoHistory (true, 1510.f, 1500.f, 5.f));
+  }
+
+  void snrFormattingHasLeadingSignAndZeroPad ()
+  {
+    QCOMPARE (Jtty::formatSnr (-10), QString {"-10"});
+    QCOMPARE (Jtty::formatSnr (5), QString {"+05"});
+    QCOMPARE (Jtty::formatSnr (-5), QString {"-05"});
+    QCOMPARE (Jtty::formatSnr (0), QString {"+00"});
+    QCOMPARE (Jtty::formatSnr (100), QString {"+100"});
+  }
+
+  void ft8StyleTemplatesMatchSpec ()
+  {
+    QCOMPARE (Jtty::ft8StyleMacroTemplate (1), QString {"%H %M %G"});
+    QCOMPARE (Jtty::ft8StyleMacroTemplate (2), QString {"%H %M %R"});
+    QCOMPARE (Jtty::ft8StyleMacroTemplate (3), QString {"%H %M R%R"});
+    QCOMPARE (Jtty::ft8StyleMacroTemplate (4), QString {"%H %M RRR"});
+    QCOMPARE (Jtty::ft8StyleMacroTemplate (5), QString {"%H %M 73"});
+    QCOMPARE (Jtty::ft8StyleMacroTemplate (6), QString {"CQ %M %G"});
+    QVERIFY (Jtty::ft8StyleMacroTemplate (7).isEmpty ());
+    QVERIFY (Jtty::ft8StyleMacroTemplate (8).isEmpty ());
+  }
+
+  void ft8StyleLiteralExpansionSubstitutesGridAndSnr ()
+  {
+    // %G's own truncate-to-4 behavior for extended subsquare grids is covered
+    // separately by configuredSubsquareProducesGrid4WithoutChangingLiteralExpansion
+    // (the literal-macro path deliberately does not truncate); a plain 4-char
+    // grid here keeps this test focused on the new %R substitution.
+    Jtty::NativeMacroContext context {QString {"K1ABC"}, QString {"W9XYZ"}, 0};
+    context.grid = QStringLiteral ("FN20");
+    context.snr = -7;
+
+    QCOMPARE (Jtty::expandLiteralMacro (Jtty::ft8StyleMacroTemplate (1), context),
+              QString {"W9XYZ K1ABC FN20"});
+    QCOMPARE (Jtty::expandLiteralMacro (Jtty::ft8StyleMacroTemplate (2), context),
+              QString {"W9XYZ K1ABC -07"});
+    QCOMPARE (Jtty::expandLiteralMacro (Jtty::ft8StyleMacroTemplate (3), context),
+              QString {"W9XYZ K1ABC R-07"});
+    QCOMPARE (Jtty::expandLiteralMacro (Jtty::ft8StyleMacroTemplate (6), context),
+              QString {"CQ K1ABC FN20"});
+  }
+
+  void messageStyleHelpersDistinguishContestAndFt8 ()
+  {
+    QCOMPARE (Jtty::messageStyleSettingsKey (Jtty::MessageStyle::Contest, 3),
+              QString {"JTTY_msg3"});
+    QCOMPARE (Jtty::messageStyleSettingsKey (Jtty::MessageStyle::Ft8, 3),
+              QString {"JTTY_FT8_msg3"});
+    QCOMPARE (Jtty::messageStyleDefaultTemplate (Jtty::MessageStyle::Contest, 1),
+              Jtty::nativeMacroTemplate (1));
+    QCOMPARE (Jtty::messageStyleDefaultTemplate (Jtty::MessageStyle::Ft8, 1),
+              Jtty::ft8StyleMacroTemplate (1));
   }
 };
 

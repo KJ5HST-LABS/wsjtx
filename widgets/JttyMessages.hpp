@@ -141,6 +141,7 @@ namespace Jtty
     NativeExchangeProfile exchangeProfile {NativeExchangeProfile::None};
     QString configuredExchange;
     QString grid;
+    int snr {-10};  // SNR of received signal, for %R; stubbed until the decoder reports it
 
     NativeMacroContext () = default;
 
@@ -294,6 +295,41 @@ namespace Jtty
     }
   }
 
+  // Chat/QSO-style templates for JTTY's "FT8 style" message preset (as opposed
+  // to the contest-exchange-oriented templates above). F7/F8 are left blank.
+  inline QString ft8StyleMacroTemplate (int functionKey)
+  {
+    static QString const templates[] {
+      QStringLiteral ("%H %M %G"),
+      QStringLiteral ("%H %M %R"),
+      QStringLiteral ("%H %M R%R"),
+      QStringLiteral ("%H %M RRR"),
+      QStringLiteral ("%H %M 73"),
+      QStringLiteral ("CQ %M %G"),
+      QString {},
+      QString {}
+    };
+    if (functionKey < 1 || functionKey > 8) return {};
+    return templates[functionKey - 1];
+  }
+
+  enum class MessageStyle : qint8 { Contest = 0, Ft8 = 1 };
+
+  // QSettings key for one function key's template under the given style, so
+  // Contest- and FT8-style edits persist independently of each other.
+  inline QString messageStyleSettingsKey (MessageStyle style, int functionKey)
+  {
+    return style == MessageStyle::Ft8
+      ? QStringLiteral ("JTTY_FT8_msg%1").arg (functionKey)
+      : QStringLiteral ("JTTY_msg%1").arg (functionKey);
+  }
+
+  inline QString messageStyleDefaultTemplate (MessageStyle style, int functionKey)
+  {
+    return style == MessageStyle::Ft8
+      ? ft8StyleMacroTemplate (functionKey) : nativeMacroTemplate (functionKey);
+  }
+
   inline QString normalizedMacroTemplate (QString const& macroTemplate)
   {
     return macroTemplate.simplified ().toUpper ();
@@ -330,6 +366,11 @@ namespace Jtty
     return configured;
   }
 
+  inline QString formatSnr (int snr)
+  {
+    return QString::asprintf ("%+03d", snr);
+  }
+
   inline QString expandLiteralMacro (QString macroTemplate,
                                      NativeMacroContext const& context)
   {
@@ -339,6 +380,7 @@ namespace Jtty
     macroTemplate.replace (QStringLiteral ("%N"), formatSerialNumber (context.serialNumber));
     macroTemplate.replace (QStringLiteral ("%E"), nativeExchangeFieldText (context));
     macroTemplate.replace (QStringLiteral ("%G"), context.grid);
+    macroTemplate.replace (QStringLiteral ("%R"), formatSnr (context.snr));
     return macroTemplate;
   }
 

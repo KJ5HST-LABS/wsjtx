@@ -9,6 +9,7 @@ program test_jtty_get_updates
   integer(int64) :: message_ids(BATCH_SIZE)
   real :: frequencies(BATCH_SIZE),start_tsync(BATCH_SIZE)
   logical*1 :: eom(BATCH_SIZE)
+  integer :: snr(BATCH_SIZE)
   type(message_assembly) :: message
   integer :: i,count
 
@@ -21,7 +22,7 @@ program test_jtty_get_updates
   call expect(npending.eq.1, &
        'updates for one logical message coalesce before delivery')
 
-  call jtty_get_updates(text_blocks,message_ids,frequencies,start_tsync,eom,count)
+  call jtty_get_updates(text_blocks,message_ids,frequencies,start_tsync,eom,snr,count)
   call expect(count.eq.1 .and. npending.eq.0, &
        'retrieving an update drains it exactly once')
   call expect(message_ids(1).eq.41_int64 .and. &
@@ -30,13 +31,15 @@ program test_jtty_get_updates
   call expect(abs(frequencies(1)-1500.4).lt.0.001 .and. &
        abs(start_tsync(1)-1.25).lt.0.001 .and. eom(1), &
        'the batch preserves structured message metadata')
-  call jtty_get_updates(text_blocks,message_ids,frequencies,start_tsync,eom,count)
+  call expect(snr(1).eq.-10, &
+       'the batch reports the stub SNR value until real estimation exists')
+  call jtty_get_updates(text_blocks,message_ids,frequencies,start_tsync,eom,snr,count)
   call expect(count.eq.0, 'a drained update is not returned again')
 
   message=make_message(42_int64,1501.0,2.5,'UNCHANGED TEXT')
   call queue_message_update(message,.false.)
   call queue_message_update(message,.true.)
-  call jtty_get_updates(text_blocks,message_ids,frequencies,start_tsync,eom,count)
+  call jtty_get_updates(text_blocks,message_ids,frequencies,start_tsync,eom,snr,count)
   call expect(count.eq.1 .and. eom(1) .and. &
        trim(block_text(text_blocks,1)).eq.'UNCHANGED TEXT', &
        'completion metadata coalesces when message text is unchanged')
@@ -51,7 +54,7 @@ program test_jtty_get_updates
   call expect(npending.eq.35, &
        'the pending store retains more than one ABI batch')
 
-  call jtty_get_updates(text_blocks,message_ids,frequencies,start_tsync,eom,count)
+  call jtty_get_updates(text_blocks,message_ids,frequencies,start_tsync,eom,snr,count)
   call expect(count.eq.BATCH_SIZE .and. npending.eq.5, &
        'the first batch drains the oldest thirty updates')
   do i=1,BATCH_SIZE
@@ -64,7 +67,7 @@ program test_jtty_get_updates
           'the first batch preserves completion state')
   enddo
 
-  call jtty_get_updates(text_blocks,message_ids,frequencies,start_tsync,eom,count)
+  call jtty_get_updates(text_blocks,message_ids,frequencies,start_tsync,eom,snr,count)
   call expect(count.eq.5 .and. npending.eq.0, &
        'a second batch drains every remaining update')
   do i=1,5
