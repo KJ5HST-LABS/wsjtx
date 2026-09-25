@@ -90,7 +90,7 @@ with important information for tracking the Moon and performing
 automatic Doppler control.  The right-hand portion of the window
 becomes visible when you check *Doppler tracking*.
 
-image::Astronomical_data.png[align="center",alt="Astronomical data"]
+image::Astronomical_data.png[align="center",width=50%,alt="Astronomical data"]
 
 Five different types of Doppler tracking are provided:
 
