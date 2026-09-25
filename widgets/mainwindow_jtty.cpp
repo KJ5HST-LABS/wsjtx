@@ -79,12 +79,6 @@ namespace
   constexpr int jttyMaxUpdates = 30;
   constexpr int jttyMessageSize = Jtty::maxMessageLength;
   constexpr int jttyUpdateBufferSize = jttyMaxUpdates * jttyMessageSize;
-
-  QString formatJttyDecodeLine (float frequency, QString const& message)
-  {
-    QString const frequencyText = QStringLiteral("%1").arg(qRound(frequency), 4);
-    return message.isEmpty() ? frequencyText : frequencyText + QStringLiteral("  ") + message;
-  }
 }
 
 extern "C" {
@@ -145,7 +139,7 @@ void MainWindow::jtty_save_wav()
 void MainWindow::updateJttyDecodeHeadings()
 {
   QString const prefix = ui->cbIncludeTime->isChecked()
-    ? QStringLiteral("  UTC  Freq  ") : QStringLiteral("Freq  ");
+    ? QStringLiteral("  UTC  Freq SNR  ") : QStringLiteral("Freq SNR  ");
   ui->lh_decodes_headings_label->setText(prefix + tr ("Message"));
   ui->rh_decodes_headings_label->setText(prefix + tr ("Message"));
 }
@@ -165,8 +159,8 @@ void MainWindow::renderJttyAllFreqLines()
 
   QStringList displayLines;
   for (auto const& line : m_jttyAllFreqLines) {
-    QString displayLine = formatJttyDecodeLine (
-      line.frequency, Jtty::wrapMessage (line.text));
+    QString displayLine = Jtty::formatJttyDecodeLine (
+      line.frequency, line.snr, Jtty::wrapMessage (line.text));
     if (ui->cbLowerCase->isChecked ()) displayLine = displayLine.toLower ();
     if (ui->cbIncludeTime->isChecked ()) {
       QString const time = Jtty::jttyLineTimeLabel (line.messageStartUtc);
@@ -217,8 +211,8 @@ void MainWindow::renderJttyQsoLines()
   m_jttyQsoGroupStart = cursor.block ();
   QStringList renderedLines;
   for (auto const& line : m_jttyQsoLines) {
-    QString display = formatJttyDecodeLine (
-      line.frequency, Jtty::wrapMessage (line.text));
+    QString display = Jtty::formatJttyDecodeLine (
+      line.frequency, line.snr, Jtty::wrapMessage (line.text));
     if (ui->cbLowerCase->isChecked ()) display = display.toLower ();
     if (ui->cbIncludeTime->isChecked ()) {
       QString const time = Jtty::jttyLineTimeLabel (line.messageStartUtc);
@@ -292,7 +286,7 @@ bool MainWindow::jtty_decode(int k, int istart0, int istop)
               textBlocks.data() + i * jttyMessageSize, jttyMessageSize).trimmed();
           if (messageIds[i] <= 0) continue;
           updates.append({messageIds[i], frequencies[i], text,
-                          sequenceStarts[i], complete[i]});
+                          sequenceStarts[i], complete[i], snrValues[i]});
           m_jttyLastSnr = snrValues[i];
       }
   } while (updateCount == jttyMaxUpdates);
@@ -307,6 +301,7 @@ bool MainWindow::jtty_decode(int k, int istart0, int istop)
           decodeLine.sequenceStart = update.sequenceStart;
           decodeLine.messageStartUtc = jttyLineDisplayDateTimeUtc (update.sequenceStart);
           decodeLine.complete = update.complete;
+          decodeLine.snr = update.snr;
           decodeLine.context = currentDecodeOperatingContext();
           decodeLine.context.sequenceStart = jttyLineDateTimeUtc(update.sequenceStart);
           return decodeLine;
@@ -316,7 +311,7 @@ bool MainWindow::jtty_decode(int k, int istart0, int istop)
 
   for (auto& known : m_jttyAllFreqLines) {
       if (known.complete && !known.written) {
-          write_all("Rx", formatJttyDecodeLine(known.frequency, known.text), &known.context);
+          write_all("Rx", Jtty::formatJttyDecodeLine(known.frequency, known.snr, known.text), &known.context);
           known.written = true;
       }
   }
@@ -375,7 +370,7 @@ bool MainWindow::jtty_decode(int k, int istart0, int istop)
             ? allLine->messageStartUtc
             : jttyLineDisplayDateTimeUtc (update.sequenceStart);
           m_jttyQsoLines.append({update.messageId, update.frequency, update.text,
-                                 update.sequenceStart, messageStartUtc});
+                                 update.sequenceStart, messageStartUtc, update.snr});
       }
       anyLineChanged = true;
       m_bDecoded = true;
@@ -903,7 +898,7 @@ void MainWindow::flushJttyDecodeLines()
     if (line.written) continue;
     QString const text = line.text.trimmed();
     if (text.isEmpty()) continue;
-    write_all("Rx", formatJttyDecodeLine(line.frequency, text), &line.context);
+    write_all("Rx", Jtty::formatJttyDecodeLine(line.frequency, line.snr, text), &line.context);
     line.written = true;
   }
 }

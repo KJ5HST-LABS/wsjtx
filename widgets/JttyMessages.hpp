@@ -901,6 +901,21 @@ namespace Jtty
     return result;
   }
 
+  // Format one JTTY decode line for display/logging: "Freq SNR  Message" (a
+  // leading UTC time label, when wanted, is prepended by the caller). SNR is
+  // plain right-justified, no zero-pad/forced sign -- matches the existing
+  // decode-pane convention used by other modes (e.g. FT8's own line format,
+  // lib/decoder_callbacks.f90, "i4" for its SNR field), deliberately
+  // different from formatSnr's zero-padded convention for the %R Tx macro.
+  inline QString formatJttyDecodeLine (float frequency, int snr, QString const& message)
+  {
+    QString const frequencyText = QStringLiteral ("%1").arg (qRound (frequency), 4);
+    QString const snrText = QStringLiteral ("%1").arg (snr, 3);
+    return message.isEmpty ()
+      ? frequencyText
+      : frequencyText + QStringLiteral (" ") + snrText + QStringLiteral ("  ") + message;
+  }
+
   struct DecodeLineChange
   {
     bool messageChanged {false};
@@ -930,6 +945,7 @@ namespace Jtty
     QString text;
     float sequenceStart {0.f};
     bool complete {false};
+    int snr {-10};
   };
 
   inline bool shouldApplyToQsoHistory (bool alreadyPresent, float frequency,

@@ -25,6 +25,7 @@ module jtty_mdec
      real :: f1 = 0.0
      real :: tsync = 0.0
      real :: start_tsync = 0.0
+     real :: start_snrdb = 0.0        !SNR of the message's first frame; never reassigned after
      integer :: k = 0
      character(len=80) :: decoded = ''
      logical :: trailing_sep = .false.
@@ -39,6 +40,7 @@ module jtty_mdec
      integer(int64) :: message_id = 0_int64
      real :: f1 = 0.0
      real :: start_tsync = 0.0
+     real :: snr = 0.0
      character(len=80) :: decoded = ''
      logical :: complete = .false.
   end type message_update
@@ -318,6 +320,7 @@ contains
       pending_updates(index)%message_id=message%message_id
       pending_updates(index)%f1=message%f1
       pending_updates(index)%start_tsync=message%start_tsync
+      pending_updates(index)%snr=message%start_snrdb
       pending_updates(index)%decoded=message%decoded
       pending_updates(index)%complete=complete
   end subroutine queue_message_update
@@ -344,6 +347,7 @@ contains
       message%f1=candidate%f1
       message%tsync=candidate%tsync
       message%start_tsync=candidate%tsync
+      message%start_snrdb=candidate%snrdb
       message%decoded=candidate%decoded
       if(message%decoded(1:4).eq.'599 ') &
            message%decoded='~'//trim(message%decoded)
@@ -1063,7 +1067,7 @@ contains
       enddo
       pn=(pa-pt)/3.0
       if(pn.gt.0.) then
-         snrdb=db(pt/pn)
+         snrdb=db(pt/pn) - db(2500.0/baud)   !Scale to standard 2500 Hz reference bandwidth
          cand(ncand)%snrdb=snrdb
       endif
       cand(ncand)%tsync=(istart-1)/12000.0 + cand(ncand)%xdt

@@ -15,7 +15,7 @@ program test_jtty_get_updates
 
   call discard_pending_updates()
 
-  message=make_message(41_int64,1500.4,1.25,'CQ K1ABC')
+  message=make_message(41_int64,1500.4,1.25,'CQ K1ABC',snr=-7.3)
   call queue_message_update(message,.false.)
   message%decoded='CQ K1ABC FN20'
   call queue_message_update(message,.true.)
@@ -31,8 +31,8 @@ program test_jtty_get_updates
   call expect(abs(frequencies(1)-1500.4).lt.0.001 .and. &
        abs(start_tsync(1)-1.25).lt.0.001 .and. eom(1), &
        'the batch preserves structured message metadata')
-  call expect(snr(1).eq.-10, &
-       'the batch reports the stub SNR value until real estimation exists')
+  call expect(snr(1).eq.-7, &
+       'the batch reports the rounded start_snrdb carried by message_assembly')
   call jtty_get_updates(text_blocks,message_ids,frequencies,start_tsync,eom,snr,count)
   call expect(count.eq.0, 'a drained update is not returned again')
 
@@ -79,16 +79,18 @@ program test_jtty_get_updates
 
 contains
 
-  function make_message(id,frequency,tsync,text) result(value)
+  function make_message(id,frequency,tsync,text,snr) result(value)
     integer(int64), intent(in) :: id
     real, intent(in) :: frequency,tsync
     character(len=*), intent(in) :: text
+    real, intent(in), optional :: snr
     type(message_assembly) :: value
 
     value%message_id=id
     value%f1=frequency
     value%tsync=tsync
     value%start_tsync=tsync
+    if(present(snr)) value%start_snrdb=snr
     value%decoded=text
     value%k=len_trim(value%decoded)
   end function make_message

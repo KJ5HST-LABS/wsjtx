@@ -1435,6 +1435,7 @@ private:
     QString text;
     float sequenceStart {0.f};
     QDateTime messageStartUtc;
+    int snr {-10};
   };
   QVector<JttyQsoLine> m_jttyQsoLines;
   QTextBlock m_jttyQsoGroupStart;
@@ -1452,6 +1453,7 @@ private:
     bool complete {false};
     bool written {false};
     DecodeOperatingContext context;
+    int snr {-10};
   };
   QVector<JttyDecodeLine> m_jttyAllFreqLines;
   int m_jttyLastAllFreqsK = -1;          // detects a restarted decode (new WAV, or "decode again")

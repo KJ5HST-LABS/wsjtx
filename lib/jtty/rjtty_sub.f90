@@ -75,9 +75,7 @@ subroutine jtty_get_updates(text_blocks,message_ids,frequencies,start_tsync,eom,
   frequencies=0.0
   start_tsync=0.0
   eom=.false.
-  ! Stub: real per-candidate SNR is already computed as cand(...)%snrdb in
-  ! jtty_mdecode.f90, but not yet threaded through message tracking.
-  snr=-10
+  snr=0
   count=min(npending,BATCH_SIZE)
 
   do i=1,count
@@ -89,6 +87,7 @@ subroutine jtty_get_updates(text_blocks,message_ids,frequencies,start_tsync,eom,
      frequencies(i)=pending_updates(index)%f1
      start_tsync(i)=pending_updates(index)%start_tsync
      eom(i)=pending_updates(index)%complete
+     snr(i)=nint(pending_updates(index)%snr)
   enddo
 
   ! Pending membership is the delivery guarantee; remove records only after copying them out.

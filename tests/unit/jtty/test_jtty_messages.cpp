@@ -816,6 +816,39 @@ private slots:
     QCOMPARE (Jtty::wrapMessage (text), expected);
   }
 
+  void formatJttyDecodeLine_data ()
+  {
+    QTest::addColumn<float> ("frequency");
+    QTest::addColumn<int> ("snr");
+    QTest::addColumn<QString> ("message");
+    QTest::addColumn<QString> ("expected");
+
+    QTest::newRow ("negative-two-digit-snr")
+        << 1513.f << -10 << QString {"CQ VA7TTO CQ"}
+        << QString {"1513 -10  CQ VA7TTO CQ"};
+    QTest::newRow ("positive-snr-no-forced-sign")
+        << 1500.f << 5 << QString {"K1ABC W9XYZ"}
+        << QString {"1500   5  K1ABC W9XYZ"};
+    QTest::newRow ("three-digit-frequency-padded")
+        << 500.f << 0 << QString {"HELLO"}
+        << QString {" 500   0  HELLO"};
+    QTest::newRow ("multi-digit-snr")
+        << 1500.f << -100 << QString {"WEAK"}
+        << QString {"1500 -100  WEAK"};
+    QTest::newRow ("empty-message-omits-snr")
+        << 1500.f << -10 << QString {} << QString {"1500"};
+  }
+
+  void formatJttyDecodeLine ()
+  {
+    QFETCH (float, frequency);
+    QFETCH (int, snr);
+    QFETCH (QString, message);
+    QFETCH (QString, expected);
+
+    QCOMPARE (Jtty::formatJttyDecodeLine (frequency, snr, message), expected);
+  }
+
   void compareMessagesTracksMessageSemantics ()
   {
     auto const unchanged = Jtty::compareMessages (
