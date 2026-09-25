@@ -3979,7 +3979,7 @@ Double-click to reset to the standard 73 message</string>
                <item row="0" column="0">
                 <widget class="QLabel" name="label_jttyStyle">
                  <property name="text">
-                  <string>Style </string>
+                  <string>Message style </string>
                  </property>
                  <property name="alignment">
                   <set>Qt::AlignRight|Qt::AlignTrailing|Qt::AlignVCenter</set>
@@ -3993,12 +3993,12 @@ Double-click to reset to the standard 73 message</string>
                  </property>
                  <item>
                   <property name="text">
-                   <string>Contest style</string>
+                   <string>Contest</string>
                   </property>
                  </item>
                  <item>
                   <property name="text">
-                   <string>FT8 style</string>
+                   <string>FT8</string>
                   </property>
                  </item>
                 </widget>

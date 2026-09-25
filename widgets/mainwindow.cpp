@@ -704,6 +704,16 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
   qApp->setFont (m_config.text_font ());
   ui->setupUi(this);
   configureModeControlsLayout ();
+  // A non-editable QComboBox always left-aligns its closed-box text, so fake a
+  // centered "label" via a read-only editable line edit; the dropdown list's
+  // own item text needs its alignment set separately (item textAlignment isn't
+  // a supported .ui property for QComboBox the way it is for list/table items).
+  ui->comboBoxJttyStyle->setEditable (true);
+  ui->comboBoxJttyStyle->lineEdit ()->setReadOnly (true);
+  ui->comboBoxJttyStyle->lineEdit ()->setAlignment (Qt::AlignCenter);
+  for (int i = 0; i < ui->comboBoxJttyStyle->count (); ++i) {
+    ui->comboBoxJttyStyle->setItemData (i, Qt::AlignCenter, Qt::TextAlignmentRole);
+  }
   connect (ui->Tx_Message, &QLineEdit::textChanged, this,
            [this] { m_jttyDraftAcceptanceTracker.noteDraftChanged (); });
   connect (this, &MainWindow::jttyTextAccepted, this, [this] (qint64 requestId) {
