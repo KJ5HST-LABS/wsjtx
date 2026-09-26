@@ -54,6 +54,11 @@ module jtty_mdec
   real, parameter           :: FRAME_HISTORY_FREQ_TOLERANCE = 3.0
   real, parameter           :: NEAR_SIMULTANEOUS_FREQ_TOLERANCE = 12.0
   real, parameter           :: CONTINUATION_TIME_TOLERANCE = 0.1
+  ! Residual timing/frequency quantization leaks a roughly constant fraction
+  ! of the signal's own power into pn's 3 "wrong tone" bins (pn_measured ~=
+  ! N + SNR_LEAKAGE_K*pt), which compresses high SNR readings. Calibrated
+  ! against sjtty files at 0/+10/+20 dB true SNR (PR #569 review follow-up).
+  real, parameter           :: SNR_LEAKAGE_K = 0.035
   integer                   :: ndecodes = 0
   integer                   :: nactive = 0
   integer                   :: nrecent = 0
@@ -553,7 +558,7 @@ contains
       real                            :: f1_ch0_ok(16),tsync_ch0_ok(16)
       integer                        :: nsync,nsymerrs
       real                           :: fc,fwid
-      real                           :: fpk,pa,pt,pn
+      real                           :: fpk,pa,pt,pn,pn_corrected
       real                           :: fbest,xdtbest
       real                           :: xdt_retry
       real, allocatable, save        :: s0(:,:)
@@ -1067,8 +1072,13 @@ contains
       enddo
       pn=(pa-pt)/3.0
       if(pn.gt.0.) then
-         snrdb=db((pt-pn)/pn) - db(2500.0/baud)   !pt is signal+noise; subtract pn to
-         cand(ncand)%snrdb=snrdb                  !isolate signal before the noise ratio
+         ! Undo the leakage bias (see SNR_LEAKAGE_K above) by solving
+         ! pt=S+N, pn=N+SNR_LEAKAGE_K*S for S/N; clamp the corrected
+         ! denominator so a very strong signal can't drive it to zero
+         ! or negative and blow up the ratio.
+         pn_corrected=max(pn-SNR_LEAKAGE_K*pt, 0.01*pn)
+         snrdb=db((pt-pn)/pn_corrected) - db(2500.0/baud)
+         cand(ncand)%snrdb=snrdb
       endif
       cand(ncand)%tsync=(istart-1)/12000.0 + cand(ncand)%xdt
       decoded_ok=.true.
