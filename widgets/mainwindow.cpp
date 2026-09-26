@@ -8748,8 +8748,7 @@ void MainWindow::handleDecodeSelection(
   if(m_mode=="JTTY") {
     m_deCall = word;
     ui->dxCallEntry->setText(m_deCall);  // clears m_jttyHisCallSnr via on_dxCallEntry_textChanged
-    // Capture the SNR of the specific decode just selected, rather than
-    // whichever decode happened to arrive most recently (see PR #569 review).
+    // Capture the SNR of the decode actually selected, not whichever decoded last.
     auto const matchesWord = [&word] (QString const& text) {
       return text.split(QChar{' '}, Qt::SkipEmptyParts).contains(word);
     };
