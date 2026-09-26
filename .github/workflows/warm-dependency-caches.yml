@@ -441,3 +441,35 @@ jobs:
       runner: macos-15-intel
       deployment_target: "10.13"
       save_ccache: true
+
+  summary:
+    if: always()
+    needs:
+      - detect
+      - refresh-linux-images
+      - retain-linux-images
+      - warm-linux-arm64-ccache
+      - warm-windows-x86_64-deps
+      - warm-windows-ccache
+      - warm-macos-arm64-deps
+      - warm-macos-x86_64-deps
+      - warm-macos-arm64-ccache
+      - warm-macos-x86_64-ccache
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Summarize cache warmer outcomes
+        env:
+          JOBS: ${{ toJSON(needs) }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          import os
+
+          print("## Cache warmer outcomes\n")
+          print("| Job | Result |")
+          print("| --- | --- |")
+          for name, job in json.loads(os.environ["JOBS"]).items():
+              print(f"| {name} | {job['result']} |")
+          print("\nSkipped jobs did not validate their caches. See each job's cache summary for restore and build details.")
+          PY
