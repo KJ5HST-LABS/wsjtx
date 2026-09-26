@@ -172,7 +172,7 @@ contains
 
   subroutine decode_c_adapter_atoms(count)
     integer, intent(inout) :: count
-    type(jtty_source_atom_c) :: atoms(6)
+    type(jtty_source_atom_c) :: atoms(7)
     integer(c_int) :: tones(MAX_FRAMES*frame_symbols),nsymbols,status
 
     call expect(c_sizeof(atoms(1)).eq.20,'C atom descriptor remains 20 bytes',count)
@@ -183,8 +183,10 @@ contains
          JTTY_ROLE_FULL,0,'CA')
     call initialize_c_atom(atoms(4),JTTY_ATOM_EXCH_PAIR,JTTY_PAIR_CLASS_SECTION, &
          3,1,'EMA')
-    call initialize_c_atom(atoms(5),JTTY_ATOM_GRID4,0,JTTY_ROLE_FIELD_ONLY,0,'FN42')
-    call initialize_c_atom(atoms(6),JTTY_ATOM_CONTROL,JTTY_CONTROL_QSL_TU,0,0,'')
+    call initialize_c_atom(atoms(5),JTTY_ATOM_EXCH_PAIR,JTTY_PAIR_CLASS_SECTION,0,10,'CT')
+    atoms(5)%text(3)=' '
+    call initialize_c_atom(atoms(6),JTTY_ATOM_GRID4,0,JTTY_ROLE_FIELD_ONLY,0,'FN42')
+    call initialize_c_atom(atoms(7),JTTY_ATOM_CONTROL,JTTY_CONTROL_QSL_TU,0,0,'')
     call genjtty_atoms_c(atoms,size(atoms),tones,nsymbols,status)
     call expect(nsymbols.eq.size(atoms)*frame_symbols, &
          'C adapter generates serial/state/FD/grid/control frames',count)
@@ -195,7 +197,7 @@ contains
     call expect(npending.eq.1,'C adapter atoms produce one update',count)
     if(npending.ne.1) return
     call expect(trim(normalized(pending_updates(1)%decoded)).eq. &
-         'K1ABC 599 012 599 CA 1D EMA FN42 QSL TU', &
+         'K1ABC 599 012 599 CA 1D EMA 10A CT FN42 QSL TU', &
          'C adapter atoms retain canonical structured rendering',count)
     call expect(pending_updates(1)%complete .and. nactive.eq.0, &
          'final C adapter atom completes and releases the message',count)
@@ -204,6 +206,8 @@ contains
   subroutine reject_invalid_c_descriptors(count)
     integer, intent(inout) :: count
     type(jtty_source_atom_c) :: atom(1)
+    character(len=4), parameter :: invalid_sections(*)=['ZZZ ','EMAX','CT X']
+    integer :: i
     integer(c_int) :: tones(frame_symbols),nsymbols,status
 
     call initialize_c_atom(atom(1),JTTY_ATOM_EXCH_LOC,JTTY_LOC_STATE_PROVINCE,1,0,'CA')
@@ -218,11 +222,13 @@ contains
     call genjtty_atoms_c(atom,1,tones,nsymbols,status)
     call expect(nsymbols.eq.0,'C adapter rejects unterminated text',count)
 
-    call initialize_c_atom(atom(1),JTTY_ATOM_EXCH_PAIR,JTTY_PAIR_CLASS_SECTION,0,1,'ZZZ')
-    call genjtty_atoms_c(atom,1,tones,nsymbols,status)
-    call expect(nsymbols.eq.0,'C adapter rejects unknown Field Day section',count)
-    call expect(status.eq.JTTY_ENCODE_UNKNOWN_SECTION, &
-         'C adapter identifies unknown Field Day section',count)
+    do i=1,size(invalid_sections)
+       call initialize_c_atom(atom(1),JTTY_ATOM_EXCH_PAIR,JTTY_PAIR_CLASS_SECTION,0,1,invalid_sections(i))
+       call genjtty_atoms_c(atom,1,tones,nsymbols,status)
+       call expect(nsymbols.eq.0,'C adapter rejects unknown Field Day section '//trim(invalid_sections(i)),count)
+       call expect(status.eq.JTTY_ENCODE_UNKNOWN_SECTION, &
+            'C adapter identifies unknown Field Day section '//trim(invalid_sections(i)),count)
+    enddo
 
     call initialize_c_atom(atom(1),JTTY_ATOM_EXCH_PAIR,0,0,1,'EMA')
     call genjtty_atoms_c(atom,1,tones,nsymbols,status)
