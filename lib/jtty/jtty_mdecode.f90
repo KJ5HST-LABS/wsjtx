@@ -56,9 +56,14 @@ module jtty_mdec
   real, parameter           :: CONTINUATION_TIME_TOLERANCE = 0.1
   ! Residual timing/frequency quantization leaks a roughly constant fraction
   ! of the signal's own power into pn's 3 "wrong tone" bins (pn_measured ~=
-  ! N + SNR_LEAKAGE_K*pt), which compresses high SNR readings. Calibrated
-  ! against sjtty files at 0/+10/+20 dB true SNR (PR #569 review follow-up).
-  real, parameter           :: SNR_LEAKAGE_K = 0.035
+  ! N + SNR_LEAKAGE_K*pt), which compresses high SNR readings; the
+  ! uncorrected ratio has its own hard asymptote at (1-k)/k regardless of
+  ! true SNR (~13 dB at this k), so above roughly +15 dB the correction is
+  ! reading right up against that asymptote -- accept it as pinned there,
+  ! like an S-meter, rather than trying to recover an exact value.
+  ! Calibrated against sjtty files at 0/+10/+20/+30 dB true SNR (PR #569
+  ! review follow-up); fits all four batch means within 0.2 dB.
+  real, parameter           :: SNR_LEAKAGE_K = 0.048
   integer                   :: ndecodes = 0
   integer                   :: nactive = 0
   integer                   :: nrecent = 0
