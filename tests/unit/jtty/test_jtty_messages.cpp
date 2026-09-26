@@ -746,6 +746,13 @@ private slots:
     QCOMPARE (Jtty::jttyLineTimeLabel (QDateTime {}), QString {});
   }
 
+  void formatJttyTxLineLeavesSnrColumnBlank ()
+  {
+    QCOMPARE (Jtty::formatJttyTxLine (1500.f, QString {"CQ K1ABC CQ"}),
+              QString {"1500      CQ K1ABC CQ"});
+    QCOMPARE (Jtty::formatJttyTxLine (1500.4f, QString {}), QString {"1500      "});
+  }
+
   void parseDecodeLine_data ()
   {
     QTest::addColumn<QString> ("line");

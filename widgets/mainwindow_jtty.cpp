@@ -320,7 +320,13 @@ void MainWindow::completeJttyTxEnqueue(qint64 requestId, QString const& message,
   format.setForeground(QBrush(QColor(Qt::black)));  // stay legible on yellow regardless of app theme
   format.setBackground(QBrush(QColor(Qt::yellow)));
   cursor.setCharFormat(format);
-  cursor.insertText(Jtty::wrapMessage(message));
+  QString txLine = Jtty::formatJttyTxLine(
+    ui->TxFreqSpinBox_2->value(), Jtty::wrapMessage(message));
+  if (ui->cbIncludeTime->isChecked()) {
+    QString const time = Jtty::jttyLineTimeLabel(QDateTime::currentDateTimeUtc());
+    if (!time.isEmpty()) txLine = time + " " + txLine;
+  }
+  cursor.insertText(txLine);
   format.setBackground(QBrush(QColor(Qt::white)));
   cursor.setCharFormat(format);
 
