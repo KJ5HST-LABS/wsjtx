@@ -7,13 +7,17 @@ import argparse
 import hashlib
 import json
 import re
+import subprocess
 import sys
 import tarfile
 import zipfile
+from collections.abc import Callable
 from pathlib import Path
 
 
 VERSION_RE = re.compile(r"^(?P<numeric>\d+\.\d+\.\d+)(?:-rc(?P<rc>[1-9]\d*))?$")
+RELEASE_BRANCH_RE = re.compile(r"^release/(?P<major>\d+)\.(?P<minor>\d+)$")
+OBJECT_ID_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 MACOS_MODES = ("validation", "distribution")
 WINDOWS_MODES = ("signpath", "unsigned")
 
@@ -31,6 +35,277 @@ def classify(version: str) -> dict[str, str]:
         "channel": "RC" if rc else "GA",
         "rc_number": rc,
         "release_branch": f"release/{major}.{minor}",
+    }
+
+
+def parse_public_ref_listing(output: str) -> tuple[dict[str, str], str]:
+    refs: dict[str, str] = {}
+    peeled_tags: dict[str, str] = {}
+    records = []
+    for line in output.splitlines():
+        fields = line.split()
+        if len(fields) != 2 or not OBJECT_ID_RE.fullmatch(fields[0]):
+            raise ValueError("public git ref listing is malformed")
+        object_id, name = fields
+        records.append(f"{object_id} {name}")
+        if name.endswith("^{}"):
+            tag = name[:-3]
+            if tag.startswith("refs/tags/v"):
+                peeled_tags[tag] = object_id
+        elif (
+            name == "refs/heads/master"
+            or name.startswith("refs/heads/release/")
+            or name.startswith("refs/tags/v")
+        ):
+            refs[name] = object_id
+    refs.update(peeled_tags)
+    digest = hashlib.sha256("\n".join(sorted(records)).encode("utf-8")).hexdigest()
+    return refs, digest
+
+
+def public_release_line_policy(version: str, refs: dict[str, str]) -> dict[str, object]:
+    identity = classify(version)
+    ga_versions: list[tuple[int, int, int]] = []
+    line_tags: list[tuple[tuple[int, int, int, int, int], str, str]] = []
+    release_branch_count = 0
+    for name, sha in refs.items():
+        if name.startswith("refs/heads/release/"):
+            branch = name.removeprefix("refs/heads/")
+            match = RELEASE_BRANCH_RE.fullmatch(branch)
+            if not match:
+                raise ValueError(f"public release branch is malformed: {branch}")
+            release_branch_count += 1
+        elif name.startswith("refs/tags/v"):
+            tag_version = name.removeprefix("refs/tags/v")
+            try:
+                tag_identity = classify(tag_version)
+            except ValueError as error:
+                raise ValueError(f"public version tag is malformed: {name}") from error
+            numeric_version = tuple(int(part) for part in tag_identity["numeric"].split("."))
+            line_tags.append((
+                (*numeric_version, int(tag_identity["channel"] == "GA"), int(tag_identity["rc_number"] or 0)),
+                name.removeprefix("refs/tags/"),
+                sha,
+            ))
+            if tag_identity["channel"] == "GA":
+                ga_versions.append(numeric_version)
+    if not ga_versions:
+        raise ValueError(
+            "cannot determine the newest GA line: no immutable public vX.Y.Z GA tags exist"
+        )
+    candidate_version = tuple(int(part) for part in identity["numeric"].split("."))
+    candidate_line = candidate_version[:2]
+    newest_version = max(ga_versions)
+    candidate_line_versions = [
+        ga_version for ga_version in ga_versions if ga_version[:2] == candidate_line
+    ]
+    highest_candidate_line_version = (
+        max(candidate_line_versions) if candidate_line_versions else None
+    )
+    candidate_line_tags = [tag for tag in line_tags if tag[0][:2] == candidate_line]
+    latest_candidate_line_tag = max(candidate_line_tags, default=None)
+    newest_line = newest_version[:2]
+    return {
+        "candidate_line": f"{candidate_line[0]}.{candidate_line[1]}",
+        "newest_ga_line": f"{newest_line[0]}.{newest_line[1]}",
+        "ga_line_is_newest": candidate_line >= newest_line,
+        "newest_ga_version": ".".join(str(part) for part in newest_version),
+        "highest_ga_version_on_candidate_line": (
+            ".".join(str(part) for part in highest_candidate_line_version)
+            if highest_candidate_line_version
+            else None
+        ),
+        "latest_public_tag_on_candidate_line": (
+            latest_candidate_line_tag[1] if latest_candidate_line_tag else None
+        ),
+        "latest_public_tag_sha_on_candidate_line": (
+            latest_candidate_line_tag[2] if latest_candidate_line_tag else None
+        ),
+        "ga_release_is_latest": (
+            identity["channel"] == "GA" and candidate_version >= newest_version
+        ),
+        "legacy_tag_only": release_branch_count == 0,
+    }
+
+
+def plan_public_promotion(
+    version: str,
+    sha: str,
+    refs: dict[str, str],
+    is_ancestor: Callable[[str, str], bool],
+) -> dict[str, object]:
+    if not OBJECT_ID_RE.fullmatch(sha):
+        raise ValueError("candidate SHA must be a full lowercase Git object ID")
+    identity = classify(version)
+    line_policy = public_release_line_policy(version, refs)
+    public_tag = f"v{version}"
+    tag_ref = f"refs/tags/{public_tag}"
+    branch_ref = f"refs/heads/{identity['release_branch']}"
+    current_tag = refs.get(tag_ref)
+    current_branch = refs.get(branch_ref)
+    if current_tag and current_tag != sha:
+        raise ValueError(f"public {public_tag} already points to {current_tag}; tags are never moved")
+    if current_branch and not is_ancestor(current_branch, sha):
+        raise ValueError(
+            f"public {identity['release_branch']} at {current_branch} is not an ancestor of {sha}; "
+            "refusing a non-fast-forward update"
+        )
+    if not current_branch and line_policy["latest_public_tag_sha_on_candidate_line"]:
+        tag_sha = line_policy["latest_public_tag_sha_on_candidate_line"]
+        if not is_ancestor(tag_sha, sha):
+            tag = line_policy["latest_public_tag_on_candidate_line"]
+            raise ValueError(
+                f"public {identity['release_branch']} is missing and its latest public tag "
+                f"{tag} at {tag_sha} is not an ancestor of {sha}; "
+                "refusing a disconnected branch initialization"
+            )
+
+    highest_candidate_line_version = line_policy["highest_ga_version_on_candidate_line"]
+    if (
+        identity["channel"] == "GA"
+        and highest_candidate_line_version
+        and tuple(int(part) for part in identity["numeric"].split("."))
+        < tuple(int(part) for part in highest_candidate_line_version.split("."))
+    ):
+        raise ValueError(
+            f"public GA tags already reach {highest_candidate_line_version} on this line; "
+            "a lower GA version cannot advance it"
+        )
+
+    advance_master = identity["channel"] == "GA" and line_policy["ga_line_is_newest"]
+    current_master = refs.get("refs/heads/master")
+    if advance_master:
+        if not current_master:
+            raise ValueError("public master is missing; cannot fast-forward the newest GA line")
+        if not is_ancestor(current_master, sha):
+            raise ValueError(
+                f"public master at {current_master} is not an ancestor of {sha}; "
+                "review and complete the private release history bridge before GA promotion"
+            )
+
+    updates = [branch_ref]
+    if not current_tag:
+        updates.append(tag_ref)
+    if advance_master:
+        updates.append("refs/heads/master")
+    return {
+        **line_policy,
+        "version": version,
+        "channel": identity["channel"],
+        "sha": sha,
+        "public_tag": public_tag,
+        "release_branch": identity["release_branch"],
+        "prior_release_branch": current_branch,
+        "prior_master": current_master,
+        "tag_exists": current_tag == sha,
+        "advance_master": advance_master,
+        "updates": updates,
+    }
+
+
+def git_output(
+    arguments: list[str], error_context: str, *, cwd: Path | None = None
+) -> str:
+    result = subprocess.run(["git", *arguments], capture_output=True, text=True, cwd=cwd)
+    if result.returncode:
+        detail = result.stderr.strip() or result.stdout.strip()
+        raise ValueError(f"{error_context}: {detail}")
+    return result.stdout.strip()
+
+
+def git_is_ancestor(ancestor: str, descendant: str, *, cwd: Path | None = None) -> bool:
+    result = subprocess.run(
+        ["git", "merge-base", "--is-ancestor", ancestor, descendant],
+        capture_output=True,
+        text=True,
+        cwd=cwd,
+    )
+    if result.returncode not in (0, 1):
+        detail = result.stderr.strip() or result.stdout.strip()
+        raise ValueError(f"unable to verify public commit ancestry: {detail}")
+    return result.returncode == 0
+
+
+def public_refs(remote: str, *, cwd: Path | None = None) -> tuple[dict[str, str], str]:
+    listing = git_output(
+        [
+            "ls-remote",
+            remote,
+            "refs/heads/master",
+            "refs/heads/release/*",
+            "refs/tags/v*",
+        ],
+        "unable to read public release refs",
+        cwd=cwd,
+    )
+    return parse_public_ref_listing(listing)
+
+
+def inspect_public_promotion(
+    version: str, sha: str, remote: str, *, cwd: Path | None = None
+) -> dict[str, object]:
+    refs, digest = public_refs(remote, cwd=cwd)
+    identity = classify(version)
+    refs_to_fetch = ["refs/heads/master", f"refs/heads/{identity['release_branch']}"]
+    if f"refs/heads/{identity['release_branch']}" not in refs:
+        line_policy = public_release_line_policy(version, refs)
+        latest_tag = line_policy["latest_public_tag_on_candidate_line"]
+        if latest_tag:
+            refs_to_fetch.append(f"refs/tags/{latest_tag}")
+    for name in refs_to_fetch:
+        if name in refs:
+            git_output(
+                ["fetch", "--no-tags", remote, name],
+                f"unable to fetch {name}",
+                cwd=cwd,
+            )
+    plan = plan_public_promotion(
+        version,
+        sha,
+        refs,
+        lambda ancestor, descendant: git_is_ancestor(ancestor, descendant, cwd=cwd),
+    )
+    plan["public_refs_digest"] = digest
+    return plan
+
+
+def push_public_ref_updates(
+    remote: str, plan: dict[str, object], *, cwd: Path | None = None
+) -> None:
+    refspecs = [f"{plan['sha']}:{ref}" for ref in plan["updates"]]
+    result = subprocess.run(
+        ["git", "push", "--atomic", remote, *refspecs],
+        capture_output=True,
+        text=True,
+        cwd=cwd,
+    )
+    if result.returncode:
+        detail = result.stderr.strip() or result.stdout.strip()
+        raise ValueError(f"atomic public ref update failed; no refs were changed: {detail}")
+
+
+def promote_public_source(
+    version: str,
+    sha: str,
+    remote: str,
+    expected_refs_digest: str,
+    *,
+    cwd: Path | None = None,
+) -> dict[str, object]:
+    plan = inspect_public_promotion(version, sha, remote, cwd=cwd)
+    if plan["public_refs_digest"] != expected_refs_digest:
+        raise ValueError("public release refs changed after validation; rerun validation before promotion")
+    push_public_ref_updates(remote, plan, cwd=cwd)
+    return plan
+
+
+def inspect_public_release_line(
+    version: str, remote: str, *, cwd: Path | None = None
+) -> dict[str, object]:
+    refs, digest = public_refs(remote, cwd=cwd)
+    return {
+        **public_release_line_policy(version, refs),
+        "public_refs_digest": digest,
     }
 
 
@@ -360,6 +635,18 @@ def main() -> int:
     subparsers = parser.add_subparsers(dest="command", required=True)
     classify_parser = subparsers.add_parser("classify")
     classify_parser.add_argument("version")
+    line_parser = subparsers.add_parser("public-release-line")
+    line_parser.add_argument("version")
+    line_parser.add_argument("--remote", required=True)
+    plan_parser = subparsers.add_parser("plan-public-promotion")
+    plan_parser.add_argument("version")
+    plan_parser.add_argument("--sha", required=True)
+    plan_parser.add_argument("--remote", required=True)
+    promote_parser = subparsers.add_parser("promote-public-source")
+    promote_parser.add_argument("version")
+    promote_parser.add_argument("--sha", required=True)
+    promote_parser.add_argument("--remote", required=True)
+    promote_parser.add_argument("--expected-refs-digest", required=True)
     environment_parser = subparsers.add_parser("validate-publication-environment")
     environment_parser.add_argument("environment_json")
     state_parser = subparsers.add_parser("read-state")
@@ -405,6 +692,14 @@ def main() -> int:
     try:
         if args.command == "classify":
             print(json.dumps(classify(args.version)))
+        elif args.command == "public-release-line":
+            print(json.dumps(inspect_public_release_line(args.version, args.remote)))
+        elif args.command == "plan-public-promotion":
+            print(json.dumps(inspect_public_promotion(args.version, args.sha, args.remote)))
+        elif args.command == "promote-public-source":
+            print(json.dumps(promote_public_source(
+                args.version, args.sha, args.remote, args.expected_refs_digest
+            )))
         elif args.command == "validate-publication-environment":
             validate_publication_environment(json.loads(Path(args.environment_json).read_text(encoding="utf-8")))
             print("Validated public-release required-reviewer protection")

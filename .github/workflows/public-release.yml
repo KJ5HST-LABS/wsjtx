@@ -68,6 +68,11 @@ jobs:
             echo "macos_sign_mode=validation" >> "$GITHUB_OUTPUT"
             echo "::notice::macOS distribution signing is disabled. Validated packages will be published for manual replacement."
           fi
+      - name: Validate public release-line state
+        run: |
+          set -euo pipefail
+          python3 .github/scripts/release-policy.py \
+            public-release-line "${GITHUB_REF_NAME#v}" --remote origin
 
   linux-images:
     needs: prepare
@@ -356,6 +361,15 @@ jobs:
           set -euo pipefail
           mapfile -t FILES < <(find release-bundle -maxdepth 1 -type f -print | sort)
           mapfile -t EXPECTED_NAMES < <(printf '%s\n' "${FILES[@]}" | xargs -n1 basename | sort)
+          LINE_POLICY=$(python3 .github/scripts/release-policy.py \
+            public-release-line "$VERSION" --remote origin)
+          GA_RELEASE_IS_LATEST=$(jq -r .ga_release_is_latest <<<"$LINE_POLICY")
+          LATEST=false
+          if [ "$CHANNEL" = GA ] && [ "$GA_RELEASE_IS_LATEST" = true ]; then
+            LATEST=true
+          fi
+          echo "Public GA line $(jq -r .candidate_line <<<"$LINE_POLICY"); newest GA line is $(jq -r .newest_ga_line <<<"$LINE_POLICY")."
+          echo "GitHub Latest designation for a newly created release: $LATEST"
           CREATED=false
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
             RELEASE=$(gh release view "$GITHUB_REF_NAME" --json isDraft,isPrerelease,assets)
@@ -417,6 +431,7 @@ jobs:
             if [ "$CHANNEL" = RC ]; then
               FLAGS+=(--prerelease)
             fi
+            FLAGS+=("--latest=$LATEST")
             gh release create "$GITHUB_REF_NAME" \
               --verify-tag \
               --title "WSJT-X $VERSION" \

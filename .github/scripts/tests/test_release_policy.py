@@ -19,6 +19,417 @@ SPEC.loader.exec_module(release_policy)
 
 
 class ReleasePolicyTest(unittest.TestCase):
+    def test_newest_ga_line_uses_immutable_ga_tags_not_release_order_or_rc_line(self):
+        refs = {
+            "refs/tags/v2.7.0": "a" * 40,
+            "refs/tags/v3.0.2": "b" * 40,
+            "refs/tags/v3.2.0-rc1": "c" * 40,
+        }
+        newest = release_policy.public_release_line_policy("3.2.0", refs)
+        latest_ga_patch = release_policy.public_release_line_policy("3.0.3", refs)
+        self.assertEqual(newest["newest_ga_line"], "3.0")
+        self.assertTrue(newest["ga_line_is_newest"])
+        self.assertTrue(newest["legacy_tag_only"])
+        self.assertTrue(latest_ga_patch["ga_line_is_newest"])
+
+    def test_public_release_line_rejects_missing_or_ambiguous_history(self):
+        with self.assertRaisesRegex(ValueError, "no immutable public vX.Y.Z GA tags"):
+            release_policy.public_release_line_policy("3.2.0", {})
+        with self.assertRaisesRegex(ValueError, "no immutable public vX.Y.Z GA tags"):
+            release_policy.public_release_line_policy("3.2.0", {
+                "refs/tags/v3.2.0-rc1": "a" * 40,
+                "refs/heads/release/3.2": "b" * 40,
+            })
+        for refs in (
+            {"refs/heads/release/next": "a" * 40},
+            {"refs/tags/v3.2.0-beta1": "a" * 40},
+        ):
+            with self.subTest(refs=refs), self.assertRaisesRegex(ValueError, "malformed"):
+                release_policy.public_release_line_policy("3.2.0", refs)
+
+    def test_public_ref_listing_resolves_annotated_tags_and_hashes_the_snapshot(self):
+        refs, digest = release_policy.parse_public_ref_listing(
+            "".join((
+                f"{'a' * 40} refs/heads/master\n",
+                f"{'b' * 40} refs/tags/v2.7.0\n",
+                f"{'c' * 40} refs/tags/v2.7.0^{{}}\n",
+            ))
+        )
+        self.assertEqual(refs["refs/heads/master"], "a" * 40)
+        self.assertEqual(refs["refs/tags/v2.7.0"], "c" * 40)
+        line_policy = release_policy.public_release_line_policy("2.7.1", refs)
+        self.assertEqual(line_policy["latest_public_tag_on_candidate_line"], "v2.7.0")
+        self.assertEqual(line_policy["latest_public_tag_sha_on_candidate_line"], "c" * 40)
+        self.assertEqual(len(digest), 64)
+
+    def test_first_public_promotion_creates_release_branch_and_tag_without_master(self):
+        master = "a" * 40
+        candidate = "b" * 40
+        plan = release_policy.plan_public_promotion(
+            "3.2.0-rc1",
+            candidate,
+            {
+                "refs/heads/master": master,
+                "refs/tags/v3.0.2": master,
+            },
+            lambda ancestor, descendant: ancestor == master and descendant == candidate,
+        )
+        self.assertEqual(
+            plan["updates"],
+            ["refs/heads/release/3.2", "refs/tags/v3.2.0-rc1"],
+        )
+        self.assertIsNone(plan["prior_release_branch"])
+        self.assertFalse(plan["advance_master"])
+
+    def test_first_branch_initialization_requires_latest_same_line_tag_ancestry(self):
+        baseline = "a" * 40
+        candidate = "b" * 40
+        refs = {
+            "refs/heads/master": "c" * 40,
+            "refs/tags/v3.0.2": "c" * 40,
+            "refs/tags/v3.2.0-rc1": baseline,
+        }
+        plan = release_policy.plan_public_promotion(
+            "3.2.0-rc2",
+            candidate,
+            refs,
+            lambda ancestor, descendant: (ancestor, descendant) == (baseline, candidate),
+        )
+        self.assertEqual(plan["updates"], [
+            "refs/heads/release/3.2", "refs/tags/v3.2.0-rc2"
+        ])
+        with self.assertRaisesRegex(ValueError, "disconnected branch initialization"):
+            release_policy.plan_public_promotion(
+                "3.2.0-rc2",
+                candidate,
+                refs,
+                lambda ancestor, descendant: False,
+            )
+
+    def test_newest_ga_advances_release_branch_tag_and_master(self):
+        branch = "a" * 40
+        master = "b" * 40
+        candidate = "c" * 40
+        plan = release_policy.plan_public_promotion(
+            "3.2.0",
+            candidate,
+            {
+                "refs/heads/master": master,
+                "refs/heads/release/3.2": branch,
+                "refs/tags/v3.0.2": master,
+                "refs/tags/v3.2.0-rc1": branch,
+            },
+            lambda ancestor, descendant: (ancestor, descendant) in {
+                (branch, candidate),
+                (master, candidate),
+            },
+        )
+        self.assertEqual(
+            plan["updates"],
+            ["refs/heads/release/3.2", "refs/tags/v3.2.0", "refs/heads/master"],
+        )
+        self.assertTrue(plan["advance_master"])
+
+    def test_newer_patch_on_current_ga_line_advances_master(self):
+        current = "a" * 40
+        candidate = "b" * 40
+        plan = release_policy.plan_public_promotion(
+            "3.2.2",
+            candidate,
+            {
+                "refs/heads/master": current,
+                "refs/heads/release/3.2": current,
+                "refs/tags/v3.0.2": current,
+                "refs/tags/v3.2.1": current,
+            },
+            lambda ancestor, descendant: ancestor == current and descendant == candidate,
+        )
+        self.assertTrue(plan["ga_release_is_latest"])
+        self.assertEqual(
+            plan["updates"],
+            ["refs/heads/release/3.2", "refs/tags/v3.2.2", "refs/heads/master"],
+        )
+
+    def test_same_sha_public_promotion_skips_existing_tag_and_is_idempotent(self):
+        candidate = "c" * 40
+        plan = release_policy.plan_public_promotion(
+            "3.2.0",
+            candidate,
+            {
+                "refs/heads/master": candidate,
+                "refs/heads/release/3.2": candidate,
+                "refs/tags/v3.2.0": candidate,
+                "refs/tags/v3.2.0-rc1": "a" * 40,
+            },
+            lambda ancestor, descendant: ancestor == descendant,
+        )
+        self.assertTrue(plan["tag_exists"])
+        self.assertEqual(
+            plan["updates"],
+            ["refs/heads/release/3.2", "refs/heads/master"],
+        )
+
+    def test_public_promotion_rejects_conflicting_tag_and_non_fast_forward_branch(self):
+        candidate = "c" * 40
+        refs = {
+            "refs/heads/master": "a" * 40,
+            "refs/tags/v3.0.2": "a" * 40,
+            "refs/tags/v3.2.0-rc1": "b" * 40,
+        }
+        with self.assertRaisesRegex(ValueError, "tags are never moved"):
+            release_policy.plan_public_promotion(
+                "3.2.0-rc1", candidate,
+                {**refs, "refs/tags/v3.2.0-rc1": "d" * 40},
+                lambda ancestor, descendant: True,
+            )
+        with self.assertRaisesRegex(ValueError, "non-fast-forward"):
+            release_policy.plan_public_promotion(
+                "3.2.0-rc2", candidate,
+                {**refs, "refs/heads/release/3.2": "d" * 40},
+                lambda ancestor, descendant: False,
+            )
+
+    def test_older_line_ga_advances_only_its_release_branch(self):
+        old_branch = "a" * 40
+        newest = "b" * 40
+        candidate = "c" * 40
+        plan = release_policy.plan_public_promotion(
+            "3.0.3",
+            candidate,
+            {
+                "refs/heads/master": newest,
+                "refs/heads/release/3.0": old_branch,
+                "refs/heads/release/3.2": newest,
+                "refs/tags/v3.0.2": old_branch,
+                "refs/tags/v3.2.0": newest,
+            },
+            lambda ancestor, descendant: (ancestor, descendant) == (old_branch, candidate),
+        )
+        self.assertEqual(
+            plan["updates"],
+            ["refs/heads/release/3.0", "refs/tags/v3.0.3"],
+        )
+        self.assertFalse(plan["advance_master"])
+
+    def test_newest_ga_requires_master_history_bridge(self):
+        with self.assertRaisesRegex(ValueError, "history bridge"):
+            release_policy.plan_public_promotion(
+                "3.2.0",
+                "c" * 40,
+                {
+                    "refs/heads/master": "d" * 40,
+                    "refs/heads/release/3.2": "a" * 40,
+                    "refs/tags/v3.0.2": "d" * 40,
+                    "refs/tags/v3.2.0-rc1": "a" * 40,
+                },
+                lambda ancestor, descendant: (ancestor, descendant) == ("a" * 40, "c" * 40),
+            )
+
+    def test_lower_ga_patch_on_current_line_cannot_be_promoted_as_latest(self):
+        current = "a" * 40
+        candidate = "b" * 40
+        refs = {
+            "refs/heads/master": current,
+            "refs/heads/release/3.2": current,
+            "refs/tags/v3.0.2": current,
+            "refs/tags/v3.2.1": current,
+        }
+        decision = release_policy.public_release_line_policy("3.2.0", refs)
+        self.assertFalse(decision["ga_release_is_latest"])
+        with self.assertRaisesRegex(ValueError, "lower GA version cannot advance"):
+            release_policy.plan_public_promotion(
+                "3.2.0",
+                candidate,
+                refs,
+                lambda ancestor, descendant: ancestor == current,
+            )
+
+    def test_lower_ga_patch_on_older_line_cannot_be_promoted(self):
+        current = "a" * 40
+        with self.assertRaisesRegex(ValueError, "lower GA version cannot advance"):
+            release_policy.plan_public_promotion(
+                "3.0.1",
+                "b" * 40,
+                {
+                    "refs/heads/master": current,
+                    "refs/tags/v3.0.2": current,
+                    "refs/tags/v3.2.0": current,
+                },
+                lambda ancestor, descendant: True,
+            )
+
+    def test_public_promotion_fetches_legacy_line_tag_before_branch_bootstrap(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bare = root / "public.git"
+            source = root / "source"
+            legacy = root / "legacy"
+            subprocess.run(["git", "init", "--bare", bare], check=True, capture_output=True)
+            for repository in (source, legacy):
+                subprocess.run(["git", "init", repository], check=True, capture_output=True)
+                for key, value in (
+                    ("user.name", "Release Test"),
+                    ("user.email", "release-test@example.invalid"),
+                ):
+                    subprocess.run(["git", "-C", repository, "config", key, value], check=True)
+                (repository / "source.txt").write_text(repository.name, encoding="utf-8")
+                subprocess.run(["git", "-C", repository, "add", "source.txt"], check=True)
+                subprocess.run(
+                    ["git", "-C", repository, "commit", "-m", repository.name],
+                    check=True,
+                    capture_output=True,
+                )
+
+            def head(repository: Path) -> str:
+                return subprocess.run(
+                    ["git", "-C", repository, "rev-parse", "HEAD"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+
+            source_head = head(source)
+            legacy_head = head(legacy)
+            for repository in (source, legacy):
+                subprocess.run(
+                    ["git", "-C", repository, "remote", "add", "public", bare],
+                    check=True,
+                )
+            subprocess.run(
+                ["git", "-C", source, "push", "public", f"{source_head}:refs/heads/master"],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "-C", source, "push", "public", f"{source_head}:refs/tags/v3.0.2"],
+                check=True,
+                capture_output=True,
+            )
+            subprocess.run(
+                ["git", "-C", legacy, "push", "public", f"{legacy_head}:refs/tags/v3.2.0-rc1"],
+                check=True,
+                capture_output=True,
+            )
+
+            (source / "source.txt").write_text("disconnected", encoding="utf-8")
+            subprocess.run(["git", "-C", source, "add", "source.txt"], check=True)
+            subprocess.run(
+                ["git", "-C", source, "commit", "-m", "disconnected candidate"],
+                check=True,
+                capture_output=True,
+            )
+            with self.assertRaisesRegex(ValueError, "disconnected branch initialization"):
+                release_policy.inspect_public_promotion(
+                    "3.2.0-rc2", head(source), "public", cwd=source
+                )
+
+            subprocess.run(
+                ["git", "-C", source, "checkout", "--detach", legacy_head],
+                check=True,
+                capture_output=True,
+            )
+            (source / "source.txt").write_text("descends from public RC", encoding="utf-8")
+            subprocess.run(["git", "-C", source, "add", "source.txt"], check=True)
+            subprocess.run(
+                ["git", "-C", source, "commit", "-m", "connected candidate"],
+                check=True,
+                capture_output=True,
+            )
+            plan = release_policy.inspect_public_promotion(
+                "3.2.0-rc2", head(source), "public", cwd=source
+            )
+            self.assertEqual(
+                plan["updates"],
+                ["refs/heads/release/3.2", "refs/tags/v3.2.0-rc2"],
+            )
+
+    def test_atomic_public_push_rejects_raced_branch_update_without_creating_tag(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bare = root / "public.git"
+            work = root / "source"
+            subprocess.run(["git", "init", "--bare", bare], check=True, capture_output=True)
+            subprocess.run(["git", "init", work], check=True, capture_output=True)
+            for key, value in (("user.name", "Release Test"), ("user.email", "release-test@example.invalid")):
+                subprocess.run(["git", "-C", work, "config", key, value], check=True)
+
+            def commit(parent: str | None, content: str, subject: str) -> str:
+                if parent:
+                    subprocess.run(["git", "-C", work, "checkout", "--detach", parent], check=True, capture_output=True)
+                (work / "source.txt").write_text(content, encoding="utf-8")
+                subprocess.run(["git", "-C", work, "add", "source.txt"], check=True)
+                subprocess.run(["git", "-C", work, "commit", "-m", subject], check=True, capture_output=True)
+                return subprocess.run(
+                    ["git", "-C", work, "rev-parse", "HEAD"],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                ).stdout.strip()
+
+            initial = commit(None, "initial", "initial")
+            subprocess.run(["git", "-C", work, "remote", "add", "public", bare], check=True)
+            subprocess.run(["git", "-C", work, "push", "public", f"{initial}:refs/heads/master"], check=True, capture_output=True)
+            subprocess.run(["git", "-C", work, "push", "public", f"{initial}:refs/tags/v3.0.2"], check=True, capture_output=True)
+
+            first_candidate = commit(initial, "rc1", "rc1")
+            first_plan = release_policy.inspect_public_promotion(
+                "3.2.0-rc1", first_candidate, "public", cwd=work
+            )
+            release_policy.push_public_ref_updates("public", first_plan, cwd=work)
+            release_policy.push_public_ref_updates(
+                "public",
+                release_policy.inspect_public_promotion(
+                    "3.2.0-rc1", first_candidate, "public", cwd=work
+                ),
+                cwd=work,
+            )
+            subprocess.run(
+                ["git", "-C", work, "push", "public", f"{initial}:refs/heads/release/3.4"],
+                check=True,
+                capture_output=True,
+            )
+            with self.assertRaisesRegex(ValueError, "changed after validation"):
+                release_policy.promote_public_source(
+                    "3.2.0-rc1",
+                    first_candidate,
+                    "public",
+                    first_plan["public_refs_digest"],
+                    cwd=work,
+                )
+
+            second_candidate = commit(first_candidate, "rc2", "rc2")
+            second_plan = release_policy.inspect_public_promotion(
+                "3.2.0-rc2", second_candidate, "public", cwd=work
+            )
+            release_policy.push_public_ref_updates("public", second_plan, cwd=work)
+
+            stale_candidate = commit(second_candidate, "rc3", "rc3")
+            stale_plan = release_policy.inspect_public_promotion(
+                "3.2.0-rc3", stale_candidate, "public", cwd=work
+            )
+            concurrent = commit(initial, "concurrent", "concurrent branch update")
+            subprocess.run(["git", "-C", work, "push", "public", f"{concurrent}:refs/heads/race"], check=True, capture_output=True)
+            subprocess.run(
+                ["git", "--git-dir", bare, "update-ref", "refs/heads/release/3.2", concurrent],
+                check=True,
+            )
+
+            with self.assertRaisesRegex(ValueError, "atomic public ref update failed"):
+                release_policy.push_public_ref_updates("public", stale_plan, cwd=work)
+            actual_branch = subprocess.run(
+                ["git", "--git-dir", bare, "rev-parse", "refs/heads/release/3.2"],
+                check=True,
+                capture_output=True,
+                text=True,
+            ).stdout.strip()
+            self.assertEqual(actual_branch, concurrent)
+            missing_tag = subprocess.run(
+                ["git", "--git-dir", bare, "show-ref", "--verify", "refs/tags/v3.2.0-rc3"],
+                capture_output=True,
+                text=True,
+            )
+            self.assertNotEqual(missing_tag.returncode, 0)
+
     def test_accepts_publication_environment_with_one_or_more_reviewers_and_self_review(self):
         release_policy.validate_publication_environment({
             "name": "public-release",

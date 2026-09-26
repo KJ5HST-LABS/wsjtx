@@ -45,25 +45,26 @@ WSJTX/wsjtx-internal  (private)     WSJTX/wsjtx  (public)
 
 - **wsjtx-internal** is where all development happens. It's private so the team can work without external pressure during development cycles. This is the repo team members push to, open PRs against, and file issues in.
 
-- **wsjtx** is the public face of the project. It receives an exact release commit and tag only after a release manager approves promotion of a successful internal candidate. External contributors fork this repo.
+- **wsjtx** is the public face of the project. It receives the exact promoted release commit on `release/X.Y` and its immutable version tag after a release manager approves a successful internal candidate. Newest-line GA commits also advance public `master`. External contributors fork this repo.
 
 ### How they stay in sync
 
 The repos are **not** GitHub forks of each other — they are independent Git repos that share history. Synchronization happens in one direction only:
 
 ```
-wsjtx-internal  ──→  wsjtx
-   (private)     tag    (public)
-                 sync
+wsjtx-internal ──→ wsjtx
+   (private)    (public)
+              release/X.Y + immutable v*
 ```
 
 For a version such as `3.2.0-rc1`:
 1. `build/v3.2.0-rc1` identifies an immutable internal candidate and builds validation artifacts
-2. A release manager inspects that run and manually promotes its exact commit as public tag `v3.2.0-rc1`
+2. A release manager inspects that run and manually promotes its exact commit as public branch `release/3.2` and tag `v3.2.0-rc1`
 3. The public repository builds and signs the distribution artifacts from that tag
-4. The public workflow verifies the artifacts and publishes the GitHub prerelease or release
+4. The public workflow verifies and summarizes the exact bundle
+5. An eligible release manager approves the final `publish` job, which creates the GitHub prerelease or release
 
-An RC promotion publishes only its tag, so public `master` remains the latest GA source. GA promotion also advances public `master` to the same commit. This keeps public source, signed binaries, and the release page bound to one reviewed revision.
+See the [public branch policy](DEPLOYMENT_PLAYBOOK.md#public-branch-history-and-ga-line-policy) for ancestry requirements and how GA releases update `master` and GitHub Latest.
 
 The public repo never pushes back to internal. Changes from external contributors are manually cherry-picked or merged by a team member (see [Section 4](#4-contributing-from-outside-the-team)).
 
@@ -367,7 +368,7 @@ This is the simplest possible policy for v1. If a flaky test emerges, the team c
 
 ## 6. The Release Process
 
-Releases are tag-defined and use two deliberate approvals. The internal `build/v...` tag fixes the candidate revision; it does not publish source or binaries. A release manager reviews the candidate and dispatches `Promote Release Source` with `operation=promote`, approving publication of the exact source commit. After the public workflow builds, verifies, and summarizes the bundle, a release manager approves the final `publish` job through the `public-release` environment.
+After candidate creation, two approvals remain. First, review the candidate and run Promote Release Source with `operation=promote`; this makes the exact source public. After builds and bundle checks finish, approve the final `publish` job in `public-release`. The same maintainer can do both.
 
 ### Overview
 
@@ -391,27 +392,23 @@ Do not put an RC or GA tag on a `DEVEL` commit. The helper rejects disagreement 
 
 #### 2. Create the internal candidate
 
-Run **Prepare Release Candidate** from `release/3.2` at the intended SHA. First use `operation=validate`, then `operation=create`, supplying the version (`3.2.0-rc1`, for example) and the full SHA. Creation makes immutable tag `build/v3.2.0-rc1`; the same workflow run calls `release.yml` to build all internal validation artifacts but publishes nothing.
+Run Prepare Release Candidate from `release/3.2` at the intended SHA. Validate the version and full SHA, then use `operation=create`. This creates `build/v3.2.0-rc1` and the internal validation artifacts; it does not publish them.
 
 Inspect the candidate run and installable validation artifacts. Record its run ID for promotion.
 
 #### 3. Promote the exact source
 
-From the same release branch and SHA, run **Promote Release Source** with the same version, the candidate run ID, and `operation=validate`. After reviewing its summary, rerun with `operation=promote`. The workflow verifies the immutable tag, commit, release metadata, current release-branch tip, candidate run, and artifacts before creating public tag `v3.2.0-rc1` at the same commit.
+From the same branch and SHA, run Promote Release Source with the version and candidate run ID. Validate first and review the summary, then rerun with `operation=promote`. The workflow checks the candidate, creates its immutable public tag, and creates or fast-forwards the public release branch at that exact commit.
 
-The public tag exposes the corresponding source required for public distribution and triggers fresh public distribution builds. Promotion approves public source; it does not approve publishing release assets. RC promotion does not move public `master`; GA promotion advances `master` to the same commit with a guarded update.
+RCs leave `master` unchanged. A newest-line GA also advances `master`; an older-line GA leaves both `master` and GitHub Latest unchanged. See the [playbook](DEPLOYMENT_PLAYBOOK.md#public-branch-history-and-ga-line-policy) for line selection, first branch creation, ancestry checks, and handling divergent history.
 
 The sample downloader reads `samples/contents_X.Y.json` from SourceForge. After adding a sample, run the `upload-samples` target from a configured build of the tagged source and verify the published catalog lists the new file. The Help menu's Release Notes and Online User Guide are served from the public `feat-web-pages` branch; publish `Release_Notes.txt` and a guide generated from the tagged source there. Update the legacy `https://wsjt.sourceforge.io/Release_Notes.txt` document for already released binaries that still open it. These remote files are separate from the GitHub Release assets and are not updated by the public release workflow.
 
 #### 4. Verify publication
 
-The public workflow builds all supported targets. Windows installers use SignPath production signing by default; a tagged release can explicitly select a genuinely unsigned installer in `release-state.txt`. The release manifest records that mode. When hosted Apple signing is enabled, both RC and GA macOS installers are Developer ID-signed, notarized, stapled, and verified before publication.
+After public builds finish, review the bundle summary for its tag, source SHA, run link, signing modes, assets, and checksums. Then approve the final `publish` job in `public-release`; the same maintainer can approve their own run. RCs publish as prereleases.
 
-With `MACOS_DISTRIBUTION_SIGNING_ENABLED=false`, the workflow builds validated unsigned macOS packages under their final release filenames. Those two packages are marked as manually replaceable, excluded from `SHA256SUMS` and the manifest's immutable asset list, and preserved rather than compared on workflow reruns. A release manager must replace both with Developer ID-signed, notarized, and stapled packages after publication. Enable the variable after `apple-release-signing` is configured to restore fully automated macOS signing and immutable package hashes.
-
-Before using this flow, configure public `WSJTX/wsjtx` environment `public-release` with one or more eligible release managers as required reviewers and leave **Prevent self-review** off. GitHub requires only one listed reviewer to approve. The public workflow checks this rule with `Actions: read` before starting long builds and fails closed if the rule is missing, malformed, blocks self-review, or cannot be read.
-
-Review the private candidate artifacts, provenance, and validation summary before running `operation=promote`. After all public builds and verification finish, inspect the assemble job's **Verified public release bundle** summary: public tag, full source SHA, workflow run, signing modes, release asset names, and SHA-256 values. The two manually replaceable macOS packages are clearly listed without hashes when distribution signing is disabled. The final `publish` job waits on `public-release`; the same eligible maintainer can approve their own run because self-review is allowed. Only then does the workflow recheck the bundle and exact public tag and publish an RC as a GitHub prerelease or GA as the latest release.
+The playbook describes the required [reviewer settings](DEPLOYMENT_PLAYBOOK.md#public-final-publication-approval), [bundle checks and signing modes](DEPLOYMENT_PLAYBOOK.md#step-4-review-and-approve-final-publication), and manual macOS package replacement when hosted signing is disabled.
 
 #### 5. Recover without moving tags
 
@@ -474,7 +471,7 @@ Team members can run candidate validation. Creating the candidate and promoting 
 | `feat-*` | New feature | `develop` | `develop` via PR | Until merged |
 | `fix-*` | Bug fix | `develop` | `develop` via PR | Until merged |
 | `<issue#>-*` | Issue-linked work | `develop` | `develop` via PR | Until merged |
-| `release/X.Y` | RC and GA stabilization | `develop` | Public release tags; `master` only at GA | Maintained for patch releases |
+| `release/X.Y` | RC and GA stabilization | `develop` | Public `release/X.Y` branch and tags; `master` only at newest-line GA | Maintained for patch releases |
 | `develop` | Main development trunk | — | — | Permanent |
 | `master` | Public releases (on wsjtx) | — | — | Permanent |
 
@@ -657,17 +654,22 @@ The Prepare Release Candidate run calls internal `release.yml` to build validati
                 └─→ public v3.2.0-rc1
                       └─→ public Linux, macOS, and Windows builds
                             └─→ signing and provenance checks
-                                  └─→ automatic public prerelease
+                                  └─→ final `public-release` approval
+                                        └─→ public prerelease
 ```
 
 ### 5. Promote and verify
 
 ```bash
 # After running Promote Release Source with validate and then promote:
+gh api repos/WSJTX/wsjtx/git/ref/heads/release/3.2 --jq .object.sha
 gh api repos/WSJTX/wsjtx/git/ref/tags/v3.2.0-rc1 --jq .object.sha
 
 # After the public workflow verifies artifacts and publishes:
-gh release view v3.2.0-rc1 --repo WSJTX/wsjtx
+gh release view v3.2.0-rc1 --repo WSJTX/wsjtx --json isPrerelease,url
+
+# Check which release is Latest:
+gh release view --repo WSJTX/wsjtx --json tagName,url
 ```
 
 ### 6. Distribute
@@ -685,7 +687,7 @@ git fetch upstream
 git switch --detach v3.2.0-rc1
 ```
 
-After GA promotion, public `master` advances to the GA commit and normal fork synchronization resumes.
+After a newest-line GA promotion, public `master` advances to the GA commit and normal fork synchronization resumes. An older-line patch leaves it at the newer GA source; run `gh release view --repo WSJTX/wsjtx --json tagName,url` and confirm it still names the newer GA.
 
 ---
 

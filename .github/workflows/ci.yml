@@ -42,6 +42,10 @@ jobs:
   # optional fourth tweak segment (3.0.0.0 → 3.0.0) to match the 3-part
   # shape release.yml derives from build/v<X.Y.Z> tags.
   prepare:
+    if: >-
+      github.repository != 'WSJTX/wsjtx' ||
+      github.event_name != 'push' ||
+      !startsWith(github.ref, 'refs/heads/release/')
     runs-on: ubuntu-latest
     timeout-minutes: 10
     outputs:
