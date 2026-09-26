@@ -69,6 +69,7 @@ void JttyTxStream::start (TxEvidence::TxRequest request, SoundOutput * stream)
       return;
     }
   initialize (QIODevice::ReadOnly, request.channel);
+  m_lastProgress = {};
   m_active = true;
   m_stream = stream;
   if (m_stream)
@@ -97,8 +98,10 @@ void JttyTxStream::stop ()
   m_active = false;
   m_drainTimer->stop ();
   AudioDevice::close ();
-  // Do not drop queued PCM here. A GUI stop for the previous session can cross
-  // with the next enqueue; clear() is the explicit abort path.
+  // Reclaim cancelled PCM on the consumer thread before acknowledging stop.
+  // A pending reset preserves samples enqueued after its clear boundary.
+  m_queue.applyPendingReset ();
+  Q_EMIT stopped ();
 }
 
 void JttyTxStream::clearQueue (TxAudioQueueEpoch epoch)
@@ -178,6 +181,16 @@ qint64 JttyTxStream::readData (char * data, qint64 maxSize)
 
 void JttyTxStream::pollDrain ()
 {
+  if (!m_active) return;
+  auto const current = m_queue.progress ();
+  if (current.epoch.isValid ()
+      && (current.epoch != m_lastProgress.epoch
+          || current.served_samples != m_lastProgress.served_samples
+          || current.total_samples != m_lastProgress.total_samples))
+    {
+      m_lastProgress = current;
+      Q_EMIT progress (current);
+    }
   auto const drain = m_queue.takeDrainReady ();
   if (drain.ready)
     {

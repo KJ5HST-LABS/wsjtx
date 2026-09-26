@@ -6492,6 +6492,7 @@ bool Configuration::impl::open_rig (bool force)
           rig_connections_ << connect (rig.get (), &Transceiver::txSourceCommitted, self_, &Configuration::txSourceCommitted);
           rig_connections_ << connect (rig.get (), &Transceiver::rawTxPlayoutSnapshot, self_, &Configuration::rawTxPlayoutSnapshot);
           rig_connections_ << connect (rig.get (), &Transceiver::jtty_drained, self_, &Configuration::transceiver_jtty_drained);
+          rig_connections_ << connect (rig.get (), &Transceiver::jtty_progress, self_, &Configuration::transceiver_jtty_progress);
           rig_connections_ << connect (rig.get (), &Transceiver::jtty_enqueue_accepted, self_, &Configuration::transceiver_jtty_enqueue_accepted);
           rig_connections_ << connect (rig.get (), &Transceiver::jtty_enqueue_failed, self_, &Configuration::transceiver_jtty_enqueue_failed);
           rig_connections_ << connect (rig.get (), &Transceiver::update, this, &Configuration::impl::handle_transceiver_update);

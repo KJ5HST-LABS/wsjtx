@@ -344,6 +344,7 @@ private:
   TxAudioQueue m_txAudioQueue;
   QTimer * m_jttyDrainTimer;
   qint64 m_jttyDrainGuard;
+  TxAudioQueueProgress m_jttyLastProgress;
   TxEvidence::TxStartSnapshot m_txStartSnapshot;
   qint64 m_tciBackendStartSequence;
   qint64 m_tciSuccessfullyWrittenFrames;

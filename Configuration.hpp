@@ -496,6 +496,7 @@ public:
   Q_SIGNAL void txSourceCommitted (TxEvidence::TxStartSnapshot) const;
   Q_SIGNAL void rawTxPlayoutSnapshot (TxEvidence::TxRawPlayoutSnapshot) const;
   Q_SIGNAL void transceiver_jtty_drained (TxAudioQueueDrainState drain) const;
+  Q_SIGNAL void transceiver_jtty_progress (TxAudioQueueProgress progress) const;
   Q_SIGNAL void transceiver_jtty_enqueue_accepted (qint64 enqueueId, qint64 sampleCount,
                                                    TxAudioQueueProgress progress) const;
   Q_SIGNAL void transceiver_jtty_enqueue_failed (TxAudioQueueEpoch epoch,

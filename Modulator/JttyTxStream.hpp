@@ -45,6 +45,8 @@ public:
                           qint64 enqueueId);
 
   Q_SIGNAL void drained (TxAudioQueueDrainState drain);
+  Q_SIGNAL void progress (TxAudioQueueProgress progress);
+  Q_SIGNAL void stopped ();
   Q_SIGNAL void txSourceCommitted (TxEvidence::TxStartSnapshot snapshot);
   Q_SIGNAL void enqueueAccepted (qint64 enqueueId, qint64 sampleCount,
                                  TxAudioQueueProgress progress);
@@ -69,6 +71,7 @@ private:
   QPointer<SoundOutput> m_stream;
   QTimer * m_drainTimer;
   std::atomic<bool> m_active;
+  TxAudioQueueProgress m_lastProgress;
 };
 
 #endif

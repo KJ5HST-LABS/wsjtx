@@ -1054,6 +1054,7 @@ void TCITransceiver::enqueue_jtty_pcm (QByteArray const& samples,
 void TCITransceiver::clear_jtty_pcm (TxAudioQueueEpoch epoch) noexcept
 {
   m_txAudioQueue.clear (epoch);
+  // PCM enqueue and TxChrono consumption both run on this rig thread.
   m_txAudioQueue.applyPendingReset ();
 }
 
@@ -1061,6 +1062,16 @@ void TCITransceiver::poll_jtty_drain ()
 {
   // TCI audio is pulled while responding to TxChrono packets. Emitting the
   // completion signal here keeps Qt work out of that packet/audio path.
+  if (m_state == Idle || m_txMode != "JTTY") return;
+  auto const current = m_txAudioQueue.progress ();
+  if (current.epoch.isValid ()
+      && (current.epoch != m_jttyLastProgress.epoch
+          || current.served_samples != m_jttyLastProgress.served_samples
+          || current.total_samples != m_jttyLastProgress.total_samples))
+    {
+      m_jttyLastProgress = current;
+      Q_EMIT jtty_progress (current);
+    }
   auto const drain = m_txAudioQueue.takeDrainReady ();
   if (drain.ready)
     {
@@ -1706,6 +1717,7 @@ void TCITransceiver::do_modulator_start (TxEvidence::TxRequest const& request)
   }
   m_quickClose = false;
   m_txMode = request.mode;
+  m_jttyLastProgress = {};
   m_symbolsLength = request.symbols_length;
   m_isym0 = std::numeric_limits<unsigned>::max (); // big number
   m_frequency0 = 0.;

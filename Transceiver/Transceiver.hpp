@@ -268,6 +268,7 @@ public:
   Q_SIGNAL void rawTxPlayoutSnapshot (TxEvidence::TxRawPlayoutSnapshot);
 
   Q_SIGNAL void jtty_drained (TxAudioQueueDrainState drain);
+  Q_SIGNAL void jtty_progress (TxAudioQueueProgress progress);
   Q_SIGNAL void jtty_enqueue_accepted (qint64 enqueueId, qint64 sampleCount,
                                        TxAudioQueueProgress progress);
   Q_SIGNAL void jtty_enqueue_failed (TxAudioQueueEpoch epoch, qint64 enqueueId,

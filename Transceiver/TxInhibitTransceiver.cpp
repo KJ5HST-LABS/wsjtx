@@ -49,6 +49,7 @@ TxInhibitTransceiver::TxInhibitTransceiver (logger_type * logger,
   connect (wrapped_.get (), &Transceiver::txSourceCommitted, this, &Transceiver::txSourceCommitted);
   connect (wrapped_.get (), &Transceiver::rawTxPlayoutSnapshot, this, &Transceiver::rawTxPlayoutSnapshot);
   connect (wrapped_.get (), &Transceiver::jtty_drained, this, &Transceiver::jtty_drained);
+  connect (wrapped_.get (), &Transceiver::jtty_progress, this, &Transceiver::jtty_progress);
   connect (wrapped_.get (), &Transceiver::jtty_enqueue_accepted, this, &Transceiver::jtty_enqueue_accepted);
   connect (wrapped_.get (), &Transceiver::jtty_enqueue_failed, this, &Transceiver::jtty_enqueue_failed);
   connect (wrapped_.get (), &Transceiver::update, this, &Transceiver::update);
