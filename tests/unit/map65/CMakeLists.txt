@@ -20,3 +20,9 @@ add_executable (test_map65_runtime_paths
 target_include_directories (test_map65_runtime_paths PRIVATE ${CMAKE_SOURCE_DIR}/map65)
 target_link_libraries (test_map65_runtime_paths Qt5::Test)
 add_test (NAME test_map65_runtime_paths COMMAND test_map65_runtime_paths)
+
+if (UNIX)
+  add_executable (test_map65_ptt_unix test_map65_ptt_unix.c)
+  set_target_properties (test_map65_ptt_unix PROPERTIES AUTOMOC OFF)
+  add_test (NAME test_map65_ptt_unix COMMAND test_map65_ptt_unix)
+endif ()
