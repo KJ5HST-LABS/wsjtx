@@ -392,6 +392,8 @@ Do not put an RC or GA tag on a `DEVEL` commit. The helper rejects disagreement 
 
 #### 2. Create the internal candidate
 
+Prepare and commit the [Linux image selection](DEPLOYMENT_PLAYBOOK.md#prepared-linux-release-images) first. Candidate and public builds use those same dependency digests. Native builds report [cache readiness](DEPLOYMENT_PLAYBOOK.md#cache-readiness).
+
 Run Prepare Release Candidate from `release/3.2` at the intended SHA. Validate the version and full SHA, then use `operation=create`. This creates `build/v3.2.0-rc1` and the internal validation artifacts; it does not publish them.
 
 Inspect the candidate run and installable validation artifacts. Record its run ID for promotion.
