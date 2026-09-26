@@ -317,6 +317,7 @@ void MainWindow::completeJttyTxEnqueue(qint64 requestId, QString const& message,
   if (cursor.position()) cursor.insertBlock();
   QTextCharFormat format = cursor.charFormat();
   format.setFont(ui->decodedTextBrowser2->contentFont());
+  format.setForeground(QBrush(QColor(Qt::black)));  // stay legible on yellow regardless of app theme
   format.setBackground(QBrush(QColor(Qt::yellow)));
   cursor.setCharFormat(format);
   cursor.insertText(Jtty::wrapMessage(message));
