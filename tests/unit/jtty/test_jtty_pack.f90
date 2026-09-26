@@ -89,6 +89,8 @@ program test_jtty_pack
   call expect_pack('1G EMA',2,3,-1,3,-1)
   call expect_pack('1D ZZZ',2,3,-1,3,-1)
   call expect_pack('1D EMAX',2,3,-1,3,-1)
+  call expect_pack('K1ABC 1D EMAX QSL TU',4,0,1,3,-1)
+  call expect_pack('K1ABC 1D EMAX X QSL TU',4,0,1,3,-1)
   call expect_pack('599 SA00',2,-1,-1,-1,-1)
   call expect_pack('599 A!',2,-1,-1,-1,-1)
   call expect_pack('599 XYZ',1,2,-1,-1,-1)

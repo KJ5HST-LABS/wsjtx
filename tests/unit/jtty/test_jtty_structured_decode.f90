@@ -59,6 +59,7 @@ program test_jtty_structured_decode
   call decode_native_call_and_serial(failures)
   call decode_c_adapter_atoms(failures)
   call reject_invalid_c_descriptors(failures)
+  call reject_invalid_c_batch(failures)
   call decode_cpp_compiled_n1mm(failures)
   call decode_compact_text(failures)
   call decode_profile_text(failures)
@@ -242,6 +243,29 @@ contains
     call genjtty_atoms_c(atom,1,tones,nsymbols,status)
     call expect(nsymbols.eq.0,'C adapter rejects unassigned control phrase',count)
   end subroutine reject_invalid_c_descriptors
+
+  subroutine reject_invalid_c_batch(count)
+    integer, intent(inout) :: count
+    type(jtty_source_atom_c) :: atoms(3)
+    integer(c_int) :: tones(3*frame_symbols),nsymbols,status
+
+    call initialize_c_atom(atoms(1),JTTY_ATOM_CALL,JTTY_CALL_CALL,0,0,'K1ABC')
+    call initialize_c_atom(atoms(2),JTTY_ATOM_EXCH_PAIR,JTTY_PAIR_CLASS_SECTION,0,1,'EMAX')
+    call initialize_c_atom(atoms(3),JTTY_ATOM_CONTROL,JTTY_CONTROL_QSL_TU,0,0,'')
+    call genjtty_atoms_c(atoms,size(atoms),tones,nsymbols,status)
+    call expect(nsymbols.eq.0 .and. status.eq.JTTY_ENCODE_UNKNOWN_SECTION, &
+         'invalid section rejects the whole descriptor batch',count)
+
+    call initialize_c_atom(atoms(2),JTTY_ATOM_EXCH_NUM,JTTY_NUM_SERIAL,JTTY_ROLE_FULL,131072,'')
+    call genjtty_atoms_c(atoms,size(atoms),tones,nsymbols,status)
+    call expect(nsymbols.eq.0 .and. status.eq.JTTY_ENCODE_INVALID_DESCRIPTOR, &
+         'invalid source atom rejects the whole descriptor batch',count)
+
+    call initialize_c_atom(atoms(2),JTTY_ATOM_EXCH_PAIR,JTTY_PAIR_CLASS_SECTION,0,1,'EMA')
+    call genjtty_atoms_c(atoms,size(atoms),tones,nsymbols,status)
+    call expect(nsymbols.eq.size(atoms)*frame_symbols .and. status.eq.JTTY_ENCODE_OK, &
+         'valid descriptor batch encodes after a rejected batch',count)
+  end subroutine reject_invalid_c_batch
 
   subroutine initialize_c_atom(atom,kind,subtype,role,value,text)
     type(jtty_source_atom_c), intent(out) :: atom
