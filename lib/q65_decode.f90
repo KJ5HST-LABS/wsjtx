@@ -61,9 +61,9 @@ contains
     use q65                               !Shared variables
     use prog_args
     use types
+    use q65_callers, only: Q65_MAX_CALLERS,q65_load_callers,q65_expire_callers
  
     parameter (NMAX=300*12000)  !Max TRperiod is 300 s
-    parameter (MAX_CALLERS=50)  !For multiple q3 decodes in NA VHF Contest mode
 
     class(q65_decoder), intent(inout) :: this
 
@@ -85,12 +85,12 @@ contains
     integer dgen(13)
     integer nqf(20)
     integer stageno                       !Added by W3SZ
-    integer time
+    integer time,history_status
     integer iflagdec                      !Recovered spare 78th bit
     logical lclearave,lnewdat0,lq65pileup,lapcqonly,unpk77_success
     logical single_decode,lagain
     complex c00(0:3600000)                !Analytic signal, 6000 Sa/s
-    type(q3list) callers(MAX_CALLERS)
+    type(q3list) callers(Q65_MAX_CALLERS)
     save c00
 
 ! Start by setting some parameters and allocating storage for large arrays
@@ -115,28 +115,14 @@ contains
     nfft2=ntrperiod*6000
     npasses=1
     nhist2=0
+    history_status=0
     if(lagain) ndepth=ior(ndepth,3)       !Use 'Deep' for manual Q65 decodes
     dxcall13=hiscall  ! initialize for use in packjt77
     mycall13=mycall
     if(ncontest.eq.1) then
 ! NA VHF, WW-Digi, or ARRL Digi Contest
-       open(24,file=trim(data_dir)//'/tsil.3q',status='unknown',     &
-            form='unformatted')
-       read(24,end=2) nhist2
-       if(nhist2.ge.1 .and. nhist2.le.40) then
-          read(24,end=2) callers(1:nhist2)
-          now=time()
-          do i=1,nhist2
-             hours=(now - callers(i)%nsec)/3600.0
-             if(hours.gt.24.0) then
-                callers(i:nhist2-1)=callers(i+1:nhist2)
-                nhist2=nhist2-1
-             endif
-          enddo
-       else
-          nhist2=0
-       endif
-2      close(24)
+       call q65_load_callers(trim(data_dir)//'/tsil.3q',callers,nhist2,history_status)
+       if(history_status.eq.0) call q65_expire_callers(callers,nhist2,time())
     endif
 
 ! Determine the T/R sequence: iseq=0 (even), or iseq=1 (odd)
@@ -336,7 +322,7 @@ contains
           call this%callback(nutc,snr1,nsnr,dtdec,f0dec,decoded,    &
                idec,nused,ntrperiod,iflagdec)
           if(ncontest.eq.1) then
-             call q65_hist2(nint(f0dec),decoded,callers,nhist2)
+             call q65_hist2(nint(f0dec),decoded,callers,nhist2,history_status.eq.0)
           else
              call q65_hist(nint(f0dec),msg0=decoded)
           endif
@@ -449,7 +435,7 @@ contains
              call this%callback(nutc,snr1,nsnr,dtdec,f0dec,decoded,    &
                   idec,nused,ntrperiod,iflagdec)
              if(ncontest.eq.1) then
-                call q65_hist2(nint(f0dec),decoded,callers,nhist2)
+                call q65_hist2(nint(f0dec),decoded,callers,nhist2,history_status.eq.0)
              else
                 call q65_hist(nint(f0dec),msg0=decoded)
              endif

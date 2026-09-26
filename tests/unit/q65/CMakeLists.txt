@@ -33,3 +33,11 @@ target_include_directories (test_q65_llh_contracts PRIVATE
   ${CMAKE_SOURCE_DIR}/lib/qra/q65)
 target_link_libraries (test_q65_llh_contracts PRIVATE wsjt_cxx)
 add_test (NAME test_q65_llh_contracts COMMAND test_q65_llh_contracts)
+
+add_executable (test_q65_callers test_q65_callers.f90)
+wsjt_link_common_fortran (test_q65_callers)
+add_test (NAME test_q65_callers COMMAND test_q65_callers)
+
+add_executable (test_q65_caller_display test_q65_caller_display.f90)
+wsjt_link_common_fortran (test_q65_caller_display)
+add_test (NAME test_q65_caller_display COMMAND test_q65_caller_display)

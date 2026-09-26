@@ -1,5 +1,7 @@
 module q65
 
+  use q65_callers, only: Q65_MAX_CODEWORDS
+
   parameter (NSTEP=8)          !Number of time bins per symbol in s1, s1a, s1b
   parameter (PLOG_MIN=-242.0)        !List decoding threshold
   integer iz0,jz0
@@ -9,7 +11,7 @@ module q65
   integer apmask(13),apsymbols(13)
   integer,dimension(22) ::  isync = (/1,9,12,13,15,22,23,26,27,33,35,   &
                                      38,46,50,55,60,62,66,69,74,76,85/)
-  integer codewords(63,411)   !See MAX_NCW in q65_set_list2.f90
+  integer codewords(63,Q65_MAX_CODEWORDS)
   integer ibwa,ibwb,ncw,nsps,mode_q65,nfa,nfb,nqd
   integer idfbest,idtbest,ibw,ndistbest,maxiters,max_drift
   integer istep,nsmo,lag1,lag2,npasses,iseq,ncand,nrc
@@ -844,66 +846,21 @@ subroutine q65_hist(if0,msg0,dxcall,dxgrid)
 900 return
 end subroutine q65_hist
 
-subroutine q65_hist2(nfreq,msg0,callers,nhist2)
+subroutine q65_hist2(nfreq,msg0,callers,nhist2,persist)
 
-  use types
-  use prog_args
-  parameter (MAX_CALLERS=50)  !For multiple q3 decodes in NA VHF Contest mode
-  character*37 msg0,msg
-  type(q3list) callers(MAX_CALLERS)
-  character*6 c6
-  character*4 g4
-  logical newcall,isgrid
+  use types, only: q3list
+  use prog_args, only: data_dir
+  use q65_callers, only: Q65_MAX_CALLERS,q65_record_caller,q65_save_callers
+  implicit none
+  integer, intent(in) :: nfreq
+  character(len=*), intent(in) :: msg0
+  type(q3list), intent(inout) :: callers(Q65_MAX_CALLERS)
+  integer, intent(inout) :: nhist2
+  logical, intent(in) :: persist
+  integer :: status,time
 
-  isgrid(g4)=g4(1:1).ge.'A' .and. g4(1:1).le.'R' .and. g4(2:2).ge.'A' .and. &
-       g4(2:2).le.'R' .and. g4(3:3).ge.'0' .and. g4(3:3).le.'9' .and.       &
-       g4(4:4).ge.'0' .and. g4(4:4).le.'9' .and. g4(1:4).ne.'RR73'
-
-  msg=msg0
-  if(index(msg,'/').gt.0) goto 900         !Ignore messages with compound calls
-  i0=index(msg,' R ')
-  if(i0.ge.7) msg=msg(1:i0)//msg(i0+3:)
-  i1=index(msg,' ')
-  c6='      '
-  g4='    '
-  if(i1.ge.4 .and. i1.le.13) then
-     i2=index(msg(i1+1:),' ') + i1
-     c6=msg(i1+1:i2-1)                     !Extract DX call
-     g4=msg(i2+1:i2+4)                     !Extract DX grid
-  endif
-
-  newcall=.true.
-  do i=1,nhist2
-     if(callers(i)%call .eq. c6) then
-        newcall=.false.
-        callers(i)%nsec=time()
-        callers(i)%nfreq=nfreq
-        exit
-     endif
-  enddo
-
-  if(newcall .and. isgrid(g4)) then
-     if(nhist2.eq.MAX_CALLERS) then
-! Purge the oldest caller
-        callers(1:MAX_CALLERS-1)=callers(2:MAX_CALLERS)
-        nhist2=nhist2-1
-     endif
-     nhist2=nhist2+1
-     callers(nhist2)%call=c6
-     callers(nhist2)%grid=g4
-     callers(nhist2)%nsec=time()
-     callers(nhist2)%nfreq=nfreq
-  endif
-
-  if(nhist2.ge.1 .and. nhist2.le.40) then
-     open(24,file=trim(data_dir)//'/tsil.3q',status='unknown',     &
-          form='unformatted')
-     write(24) nhist2
-     write(24) callers(1:nhist2)
-     close(24)
-  endif
-
-900 return
+  call q65_record_caller(callers,nhist2,nfreq,msg0,time())
+  if(persist) call q65_save_callers(trim(data_dir)//'/tsil.3q',callers,nhist2,status)
 end subroutine q65_hist2
 
 end module q65

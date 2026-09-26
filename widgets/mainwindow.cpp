@@ -405,9 +405,9 @@ extern "C" {
 
   void chk_samples_(int* m_ihsym,int* k, int* m_hsymStop);
 
-  void get_q3list_(char* fname, bool* bDiskData, int* nlist, char* list, FCL len1, FCL len2);
+  void get_q3list_(char* fname, bool* bDiskData, int* capacity, int* nlist, char* list, FCL len1, FCL len2);
 
-  void rm_q3list_(char* callsign, FCL len);
+  void rm_q3list_(char* fname, char* callsign, FCL len1, FCL len2);
 
   void jpl_setup_(char* fname, FCL len);
 }
@@ -6443,22 +6443,23 @@ void MainWindow::refreshPileupList()
 {
   // Update the ActiveStations display for Q65 pileup situation...
       int nlist=0;
-      char list[2000];
-      char line[37];
+      int capacity=MaxQ65PileupCallers;
+      char list[MaxQ65PileupCallers * Q65_CALLER_ROW_WIDTH];
+      char line[Q65_CALLER_ROW_WIDTH];
       list[0]=0;
       auto fname {QDir::toNativeSeparators(m_config.writeable_data_dir().absoluteFilePath("tsil.3q"))};
-      get_q3list_(const_cast<char *> (fname.toLatin1().constData()), &m_diskData, &nlist,
-                  &list[0], (FCL)fname.length(), (FCL)2000);
+      get_q3list_(const_cast<char *> (fname.toLatin1().constData()), &m_diskData, &capacity, &nlist,
+                  &list[0], (FCL)fname.length(), (FCL)Q65_CALLER_ROW_WIDTH);
       QString t="";
       QString t0="";
       std::fill(m_callers.begin(), m_callers.end(), QString {});
       for(int i=0; i<qMin(nlist, MaxQ65PileupCallers); i++) {
-        memcpy(line,&list[37*i],37);
+        memcpy(line,&list[Q65_CALLER_ROW_WIDTH*i],sizeof line);
 
         // Callsign is at offset 11 (6 chars); the final byte is the otherwise-unused terminating char(0), repurposed here for '#'.
         QString const call = QString::fromLatin1(line + 11, 6).trimmed ();
         if (m_q65PileupCopiedCallers.contains (call)) {
-          line[36] = '#';
+          line[Q65_CALLER_ROW_WIDTH - 1] = '#';
         }
 
         t0=QString::fromLatin1(line, sizeof line)+"\n";
@@ -6549,17 +6550,19 @@ void MainWindow::callSandP2(int n)
   m_specOp=m_config.special_op_id();
   bool bCtrl = (n<0);
   n=qAbs(n)-1;
-  if(n<0 || n>=int(m_ready2call.size())) return;
-  if(m_mode!="Q65" and m_ready2call[n]=="") return;
-  QStringList w=m_ready2call[n].split(' ', SkipEmptyParts);
-  if(m_mode=="Q65" and m_specOp==SpecOp::Q65_PILEUP and n < MaxQ65PileupCallers) {
+  if(n<0) return;
+  QStringList w;
+  if(m_mode=="Q65" and m_specOp==SpecOp::Q65_PILEUP) {
+    if(n>=MaxQ65PileupCallers) return;
     // This code is for 6m EME DXpedition operator
     w=m_callers[n].split(' ', SkipEmptyParts);
     if(w.size() < 4) return;
     m_deCall=w[2];
     if(bCtrl) {
       // Remove this call from q3list.
-      rm_q3list_(const_cast<char *> (m_deCall.toLatin1().constData()), m_deCall.size());
+      auto const fname = QDir::toNativeSeparators(m_config.writeable_data_dir().absoluteFilePath("tsil.3q")).toLatin1();
+      rm_q3list_(const_cast<char *>(fname.constData()),
+                  const_cast<char *> (m_deCall.toLatin1().constData()), fname.size(), m_deCall.size());
       refreshPileupList();
       return;
     }
@@ -6574,6 +6577,9 @@ void MainWindow::callSandP2(int n)
     if(m_transmitting) m_restart=true;
     return;
   }
+  if(n>=int(m_ready2call.size())) return;
+  if(m_mode!="Q65" and m_ready2call[n]=="") return;
+  w=m_ready2call[n].split(' ', SkipEmptyParts);
 
   bool frequency_changed = false;
   if(m_mode=="Q65") {
@@ -10266,7 +10272,9 @@ void MainWindow::acceptQSO (QDateTime const& QSO_date_off, QString const& call, 
       m_score++;
       m_EMEworked[call]=true;
       if(m_specOp==SpecOp::Q65_PILEUP) {
-        rm_q3list_(const_cast<char *> (m_deCall.toLatin1().constData()), m_deCall.size());
+        auto const fname = QDir::toNativeSeparators(m_config.writeable_data_dir().absoluteFilePath("tsil.3q")).toLatin1();
+        rm_q3list_(const_cast<char *>(fname.constData()),
+                    const_cast<char *> (m_deCall.toLatin1().constData()), fname.size(), m_deCall.size());
         refreshPileupList();
       }
       m_ActiveStationsWidget->setRate(m_score);

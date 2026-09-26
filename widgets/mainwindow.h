@@ -49,6 +49,7 @@ class QHBoxLayout;
 #include "Audio/TxRequest.hpp"
 #include "Audio/WavLoadCoordinator.hpp"
 #include "commons.h"
+#include "lib/qra/q65/q65_limits.h"
 #include "FastDecode.hpp"
 #include "ReferenceSpectrum.hpp"
 #include "Radio.hpp"
@@ -364,8 +365,7 @@ private:
   };
 
   static constexpr int MaxActiveStationRows = 50;
-  // Keep this matched with MAX_CALLERS in the Q65 q3list Fortran helpers.
-  static constexpr int MaxQ65PileupCallers = 50;
+  static constexpr int MaxQ65PileupCallers = Q65_CALLER_CAPACITY;
 
   void change_layout (std::size_t) override;
   void keyPressEvent (QKeyEvent *) override;

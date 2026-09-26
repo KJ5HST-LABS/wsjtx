@@ -44,6 +44,7 @@ program test_q65_decode_pipeline
   use q65_decode, only: q65_decoder,cq0,msg0,nsnr0,nfreq0,xdt0
   use q65_test_fixture, only: make_q65_wave,q65_nsamples,q65_ntrperiod
   use types, only: q3list
+  use q65_callers, only: Q65_MAX_CALLERS,Q65_MAX_CODEWORDS
   implicit none
 
   integer(int16), allocatable :: iwave(:)
@@ -93,10 +94,10 @@ contains
 
   subroutine check_q65_ap_flag_masks()
     integer :: apsym0(58),apmask(78),apsymbols(78),iaptype
-    integer :: codewords(63,411),ncw,j
+    integer :: codewords(63,Q65_MAX_CODEWORDS),ncw,j
     character(len=12) :: list_mycall,list_hiscall
     character(len=6) :: list_hisgrid
-    type(q3list) :: callers(50)
+    type(q3list) :: callers(Q65_MAX_CALLERS)
 
     apsym0=0
     call q65_ap(5,1,0,.false.,.false.,iaptype,apsym0,apmask,apsymbols)
@@ -112,13 +113,69 @@ contains
     list_mycall='K1ABC'
     list_hiscall='W9XYZ'
     list_hisgrid='FN42'
-    do j=1,40
-       write(callers(j)%call,'(a2,i4.4)') 'K1',j
+    do j=1,Q65_MAX_CALLERS
+       callers(j)%call='K1'//achar(65+(j-1)/26)//achar(65+mod(j-1,26))//'A'
        callers(j)%grid='FN42'
     enddo
-    call q65_set_list2(list_mycall,list_hiscall,list_hisgrid,callers,40,codewords,ncw)
-    if(ncw.ne.411) error stop 'Q65 Pileup full AP list truncated at 40 callers'
+    call q65_set_list2(list_mycall,list_hiscall,list_hisgrid,callers, &
+         Q65_MAX_CALLERS,codewords,ncw)
+    if(ncw.ne.511) error stop 'Q65 Pileup full AP list omitted a stored or current caller'
+    if(any(codewords(:,1).ne.0)) error stop 'Q65 Pileup all-zero candidate changed'
+    call check_caller_codewords(codewords(:,ncw-19:ncw-10),list_mycall, &
+         callers(Q65_MAX_CALLERS)%call,callers(Q65_MAX_CALLERS)%grid)
+    call check_caller_codewords(codewords(:,ncw-9:ncw),list_mycall, &
+         list_hiscall,list_hisgrid)
+
+    list_hiscall=callers(Q65_MAX_CALLERS)%call
+    call q65_set_list2(list_mycall,list_hiscall,list_hisgrid,callers, &
+         Q65_MAX_CALLERS,codewords,ncw)
+    if(ncw.ne.501) error stop 'Q65 Pileup duplicated a stored current caller'
+    call check_caller_codewords(codewords(:,ncw-9:ncw),list_mycall, &
+         callers(Q65_MAX_CALLERS)%call,callers(Q65_MAX_CALLERS)%grid)
+
+    list_hiscall=' '
+    call q65_set_list2(list_mycall,list_hiscall,list_hisgrid,callers, &
+         Q65_MAX_CALLERS,codewords,ncw)
+    if(ncw.ne.501) error stop 'Q65 Pileup added an invalid current caller'
+    call check_caller_codewords(codewords(:,ncw-9:ncw),list_mycall, &
+         callers(Q65_MAX_CALLERS)%call,callers(Q65_MAX_CALLERS)%grid)
+
+    call q65_set_list2(list_mycall,list_hiscall,list_hisgrid,callers,-1,codewords,ncw)
+    if(ncw.ne.0) error stop 'Q65 Pileup accepted a negative caller count'
+    call q65_set_list2(list_mycall,list_hiscall,list_hisgrid,callers, &
+         Q65_MAX_CALLERS+1,codewords,ncw)
+    if(ncw.ne.0) error stop 'Q65 Pileup accepted an oversized caller count'
   end subroutine check_q65_ap_flag_masks
+
+
+  subroutine check_caller_codewords(codewords,mycall,dxcall,grid)
+    integer, intent(in) :: codewords(63,10)
+    character(len=*), intent(in) :: mycall,dxcall,grid
+    integer, parameter :: sync_positions(22)=[ &
+         1,9,12,13,15,22,23,26,27,33,35,38,46,50,55,60,62,66,69,74,76,85]
+    character(len=6) :: tails(5)
+    character(len=37) :: message,msgsent
+    integer :: tones(85),expected(63),kind,flag,i3,n3,j,k,column
+
+    tails=[character(len=6) :: grid(1:4),'R '//grid(1:4),'RRR','RR73','73']
+    do kind=1,size(tails)
+       message=trim(mycall)//' '//trim(dxcall)//' '//trim(tails(kind))
+       do flag=0,1
+          call genq65(message,0,msgsent,tones,i3,n3,flag)
+          if(msgsent.ne.message) error stop 'Q65 Pileup test message failed to encode'
+          j=0
+          do k=1,size(tones)
+             if(any(sync_positions.eq.k)) cycle
+             j=j+1
+             expected(j)=tones(k)-1
+          enddo
+          column=2*(kind-1)+flag+1
+          if(any(codewords(:,column).ne.expected)) then
+             error stop 'Q65 Pileup lost a message form or flag at the caller boundary'
+          endif
+       enddo
+    enddo
+  end subroutine check_caller_codewords
 
   subroutine run_direct_decode(decoder,samples,nsubmode,want_callback,want_iflagdec)
     type(q65_decoder), intent(inout) :: decoder
