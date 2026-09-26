@@ -139,7 +139,7 @@ void MainWindow::jtty_save_wav()
 void MainWindow::updateJttyDecodeHeadings()
 {
   QString const prefix = ui->cbIncludeTime->isChecked()
-    ? QStringLiteral("  UTC  Freq SNR  ") : QStringLiteral("Freq SNR  ");
+    ? QStringLiteral("  UTC  Freq  dB  ") : QStringLiteral("Freq  dB  ");
   ui->lh_decodes_headings_label->setText(prefix + tr ("Message"));
   ui->rh_decodes_headings_label->setText(prefix + tr ("Message"));
 }

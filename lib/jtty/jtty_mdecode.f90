@@ -56,6 +56,7 @@ module jtty_mdec
   real, parameter           :: CONTINUATION_TIME_TOLERANCE = 0.1
   ! pn leaks ~SNR_LEAKAGE_K*pt of signal power; corrected ratio still asymptotes near (1-k)/k for very strong signals.
   real, parameter           :: SNR_LEAKAGE_K = 0.048
+  real, parameter           :: SNR_FLOOR_DB = -17.0  ! weaker than the weakest sometimes-decodable JTTY signal
   integer                   :: ndecodes = 0
   integer                   :: nactive = 0
   integer                   :: nrecent = 0
@@ -1071,7 +1072,7 @@ contains
       if(pn.gt.0.) then
          ! Solve pt=S+N, pn=N+SNR_LEAKAGE_K*S for S/N; clamp so pn_corrected can't hit zero/negative.
          pn_corrected=max(pn-SNR_LEAKAGE_K*pt, 0.01*pn)
-         snrdb=db((pt-pn)/pn_corrected) - db(2500.0/baud)
+         snrdb=max(db((pt-pn)/pn_corrected) - db(2500.0/baud), SNR_FLOOR_DB)
          cand(ncand)%snrdb=snrdb
       endif
       cand(ncand)%tsync=(istart-1)/12000.0 + cand(ncand)%xdt
