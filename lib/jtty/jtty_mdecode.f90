@@ -1067,8 +1067,8 @@ contains
       enddo
       pn=(pa-pt)/3.0
       if(pn.gt.0.) then
-         snrdb=db(pt/pn) - db(2500.0/baud)   !Scale to standard 2500 Hz reference bandwidth
-         cand(ncand)%snrdb=snrdb
+         snrdb=db((pt-pn)/pn) - db(2500.0/baud)   !pt is signal+noise; subtract pn to
+         cand(ncand)%snrdb=snrdb                  !isolate signal before the noise ratio
       endif
       cand(ncand)%tsync=(istart-1)/12000.0 + cand(ncand)%xdt
       decoded_ok=.true.

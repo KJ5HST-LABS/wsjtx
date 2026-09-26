@@ -1258,7 +1258,7 @@ private:
   QString m_baseCall;
   QString m_hisCall;
   QString m_hisGrid;
-  int m_jttyLastSnr = -10;  // SNR of most recent JTTY decode, for %R; stubbed for now
+  int m_jttyHisCallSnr = -10;  // SNR of the decode selected as DX call, for %R; cleared when the DX call changes
   int m_jttyMessageStyle = 0;  // Jtty::MessageStyle: 0=Contest, 1=Ft8 (see JttyMessages.hpp)
   QString m_appDir;
   QString m_cqStr;

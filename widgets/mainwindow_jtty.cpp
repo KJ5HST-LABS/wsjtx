@@ -287,7 +287,6 @@ bool MainWindow::jtty_decode(int k, int istart0, int istop)
           if (messageIds[i] <= 0) continue;
           updates.append({messageIds[i], frequencies[i], text,
                           sequenceStarts[i], complete[i], snrValues[i]});
-          m_jttyLastSnr = snrValues[i];
       }
   } while (updateCount == jttyMaxUpdates);
 
@@ -931,7 +930,7 @@ bool MainWindow::sendJttyFunctionKey(int index)
   if(macro.simplified().isEmpty()) return false;
 
   auto const context = jttyNativeMacroContext(
-    m_config, m_hisCall, ui->sbSerialNumber_2->value(), m_jttyLastSnr);
+    m_config, m_hisCall, ui->sbSerialNumber_2->value(), m_jttyHisCallSnr);
   auto const compiled=Jtty::compileNativeMacro(macro,context);
   if(compiled.status == Jtty::NativeMacroStatus::LiteralFallback) {
     jtty_tx(compiled.text);
@@ -963,7 +962,7 @@ bool MainWindow::sendJttyFunctionKey(int index)
 QString MainWindow::jtty_msg_expand(QString t)
 {
   auto const context = jttyNativeMacroContext(
-    m_config, m_hisCall, ui->sbSerialNumber_2->value(), m_jttyLastSnr);
+    m_config, m_hisCall, ui->sbSerialNumber_2->value(), m_jttyHisCallSnr);
   return Jtty::expandLiteralMacro(t, context);
 }
 
@@ -1027,7 +1026,7 @@ QString MainWindow::jttyRejectReasonText(JttyTxRejectReason reason) const
 void MainWindow::handleMmttyTxString(QString message)
 {
   auto const context = jttyNativeMacroContext(
-    m_config, m_hisCall, ui->sbSerialNumber_2->value(), m_jttyLastSnr);
+    m_config, m_hisCall, ui->sbSerialNumber_2->value(), m_jttyHisCallSnr);
   auto const compiled = Jtty::compileN1mmMessage(message, context);
   if (m_mode != "JTTY") {
     if (compiled.status == Jtty::N1mmCompileStatus::Literal) {

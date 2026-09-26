@@ -8747,7 +8747,21 @@ void MainWindow::handleDecodeSelection(
   }
   if(m_mode=="JTTY") {
     m_deCall = word;
-    ui->dxCallEntry->setText(m_deCall);
+    ui->dxCallEntry->setText(m_deCall);  // clears m_jttyHisCallSnr via on_dxCallEntry_textChanged
+    // Capture the SNR of the specific decode just selected, rather than
+    // whichever decode happened to arrive most recently (see PR #569 review).
+    auto const matchesWord = [&word] (QString const& text) {
+      return text.split(QChar{' '}, Qt::SkipEmptyParts).contains(word);
+    };
+    if (selection_origin == DecodedMessageReaction::SelectionOrigin::ManualLeftPane) {
+      auto const found = std::find_if(m_jttyAllFreqLines.crbegin(), m_jttyAllFreqLines.crend(),
+        [&matchesWord] (JttyDecodeLine const& l) { return matchesWord(l.text); });
+      if (found != m_jttyAllFreqLines.crend()) m_jttyHisCallSnr = found->snr;
+    } else {
+      auto const found = std::find_if(m_jttyQsoLines.crbegin(), m_jttyQsoLines.crend(),
+        [&matchesWord] (JttyQsoLine const& l) { return matchesWord(l.text); });
+      if (found != m_jttyQsoLines.crend()) m_jttyHisCallSnr = found->snr;
+    }
     return;
   }
   DecodedText message {line.trimmed().left(61).remove("TU; ")};
@@ -10019,6 +10033,7 @@ void MainWindow::on_dxCallEntry_textChanged (QString const& call)
   }
   set_dateTimeQSO (-1);  // reset the QSO start time when DXCall changes
   m_hisCall = call;
+  if (m_mode=="JTTY") m_jttyHisCallSnr = -10;  // stale SNR belonged to the previous DX call
   if(m_QSYMessageCreatorWidget) m_QSYMessageCreatorWidget->getDxBase(QString(Radio::base_callsign(call)));
   if (!blocked) ui->dxGridEntry->clear();  // conditional because not always useful with highlightDXCall/DXGrid feature
   if (ui->DX_Call_Button->isChecked() && !(m_mode=="FT8" && SpecOp::HOUND==m_specOp)) ui->DX_Call_Button->click ();
