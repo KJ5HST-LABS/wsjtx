@@ -294,6 +294,39 @@ namespace
       && std::abs (lat - centre_lat) < 1.e-6 && std::abs (lon - centre_lon) < 1.e-6;
   }
 
+  // Convert conventional signed decimal degrees to a six-character
+  // Maidenhead locator.  Longitude is east-positive here, matching the UI.
+  bool coordinates_to_grid (double lat, double lon, QString& grid)
+  {
+    if (lat < -90. || lat > 90. || lon < -180. || lon > 180.) return false;
+
+    auto east = lon;
+    auto lat_for_grid = lat;
+    if (east == 180.) east = std::nextafter (180., 0.);
+    if (lat_for_grid == 90.) lat_for_grid = std::nextafter (90., 0.);
+    auto x = east + 180.;
+    auto y = lat_for_grid + 90.;
+    int field_lon = static_cast<int> (std::floor (x / 20.));
+    int field_lat = static_cast<int> (std::floor (y / 10.));
+    x -= field_lon * 20.;
+    y -= field_lat * 10.;
+    int square_lon = static_cast<int> (std::floor (x / 2.));
+    int square_lat = static_cast<int> (std::floor (y));
+    x -= square_lon * 2.;
+    y -= square_lat;
+    int sub_lon = static_cast<int> (std::floor (x * 12.));
+    int sub_lat = static_cast<int> (std::floor (y * 24.));
+
+    grid.clear ();
+    grid += QChar::fromLatin1 (static_cast<char> ('A' + field_lon));
+    grid += QChar::fromLatin1 (static_cast<char> ('A' + field_lat));
+    grid += QChar::fromLatin1 (static_cast<char> ('0' + square_lon));
+    grid += QChar::fromLatin1 (static_cast<char> ('0' + square_lat));
+    grid += QChar::fromLatin1 (static_cast<char> ('a' + sub_lon));
+    grid += QChar::fromLatin1 (static_cast<char> ('a' + sub_lat));
+    return true;
+  }
+
   // these undocumented flag values when stored in (Qt::UserRole - 1)
   // of a ComboBox item model index allow the item to be enabled or
   // disabled
@@ -4182,6 +4215,28 @@ bool Configuration::impl::validate ()
         }
     }
 
+  // Do not rely on editingFinished having synchronized My Grid with the
+  // coordinate fields before OK is clicked.  A valid coordinate pair must
+  // lie inside the displayed six-character locator.
+  if (!latitude_text.isEmpty () && !longitude_text.isEmpty ())
+    {
+      bool lat_ok {false};
+      bool lon_ok {false};
+      auto lat = latitude_text.toDouble (&lat_ok);
+      auto lon = longitude_text.toDouble (&lon_ok);
+      QString coordinate_grid;
+      auto grid = ui_->grid_line_edit->text ().trimmed ().left (6);
+      if (grid.size () < 6) grid += "mm";
+      if (lat_ok && lon_ok && coordinates_to_grid (lat, lon, coordinate_grid)
+          && coordinate_grid.compare (grid, Qt::CaseInsensitive) != 0)
+        {
+          find_tab (ui_->grid_line_edit);
+          MessageBox::critical_message (this, tr ("Inconsistent station location"),
+                                        tr ("Latitude and longitude must lie within the My Grid locator."));
+          return false;
+        }
+    }
+
   if (ui_->sound_input_combo_box->currentIndex () < 0
       && next_audio_input_device_.isNull ())
     {
@@ -5297,29 +5352,8 @@ void Configuration::impl::on_grid_line_edit_editingFinished ()
   if (lat_ok && lon_ok && current_lat >= -90. && current_lat <= 90.
       && current_lon >= -180. && current_lon <= 180.)
     {
-      auto east = current_lon;
-      auto lat_for_grid = current_lat;
-      if (east == 180.) east = std::nextafter (180., 0.);
-      if (lat_for_grid == 90.) lat_for_grid = std::nextafter (90., 0.);
-      auto x = east + 180.;
-      auto y = lat_for_grid + 90.;
-      int field_lon = static_cast<int> (std::floor (x / 20.));
-      int field_lat = static_cast<int> (std::floor (y / 10.));
-      x -= field_lon * 20.;
-      y -= field_lat * 10.;
-      int square_lon = static_cast<int> (std::floor (x / 2.));
-      int square_lat = static_cast<int> (std::floor (y));
-      x -= square_lon * 2.;
-      y -= square_lat;
-      int sub_lon = static_cast<int> (std::floor (x * 12.));
-      int sub_lat = static_cast<int> (std::floor (y * 24.));
       QString coordinate_grid;
-      coordinate_grid += QChar::fromLatin1 (static_cast<char> ('A' + field_lon));
-      coordinate_grid += QChar::fromLatin1 (static_cast<char> ('A' + field_lat));
-      coordinate_grid += QChar::fromLatin1 (static_cast<char> ('0' + square_lon));
-      coordinate_grid += QChar::fromLatin1 (static_cast<char> ('0' + square_lat));
-      coordinate_grid += QChar::fromLatin1 (static_cast<char> ('a' + sub_lon));
-      coordinate_grid += QChar::fromLatin1 (static_cast<char> ('a' + sub_lat));
+      coordinates_to_grid (current_lat, current_lon, coordinate_grid);
       if (coordinate_grid.compare (grid, Qt::CaseInsensitive) == 0)
         {
           update_home_coordinates_style ();
@@ -5380,29 +5414,8 @@ void Configuration::impl::on_longitude_line_edit_editingFinished ()
   auto lon = ui_->longitude_line_edit->text ().toDouble (&lon_ok);
   if (!lat_ok || !lon_ok || lat < -90. || lat > 90. || lon < -180. || lon > 180.) return;
 
-  // Equivalent to deg2grid(), with conventional east-positive longitude.
-  auto east = lon;
-  if (east == 180.) east = std::nextafter (180., 0.);
-  if (lat == 90.) lat = std::nextafter (90., 0.);
-  auto x = east + 180.;
-  auto y = lat + 90.;
-  int field_lon = static_cast<int> (std::floor (x / 20.));
-  int field_lat = static_cast<int> (std::floor (y / 10.));
-  x -= field_lon * 20.;
-  y -= field_lat * 10.;
-  int square_lon = static_cast<int> (std::floor (x / 2.));
-  int square_lat = static_cast<int> (std::floor (y));
-  x -= square_lon * 2.;
-  y -= square_lat;
-  int sub_lon = static_cast<int> (std::floor (x * 12.));
-  int sub_lat = static_cast<int> (std::floor (y * 24.));
   QString grid;
-  grid += QChar::fromLatin1 (static_cast<char> ('A' + field_lon));
-  grid += QChar::fromLatin1 (static_cast<char> ('A' + field_lat));
-  grid += QChar::fromLatin1 (static_cast<char> ('0' + square_lon));
-  grid += QChar::fromLatin1 (static_cast<char> ('0' + square_lat));
-  grid += QChar::fromLatin1 (static_cast<char> ('a' + sub_lon));
-  grid += QChar::fromLatin1 (static_cast<char> ('a' + sub_lat));
+  if (!coordinates_to_grid (lat, lon, grid)) return;
   ui_->grid_line_edit->setText (grid);
   update_home_coordinates_style ();
 }

@@ -47,18 +47,11 @@ subroutine astro0(nyear,month,nday,uth8,freq8,mygrid,hisgrid,              &
   xl2a=xl(2)
   b2=b(1)
   b2a=b(2)
-  if(use_home_coordinates) then
-     call astro(nyear,month,nday,uth,freq8,mygrid_calc,1,1,          &
-          AzSun,ElSun,AzMoon,ElMoon,ntsky,doppler00,doppler,         &
-          dbMoon,RAMoon,DecMoon,HA,Dgrd,sd,poloffset,xnr,            &
-          day,xlon1,xlat1,xlst,techo,result_self,.true.,             &
-          home_longitude,home_latitude)
-  else
-     call astro(nyear,month,nday,uth,freq8,mygrid_calc,1,1,          &
-          AzSun,ElSun,AzMoon,ElMoon,ntsky,doppler00,doppler,         &
-          dbMoon,RAMoon,DecMoon,HA,Dgrd,sd,poloffset,xnr,            &
-          day,xlon1,xlat1,xlst,techo,result_self,.false.,0.d0,0.d0)
-  endif
+  call astro(nyear,month,nday,uth,freq8,mygrid_calc,1,1,             &
+       AzSun,ElSun,AzMoon,ElMoon,ntsky,doppler00,doppler,            &
+       dbMoon,RAMoon,DecMoon,HA,Dgrd,sd,poloffset,xnr,               &
+       day,xlon1,xlat1,xlst,techo,result_self,use_home_coordinates,  &
+       home_latitude,home_longitude)
   if(result_self.eq.EPHEMERIS_INVALID_INPUT .or.                     &
        result_self.eq.EPHEMERIS_UNAVAILABLE) then
      ephemeris_result=result_self

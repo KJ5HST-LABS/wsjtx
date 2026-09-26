@@ -2,7 +2,7 @@ subroutine astro(nyear,month,nday,uth,freq8,Mygrid,                    &
           NStation,MoonDX,AzSun,ElSun,AzMoon0,ElMoon0,                 &
           ntsky,doppler00,doppler,dbMoon,RAMoon,DecMoon,HA,Dgrd,sd,    &
           poloffset,xnr,day,lon,lat,LST,techo,ephemeris_result,      &
-          use_home_coordinates,home_longitude,home_latitude)
+          use_home_coordinates,home_latitude,home_longitude)
 
   use jpl_ephemeris_status, only: EPHEMERIS_INVALID_INPUT,           &
        EPHEMERIS_UNAVAILABLE

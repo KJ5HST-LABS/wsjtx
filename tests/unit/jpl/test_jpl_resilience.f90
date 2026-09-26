@@ -386,7 +386,38 @@ contains
     call require(all(blank_dx_sub_values([5,6,11,14]).eq.            &
          0.0_real64) .and. blank_dx_sub_integers(2).eq.0,            &
          'blank grids preserve astrosub DX clearing')
+
+    call test_home_coordinate_path(path)
   end subroutine test_blank_grid_compatibility
+
+  subroutine test_home_coordinate_path(path)
+    character(len=*), intent(in) :: path
+    character(len=6) :: home_grid='FN20qi',dx_grid='JN18du'
+    real(c_double), parameter :: centre_lat=40.354166666666664_c_double
+    real(c_double), parameter :: centre_lon=-74.625_c_double
+    real(c_double) :: grid_values(14),centre_values(14),offset_values(14)
+    integer(c_int) :: grid_integers(3),centre_integers(3),offset_integers(3)
+    integer(c_int) :: grid_result,centre_result,offset_result
+
+    call astrosub_coordinate_values(home_grid,dx_grid,path,.false._c_bool, &
+         0.0_c_double,0.0_c_double,grid_values,grid_integers,grid_result)
+    call astrosub_coordinate_values(home_grid,dx_grid,path,.true._c_bool,  &
+         centre_lat,centre_lon,centre_values,centre_integers,centre_result)
+    call astrosub_coordinate_values(home_grid,dx_grid,path,.true._c_bool,  &
+         centre_lat+0.01_c_double,centre_lon,offset_values,offset_integers,&
+         offset_result)
+
+    call require(grid_result.eq.centre_result,                         &
+         'grid-centre coordinates preserve ephemeris result')
+    call require(all(grid_integers.eq.centre_integers),               &
+         'grid-centre coordinates reproduce grid-path integer outputs')
+    call require(maxval(abs(grid_values-centre_values)).lt.1.0e-9_c_double, &
+         'grid-centre coordinates reproduce grid-path values')
+    call require(offset_result.eq.grid_result,                         &
+         'offset coordinates preserve ephemeris result')
+    call require(offset_integers(3).ne.grid_integers(3),              &
+         'offset coordinates change ndop00')
+  end subroutine test_home_coordinate_path
 
   subroutine test_optional_sections(path)
     character(len=*), intent(in) :: path
@@ -524,6 +555,31 @@ contains
          values(16),values(17),values(18),values(19),values(20),    &
          result)
   end subroutine grid_astro_values
+
+  subroutine astrosub_coordinate_values(mygrid,hisgrid,jpl_path,      &
+       use_home_coordinates,home_latitude,home_longitude,values,      &
+       integer_values,result)
+    character(len=*), intent(in) :: mygrid,hisgrid,jpl_path
+    logical(c_bool), intent(in) :: use_home_coordinates
+    real(c_double), intent(in) :: home_latitude,home_longitude
+    real(c_double), intent(out) :: values(14)
+    integer(c_int), intent(out) :: integer_values(3),result
+    character(kind=c_char), target :: mygrid_c(7),hisgrid_c(7)
+    character(kind=c_char), target :: azel_file_c(64),jpl_path_c(1025)
+
+    call assign_c_string(mygrid,mygrid_c)
+    call assign_c_string(hisgrid,hisgrid_c)
+    call assign_c_string('home-coordinate-azel.dat',azel_file_c)
+    call assign_c_string(jpl_path,jpl_path_c)
+    call astrosub(2024_c_int,1_c_int,1_c_int,12.0_c_double,           &
+         10368200000.0_c_double,c_loc(mygrid_c),c_loc(hisgrid_c),    &
+         use_home_coordinates,home_latitude,home_longitude,          &
+         values(1),values(2),values(3),values(4),values(5),          &
+         values(6),integer_values(1),integer_values(2),              &
+         integer_values(3),values(7),values(8),values(9),values(10),&
+         values(11),.false._c_bool,values(12),values(13),values(14), &
+         .false._c_bool,c_loc(azel_file_c),c_loc(jpl_path_c),result)
+  end subroutine astrosub_coordinate_values
 
   subroutine astrosub_values(mygrid,hisgrid,jpl_path,values,          &
        integer_values,result)
