@@ -24,13 +24,14 @@ extern "C" int jtty_cpp_n1mm_smoke (int tones[], int* nsym)
 
 extern "C" int jtty_cpp_cq_smoke (int tones[], int* nsym, char text[], int chained)
 {
+  Q_UNUSED(chained)
   Jtty::NativeMacroContext const context {QStringLiteral ("K1ABC"), {}, 0};
   auto const compiled = Jtty::compileNativeMacro (
       1, Jtty::nativeMacroTemplate (1), context);
   *nsym = 0;
   int status = static_cast<int> (Jtty::NativeEncodeStatus::InvalidDescriptor);
   if (compiled.isNative ()) {
-    auto const frame = Jtty::transmitFrame (compiled.text, chained != 0).toLatin1 ();
+    auto const frame = Jtty::transmitFrame (compiled.text).toLatin1 ();
     std::copy (frame.cbegin (), frame.cend (), text);
     genjtty_atoms_c (compiled.atoms.constData (), compiled.atoms.size (),
                     tones, nsym, &status);
@@ -59,18 +60,18 @@ extern "C" int jtty_cpp_rtty_smoke (int tones[], int* nsym)
     }
     genjtty_atoms_c (compiled.atoms.constData (), compiled.atoms.size (), tones, nsym, &status);
     if (status != static_cast<int> (Jtty::NativeEncodeStatus::Ok) || *nsym <= 0) return status;
-    auto text = Jtty::transmitFrame (example.raw, false).toLatin1 ();
+    auto text = Jtty::transmitFrame (example.raw).toLatin1 ();
     int packedSymbols {};
     auto profile = static_cast<int> (context.exchangeProfile);
     genjtty_profile_ (text.data (), &profile, packedTones.data (), &packedSymbols, text.size ());
     if (packedSymbols != *nsym || !std::equal (tones, tones + *nsym, packedTones.cbegin ()) ||
-        text != Jtty::transmitFrame (example.canonical, false).toLatin1 ()) {
+        text != Jtty::transmitFrame (example.canonical).toLatin1 ()) {
       return static_cast<int> (Jtty::NativeEncodeStatus::InvalidDescriptor);
     }
-    text = Jtty::transmitFrame (example.raw, false).toLatin1 ();
+    text = Jtty::transmitFrame (example.raw).toLatin1 ();
     profile = static_cast<int> (Jtty::NativeExchangeProfile::None);
     genjtty_profile_ (text.data (), &profile, packedTones.data (), &packedSymbols, text.size ());
-    if (packedSymbols != 2 * *nsym || text != Jtty::transmitFrame (example.raw, false).toLatin1 ()) {
+    if (packedSymbols != 2 * *nsym || text != Jtty::transmitFrame (example.raw).toLatin1 ()) {
       return static_cast<int> (Jtty::NativeEncodeStatus::InvalidDescriptor);
     }
   }

@@ -4,6 +4,7 @@
 #include "Audio/BWFFile.hpp"
 #include "DecoderIpc.hpp"
 #include "Decoder/decodedtext.h"
+#include "widgets/JttyMessages.hpp"
 #include "widgets/mainwindow.h"
 
 extern dec_data_t& dec_data;
@@ -40,6 +41,14 @@ extern dec_data_t& dec_data;
 
 namespace
 {
+  QTextBlock findJttyMessageBlock (QTextDocument const& document, QString const& message)
+  {
+    // Display wrapping inserts paragraph breaks that QTextDocument::find cannot cross.
+    auto const offset = document.toPlainText ().indexOf (
+      Jtty::wrapMessage (message), 0, Qt::CaseInsensitive);
+    return offset < 0 ? QTextBlock {} : document.findBlock (offset);
+  }
+
 #if defined(WSJT_TSAN_TEST_PROFILE)
   constexpr int ft8TestThreadCount = 2;
   constexpr int ft8TestCycleCount = 1;
@@ -80,11 +89,11 @@ LiveAudioTestController::LiveAudioTestController (
     }
 
   m_timeout.setSingleShot (true);
-  m_timeout.setInterval (Mode::Ft8 == m_mode ? 110000 : 100000);
+  m_timeout.setInterval (Mode::Ft8 == m_mode ? 110000 : 200000);
   connect (&m_timeout, &QTimer::timeout, this, [this] {
     fail (Mode::Ft8 == m_mode
           ? tr ("Timed out after 110 seconds.")
-          : tr ("Timed out after 100 seconds."));
+          : tr ("Timed out waiting for JTTY audio or decoded text."));
   });
 
   m_prepareTimer.setSingleShot (true);
@@ -265,6 +274,8 @@ LiveAudioTestController::LiveAudioTestController (
                  fail (tr ("JTTY fixture did not begin at its boundary-crossing capture offset."));
                  return;
                }
+             // Allow long fixtures their full playback time after any startup wait.
+             if (Mode::Jtty == m_mode) m_timeout.start(180000);
              std::cerr << "WSJT-X live audio test: PCM emission started at UTC epoch "
                        << utcStartMilliseconds << " ms" << std::endl;
            });
@@ -829,7 +840,12 @@ void LiveAudioTestController::maybeFinishJtty ()
           fail (tr ("A JTTY message appeared more than once across the receive boundary."));
           return;
         }
-      auto const line = m_jttyAllDecodes->document ()->find (message).block ().text ();
+      auto const block = findJttyMessageBlock (*m_jttyAllDecodes->document (), message);
+      if (!block.isValid ()) {
+        fail (tr ("The displayed JTTY message could not be located: %1").arg (message));
+        return;
+      }
+      auto const line = block.text ();
       if (!QRegularExpression {QStringLiteral ("^[0-9]{6} +[0-9]{3,4}  ")}.match (line).hasMatch ()) {
         fail (tr ("JTTY timestamps do not match the six-digit UTC column."));
         return;
@@ -839,8 +855,8 @@ void LiveAudioTestController::maybeFinishJtty ()
     {
       auto const& message = m_expectedJtty.constFirst ();
       if (!m_jttyAllPrefixBlock.isValid () || !m_jttyQsoPrefixBlock.isValid ()
-          || m_jttyAllDecodes->document ()->find (message).block () != m_jttyAllPrefixBlock
-          || m_jttyQsoFrequency->document ()->find (message).block () != m_jttyQsoPrefixBlock)
+          || findJttyMessageBlock (*m_jttyAllDecodes->document (), message) != m_jttyAllPrefixBlock
+          || findJttyMessageBlock (*m_jttyQsoFrequency->document (), message) != m_jttyQsoPrefixBlock)
         {
           fail (tr ("A growing JTTY message changed display lines across the receive boundary."));
           return;
@@ -871,8 +887,14 @@ void LiveAudioTestController::maybeFinishJtty ()
       fail (tr ("JTTY live reception did not log each expected message exactly once."));
       return;
     }
-    m_jttyAllLiveBlocks.append (m_jttyAllDecodes->document ()->find (message).block ());
-    m_jttyQsoLiveBlocks.append (m_jttyQsoFrequency->document ()->find (message).block ());
+    auto const allBlock = findJttyMessageBlock (*m_jttyAllDecodes->document (), message);
+    auto const qsoBlock = findJttyMessageBlock (*m_jttyQsoFrequency->document (), message);
+    if (!allBlock.isValid () || !qsoBlock.isValid ()) {
+      fail (tr ("The displayed JTTY message could not be located: %1").arg (message));
+      return;
+    }
+    m_jttyAllLiveBlocks.append (allBlock);
+    m_jttyQsoLiveBlocks.append (qsoBlock);
   }
   m_jttyAllBeforeReview = m_jttyAllDecodes->toPlainText ();
   m_jttyQsoBeforeReview = m_jttyQsoFrequency->toPlainText ();
@@ -910,8 +932,8 @@ void LiveAudioTestController::checkJttyReviewAndStatus ()
     for (int i = 0; i < m_expectedJtty.size (); ++i) {
       auto const& message = m_expectedJtty[i];
       if (allReview.count (message) != 1 || qsoReview.count (message) != 1
-          || m_jttyAllDecodes->document ()->find (message).block () != m_jttyAllLiveBlocks[i]
-          || m_jttyQsoFrequency->document ()->find (message).block () != m_jttyQsoLiveBlocks[i]) {
+          || findJttyMessageBlock (*m_jttyAllDecodes->document (), message) != m_jttyAllLiveBlocks[i]
+          || findJttyMessageBlock (*m_jttyQsoFrequency->document (), message) != m_jttyQsoLiveBlocks[i]) {
         fail (tr ("Historical JTTY review altered live message identity or produced duplicate review text."));
         return;
       }

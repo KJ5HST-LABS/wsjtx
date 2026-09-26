@@ -658,7 +658,7 @@ void MainWindow::reset_transmit_controls_after_stop ()
 void MainWindow::on_stopTxButton_clicked()                    // Stop Tx
 {
   noteTxStopReason (TxEvidence::TxStopReason::UserHalt);
-  if (m_jttyTxLifecycle.active ()) stopTx ();
+  if (m_jttyTxLifecycle.active () || !m_jttyTransmitQueue.empty ()) stopTx ();
 #ifdef WIN32
   finalizeMmttyExternalAbort ();
 #endif

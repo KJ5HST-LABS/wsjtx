@@ -699,6 +699,8 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
   programStart = true;
   qApp->setFont (m_config.text_font ());
   ui->setupUi(this);
+  updateJttySendButton ();
+  ui->Tx_Message->setToolTip (tr ("Press Enter to send. Long messages are split automatically; new messages follow pending text."));
   configureModeControlsLayout ();
   // A non-editable QComboBox always left-aligns its closed-box text, so fake a
   // centered "label" via a read-only editable line edit; the dropdown list's
@@ -844,6 +846,7 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
   connect (m_jttyTxStream, &JttyTxStream::enqueueFailed, this,
            &MainWindow::onJttyBackendEnqueueFailed, Qt::QueuedConnection);
   connect (m_jttyTxStream, &JttyTxStream::drained, this, &MainWindow::onJttyBackendDrained);
+  connect (m_jttyTxStream, &JttyTxStream::progress, this, &MainWindow::onJttyBackendProgress);
   connect (&m_audioThread, &QThread::finished, m_jttyTxStream, &QObject::deleteLater);
 
   // hook up the audio input stream signals, slots and disposal
@@ -1374,6 +1377,7 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
   connect (&m_config, &Configuration::rawTxPlayoutSnapshot,
            this, &MainWindow::recordRawTxPlayout, Qt::QueuedConnection);
   connect (&m_config, &Configuration::transceiver_jtty_drained, this, &MainWindow::onJttyBackendDrained);
+  connect (&m_config, &Configuration::transceiver_jtty_progress, this, &MainWindow::onJttyBackendProgress);
   connect (&m_config, &Configuration::transceiver_jtty_enqueue_accepted, this, &MainWindow::onJttyBackendEnqueueAccepted);
   connect (&m_config, &Configuration::transceiver_jtty_enqueue_failed, this, &MainWindow::onJttyBackendEnqueueFailed);
   connect (&m_config, &Configuration::transceiver_closing, this, &MainWindow::handle_transceiver_closing);
@@ -8207,6 +8211,12 @@ void MainWindow::guiUpdate()
               t=m_fm1.trimmed();
           }
           if(m_mode=="FT4" or m_mode == "JTTY") t="Tx: "+ m_currentMessage;
+          if (m_mode == "JTTY") {
+            tx_status_label.setToolTip (t);
+            tx_status_label.setAccessibleDescription (t);
+            t = tx_status_label.fontMetrics ().elidedText (
+              t, Qt::ElideRight, qMax (100, statusBar ()->width () / 4));
+          }
           tx_status_label.setText(t.trimmed());
         }
       }
@@ -8464,17 +8474,18 @@ void MainWindow::noteTxModeChange (QString const& mode)
       processBeaconActions (m_beaconTxController.exitMode ());
     }
   if (mode != m_mode && (m_transmitting || g_iptt == 1
-                         || m_jttyTxLifecycle.active ()))
+                         || m_jttyTxLifecycle.active ()
+                         || !m_jttyTransmitQueue.empty ()))
     {
       noteTxStopReason (TxEvidence::TxStopReason::ModeChange);
-      if (m_jttyTxLifecycle.active ()) stopTx ();
+      if (m_jttyTxLifecycle.active () || !m_jttyTransmitQueue.empty ()) stopTx ();
     }
 }
 
 void MainWindow::updateModeControlLock ()
 {
   bool enabled = !m_modeLocked && !m_transmitting
-    && !m_jttyTxLifecycle.active ();
+    && !m_jttyTxLifecycle.active () && m_jttyTransmitQueue.empty ();
 #ifdef WIN32
   enabled = enabled && !m_mmttyHandoff.active ();
 #endif
@@ -8546,6 +8557,14 @@ void MainWindow::stopTx()
   if (jttyTx) {
     m_delayedJttyStopContext = *jttyStop;
     interruptJttyTx();
+  } else if (!m_jttyTransmitQueue.empty ()) {
+    auto const cancelled = m_jttyTransmitQueue.cancel ();
+    for (auto requestId : cancelled) {
+      Q_EMIT jttyTextRejected (requestId, JttyTxRejectReason::Aborted);
+    }
+    m_jttyQueueNotice = tr ("JTTY transmission cancelled; some text may already have transmitted.");
+    updateJttySendButton ();
+    if (!m_transmitting && g_iptt != 1) return;
   }
   if (tciAudio) Q_EMIT m_config.transceiver_modulator_stop();
   else Q_EMIT endTransmitMessage ();
@@ -8558,7 +8577,6 @@ void MainWindow::stopTx()
     m_jttyTxLifecycle.markBackendStopRouted (*jttyStop);
     m_jttyTxLifecycle.reset ();
     m_pendingJttyMessages.clear ();
-    m_acceptedJttyTxRequests.clear ();
   }
   m_btxok = false;
   m_transmitting = false;
@@ -8567,6 +8585,10 @@ void MainWindow::stopTx()
   if (!m_tx_watchdog && !m_generated_message_error) {
     tx_status_label.setStyleSheet("");
     tx_status_label.setText("");
+    if (!m_tx_inhibited && m_mode == "JTTY") {
+      tx_status_label.setToolTip ({});
+      tx_status_label.setAccessibleDescription ({});
+    }
   }
   if (tciAudio) {
     ptt0Timer.start(stopTxDelayMs);
@@ -8613,11 +8635,18 @@ void MainWindow::stopTx2()
       processBeaconActions (m_beaconTxController.tuneCompleted (beaconTunePlanId));
     }
   keep_last_tx_label = true;
-  last_tx_label.setText(tr ("Last Tx: %1").arg (m_currentMessage.trimmed()));
+  QString const lastTx = tr ("Last Tx: %1").arg (m_currentMessage.trimmed());
+  last_tx_label.setToolTip (lastTx);
+  last_tx_label.setAccessibleDescription (lastTx);
+  last_tx_label.setText (m_mode == "JTTY"
+    ? last_tx_label.fontMetrics ().elidedText (
+        lastTx, Qt::ElideRight, qMax (150, statusBar ()->width () / 4))
+    : lastTx);
 #ifdef WIN32
   resumeMmttyHandoff ();
 #endif
   m_delayedJttyStopContext = {};
+  if (m_mode == "JTTY") feedJttyTransmitQueue ();
 }
 
 QString MainWindow::expandTxMacros(QString const& message) const
@@ -12688,6 +12717,11 @@ void MainWindow::handle_transceiver_closing (bool failed)
 void MainWindow::handle_transceiver_failure (QString const& reason)
 {
   noteTxStopReason (TxEvidence::TxStopReason::Error);
+  if (m_jttyTxLifecycle.active () || !m_jttyTransmitQueue.empty ()) {
+    stopTx ();
+    m_jttyQueueNotice = tr ("The audio backend stopped: %1").arg (reason);
+    updateJttySendButton ();
+  }
   m_beaconTxController.setAutoEnabled (false);
   if (m_beaconTxController.txLifecycle () == BeaconTx::TxLifecycle::Decided
       || m_beaconTxController.txLifecycle () == BeaconTx::TxLifecycle::StartRequested)

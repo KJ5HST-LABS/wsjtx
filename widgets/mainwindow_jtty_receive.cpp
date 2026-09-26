@@ -418,7 +418,8 @@ void MainWindow::drainJttyReceive()
   state.drainCutoff = false;
   if (m_wav_load_coordinator.isLoading()) m_discardJttyWavLoad = true;
   if (m_mode == "JTTY"
-      && (m_jttyTxLifecycle.active () || m_transmitting || m_tune)) {
+      && (m_jttyTxLifecycle.active () || !m_jttyTransmitQueue.empty ()
+          || m_transmitting || m_tune)) {
     noteTxStopReason(m_closing ? TxEvidence::TxStopReason::UserHalt : TxEvidence::TxStopReason::ModeChange);
     stopTx();
   }

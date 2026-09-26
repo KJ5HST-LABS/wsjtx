@@ -10,6 +10,7 @@
 #include <QByteArray>
 #include <QDateTime>
 #include <QSettings>
+#include <algorithm>
 #include "Modulator/Modulator.hpp"
 #include <vector>
 #ifdef WIN32
@@ -142,50 +143,117 @@ void MainWindow::submitJttyDraft(QString message)
 
 void MainWindow::execute_jtty_tx(qint64 requestId, QString message)
 {
-  int itone[944];
-  int nsym = 0;
-  if (prepareJttyTones(requestId, message, itone, nsym)) {
-    execute_jtty_tones(requestId, message, itone, nsym);
+  if (ui->cbLowerCase->isChecked()) message = message.toLower();
+  auto const prepared = Jtty::prepareTransmitText(message);
+  message = prepared.text;
+  if (message.trimmed().isEmpty()) {
+    Q_EMIT jttyTextRejected(requestId, JttyTxRejectReason::Empty);
+    return;
   }
+
+  QVector<Jtty::TransmitSegment> segments;
+  int const exchangeProfile = static_cast<int>(jttyExchangeProfile(m_config));
+  for (int offset = 0; offset < message.size();) {
+    auto source = Jtty::nextTransmitTextSegment(message, offset);
+    if (source.text.trimmed().isEmpty()) {
+      offset += source.length;
+      continue;
+    }
+    Jtty::TransmitSegment segment;
+    for (;;) {
+      auto frame = Jtty::transmitFrame(source.text).toLatin1();
+      segment.tones.resize(944);
+      int nsym = 0;
+      genjtty_profile_(frame.data(), &exchangeProfile, segment.tones.data(),
+                       &nsym, (FCL)80);
+      if (nsym > 0) {
+        segment.tones.resize(nsym);
+        segment.text = QString::fromLatin1(frame).trimmed();
+        break;
+      }
+      if (source.length <= 1) {
+        Q_EMIT jttyTextRejected(requestId, JttyTxRejectReason::EncodingFailed);
+        return;
+      }
+      source = Jtty::nextTransmitTextSegment(message, offset, source.length - 1);
+    }
+    segment.frequency = ui->TxFreqSpinBox_2->value();
+    segments.append(std::move(segment));
+    offset += source.length;
+  }
+
+  m_jttyQueueNotice = prepared.substituted
+    ? tr("Unsupported characters were replaced. Hover over Send to review the text.")
+    : QString {};
+  enqueueJttySegments(requestId, std::move(segments));
 }
 
-bool MainWindow::prepareJttyTones(qint64 requestId, QString& message,
-                                  int itone[], int& nsym)
+void MainWindow::enqueueJttySegments(
+    qint64 requestId, QVector<Jtty::TransmitSegment> segments)
 {
-  bool const isChainedMessage = m_jttyTxLifecycle.active ();
-  if(ui->cbLowerCase->isChecked()) message = message.toLower();
-
-  auto const preparedMessage = Jtty::prepareTransmitText(message);
-  if (preparedMessage.changed()) {
-    LOG_WARN("JTTY transmit message was normalized or shortened before encoding");
+  if (m_mode != "JTTY" || m_closing || jttyDrainInProgress()
+      || segments.isEmpty()) {
+    Q_EMIT jttyTextRejected(requestId, JttyTxRejectReason::NotAvailable);
+    return;
   }
-  message = preparedMessage.text;
-  if (message.isEmpty()) {
-    Q_EMIT jttyTextRejected(requestId, JttyTxRejectReason::Empty);
-    return false;
+  m_jttyTransmitQueue.append(requestId, std::move(segments));
+  updateJttySendButton();
+  if (m_jttyTransmitQueue.requests().constLast().segments.size() > 1
+      && m_jttyDraftAcceptanceTracker.accept(requestId)) {
+    ui->Tx_Message->clear();
+  }
+  feedJttyTransmitQueue();
+}
+
+void MainWindow::enqueueJttyToneSegment(qint64 requestId,
+                                        QString const& message,
+                                        int const tones[], int toneCount)
+{
+  Jtty::TransmitSegment segment;
+  segment.text = message;
+  segment.tones.reserve (toneCount);
+  for (int i = 0; i < toneCount; ++i) segment.tones.append (tones[i]);
+  segment.frequency = ui->TxFreqSpinBox_2->value ();
+  enqueueJttySegments (requestId, {std::move (segment)});
+}
+
+void MainWindow::feedJttyTransmitQueue()
+{
+  if (m_feedingJttyTransmitQueue || m_closing || m_mode != "JTTY"
+      || jttyDrainInProgress() || m_jttyTxLifecycle.hasPending ()
+      || m_delayedJttyStopContext.backend != JttyTxLifecycle::Backend::None
+      || ptt0Timer.isActive ()) return;
+  auto const next = m_jttyTransmitQueue.nextSegment();
+  if (!next) return;
+
+  auto progress = m_jttyQueueProgress;
+  if (m_jttyTxLifecycle.active ()
+      && m_jttyTxLifecycle.backend () == JttyTxLifecycle::Backend::Local) {
+    progress = m_jttyTxQueue->progress ();
+  }
+  if (m_jttyTxLifecycle.active ()
+      && (progress.epoch != m_jttyTxLifecycle.epoch ()
+          || progress.queued_samples + next->sampleCount ()
+             > TxAudioQueue::defaultCapacity ())) return;
+  if (next->sampleCount () > TxAudioQueue::defaultCapacity ()) {
+    auto const cancelled = m_jttyTransmitQueue.cancel ();
+    for (auto id : cancelled) {
+      Q_EMIT jttyTextRejected (id, JttyTxRejectReason::QueueFull);
+    }
+    m_jttyQueueNotice = tr ("A JTTY segment exceeds the audio queue capacity.");
+    updateJttySendButton ();
+    return;
   }
 
-  // Keep message as the logical text; the chained leading space is only
-  // transport spacing and must not leak into logging, display, or the contest
-  // serial check in completeJttyTxEnqueue.
-  auto transmitFrame = Jtty::transmitFrame(message, isChainedMessage).toLatin1();
-
-  nsym=0;
-  int const exchangeProfile = static_cast<int>(jttyExchangeProfile(m_config));
-  genjtty_profile_(transmitFrame.data(), &exchangeProfile,
-                   &itone[0], &nsym, (FCL)80);
-  if (nsym <= 0) {
-    LOG_WARN("JTTY transmit message could not be encoded");
-    Q_EMIT jttyTextRejected(requestId, JttyTxRejectReason::EncodingFailed);
-    return false;
-  }
-
-  message = QString::fromLatin1(transmitFrame).trimmed();
-  return true;
+  m_feedingJttyTransmitQueue = true;
+  execute_jtty_tones (m_jttyTransmitQueue.nextRequestId (), next->text,
+                      next->tones.constData (), next->tones.size (),
+                      next->frequency);
+  m_feedingJttyTransmitQueue = false;
 }
 
 void MainWindow::execute_jtty_tones(qint64 requestId, QString const& message,
-                                    int const itone[], int nsym)
+                                    int const itone[], int nsym, int frequency)
 {
   if (jttyDrainInProgress()) {
     Q_EMIT jttyTextRejected(requestId, JttyTxRejectReason::NotAvailable);
@@ -196,7 +264,7 @@ void MainWindow::execute_jtty_tones(qint64 requestId, QString const& message,
   int nsps4=4*384;
   float bt=2.0;
   float fsample=48000.0;
-  float f0=ui->TxFreqSpinBox_2->value ();
+  float f0=frequency >= 0 ? frequency : ui->TxFreqSpinBox_2->value ();
   int icmplx=0;
   int nwave=nsps4*m_nsym_jtty;
 
@@ -237,6 +305,9 @@ void MainWindow::execute_jtty_tones(qint64 requestId, QString const& message,
     } else {
       Q_EMIT clearJttyStream(epoch);
     }
+    m_jttyQueueProgress = {};
+    m_jttyQueueProgress.epoch = epoch;
+    m_jttyDisplayedEndSample = 0;
   }
 
   QByteArray bytes(reinterpret_cast<char const *> (samples.constData ()),
@@ -277,9 +348,8 @@ void MainWindow::completeJttyTxEnqueue(qint64 requestId, QString const& message,
   if (newSession) {
     beginTxEvidenceSession ();
   }
-  m_currentMessage = message;
-  qint64 const endSample = progress.total_samples;
-  recordAcceptedJttyTextRequest(requestId, endSample);
+  bool const firstSegment = m_jttyTransmitQueue.commitNext (progress.total_samples);
+  m_jttyQueueProgress = progress;
   if (m_txEvidenceGeneration.isValid () &&
       m_txEvidenceSourceSession == m_txEvidenceSession) {
     m_txPlaybackDiagnostics.commitTarget (m_txEvidenceSession,
@@ -299,28 +369,12 @@ void MainWindow::completeJttyTxEnqueue(qint64 requestId, QString const& message,
     m_transmitting = true;
     transmitDisplay (true);
   }
-  write_all("Tx", message);
-  Q_EMIT jttyTextAccepted(requestId);
-
-  // Tracked via JttyReceiveLine (not a one-off insert) so "Include Time" toggles still reach it.
-  auto const resolved = DecodeHighlightingModel::resolve_colors(
-    m_config.decode_highlighting().items(), {DecodeHighlightingModel::Highlight::Tx},
-    QColor(Qt::yellow), QColor(Qt::black));
-  JttyReceiveLine::Presentation const presentation {
-    0, requestId, QDateTime::currentDateTimeUtc(), 0.0,
-    ui->TxFreqSpinBox_2->value(), message, -10, true,
-    resolved.background_, resolved.foreground_};
-  JttyReceiveLine::Options const options {
-    ui->cbLowerCase->isChecked(), ui->cbIncludeTime->isChecked()};
-  JttyReceiveLine txLine;
-  auto const cursor = txLine.render(*ui->decodedTextBrowser2->document(), presentation,
-                                    options, ui->decodedTextBrowser2->contentFont());
-  if (!cursor.isNull()) {
-    ui->decodedTextBrowser2->setTextCursor(cursor);
-    ui->decodedTextBrowser2->ensureCursorVisible();
+  updateJttyTransmitDisplay (progress.served_samples);
+  updateJttySendButton ();
+  if (firstSegment) {
+    handleJttyContestSerial (message);
+    Q_EMIT jttyTextAccepted (requestId);
   }
-
-  handleJttyContestSerial(message);
 
   // Fault-detector watchdog: generous margin over all audio still to play (the
   // whole queued session, not just this message). The happy path completes via
@@ -341,12 +395,6 @@ void MainWindow::completeJttyTxEnqueue(qint64 requestId, QString const& message,
   }
 #endif
 
-#ifdef WIN32
-  if (m_mmttyif) {
-    m_mmttyif->echo_message_to_n1mm(append_separator(message));
-  }
-#endif
-
   // Only a new session starts transmit; a message appended to an already-active
   // session chains gaplessly (soundcard) via the enqueue above. When PTT is not
   // yet up, guiUpdate keys it and ptt1Timer -> startTx2 -> transmit starts the
@@ -354,44 +402,72 @@ void MainWindow::completeJttyTxEnqueue(qint64 requestId, QString const& message,
   if (newSession && g_iptt == 1 && !m_modulator->isActive()) {
     startTx2();
   }
+  feedJttyTransmitQueue ();
 }
 
-void MainWindow::recordAcceptedJttyTextRequest(qint64 requestId, qint64 endSample)
+void MainWindow::onJttyBackendProgress(TxAudioQueueProgress progress)
 {
-  m_acceptedJttyTxRequests.append(AcceptedJttyTxRequest {
-    m_jttyTxLifecycle.epoch (),
-    requestId,
-    endSample
-  });
+  if (!m_jttyTxLifecycle.active ()
+      || progress.epoch != m_jttyTxLifecycle.epoch ()
+      || progress.served_samples < m_jttyQueueProgress.served_samples
+      || progress.total_samples != m_jttyTxLifecycle.committedTotal ()) return;
+  m_jttyQueueProgress = progress;
+  updateJttyTransmitDisplay (progress.served_samples);
+  feedJttyTransmitQueue ();
+  updateJttySendButton ();
 }
 
-QVector<qint64> MainWindow::takeCompletedJttyTextRequests(
-  TxAudioQueueEpoch epoch, qint64 totalAtDrain)
+void MainWindow::updateJttyTransmitDisplay(qint64 servedSamples)
 {
-  // Backends report only final drain, so per-text completion is observed when
-  // the accepted text's containing JTTY session has drained.
-  QVector<qint64> completedRequestIds;
-  for (int i = 0; i < m_acceptedJttyTxRequests.size ();) {
-    auto const accepted = m_acceptedJttyTxRequests.at (i);
-    if (accepted.epoch == epoch && accepted.endSample <= totalAtDrain) {
-      completedRequestIds.append(accepted.requestId);
-      m_acceptedJttyTxRequests.remove (i);
-    } else {
-      ++i;
+  for (auto const& request : m_jttyTransmitQueue.requests ()) {
+    for (auto const& segment : request.segments) {
+      if (!segment.endSample || segment.endSample <= m_jttyDisplayedEndSample
+          || segment.endSample - segment.sampleCount () >= servedSamples) continue;
+      m_currentMessage = segment.text;
+      write_all ("Tx", segment.text);
+      auto const resolved = DecodeHighlightingModel::resolve_colors (
+        m_config.decode_highlighting ().items (),
+        {DecodeHighlightingModel::Highlight::Tx}, QColor (Qt::yellow),
+        QColor (Qt::black));
+      JttyReceiveLine::Presentation const presentation {
+        0, request.id, QDateTime::currentDateTimeUtc (), 0.0,
+        segment.frequency, segment.text, -10, true,
+        resolved.background_, resolved.foreground_};
+      JttyReceiveLine::Options const options {
+        ui->cbLowerCase->isChecked (), ui->cbIncludeTime->isChecked ()};
+      JttyReceiveLine txLine;
+      auto const cursor = txLine.render (*ui->decodedTextBrowser2->document (),
+        presentation, options, ui->decodedTextBrowser2->contentFont ());
+      if (!cursor.isNull ()) {
+        ui->decodedTextBrowser2->setTextCursor (cursor);
+        ui->decodedTextBrowser2->ensureCursorVisible ();
+      }
+#ifdef WIN32
+      if (m_mmttyif) m_mmttyif->echo_message_to_n1mm (append_separator (segment.text));
+#endif
+      m_jttyDisplayedEndSample = segment.endSample;
     }
   }
-  return completedRequestIds;
 }
 
-void MainWindow::clearAcceptedJttyTextRequests(TxAudioQueueEpoch epoch)
+void MainWindow::updateJttySendButton()
 {
-  for (int i = 0; i < m_acceptedJttyTxRequests.size ();) {
-    if (m_acceptedJttyTxRequests.at (i).epoch == epoch) {
-      m_acceptedJttyTxRequests.remove (i);
-    } else {
-      ++i;
-    }
+  int const left = m_jttyTransmitQueue.remainingSegments (
+    m_jttyQueueProgress.served_samples);
+  QString text = tr ("Send message");
+  QString tooltip = tr ("Press Enter to send. New messages follow pending text. Halt Tx or Esc cancels pending text.");
+  if (!m_jttyTransmitQueue.empty ()) {
+    text = left ? tr ("Send (%1 left)").arg (left) : tr ("Send (finishing)");
+    tooltip += "\n\n" + tr ("Pending text:") + "\n"
+      + m_jttyTransmitQueue.pendingText (m_jttyQueueProgress.served_samples);
   }
+  if (!m_jttyQueueNotice.isEmpty ()) tooltip += "\n\n" + m_jttyQueueNotice;
+  if (ui->pbSendMessage->text () != text) ui->pbSendMessage->setText (text);
+  if (ui->pbSendMessage->toolTip () != tooltip) {
+    ui->pbSendMessage->setToolTip (tooltip);
+    ui->pbSendMessage->setAccessibleDescription (tooltip);
+  }
+  updateModeControlLock ();
 }
 
 void MainWindow::handleJttyContestSerial(QString const& message)
@@ -433,8 +509,20 @@ void MainWindow::interruptJttyTx()
     captureJttyTxEvidenceTotals (-1, stop->progress.total_samples,
                                  QStringLiteral ("TCI JTTY committed total captured before abort"));
   }
-  clearAcceptedJttyTextRequests(stop->epoch);
   rejectPendingJttyMessages(JttyTxRejectReason::Aborted);
+  auto const cancelled = m_jttyTransmitQueue.cancel ();
+  for (auto requestId : cancelled) {
+    bool const awaitingBackend = std::any_of (
+      m_pendingJttyMessages.cbegin (), m_pendingJttyMessages.cend (),
+      [requestId] (PendingJttyMessage const& pending) {
+        return pending.requestId == requestId;
+      });
+    if (!awaitingBackend) {
+      Q_EMIT jttyTextRejected (requestId, JttyTxRejectReason::Aborted);
+    }
+  }
+  m_jttyQueueNotice = tr ("JTTY transmission cancelled; some text may already have transmitted.");
+  updateJttySendButton ();
   m_jttyTxLifecycle.failAll ();
   m_pendingJttyMessages.clear();
   m_jttyEnqueueWatchdog.stop ();
@@ -448,6 +536,9 @@ void MainWindow::interruptJttyTx()
 
 void MainWindow::onJttyBackendDrained(TxAudioQueueDrainState drain)
 {
+  feedJttyTransmitQueue ();
+  if (m_jttyTxLifecycle.hasPending ()
+      || m_jttyTransmitQueue.hasUncommitted ()) return;
   auto const ready = m_jttyTxLifecycle.observeDrain (drain.epoch,
                                                        drain.total_at_drain);
   if (ready) finishJttyDrain (*ready);
@@ -461,12 +552,19 @@ void MainWindow::finishJttyDrain(JttyTxLifecycle::Drain const& drain)
   captureJttyTxEvidenceTotals (servedAtDrain, drain.total,
                                QStringLiteral ("JTTY source totals captured at drain"));
 
-  auto const completedRequestIds = takeCompletedJttyTextRequests(
-    drain.epoch, drain.total);
-  stopTx();
-  for (auto const requestId : completedRequestIds) {
-    Q_EMIT jttyTextCompleted(requestId);
+  updateJttyTransmitDisplay (drain.total);
+  auto const completedRequestIds = m_jttyTransmitQueue.complete (drain.total);
+  for (auto requestId : completedRequestIds) {
+    Q_EMIT jttyTextCompleted (requestId);
   }
+  if (!m_jttyTransmitQueue.empty ()) {
+    feedJttyTransmitQueue ();
+    updateJttySendButton ();
+    return;
+  }
+  stopTx();
+  m_jttyQueueNotice = tr ("JTTY transmission complete.");
+  updateJttySendButton ();
   Q_EMIT jttySessionDrained(drain.epoch.value ());
 }
 
@@ -526,6 +624,14 @@ void MainWindow::onJttyBackendEnqueueFailed(TxAudioQueueEpoch epoch,
       break;
     }
     Q_EMIT jttyTextRejected(pending.requestId, reason);
+    auto const cancelled = m_jttyTransmitQueue.cancel ();
+    for (auto requestId : cancelled) {
+      if (requestId != pending.requestId) {
+        Q_EMIT jttyTextRejected (requestId, JttyTxRejectReason::Aborted);
+      }
+    }
+    m_jttyQueueNotice = tr ("The audio backend rejected a JTTY segment.");
+    updateJttySendButton ();
     if (resolved.drain) {
       finishJttyDrain (*resolved.drain);
     } else if (!m_jttyTxLifecycle.hasPending ()
@@ -559,7 +665,21 @@ void MainWindow::handleJttyEnqueueTimeout()
 
   LOG_WARN("JTTY transmit backend enqueue acknowledgement timed out");
   noteTxStopReason (TxEvidence::TxStopReason::Watchdog);
+  QVector<qint64> timedOutRequests;
+  for (auto const& pending : m_pendingJttyMessages) {
+    if (!timedOutRequests.contains (pending.requestId)) {
+      timedOutRequests.append (pending.requestId);
+    }
+  }
   rejectPendingJttyMessages(JttyTxRejectReason::BackendTimedOut);
+  auto const cancelled = m_jttyTransmitQueue.cancel ();
+  for (auto requestId : cancelled) {
+    if (!timedOutRequests.contains (requestId)) {
+      Q_EMIT jttyTextRejected (requestId, JttyTxRejectReason::Aborted);
+    }
+  }
+  m_jttyQueueNotice = tr ("The JTTY audio backend timed out.");
+  updateJttySendButton ();
   m_jttyTxLifecycle.failAll ();
   m_pendingJttyMessages.clear ();
   stopTx ();
@@ -656,7 +776,7 @@ bool MainWindow::sendJttyFunctionKey(int index)
     Q_EMIT jttyTextRejected(requestId,JttyTxRejectReason::EncodingFailed);
     return true;
   }
-  execute_jtty_tones(requestId,compiled.text,itone,nsym);
+  enqueueJttyToneSegment(requestId, compiled.text, itone, nsym);
   return true;
 }
 
@@ -746,22 +866,29 @@ void MainWindow::handleMmttyTxString(QString message)
 
   QString transmitText = compiled.status == Jtty::N1mmCompileStatus::Literal
     ? compiled.literalText : compiled.canonicalText;
+  if (compiled.status == Jtty::N1mmCompileStatus::Literal) {
+    if (mmttyNeedsHandoff ()) {
+      if (!m_mmttyHandoff.queue (requestId)) {
+        Q_EMIT jttyTextRejected(requestId, JttyTxRejectReason::QueueFull);
+        return;
+      }
+      m_pendingMmttyJttyMessages.append ({requestId, transmitText, {}, true});
+      beginMmttyHandoff ();
+      return;
+    }
+    if (m_mode != QStringLiteral("JTTY")) set_mode (QStringLiteral("JTTY"));
+    execute_jtty_tx (requestId, transmitText);
+    return;
+  }
   int itone[944] {};
   int nsym = 0;
-  int encodeStatus = 0;
-  if (compiled.status == Jtty::N1mmCompileStatus::Literal) {
-    if (!prepareJttyTones(requestId, transmitText, itone, nsym)) return;
-  } else {
-    encodeStatus = static_cast<int>(Jtty::NativeEncodeStatus::InvalidDescriptor);
-    genjtty_atoms_c(compiled.atoms.constData(), compiled.atoms.size(), itone, &nsym,
-                    &encodeStatus);
-  }
+  int encodeStatus = static_cast<int>(Jtty::NativeEncodeStatus::InvalidDescriptor);
+  genjtty_atoms_c(compiled.atoms.constData(), compiled.atoms.size(), itone, &nsym,
+                  &encodeStatus);
   if (nsym <= 0) {
     logText(QStringLiteral("MMTTY/N1MM tagged JTTY request %1 rejected: %2")
             .arg(requestId)
-            .arg(compiled.status == Jtty::N1mmCompileStatus::Literal
-                   ? QStringLiteral("message could not be encoded")
-                   : jttyNativeEncodeError(encodeStatus)));
+            .arg(jttyNativeEncodeError(encodeStatus)));
     Q_EMIT jttyTextRejected(requestId, JttyTxRejectReason::EncodingFailed);
     return;
   }
@@ -781,7 +908,7 @@ void MainWindow::handleMmttyTxString(QString message)
   }
 
   if (m_mode != QStringLiteral("JTTY")) set_mode (QStringLiteral("JTTY"));
-  execute_jtty_tones(requestId, transmitText, tones.constData (), tones.size ());
+  enqueueJttyToneSegment(requestId, transmitText, tones.constData (), tones.size ());
 }
 
 void MainWindow::handleMmttyStartTx()
@@ -928,8 +1055,9 @@ void MainWindow::resumeMmttyHandoff()
   auto const queued = m_pendingMmttyJttyMessages;
   m_pendingMmttyJttyMessages.clear ();
   for (auto const& pending : queued) {
-    execute_jtty_tones (pending.requestId, pending.message,
-                        pending.tones.constData (), pending.tones.size ());
+    if (pending.literal) execute_jtty_tx (pending.requestId, pending.message);
+    else enqueueJttyToneSegment (pending.requestId, pending.message,
+                                 pending.tones.constData (), pending.tones.size ());
   }
   startPendingMmttyJttyTx ();
   updateModeControlLock ();

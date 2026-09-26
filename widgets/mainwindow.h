@@ -79,6 +79,7 @@ class QHBoxLayout;
 #include "AutoRespondPeriod.hpp"
 #include "HoundTransmissionPolicy.hpp"
 #include "JttyDraftAcceptanceTracker.hpp"
+#include "JttyTransmitQueue.hpp"
 #include "QsoProgress.hpp"
 #include "DecodeOperatingContext.hpp"
 #include "DecoderOutputFramer.hpp"
@@ -835,17 +836,19 @@ private:
   QString jttyRejectReasonText(JttyTxRejectReason reason) const;
 #endif
   void execute_jtty_tx(qint64 requestId, QString message);
-  bool prepareJttyTones(qint64 requestId, QString& message, int tones[], int& nsym);
   void execute_jtty_tones(qint64 requestId, QString const& message,
-                          int const itone[], int nsym);
+                          int const itone[], int nsym, int frequency = -1);
+  void enqueueJttySegments(qint64 requestId, QVector<Jtty::TransmitSegment> segments);
+  void enqueueJttyToneSegment(qint64 requestId, QString const& message,
+                              int const tones[], int toneCount);
+  void feedJttyTransmitQueue();
+  void updateJttyTransmitDisplay(qint64 servedSamples);
+  void updateJttySendButton();
+  void onJttyBackendProgress(TxAudioQueueProgress progress);
   qint64 jttyTxCommittedSamples() const;
   void completeJttyTxEnqueue(qint64 requestId, QString const& message,
                              TxAudioQueueProgress progress, bool newSession,
                              bool useTciAudio);
-  void recordAcceptedJttyTextRequest(qint64 requestId, qint64 endSample);
-  QVector<qint64> takeCompletedJttyTextRequests(TxAudioQueueEpoch epoch,
-                                               qint64 totalAtDrain);
-  void clearAcceptedJttyTextRequests(TxAudioQueueEpoch epoch);
   void handleJttyContestSerial(QString const& message);
   void abort_jtty_tx();
   void interruptJttyTx();
@@ -1456,13 +1459,11 @@ private:
     bool newSession;
   };
   QVector<PendingJttyMessage> m_pendingJttyMessages;
-  struct AcceptedJttyTxRequest
-  {
-    TxAudioQueueEpoch epoch;
-    qint64 requestId;
-    qint64 endSample;
-  };
-  QVector<AcceptedJttyTxRequest> m_acceptedJttyTxRequests;
+  Jtty::TransmitQueue m_jttyTransmitQueue;
+  TxAudioQueueProgress m_jttyQueueProgress;
+  bool m_feedingJttyTransmitQueue {false};
+  qint64 m_jttyDisplayedEndSample {0};
+  QString m_jttyQueueNotice;
   JttyDraftAcceptanceTracker m_jttyDraftAcceptanceTracker;
   qint64 m_jttyTxRequestId;
   qint64 m_jttyEnqueueId;
@@ -1473,6 +1474,7 @@ private:
     qint64 requestId;
     QString message;
     QVector<int> tones;
+    bool literal {false};
   };
   QVector<PendingMmttyJttyMessage> m_pendingMmttyJttyMessages;
   Jtty::MmttyHandoff m_mmttyHandoff;

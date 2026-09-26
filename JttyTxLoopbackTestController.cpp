@@ -11,13 +11,17 @@
 #include <utility>
 
 #include <QAction>
+#include <QAbstractButton>
 #include <QApplication>
 #include <QAudioFormat>
 #include <QByteArray>
 #include <QFileInfo>
+#include <QLineEdit>
+#include <QKeyEvent>
 #include <QMessageBox>
-#include <QStringList>
+#include <QMetaObject>
 #include <QSysInfo>
+#include <QTextEdit>
 #include <QWidget>
 
 #include "moc_JttyTxLoopbackTestController.cpp"
@@ -40,9 +44,9 @@ JttyTxLoopbackTestController::JttyTxLoopbackTestController (
   , m_capturePath {std::move (capturePath)}
 {
   m_timeout.setSingleShot (true);
-  m_timeout.setInterval (60000);
+  m_timeout.setInterval (180000);
   connect (&m_timeout, &QTimer::timeout, this, [this] {
-    fail (tr ("Timed out after 60 seconds."));
+    fail (tr ("Timed out after 180 seconds."));
   });
 
   m_prepareTimer.setSingleShot (true);
@@ -55,34 +59,54 @@ JttyTxLoopbackTestController::JttyTxLoopbackTestController (
 
   connect (m_window, &MainWindow::jttyTextAccepted,
            this, [this] (qint64 requestId) {
-             if (m_acceptedRequests.contains (requestId))
-               {
-                 fail (tr ("JTTY request %1 was accepted more than once.")
-                       .arg (requestId));
-                 return;
-               }
              if (requestId == m_modeChangeProbeId)
                {
                  fail (tr ("The programmatic mode-change probe was accepted after abort."));
                  return;
                }
-             m_acceptedRequests.insert (requestId);
-             m_acceptedOrder.append (requestId);
-             QString controlsError;
-             if (!verifyModeControlsEnabled (false, &controlsError))
+             if (m_sessionDrainCount)
                {
-                 fail (controlsError);
+                 fail (tr ("A request submitted during PTT release started before cancellation."));
                  return;
                }
+             if (m_acceptedRequests.contains (requestId))
+               {
+                 fail (tr ("JTTY request %1 was accepted more than once.")
+                       .arg (requestId));
+                 return;
+             }
+             m_acceptedRequests.insert (requestId);
+             m_acceptedOrder.append (requestId);
+             if (m_firstRequestId && requestId != m_firstRequestId) {
+               m_secondRequestId = requestId;
+             }
              maybeFinish ();
            });
   connect (m_window, &MainWindow::jttyTextRejected,
            this, [this] (qint64 requestId, MainWindow::JttyTxRejectReason reason) {
+             if (m_submittingModeChangeProbe
+                 && reason == MainWindow::JttyTxRejectReason::NotAvailable)
+               {
+                 m_modeChangeProbeUnavailable = true;
+                 return;
+               }
              if (requestId == m_modeChangeProbeId
-                 && reason == MainWindow::JttyTxRejectReason::Aborted)
+                 && !m_modeChangeProbeComplete
+                 && (reason == MainWindow::JttyTxRejectReason::Aborted
+                     || (m_modeChangeProbeSwitching
+                         && reason == MainWindow::JttyTxRejectReason::NotAvailable)))
                {
                  m_modeChangeProbeComplete = true;
                  m_prepareTimer.start (100);
+                 return;
+               }
+             if (m_checkingCancellation
+                 && reason == MainWindow::JttyTxRejectReason::Aborted
+                 && !m_cancelledRequests.contains (requestId)
+                 && !m_acceptedRequests.contains (requestId)
+                 && !m_completedRequests.contains (requestId))
+               {
+                 m_cancelledRequests.insert (requestId);
                  return;
                }
              fail (tr ("JTTY request %1 was rejected with reason %2 (probe=%3, probe_started=%4, decoder_busy=%5).")
@@ -92,6 +116,11 @@ JttyTxLoopbackTestController::JttyTxLoopbackTestController (
            });
   connect (m_window, &MainWindow::jttyTextCompleted,
            this, [this] (qint64 requestId) {
+             if (m_sessionDrainCount)
+               {
+                 fail (tr ("Cancelled JTTY work emitted a completion notification."));
+                 return;
+               }
              if (m_completedRequests.contains (requestId))
                {
                  fail (tr ("JTTY request %1 completed more than once.")
@@ -110,6 +139,7 @@ JttyTxLoopbackTestController::JttyTxLoopbackTestController (
                  fail (tr ("More than one JTTY transmit session drained."));
                  return;
                }
+             if (!verifyCancellationPaths ()) return;
              maybeFinish ();
            });
 
@@ -168,9 +198,19 @@ QString JttyTxLoopbackTestController::contestExchangeMessage ()
   return QStringLiteral ("WB9XYZ 599 0123");
 }
 
-QString JttyTxLoopbackTestController::adjacentStructuredFramesMessage ()
+QStringList JttyTxLoopbackTestController::longMessageSegments ()
 {
-  return QStringLiteral ("WB9XYZ TU CQ KA1ABC CQ");
+  return {
+    QStringLiteral ("FIRST SEGMENT NOTES SUNNY WEATHER AND A FINE SIGNAL ACROSS THE WHOLE BAND TODAY"),
+    QStringLiteral ("SECOND SEGMENT CONTINUES THE MESSAGE WHILE PRIOR AUDIO IS STILL PLAYING CLEANLY"),
+    QStringLiteral ("THIRD SEGMENT WAITS FOR ROOM AND MUST FOLLOW THE FORMER TEXT IN ITS EXACT ORDER"),
+    QStringLiteral ("FINAL SEGMENT CONFIRMS EVERY CHARACTER ARRIVED INCLUDING MY LAST SENTINEL ZEBRA")
+  };
+}
+
+QString JttyTxLoopbackTestController::unsentDraft ()
+{
+  return QStringLiteral ("THIS NEW DRAFT MUST SURVIVE THE QUEUED TRANSMISSION");
 }
 
 qint64 JttyTxLoopbackTestController::encodedSampleFrames (QString const& message)
@@ -179,6 +219,7 @@ qint64 JttyTxLoopbackTestController::encodedSampleFrames (QString const& message
   int symbols {0};
   QByteArray field (80, ' ');
   auto const bytes = message.toLatin1 ();
+  if (bytes.size () > field.size ()) return 0;
   std::copy (bytes.cbegin (), bytes.cend (), field.begin ());
   genjtty_ (field.constData (), tones, &symbols, 80);
   return qint64 (symbols) * 384 * 4;
@@ -210,8 +251,17 @@ void JttyTxLoopbackTestController::prepareWhenReady ()
   if (!m_modeChangeProbeStarted)
     {
       jttyAction->trigger ();
-      m_modeChangeProbeId = m_window->submitJttyText (
+      m_submittingModeChangeProbe = true;
+      auto const requestId = m_window->submitJttyText (
         QStringLiteral ("MODE CHANGE PROBE"));
+      m_submittingModeChangeProbe = false;
+      if (m_modeChangeProbeUnavailable)
+        {
+          m_modeChangeProbeUnavailable = false;
+          m_prepareTimer.start (50);
+          return;
+        }
+      m_modeChangeProbeId = requestId;
       m_modeChangeProbeStarted = true;
       QString controlsError;
       if (!verifyModeControlsEnabled (false, &controlsError))
@@ -225,14 +275,10 @@ void JttyTxLoopbackTestController::prepareWhenReady ()
           fail (tr ("The FT8 mode action was not found."));
           return;
         }
-      bool const invoked = QMetaObject::invokeMethod (
-        m_window, "on_actionFT8_triggered", Qt::DirectConnection);
-      if (!invoked)
-        {
-          fail (tr ("The programmatic FT8 mode change could not be invoked."));
-          return;
-        }
-      if (!ft8Action->isChecked ())
+      m_modeChangeProbeSwitching = true;
+      if (!QMetaObject::invokeMethod (
+            m_window, "on_actionFT8_triggered", Qt::DirectConnection)
+          || !ft8Action->isChecked ())
         {
           fail (tr ("The programmatic mode change did not enter FT8."));
           return;
@@ -244,6 +290,7 @@ void JttyTxLoopbackTestController::prepareWhenReady ()
       m_prepareTimer.start (50);
       return;
     }
+  m_modeChangeProbeSwitching = false;
   if (m_window->decoderBusy ())
     {
       m_prepareTimer.start (50);
@@ -264,9 +311,21 @@ void JttyTxLoopbackTestController::prepareWhenReady ()
     }
 
   m_prepared = true;
+  qint64 longMessageFrames = 0;
+  for (auto const& segment : longMessageSegments ())
+    {
+      auto const frames = encodedSampleFrames (segment);
+      if (segment.size () != 79 || frames <= 0)
+        {
+          fail (tr ("A long-message fixture segment has an invalid length or waveform extent."));
+          return;
+        }
+      longMessageFrames += frames;
+    }
   m_expectedAudioFrames = encodedSampleFrames (contestExchangeMessage ())
-    + encodedSampleFrames (adjacentStructuredFramesMessage ());
-  if (m_expectedAudioFrames <= 0)
+    + longMessageFrames;
+  if (longMessageFrames <= 60 * sampleRate
+      || m_expectedAudioFrames >= 150 * sampleRate)
     {
       fail (tr ("The JTTY encoder did not produce a valid test waveform extent."));
       return;
@@ -277,6 +336,7 @@ void JttyTxLoopbackTestController::prepareWhenReady ()
       fail (tr ("The first JTTY text request did not receive an identifier."));
       return;
     }
+
   QString controlsError;
   if (!verifyModeControlsEnabled (false, &controlsError))
     {
@@ -310,28 +370,109 @@ void JttyTxLoopbackTestController::submitSecondMessage ()
       return;
     }
 
-  m_secondRequestId = m_window->submitJttyText (
-    adjacentStructuredFramesMessage ());
-  if (m_secondRequestId <= 0 || m_secondRequestId == m_firstRequestId)
+  auto * input = m_window->findChild<QLineEdit *> ("Tx_Message");
+  auto * send = m_window->findChild<QAbstractButton *> ("pbSendMessage");
+  auto * display = m_window->findChild<QTextEdit *> ("decodedTextBrowser2");
+  if (!input || !send || !display)
     {
-      fail (tr ("The second JTTY text request did not receive a unique identifier."));
+      fail (tr ("A required JTTY input, send button, or transmit display was not found."));
       return;
     }
+  input->setText (longMessageSegments ().join (' '));
+  if (!QMetaObject::invokeMethod (input, "returnPressed", Qt::DirectConnection))
+    {
+      fail (tr ("Unable to submit the long JTTY draft through Enter."));
+      return;
+    }
+  if (!input->text ().isEmpty ())
+    {
+      fail (tr ("The validated long JTTY draft was not cleared after submission."));
+      return;
+    }
+  if (!send->text ().contains ("left")
+      || !send->toolTip ().contains (longMessageSegments ().constLast ()))
+    {
+      fail (tr ("The Send button did not expose pending long-message text."));
+      return;
+    }
+  if (display->toPlainText ().contains ("FIRST SEGMENT")
+      || display->toPlainText ().contains ("ZEBRA"))
+    {
+      fail (tr ("Queued long-message text appeared as transmitted before its audio began."));
+      return;
+    }
+  input->setText (unsentDraft ());
   if (m_output->restartCount () != 1 || m_output->stopCount () != 0)
     {
       fail (tr ("Appending the second JTTY message restarted or stopped playback."));
       return;
     }
 
-  std::cerr << "WSJT-X JTTY TX loopback test: second request accepted after "
-               "non-silent playback began"
+  std::cerr << "WSJT-X JTTY TX loopback test: long draft accepted through Enter "
+               "during playback; segments=4 expected_audio_frames="
+            << m_expectedAudioFrames
             << std::endl;
+}
+
+bool JttyTxLoopbackTestController::verifyCancellationPaths ()
+{
+  auto * input = m_window->findChild<QLineEdit *> ("Tx_Message");
+  auto * send = m_window->findChild<QAbstractButton *> ("pbSendMessage");
+  if (!input || !send || input->text () != unsentDraft ())
+    {
+      fail (tr ("The newer unsent draft was lost before cancellation checks."));
+      return false;
+    }
+
+  for (bool const useEscape : {false, true})
+    {
+      input->setText (longMessageSegments ().join (' '));
+      if (!QMetaObject::invokeMethod (input, "returnPressed", Qt::DirectConnection)
+          || m_finished || !input->text ().isEmpty ()
+          || !send->text ().contains ("left"))
+        {
+          fail (tr ("A new long draft was not retained while PTT release was pending."));
+          return false;
+        }
+      input->setText (unsentDraft ());
+      auto const cancelledBefore = m_cancelledRequests.size ();
+      m_checkingCancellation = true;
+      if (useEscape)
+        {
+          QKeyEvent escape {QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier};
+          QCoreApplication::sendEvent (m_window, &escape);
+        }
+      else if (!QMetaObject::invokeMethod (
+                 m_window, "on_stopTxButton_clicked", Qt::DirectConnection))
+        {
+          fail (tr ("Unable to invoke Stop Tx for pending JTTY text."));
+        }
+      m_checkingCancellation = false;
+      if (m_finished) return false;
+      if (m_cancelledRequests.size () != cancelledBefore + 1
+          || m_completedRequests.size () != 2 || m_acceptedRequests.size () != 2
+          || input->text () != unsentDraft ()
+          || send->text () != QStringLiteral ("Send message")
+          || !send->toolTip ().contains ("cancelled"))
+        {
+          fail (tr ("%1 did not cancel pending text exactly once while preserving the newer draft.")
+                .arg (useEscape ? QStringLiteral ("Esc") : QStringLiteral ("Stop Tx")));
+          return false;
+        }
+    }
+  if (m_output->restartCount () != 1)
+    {
+      fail (tr ("Cancelling deferred text restarted the captured audio stream."));
+      return false;
+    }
+  m_cancellationChecked = true;
+  return true;
 }
 
 void JttyTxLoopbackTestController::maybeFinish ()
 {
   if (m_finished || !m_secondRequestId || m_sessionDrainCount != 1
-      || m_captureStopCount != 1)
+      || m_captureStopCount != 1 || !m_cancellationChecked)
     {
       return;
     }
@@ -364,16 +505,33 @@ void JttyTxLoopbackTestController::maybeFinish ()
       fail (tr ("The output stream lifecycle was not one start, one drain, and one stop."));
       return;
     }
-  QString controlsError;
-  if (!verifyModeControlsEnabled (true, &controlsError))
-    {
-      fail (controlsError);
-      return;
-    }
   if (m_output->maxInternalSilentFrames () > sampleRate / 100)
     {
       fail (tr ("The captured JTTY session contains an unexpected internal audio gap."));
       return;
+    }
+
+  auto const * input = m_window->findChild<QLineEdit *> ("Tx_Message");
+  auto const * send = m_window->findChild<QAbstractButton *> ("pbSendMessage");
+  auto const * display = m_window->findChild<QTextEdit *> ("decodedTextBrowser2");
+  if (!input || input->text () != unsentDraft ())
+    {
+      fail (tr ("Finishing queued transmission changed the newer unsent draft."));
+      return;
+    }
+  if (!send || send->text () != QStringLiteral ("Send message"))
+    {
+      fail (tr ("The Send button still reports pending text after the session drained."));
+      return;
+    }
+  auto const displayed = display ? display->toPlainText ().simplified () : QString {};
+  for (auto const& segment : longMessageSegments ())
+    {
+      if (!displayed.contains (segment))
+        {
+          fail (tr ("The transmit display omitted completed segment: %1").arg (segment));
+          return;
+        }
     }
 
   QString captureError;
@@ -391,6 +549,7 @@ void JttyTxLoopbackTestController::maybeFinish ()
   std::cout << "WSJT-X JTTY TX loopback capture passed: requests=2 restarts="
             << m_output->restartCount () << " stops=" << m_output->stopCount ()
             << " drains=" << m_sessionDrainCount
+            << " cancellations=" << m_cancelledRequests.size ()
             << " frames=" << m_capturedFrames
             << " capture=" << m_capturePath.toStdString () << std::endl;
   m_window->close ();

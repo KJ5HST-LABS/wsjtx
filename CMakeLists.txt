@@ -1254,7 +1254,7 @@ if (WSJT_ENABLE_TESTS AND WSJT_ENABLE_GUI_SMOKE_TESTS
     COST 37
     LABELS "gui;audio;jtty;integration"
     PROCESSORS 1
-    TIMEOUT 190)
+    TIMEOUT 600)
   if (WSJT_ENABLE_TSAN)
     set_tests_properties (
       test_wsjtx_live_audio_jtty

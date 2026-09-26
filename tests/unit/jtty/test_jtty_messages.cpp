@@ -546,34 +546,33 @@ private slots:
     QTest::addColumn<QString> ("message");
     QTest::addColumn<QString> ("expected");
     QTest::addColumn<bool> ("substituted");
-    QTest::addColumn<bool> ("truncated");
 
     QTest::newRow ("empty") << QString {} << QString {}
-                            << false << false;
+                            << false;
     QTest::newRow ("supported") << QString {"CQ KA1ABC CQ"} << QString {"CQ KA1ABC CQ"}
-                                << false << false;
+                                << false;
     QTest::newRow ("lowercase-preserved") << QString {"cq ka1abc cq"} << QString {"cq ka1abc cq"}
-                                          << false << false;
+                                          << false;
     QTest::newRow ("tab") << QString {"HELLO\tWORLD"} << QString {"HELLO#WORLD"}
-                          << true << false;
+                          << true;
     QTest::newRow ("cr-lf") << QString {"HELLO\r\nWORLD"} << QString {"HELLO##WORLD"}
-                            << true << false;
+                            << true;
     QTest::newRow ("nul") << (QString {"A"} + QChar::Null + QString {"B"}) << QString {"A B"}
-                          << true << false;
+                          << true;
     QTest::newRow ("display-space-marker") << QString {"A~B"} << QString {"A B"}
-                                           << true << false;
+                                           << true;
     QTest::newRow ("exactly-80") << QString (80, QLatin1Char {'A'}) << QString (80, QLatin1Char {'A'})
-                                 << false << false;
-    QTest::newRow ("truncated") << QString (81, QLatin1Char {'A'}) << QString (80, QLatin1Char {'A'})
-                                << false << true;
+                                 << false;
+    QTest::newRow ("long-input-preserved") << QString (81, QLatin1Char {'A'}) << QString (81, QLatin1Char {'A'})
+                                          << false;
     QTest::newRow ("unsupported-past-limit")
         << (QString (80, QLatin1Char {'A'}) + QString {"\t"})
-        << QString (80, QLatin1Char {'A'})
-        << false << true;
-    QTest::newRow ("substitution-and-truncation")
+        << (QString (80, QLatin1Char {'A'}) + QString {"#"})
+        << true;
+    QTest::newRow ("substitution-preserves-suffix")
         << (QString (79, QLatin1Char {'A'}) + QString {"\tB"})
-        << (QString (79, QLatin1Char {'A'}) + QString {"#"})
-        << true << true;
+        << (QString (79, QLatin1Char {'A'}) + QString {"#B"})
+        << true;
   }
 
   void prepareTransmitText ()
@@ -581,72 +580,113 @@ private slots:
     QFETCH (QString, message);
     QFETCH (QString, expected);
     QFETCH (bool, substituted);
-    QFETCH (bool, truncated);
 
     auto const prepared = Jtty::prepareTransmitText (message);
 
     QCOMPARE (prepared.text, expected);
     QCOMPARE (prepared.substituted, substituted);
-    QCOMPARE (prepared.truncated, truncated);
-    QCOMPARE (prepared.changed (), substituted || truncated);
-  }
-
-  void withChainedSpacing_data ()
-  {
-    QTest::addColumn<QString> ("message");
-    QTest::addColumn<bool> ("isChained");
-    QTest::addColumn<QString> ("expected");
-
-    QTest::newRow ("not-chained-unchanged") << QString {"CQ KA1ABC CQ"} << false
-                                            << QString {"CQ KA1ABC CQ"};
-    QTest::newRow ("chained-gets-leading-space") << QString {"TU DE KA1ABC"} << true
-                                                 << QString {" TU DE KA1ABC"};
-    QTest::newRow ("not-chained-empty-stays-empty") << QString {} << false << QString {};
-    QTest::newRow ("chained-at-max-length-drops-last-char")
-        << QString (Jtty::maxTransmitLength, QLatin1Char {'A'}) << true
-        << (QString {" "} + QString (Jtty::maxTransmitLength - 1, QLatin1Char {'A'}));
-  }
-
-  void withChainedSpacing ()
-  {
-    QFETCH (QString, message);
-    QFETCH (bool, isChained);
-    QFETCH (QString, expected);
-
-    QCOMPARE (Jtty::withChainedSpacing (message, isChained), expected);
   }
 
   void transmitFrame_data ()
   {
     QTest::addColumn<QString> ("message");
-    QTest::addColumn<bool> ("isChained");
     QTest::addColumn<QString> ("expected");
 
     auto const padded = [] (QString const& text) {
       return text + QString (Jtty::maxTransmitLength - text.size (), QLatin1Char {' '});
     };
 
-    QTest::newRow ("not-chained-padded-to-width")
-        << QString {"CQ KA1ABC CQ"} << false << padded (QString {"CQ KA1ABC CQ"});
-    QTest::newRow ("chained-prefixed-and-padded")
-        << QString {"TU K1ABC CQ"} << true << padded (QString {" TU K1ABC CQ"});
-    QTest::newRow ("chained-at-max-length-stays-exact")
-        << QString (Jtty::maxTransmitLength, QLatin1Char {'A'}) << true
-        << (QString {" "} + QString (Jtty::maxTransmitLength - 1, QLatin1Char {'A'}));
-    QTest::newRow ("empty-not-chained-all-spaces")
-        << QString {} << false << QString (Jtty::maxTransmitLength, QLatin1Char {' '});
+    QTest::newRow ("padded-to-width")
+        << QString {"CQ KA1ABC CQ"} << padded (QString {"CQ KA1ABC CQ"});
+    QTest::newRow ("at-max-length-stays-exact")
+        << QString (Jtty::maxTransmitLength, QLatin1Char {'A'})
+        << QString (Jtty::maxTransmitLength, QLatin1Char {'A'});
+    QTest::newRow ("empty-all-spaces")
+        << QString {} << QString (Jtty::maxTransmitLength, QLatin1Char {' '});
+    QTest::newRow ("oversized-rejected")
+        << QString (Jtty::maxTransmitLength + 1, QLatin1Char {'A'}) << QString {};
   }
 
   void transmitFrame ()
   {
     QFETCH (QString, message);
-    QFETCH (bool, isChained);
     QFETCH (QString, expected);
 
-    QString const frame = Jtty::transmitFrame (message, isChained);
+    QString const frame = Jtty::transmitFrame (message);
 
     QCOMPARE (frame, expected);
-    QCOMPARE (frame.size (), Jtty::maxTransmitLength);
+    QCOMPARE (frame.size (), message.size () > Jtty::maxTransmitLength
+              ? 0 : Jtty::maxTransmitLength);
+  }
+
+  void transmitSegmentsCoverCompleteInput_data ()
+  {
+    QTest::addColumn<QString> ("source");
+    QTest::addColumn<int> ("firstLength");
+    QTest::addColumn<int> ("segmentCount");
+
+    QTest::newRow ("79-characters") << QString (79, QLatin1Char {'A'}) << 79 << 1;
+    QTest::newRow ("80-characters") << QString (80, QLatin1Char {'A'}) << 80 << 1;
+    QTest::newRow ("81-characters") << QString (81, QLatin1Char {'A'}) << 80 << 2;
+    QTest::newRow ("word-boundary")
+        << (QString (70, QLatin1Char {'A'}) + QString {" WORDS CONTINUE"}) << 77 << 2;
+    QTest::newRow ("space-at-capacity")
+        << (QString (79, QLatin1Char {'A'}) + QString {" SUFFIX"}) << 80 << 2;
+    QTest::newRow ("space-after-capacity")
+        << (QString {"FIRST "} + QString (74, QLatin1Char {'A'}) + QString {" SUFFIX"})
+        << 80 << 2;
+    QTest::newRow ("leading-space-before-long-token")
+        << (QString {" "} + QString (160, QLatin1Char {'A'})) << 80 << 3;
+    QTest::newRow ("many-spaces") << QString (200, QLatin1Char {' '}) << 80 << 3;
+    QTest::newRow ("substitution-after-first-segment")
+        << (QString (80, QLatin1Char {'A'}) + QString {"\tSUFFIX"}) << 80 << 2;
+  }
+
+  void transmitSegmentsCoverCompleteInput ()
+  {
+    QFETCH (QString, source);
+    QFETCH (int, firstLength);
+    QFETCH (int, segmentCount);
+
+    QString const prepared = Jtty::prepareTransmitText (source).text;
+    QString reconstructed;
+    int offset {0};
+    int count {0};
+    while (offset < prepared.size ()) {
+      auto const segment = Jtty::nextTransmitTextSegment (prepared, offset);
+      QCOMPARE (segment.offset, offset);
+      QVERIFY (segment.length > 0);
+      QVERIFY (segment.length <= Jtty::maxTransmitLength);
+      QCOMPARE (segment.text, prepared.mid (offset, segment.length));
+      if (count == 0) QCOMPARE (segment.length, firstLength);
+      reconstructed += segment.text;
+      offset += segment.length;
+      ++count;
+    }
+    QCOMPARE (count, segmentCount);
+    QCOMPARE (reconstructed, prepared);
+  }
+
+  void transmitSegmentRetryRetainsSourceOffset ()
+  {
+    QString const source {"PREFIX FIRST SECOND THIRD SUFFIX"};
+    auto const initial = Jtty::nextTransmitTextSegment (source, 7, 19);
+    QCOMPARE (initial.text, QString {"FIRST SECOND THIRD "});
+    auto const retry = Jtty::nextTransmitTextSegment (source, initial.offset, 12);
+    QCOMPARE (retry.offset, initial.offset);
+    QCOMPARE (retry.text, QString {"FIRST SECOND"});
+    auto const next = Jtty::nextTransmitTextSegment (source, retry.offset + retry.length);
+    QCOMPARE (retry.text + next.text, source.mid (7));
+  }
+
+  void transmitSegmentEmptyAndInvalidRanges ()
+  {
+    QVERIFY (Jtty::nextTransmitTextSegment (QString {}, 0).text.isEmpty ());
+    QVERIFY (Jtty::nextTransmitTextSegment (QString {"ABC"}, -1).text.isEmpty ());
+    QVERIFY (Jtty::nextTransmitTextSegment (QString {"ABC"}, 3).text.isEmpty ());
+    QVERIFY (Jtty::nextTransmitTextSegment (QString {"ABC"}, 0, 0).text.isEmpty ());
+    QCOMPARE (Jtty::nextTransmitTextSegment (QString (100, QLatin1Char {'A'}), 0, 100).length,
+              Jtty::maxTransmitLength);
   }
 
   void wavCaptureValid_data ()

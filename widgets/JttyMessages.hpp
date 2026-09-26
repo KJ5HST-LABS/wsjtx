@@ -28,12 +28,6 @@ namespace Jtty
   {
     QString text;
     bool substituted {false};
-    bool truncated {false};
-
-    bool changed () const
-    {
-      return substituted || truncated;
-    }
   };
 
   enum class NativeAtomKind : qint8
@@ -192,12 +186,9 @@ namespace Jtty
   inline PreparedTransmitText prepareTransmitText (QString const& message)
   {
     PreparedTransmitText result;
-    int const maxLength {maxTransmitLength};
-    result.truncated = message.size () > maxLength;
-    QString const bounded = message.left (maxLength);
-    result.text.reserve (bounded.size ());
+    result.text.reserve (message.size ());
 
-    for (QChar c : bounded) {
+    for (QChar c : message) {
       if (c == QChar::Null || c == QLatin1Char {'~'}) {
         result.text.append (QLatin1Char {' '});
         result.substituted = true;
@@ -212,25 +203,38 @@ namespace Jtty
     return result;
   }
 
-  // A message being queued behind one still transmitting (FIFO chaining,
-  // see MainWindow::execute_jtty_tx) gets a leading space inserted, since
-  // the user is unlikely to remember (or want) to type one themselves,
-  // and unlikely to hit Return mid-word. Re-bounds to maxTransmitLength
-  // in case the message was already at prepareTransmitText's limit.
-  // No-op (returns message unchanged) when isChained is false.
-  inline QString withChainedSpacing (QString const& message, bool isChained)
+  struct TransmitTextSegment
   {
-    if (!isChained) return message;
-    return (QLatin1Char {' '} + message).left (maxTransmitLength);
+    int offset {0};
+    int length {0};
+    QString text;
+  };
+
+  // Source spans include separator spaces so every submitted character is accounted for.
+  inline TransmitTextSegment nextTransmitTextSegment (
+      QString const& message, int offset, int maximumLength = maxTransmitLength)
+  {
+    if (offset < 0 || offset >= message.size () || maximumLength <= 0) return {};
+
+    int length = std::min ({message.size () - offset, maximumLength, maxTransmitLength});
+    if (offset + length < message.size ()
+        && message.at (offset + length) != QLatin1Char {' '}) {
+      for (int i = length - 1; i > 0; --i) {
+        if (message.at (offset + i) == QLatin1Char {' '}
+            && !message.mid (offset, i).trimmed ().isEmpty ()) {
+          length = i + 1;
+          break;
+        }
+      }
+    }
+    return {offset, length, message.mid (offset, length)};
   }
 
-  // Builds the fixed-width frame passed to genjtty_. The chained leading space
-  // is transport-only spacing, so it belongs here rather than in the logical
-  // message that is logged, displayed, and checked for contest serials.
-  inline QString transmitFrame (QString const& message, bool isChained)
+  // An empty result rejects oversized text before it reaches the fixed-width codec.
+  inline QString transmitFrame (QString const& message)
   {
-    QString const spaced = withChainedSpacing (message, isChained);
-    return spaced + QString (maxTransmitLength - spaced.size (), QLatin1Char {' '});
+    if (message.size () > maxTransmitLength) return {};
+    return message + QString (maxTransmitLength - message.size (), QLatin1Char {' '});
   }
 
   // Number of receive samples in one complete JTTY frame: 59 symbols of 384
