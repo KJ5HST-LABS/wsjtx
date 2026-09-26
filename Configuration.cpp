@@ -6844,26 +6844,8 @@ void Configuration::impl::fill_port_combo_box(QComboBox* cb)
         }
     }
 
-    // Sort ports by the numeric value of the port name, if possible
     std::sort(ports.begin(), ports.end(), [](const QSerialPortInfo& a, const QSerialPortInfo& b) {
-        bool isANumeric = a.portName().midRef(3).toInt();
-        bool isBNumeric = b.portName().midRef(3).toInt();
-        if (isANumeric && isBNumeric)
-        {
-            return a.portName().midRef(3).toInt() < b.portName().midRef(3).toInt();
-        }
-        else if (isANumeric)
-        {
-            return true; // a comes before b
-        }
-        else if (isBNumeric)
-        {
-            return false; // b comes before a
-        }
-        else
-        {
-            return a.portName() < b.portName(); // Alphabetical order for non-numeric ports
-        }
+        return serial_port_name_less(a.portName(), b.portName());
     });
 
     // Add sorted ports to the combo box

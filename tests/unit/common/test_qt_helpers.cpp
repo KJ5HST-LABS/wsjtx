@@ -6,6 +6,7 @@
 #include <QFont>
 #include <QTemporaryDir>
 
+#include <algorithm>
 #include <limits>
 
 #include "qt_helpers.hpp"
@@ -18,6 +19,38 @@ class TestQtHelpers
 public:
 
 private:
+  Q_SLOT void serial_port_order_data ()
+  {
+    QTest::addColumn<QStringList> ("expected");
+    QTest::newRow ("COM-zero") << QStringList {"COM0", "COM1", "COM2", "COM10"};
+    QTest::newRow ("Unix-prefixes") << QStringList {
+      "ttyACM0", "ttyACM2", "ttyACM10", "ttyUSB0", "ttyUSB2", "ttyUSB10"};
+    QTest::newRow ("macOS-names") << QStringList {
+      "cu.Bluetooth-Incoming-Port", "cu.usbserial-2", "cu.usbserial-10"};
+    QTest::newRow ("leading-zeroes") << QStringList {
+      "COM0", "COM00", "COM0002", "COM02", "COM2", "COM10"};
+    QTest::newRow ("large-suffixes") << QStringList {
+      "ttyUSB2", "ttyUSB10", "ttyUSB2147483648", "ttyUSB99999999999999999999",
+      "ttyUSB100000000000000000000"};
+    QTest::newRow ("mixed-names") << QStringList {
+      "", "COM", "COM0", "COM2", "COM10", "COM2A", "COM2A2", "COM2A10",
+      "COMA", "com0", "ttyUSB", "ttyUSB0"};
+  }
+
+  Q_SLOT void serial_port_order ()
+  {
+    QFETCH (QStringList, expected);
+    auto actual = expected;
+    std::reverse (actual.begin (), actual.end ());
+    std::sort (actual.begin (), actual.end (), serial_port_name_less);
+    QCOMPARE (actual, expected);
+
+    // Check every pair so mixed prefixes and numeric ties have a consistent order.
+    for (int i = 0; i < expected.size (); ++i)
+      for (int j = 0; j < expected.size (); ++j)
+        QCOMPARE (serial_port_name_less (expected.at (i), expected.at (j)), i < j);
+  }
+
   Q_SLOT void round_15s_date_time_up ()
   {
     QDateTime dt {QDate {2020, 8, 6}, QTime {14, 15, 22, 500}};
