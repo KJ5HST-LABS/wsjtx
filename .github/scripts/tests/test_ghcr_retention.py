@@ -57,6 +57,14 @@ class RetentionPlanTests(unittest.TestCase):
         self.assertEqual(plan[2].reason, "unknown-or-untagged")
         self.assertEqual(plan[3].reason, "unknown-or-untagged")
 
+    def test_prepared_release_tags_are_not_disposable_generations(self):
+        plan = self.plan([
+            version(1, 100, ("release-deps-validated-build-20260101-1-1",), self.now),
+            version(2, 100, ("build-20260101-2-1", "release-deps-validated-build-20260101-2-1"), self.now),
+        ], keep=0)
+        self.assertFalse(plan[1].delete)
+        self.assertFalse(plan[2].delete)
+
     def test_exact_sixty_day_boundary_is_kept(self):
         plan = self.plan([version(1, 60, ("candidate-1-1",), self.now)], keep=1)
         self.assertFalse(plan[1].delete)

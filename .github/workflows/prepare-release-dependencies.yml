@@ -1,0 +1,95 @@
+name: Prepare Release Dependencies
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_branch:
+        description: Protected develop or release/X.Y branch whose recipes to validate
+        required: true
+        type: string
+      generation:
+        description: Explicit validated-build-YYYYMMDD-RUN-ATTEMPT image generation
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prepare-release-dependencies
+  cancel-in-progress: false
+
+jobs:
+  prepare:
+    if: github.repository == 'WSJTX/wsjtx-internal' && github.ref == 'refs/heads/develop' && github.ref_protected
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Resolve protected source branch
+        id: source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_BRANCH: ${{ inputs.source_branch }}
+        shell: bash
+        run: |
+          if [[ ! "$SOURCE_BRANCH" =~ ^(develop|release/[0-9]+\.[0-9]+)$ ]]; then
+            echo "::error::Select develop or a release/X.Y branch"
+            exit 1
+          fi
+          branch="$(gh api "repos/${GITHUB_REPOSITORY}/branches/${SOURCE_BRANCH//\//%2F}")"
+          if [ "$(jq -r '.protected' <<< "$branch")" != true ]; then
+            echo "::error::The source branch must be protected"
+            exit 1
+          fi
+          sha="$(jq -r '.commit.sha' <<< "$branch")"
+          [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
+          echo "sha=$sha" >> "$GITHUB_OUTPUT"
+      - name: Check out source recipes
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ steps.source.outputs.sha }}
+          path: source
+          persist-credentials: false
+      - name: Install registry tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo
+      - uses: docker/setup-qemu-action@v4
+        with:
+          image: tonistiigi/binfmt:qemu-v10.2.3-68@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
+          platforms: arm64,arm
+      - name: Authenticate registry clients
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s' "$GH_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+          printf '%s' "$GH_TOKEN" | skopeo login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+      - name: Verify and copy the selected images
+        working-directory: source
+        env:
+          GENERATION: ${{ inputs.generation }}
+          PREPARATION_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python3 ../.github/scripts/release-linux-images.py prepare "$GENERATION" \
+            --output-directory ../prepared-dependencies
+          {
+            echo '## Prepared Linux dependencies'
+            echo
+            echo 'Review and commit release-linux-images.json before creating the candidate.'
+            echo
+            echo '```json'
+            cat ../prepared-dependencies/release-linux-images.json
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: prepared-release-dependencies
+          path: prepared-dependencies/
+          if-no-files-found: error
+          retention-days: 90

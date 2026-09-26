@@ -89,6 +89,10 @@ jobs:
           test "$(jq -r .tag "$PROVENANCE")" = "$TAG"
           test "$(jq -r .commit "$PROVENANCE")" = "$TAG_SHA"
           test "$(jq -r .version "$PROVENANCE")" = "$VERSION"
+          python3 .github/scripts/release-linux-images.py verify-provenance \
+            release-linux-images.json "$PROVENANCE"
+          python3 .github/scripts/release-linux-images.py validate \
+            release-linux-images.json --check-remote
           {
             echo "sha=$TAG_SHA"
             echo "tag=$TAG"
