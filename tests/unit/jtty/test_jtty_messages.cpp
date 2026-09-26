@@ -480,7 +480,7 @@ private slots:
               static_cast<int> (Jtty::ExchangeRole::FieldOnly));
   }
 
-  void configuredSubsquareProducesGrid4WithoutChangingLiteralExpansion ()
+  void configuredSubsquareProducesGrid4InBothNativeAndLiteralExpansion ()
   {
     Jtty::NativeMacroContext const context {
       QString {"K1ABC"}, QString {"W9XYZ"}, 1,
@@ -492,7 +492,7 @@ private slots:
 
     auto const literal = Jtty::compileNativeMacro (QString {"GRID %G"}, context);
     QCOMPARE (literal.status, Jtty::NativeMacroStatus::LiteralFallback);
-    QCOMPARE (literal.text, QString {"GRID fn42ab"});
+    QCOMPARE (literal.text, QString {"GRID FN42"});
   }
 
   void invalidGridIsRejected_data ()
@@ -537,7 +537,7 @@ private slots:
       Jtty::NativeExchangeProfile::RttyRoundup, QString {" dx "}, QString {"fn42"}};
     auto const compiled = Jtty::compileNativeMacro (QString {"TEST %E %G"}, context);
     QCOMPARE (compiled.status, Jtty::NativeMacroStatus::LiteralFallback);
-    QCOMPARE (compiled.text, QString {"TEST 007 fn42"});
+    QCOMPARE (compiled.text, QString {"TEST 007 FN42"});
     QVERIFY (compiled.error.isEmpty ());
   }
 
