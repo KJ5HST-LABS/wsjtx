@@ -4,6 +4,7 @@
 #include <QTemporaryDir>
 #include <QUuid>
 
+#include <cstddef>
 #include <cstring>
 #include <memory>
 
@@ -104,13 +105,18 @@ void TestDecoderIpcHandshake::rejectsSegment ()
   QVERIFY (directory.isValid ());
   QSharedMemory memory {key};
   bool const truncated = mutation == "truncated";
-  QVERIFY2 (memory.create (truncated ? sizeof (decoder_ipc_control_t)
+  QVERIFY2 (memory.create (truncated ? offsetof (shared_dec_data_t, payload)
                                     : sizeof (shared_dec_data_t)),
             qPrintable (memory.errorString ()));
   if (truncated)
     {
       auto * control = static_cast<decoder_ipc_control_t *> (memory.data ());
       *control = {1, DECODER_IPC_READY, DECODER_IPC_VERSION, 0};
+      decoder_ipc_layout_t layout;
+      decoder_ipc_expected_layout (&layout);
+      std::memcpy (static_cast<unsigned char *> (memory.data ())
+                   + offsetof (shared_dec_data_t, layout),
+                   &layout, sizeof layout);
     }
   else
     {
