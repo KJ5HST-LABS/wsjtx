@@ -32,10 +32,10 @@ private slots:
     tx.insertText ("Tx: MY RESPONSE", txText);
     QVERIFY (!first.render (document, message (11, "CQ TEST\nCONTINUATION COMPLETE"), {}, font).isNull ());
     QCOMPARE (document.toPlainText (), QString {
-      "1500  CQ TEST\nCONTINUATION COMPLETE\n1500  ANOTHER MESSAGE\nTx: MY RESPONSE"});
+      "1500 -10  CQ TEST\nCONTINUATION COMPLETE\n1500 -10  ANOTHER MESSAGE\nTx: MY RESPONSE"});
     JttyReceiveLine::refresh (document, {true, true}, font);
     QCOMPARE (document.toPlainText (), QString {
-      "123456 1500  cq test\ncontinuation complete\n123456 1500  another message\nTx: MY RESPONSE"});
+      "123456 1500 -10  cq test\ncontinuation complete\n123456 1500 -10  another message\nTx: MY RESPONSE"});
     QCOMPARE (document.lastBlock ().blockFormat (), txBlock);
     QTextCursor check (document.lastBlock ());
     check.movePosition (QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
@@ -55,12 +55,12 @@ private slots:
     }
     QFont const larger {"Monospace", 14};
     JttyReceiveLine::refresh (document, {true, true}, larger);
-    QCOMPARE (document.toPlainText (), QString {"123456 1500  cq mixed case"});
+    QCOMPARE (document.toPlainText (), QString {"123456 1500 -10  cq mixed case"});
     QTextCursor check (document.begin ());
     check.movePosition (QTextCursor::NextCharacter, QTextCursor::KeepAnchor);
     QCOMPARE (check.charFormat ().font ().pointSize (), 14);
     JttyReceiveLine::refresh (document, {false, false}, font);
-    QCOMPARE (document.toPlainText (), QString {"1500  CQ MiXeD CASE"});
+    QCOMPARE (document.toPlainText (), QString {"1500 -10  CQ MiXeD CASE"});
   }
 
   void lateEarlierMessagesAndEqualTimeIdsAreOrdered ()
@@ -76,12 +76,12 @@ private slots:
     QVERIFY (!equal.render (document, message (10, "EQUAL TIME LOWER ID", 10), {}, font, true).isNull ());
     QVERIFY (!middle.render (document, message (25, "MIDDLE", 20), {}, font, true).isNull ());
     QCOMPARE (document.toPlainText (), QString {
-      "1500  EQUAL TIME LOWER ID\n1500  EARLIER\n1500  MIDDLE\n1500  LATE"});
+      "1500 -10  EQUAL TIME LOWER ID\n1500 -10  EARLIER\n1500 -10  MIDDLE\n1500 -10  LATE"});
     JttyReceiveLine::refresh (document, {true, false}, font);
     QCOMPARE (document.toPlainText (), QString {
-      "1500  equal time lower id\n1500  earlier\n1500  middle\n1500  late"});
+      "1500 -10  equal time lower id\n1500 -10  earlier\n1500 -10  middle\n1500 -10  late"});
     QVERIFY (!earlier.render (document, message (20, "EARLIER COMPLETE", 10), {true, false}, font, true).isNull ());
-    QCOMPARE (document.findBlockByNumber (1).text (), QString {"1500  earlier complete"});
+    QCOMPARE (document.findBlockByNumber (1).text (), QString {"1500 -10  earlier complete"});
   }
 
   void chronologyStaysWithinItsGroupAndQsoAppends ()
@@ -102,7 +102,7 @@ private slots:
     QVERIFY (!early.render (document, message (0, "GROUP TWO EARLIER", 1, 2), {}, font, true).isNull ());
     QVERIFY (!qso.render (document, message (0, "QSO APPENDED", 0, 1), {}, font).isNull ());
     QCOMPARE (document.toPlainText (), QString {
-      "1500  GROUP ONE\n1500  GROUP ONE LATER\nFILE HEADING\n1500  GROUP TWO EARLIER\n1500  GROUP TWO\n1500  QSO APPENDED"});
+      "1500 -10  GROUP ONE\n1500 -10  GROUP ONE LATER\nFILE HEADING\n1500 -10  GROUP TWO EARLIER\n1500 -10  GROUP TWO\n1500 -10  QSO APPENDED"});
     QCOMPARE (document.findBlockByNumber (2).blockFormat (), headingFormat);
   }
 
@@ -116,10 +116,10 @@ private slots:
     QVERIFY (!replacement.render (document, message (2, "NEW MESSAGE"), {}, font).isNull ());
     QVERIFY (old.render (document, message (1, "OLD PARTIAL COMPLETED"), {}, font).isNull ());
     JttyReceiveLine::refresh (document, {true, false}, font);
-    QCOMPARE (document.toPlainText (), QString {"1500  new message"});
+    QCOMPARE (document.toPlainText (), QString {"1500 -10  new message"});
     QVERIFY (!replacement.render (document, message (2, "NEW MESSAGE COMPLETED"), {}, font).isNull ());
     QVERIFY (old.render (document, message (1, "OLD PARTIAL COMPLETED"), {}, font).isNull ());
-    QCOMPARE (document.toPlainText (), QString {"1500  NEW MESSAGE COMPLETED"});
+    QCOMPARE (document.toPlainText (), QString {"1500 -10  NEW MESSAGE COMPLETED"});
   }
 
   void prunedBlocksCannotEraseReusedBlocksOrReappear ()
@@ -157,7 +157,7 @@ private slots:
     JttyReceiveLine::refresh (document, {true, true}, font);
     QCOMPARE (document.begin ().text (), first);
     QCOMPARE (document.begin ().next ().text (), second);
-    QCOMPARE (document.lastBlock ().text (), QString {"123456 1500  retained"});
+    QCOMPARE (document.lastBlock ().text (), QString {"123456 1500 -10  retained"});
     QVERIFY (wrapped.render (document, message (1, longMessage + " COMPLETE"), {}, font).isNull ());
     document.clear ();
     JttyReceiveLine::refresh (document, {}, font);
@@ -173,10 +173,10 @@ private slots:
     QVERIFY (!retained.render (document, message (2, "RETAINED", 20), {}, font, true).isNull ());
     QVERIFY (earlier.render (document, message (1, "EARLIER", 10), {}, font, true).isNull ());
     JttyReceiveLine::refresh (document, {true, false}, font);
-    QCOMPARE (document.toPlainText (), QString {"1500  retained"});
+    QCOMPARE (document.toPlainText (), QString {"1500 -10  retained"});
     QVERIFY (!retained.render (document, message (2, "RETAINED COMPLETE", 20), {}, font, true).isNull ());
     QVERIFY (earlier.render (document, message (1, "EARLIER COMPLETE", 10), {}, font, true).isNull ());
-    QCOMPARE (document.toPlainText (), QString {"1500  RETAINED COMPLETE"});
+    QCOMPARE (document.toPlainText (), QString {"1500 -10  RETAINED COMPLETE"});
   }
 
   void foreignTextInsideOwnedRangeIsNeverDeleted ()
@@ -190,7 +190,7 @@ private slots:
     external.insertText (" UNRELATED TEXT");
     JttyReceiveLine::refresh (document, {true, true}, font);
     QVERIFY (old.render (document, message (1, "PARTIAL COMPLETED"), {}, font).isNull ());
-    QCOMPARE (document.toPlainText (), QString {"1500  PARTIAL UNRELATED TEXT"});
+    QCOMPARE (document.toPlainText (), QString {"1500 -10  PARTIAL UNRELATED TEXT"});
   }
 
   void movedActiveHandleStillOwnsItsMessage ()
@@ -201,7 +201,7 @@ private slots:
     QVERIFY (!line.render (document, message (9, "PARTIAL"), {}, font).isNull ());
     auto moved = std::move (line);
     QVERIFY (!moved.render (document, message (9, "PARTIAL COMPLETE"), {}, font).isNull ());
-    QCOMPARE (document.toPlainText (), QString {"1500  PARTIAL COMPLETE"});
+    QCOMPARE (document.toPlainText (), QString {"1500 -10  PARTIAL COMPLETE"});
   }
 };
 

@@ -25,6 +25,7 @@ module jtty_mdec
      real :: f1 = 0.0
      real(real64) :: tsync = 0.0_real64
      real(real64) :: start_tsync = 0.0_real64
+     real :: start_snrdb = 0.0        !SNR of the message's first frame; never reassigned after
      integer :: k = 0
      character(len=80) :: decoded = ''
      logical :: trailing_sep = .false.
@@ -40,6 +41,7 @@ module jtty_mdec
      real :: f1 = 0.0
      real(real64) :: start_tsync = 0.0_real64
      real(real64) :: latest_tsync = 0.0_real64
+     real :: snr = 0.0
      character(len=80) :: decoded = ''
      logical :: complete = .false.
      integer :: terminal = 0
@@ -54,6 +56,9 @@ module jtty_mdec
   real, parameter           :: FRAME_HISTORY_FREQ_TOLERANCE = 3.0
   real, parameter           :: NEAR_SIMULTANEOUS_FREQ_TOLERANCE = 12.0
   real, parameter           :: CONTINUATION_TIME_TOLERANCE = 0.1
+  ! pn leaks ~SNR_LEAKAGE_K*pt of signal power; corrected ratio still asymptotes near (1-k)/k for very strong signals.
+  real, parameter           :: SNR_LEAKAGE_K = 0.048
+  real, parameter           :: SNR_FLOOR_DB = -17.0  ! weaker than the weakest sometimes-decodable JTTY signal
   integer                   :: ndecodes = 0
   integer                   :: nactive = 0
   integer                   :: nrecent = 0
@@ -345,6 +350,7 @@ contains
       pending_updates(index)%f1=message%f1
       pending_updates(index)%start_tsync=message%start_tsync
       pending_updates(index)%latest_tsync=message%tsync
+      pending_updates(index)%snr=message%start_snrdb
       pending_updates(index)%decoded=message%decoded
       pending_updates(index)%complete=complete
       pending_updates(index)%terminal=status
@@ -372,6 +378,7 @@ contains
       message%f1=candidate%f1
       message%tsync=candidate%tsync
       message%start_tsync=candidate%tsync
+      message%start_snrdb=candidate%snrdb
       message%decoded=candidate%decoded
       if(message%decoded(1:4).eq.'599 ') &
            message%decoded='~'//trim(message%decoded)
@@ -586,7 +593,7 @@ contains
       real(real64)                    :: tsync_ch0_ok(16)
       integer                        :: nsync,nsymerrs
       real                           :: fc,fwid
-      real                           :: fpk,pa,pt,pn
+      real                           :: fpk,pa,pt,pn,pn_corrected
       real                           :: fbest,xdtbest
       real                           :: xdt_retry
       real, allocatable, save        :: s0(:,:)
@@ -1101,7 +1108,9 @@ contains
       enddo
       pn=(pa-pt)/3.0
       if(pn.gt.0.) then
-         snrdb=db(pt/pn)
+         ! Solve pt=S+N, pn=N+SNR_LEAKAGE_K*S for S/N; clamp so pn_corrected can't hit zero/negative.
+         pn_corrected=max(pn-SNR_LEAKAGE_K*pt, 0.01*pn)
+         snrdb=max(db((pt-pn)/pn_corrected) - db(2500.0/baud), SNR_FLOOR_DB)
          cand(ncand)%snrdb=snrdb
       endif
       cand(ncand)%tsync=sample_time(istart) + real(cand(ncand)%xdt,real64)

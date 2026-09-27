@@ -196,11 +196,11 @@ contains
     integer(c_int64_t) :: ids(30)
     real(c_float) :: frequencies(30)
     real(c_double) :: starts(30),latest(30)
-    integer(c_int) :: terminals(30),n
+    integer(c_int) :: terminals(30),snrs(30),n
     integer :: i,j
 
     do
-       n=jtty_rx_take_updates(handle,30,text,ids,frequencies,starts,latest,terminals)
+       n=jtty_rx_take_updates(handle,30,text,ids,frequencies,starts,latest,terminals,snrs)
        do i=1,n
           call expect(event_count.lt.size(events),'update collection remains bounded')
           event_count=event_count+1

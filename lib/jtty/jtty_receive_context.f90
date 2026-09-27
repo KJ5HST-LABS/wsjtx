@@ -251,7 +251,7 @@ contains
     contexts(handle)%running=.false.
   end subroutine jtty_rx_end
 
-  integer(c_int) function jtty_rx_take_updates(handle,capacity,text,ids,frequencies,starts,latest,terminals) &
+  integer(c_int) function jtty_rx_take_updates(handle,capacity,text,ids,frequencies,starts,latest,terminals,snrs) &
        bind(C,name='jtty_rx_take_updates')
     integer(c_int), value :: handle,capacity
     character(kind=c_char), intent(out) :: text(*)
@@ -259,6 +259,7 @@ contains
     real(c_float), intent(out) :: frequencies(*)
     real(c_double), intent(out) :: starts(*),latest(*)
     integer(c_int), intent(out) :: terminals(*)
+    integer(c_int), intent(out) :: snrs(*)
     character(len=80) :: message
     integer :: i,j,index
 
@@ -277,6 +278,7 @@ contains
           starts(i)=state%pending(index)%start_tsync
           latest(i)=state%pending(index)%latest_tsync
           terminals(i)=state%pending(index)%terminal
+          snrs(i)=nint(state%pending(index)%snr)
        enddo
        state%pending_head=state%pending_head+jtty_rx_take_updates
        state%pending_count=state%pending_count-jtty_rx_take_updates

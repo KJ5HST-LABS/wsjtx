@@ -704,6 +704,16 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
   qApp->setFont (m_config.text_font ());
   ui->setupUi(this);
   configureModeControlsLayout ();
+  // A non-editable QComboBox always left-aligns its closed-box text, so fake a
+  // centered "label" via a read-only editable line edit; the dropdown list's
+  // own item text needs its alignment set separately (item textAlignment isn't
+  // a supported .ui property for QComboBox the way it is for list/table items).
+  ui->comboBoxJttyStyle->setEditable (true);
+  ui->comboBoxJttyStyle->lineEdit ()->setReadOnly (true);
+  ui->comboBoxJttyStyle->lineEdit ()->setAlignment (Qt::AlignCenter);
+  for (int i = 0; i < ui->comboBoxJttyStyle->count (); ++i) {
+    ui->comboBoxJttyStyle->setItemData (i, Qt::AlignCenter, Qt::TextAlignmentRole);
+  }
   connect (ui->Tx_Message, &QLineEdit::textChanged, this,
            [this] { m_jttyDraftAcceptanceTracker.noteDraftChanged (); });
   connect (this, &MainWindow::jttyTextAccepted, this, [this] (qint64 requestId) {
@@ -8765,7 +8775,10 @@ void MainWindow::handleDecodeSelection(
   }
   if(m_mode=="JTTY") {
     m_deCall = word;
-    ui->dxCallEntry->setText(m_deCall);
+    ui->dxCallEntry->setText(m_deCall);  // clears m_jttyHisCallSnr via on_dxCallEntry_textChanged
+    // Capture the SNR of the decode actually selected, not whichever decoded last.
+    m_jttyHisCallSnr = jttySnrForSelectedWord(
+      word, selection_origin == DecodedMessageReaction::SelectionOrigin::ManualLeftPane);
     return;
   }
   DecodedText message {line.trimmed().left(61).remove("TU; ")};
@@ -10037,6 +10050,7 @@ void MainWindow::on_dxCallEntry_textChanged (QString const& call)
   }
   set_dateTimeQSO (-1);  // reset the QSO start time when DXCall changes
   m_hisCall = call;
+  if (m_mode=="JTTY") m_jttyHisCallSnr = -10;  // stale SNR belonged to the previous DX call
   if(m_QSYMessageCreatorWidget) m_QSYMessageCreatorWidget->getDxBase(QString(Radio::base_callsign(call)));
   if (!blocked) ui->dxGridEntry->clear();  // conditional because not always useful with highlightDXCall/DXGrid feature
   if (ui->DX_Call_Button->isChecked() && !(m_mode=="FT8" && SpecOp::HOUND==m_specOp)) ui->DX_Call_Button->click ();
