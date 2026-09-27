@@ -11,6 +11,7 @@ add_executable (test_decoder_ipc_protocol
   ${decoder_ipc_fortran_probe_sources}
   ${CMAKE_SOURCE_DIR}/DecoderIpc.cpp
   ${CMAKE_SOURCE_DIR}/lib/decoder_ipc_control.cpp
+  ${CMAKE_SOURCE_DIR}/lib/decoder_ipc_layout.cpp
 )
 set_target_properties (test_decoder_ipc_protocol PROPERTIES LINKER_LANGUAGE CXX)
 target_include_directories (test_decoder_ipc_protocol PRIVATE ${CMAKE_SOURCE_DIR}/lib)
@@ -28,6 +29,7 @@ add_executable (test_decoder_session
   test_decoder_session.cpp
   ${CMAKE_SOURCE_DIR}/DecoderIpc.cpp
   ${CMAKE_SOURCE_DIR}/lib/decoder_ipc_control.cpp
+  ${CMAKE_SOURCE_DIR}/lib/decoder_ipc_layout.cpp
 )
 target_link_libraries (test_decoder_session Qt5::Test)
 add_test (NAME test_decoder_session COMMAND test_decoder_session)
@@ -37,6 +39,7 @@ add_executable (test_decoder_output_framer
   ${CMAKE_SOURCE_DIR}/DecoderOutputFramer.cpp
   ${CMAKE_SOURCE_DIR}/DecoderIpc.cpp
   ${CMAKE_SOURCE_DIR}/lib/decoder_ipc_control.cpp
+  ${CMAKE_SOURCE_DIR}/lib/decoder_ipc_layout.cpp
 )
 target_include_directories (test_decoder_output_framer PRIVATE
   ${CMAKE_SOURCE_DIR}
@@ -51,3 +54,30 @@ add_executable (test_decode_operating_context
 target_include_directories (test_decode_operating_context PRIVATE ${CMAKE_SOURCE_DIR})
 target_link_libraries (test_decode_operating_context Qt5::Test)
 add_test (NAME test_decode_operating_context COMMAND test_decode_operating_context)
+
+add_library (test_decoder_ipc_fortran_layout STATIC
+  ${CMAKE_SOURCE_DIR}/lib/decoder_ipc_layout.f90)
+file (MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/layout-modules)
+set_target_properties (test_decoder_ipc_fortran_layout PROPERTIES
+  Fortran_MODULE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/layout-modules)
+target_include_directories (test_decoder_ipc_fortran_layout PRIVATE ${CMAKE_SOURCE_DIR}/lib)
+add_executable (test_decoder_ipc_layout
+  test_decoder_ipc_layout.cpp
+  ${CMAKE_SOURCE_DIR}/DecoderIpc.cpp
+  ${CMAKE_SOURCE_DIR}/lib/decoder_ipc_control.cpp
+  ${CMAKE_SOURCE_DIR}/lib/decoder_ipc_layout.cpp)
+target_link_libraries (test_decoder_ipc_layout Qt5::Test test_decoder_ipc_fortran_layout)
+add_test (NAME test_decoder_ipc_layout COMMAND test_decoder_ipc_layout)
+
+add_executable (test_decoder_ipc_handshake
+  test_decoder_ipc_handshake.cpp
+  ${CMAKE_SOURCE_DIR}/DecoderIpc.cpp
+  ${CMAKE_SOURCE_DIR}/lib/decoder_ipc_control.cpp
+  ${CMAKE_SOURCE_DIR}/lib/decoder_ipc_layout.cpp)
+target_link_libraries (test_decoder_ipc_handshake Qt5::Test)
+target_compile_definitions (test_decoder_ipc_handshake PRIVATE
+  DECODER_IPC_JT9="$<TARGET_FILE:jt9>"
+  DECODER_IPC_SOURCE="${CMAKE_SOURCE_DIR}")
+add_dependencies (test_decoder_ipc_handshake jt9)
+add_test (NAME test_decoder_ipc_handshake COMMAND test_decoder_ipc_handshake)
+set_tests_properties (test_decoder_ipc_handshake PROPERTIES TIMEOUT 90)

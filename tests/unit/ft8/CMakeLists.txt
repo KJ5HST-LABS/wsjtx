@@ -12,6 +12,7 @@ add_executable (test_ft8_mtd_decode_coordinator
   ${CMAKE_SOURCE_DIR}/Ft8MtdDecodeScheduler.cpp
   ${CMAKE_SOURCE_DIR}/DecoderIpc.cpp
   ${CMAKE_SOURCE_DIR}/lib/decoder_ipc_control.cpp
+  ${CMAKE_SOURCE_DIR}/lib/decoder_ipc_layout.cpp
 )
 target_include_directories (test_ft8_mtd_decode_coordinator PRIVATE
   ${CMAKE_SOURCE_DIR}

@@ -30,7 +30,8 @@ namespace
 
   bool hasCurrentProtocol (shared_dec_data_t const& shared)
   {
-    return DECODER_IPC_VERSION == DecoderIpc::protocolVersion (shared);
+    return DECODER_IPC_LAYOUT_OK == decoder_ipc_validate_layout (
+        &shared, sizeof shared, nullptr);
   }
 
   bool parseField (QByteArray const& field, qint32& value)
@@ -88,8 +89,17 @@ DecoderIpc::Status DecoderIpc::Session::open (QString const& key)
   for (int attempt = 0; attempt < 3; ++attempt)
     {
       if (!memory_.attach ()) break;
-      if (hasShutdownControlSize (memory_.size ()))
-        shutdownControl (memory_.data ());
+      auto const status = decoder_ipc_validate_layout (
+          memory_.constData (), memory_.size (), nullptr);
+      if (DECODER_IPC_LAYOUT_OK != status)
+        {
+          error_ = QStringLiteral ("Decoder shared memory rejected: %1 (expected version %2, header %3, payload %4 bytes)")
+            .arg (decoder_ipc_layout_status_name (status)).arg (DECODER_IPC_VERSION)
+            .arg (offsetof (shared_dec_data_t, payload)).arg (sizeof (dec_data_t));
+          memory_.detach ();
+          return Status::Incompatible;
+        }
+      DecoderIpc::shutdown (*static_cast<shared_dec_data_t *> (memory_.data ()));
       memory_.detach ();
       QThread::sleep (1);
     }
@@ -122,28 +132,50 @@ shared_dec_data_t * DecoderIpc::Session::storage ()
 
 bool DecoderIpc::Session::reset ()
 {
-  if (!hasUsableSize (memory_.size ()) || !memory_.data ()) return false;
-  auto * shared = static_cast<shared_dec_data_t *> (memory_.data ());
-  abort ();
+  auto * shared = storage ();
+  if (!shared) return false;
+  beginStartup ();
   initialize (*shared);
   return true;
 }
 
+void DecoderIpc::Session::beginStartup ()
+{
+  ready_ = false;
+  abort ();
+}
+
+DecoderIpc::Status DecoderIpc::Session::acceptReady (int version)
+{
+  auto const * shared = storage ();
+  if (ready_ || version != DECODER_IPC_VERSION || !shared
+      || state (*shared) != DECODER_IPC_IDLE || generation (*shared) != 0)
+    {
+      ready_ = false;
+      error_ = QStringLiteral ("Invalid or incompatible decoder startup handshake");
+      return Status::Incompatible;
+    }
+  ready_ = true;
+  return Status::Ok;
+}
+
 void DecoderIpc::Session::shutdown ()
 {
+  ready_ = false;
   if (auto * shared = storage ()) DecoderIpc::shutdown (*shared);
 }
 
 void DecoderIpc::Session::detach ()
 {
-  abort ();
+  beginStartup ();
   if (memory_.isAttached ()) memory_.detach ();
 }
 
 DecoderIpc::Submission DecoderIpc::Session::submit (Request const& request)
 {
+  if (!ready_) return {Status::Unavailable, {}, {}};
   auto * shared = storage ();
-  if (!shared) return {Status::Unavailable, {}, {}};
+  if (!shared) return {Status::Incompatible, {}, {}};
   if (activeGeneration_.value () || DECODER_IPC_IDLE != state (*shared))
     return {Status::Busy, {}, {}};
   if (request.sampleCount () < 0 || request.sampleCount () > NTMAX * RX_SAMPLE_RATE)
@@ -208,11 +240,6 @@ bool DecoderIpc::hasUsableSize (qint64 size)
   return size >= static_cast<qint64> (sizeof (shared_dec_data_t));
 }
 
-bool DecoderIpc::hasShutdownControlSize (qint64 size)
-{
-  return size >= static_cast<qint64> (offsetof (decoder_ipc_control_t, progress));
-}
-
 qint32 DecoderIpc::state (shared_dec_data_t const& shared)
 {
   return decoder_ipc_atomic_load (&shared.control.state);
@@ -236,24 +263,15 @@ qint32 DecoderIpc::protocolVersion (shared_dec_data_t const& shared)
 void DecoderIpc::initialize (shared_dec_data_t& shared)
 {
   std::memset (&shared, 0, sizeof (shared));
+  decoder_ipc_expected_layout (&shared.layout);
   decoder_ipc_control_initialize (&shared.control.generation, &shared.control.state,
                                   &shared.control.version, &shared.control.progress);
 }
 
 void DecoderIpc::shutdown (shared_dec_data_t& shared)
 {
-  shutdown (shared.control);
-}
-
-void DecoderIpc::shutdown (decoder_ipc_control_t& control)
-{
-  shutdownControl (&control);
-}
-
-void DecoderIpc::shutdownControl (void * control)
-{
-  auto * words = static_cast<int *> (control);
-  decoder_ipc_control_shutdown (words + 1, words + 2);
+  if (hasCurrentProtocol (shared))
+    decoder_ipc_control_shutdown (&shared.control.state, &shared.control.version);
 }
 
 bool DecoderIpc::publish (shared_dec_data_t& shared, dec_data_t const& payload,
@@ -319,21 +337,24 @@ bool DecoderIpc::publishFt8Mtd (shared_dec_data_t& shared,
 
 bool DecoderIpc::claim (shared_dec_data_t& shared, qint32& generation)
 {
-  return DECODER_IPC_CLAIMED == decoder_ipc_control_try_claim (
+  return hasCurrentProtocol (shared)
+    && DECODER_IPC_CLAIMED == decoder_ipc_control_try_claim (
       &shared.control.generation, &shared.control.state, &shared.control.version,
       &generation);
 }
 
 bool DecoderIpc::finish (shared_dec_data_t& shared, qint32 generation)
 {
-  return decoder_ipc_control_finish (&shared.control.generation,
+  return hasCurrentProtocol (shared)
+    && decoder_ipc_control_finish (&shared.control.generation,
                                      &shared.control.state,
                                      &shared.control.version, generation);
 }
 
 bool DecoderIpc::consume (shared_dec_data_t& shared, qint32 generation)
 {
-  return decoder_ipc_control_consume (&shared.control.generation,
+  return hasCurrentProtocol (shared)
+    && decoder_ipc_control_consume (&shared.control.generation,
                                       &shared.control.state,
                                       &shared.control.version, generation);
 }

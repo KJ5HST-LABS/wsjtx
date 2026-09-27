@@ -1192,28 +1192,18 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
           m_startup_decoder_reported = true;
           PerformanceTrace::milestone (m_startup_trace_run, "decoder.process_started");
         }
-      if (Jt9ProcessPhase::InitialStarting == m_jt9ProcessPhase
-          || Jt9ProcessPhase::ReplacementStarting == m_jt9ProcessPhase)
-        {
-          m_decoderStartTimer.stop ();
-          m_decoderCompletedSinceStart = false;
-          m_jt9ProcessPhase = Jt9ProcessPhase::Ready;
-          updateDecodeControls ();
-          QTimer::singleShot (0, this, [this] {
-              auto const pendingResult = publishPendingFt8Decode ();
-              if (DecodePublishResult::Failed == pendingResult)
-                {
-                  requestDecoderRestart (
-                    "pending FT8 decode publication failed after restart");
-                }
-            });
-        }
     });
   connect(&proc_jt9, &QProcess::readyReadStandardOutput, this, &MainWindow::readFromStdout);
-  connect(&proc_jt9, &QProcess::started, this, &MainWindow::decoderBackendStarted);
 #if QT_VERSION < QT_VERSION_CHECK (5, 6, 0)
   connect(&proc_jt9, static_cast<void (QProcess::*) (QProcess::ProcessError)> (&QProcess::error),
           [this] (QProcess::ProcessError error) {
+            if (m_closing || !m_valid) return;
+            if (Jt9ProcessPhase::InitialStarting == m_jt9ProcessPhase
+                || Jt9ProcessPhase::ReplacementStarting == m_jt9ProcessPhase)
+              {
+                failDecoderStartup (proc_jt9.errorString ());
+                return;
+              }
             if ((Jt9ProcessPhase::StopRequested == m_jt9ProcessPhase
                  || Jt9ProcessPhase::Terminating == m_jt9ProcessPhase
                  || Jt9ProcessPhase::Killing == m_jt9ProcessPhase)
@@ -1223,6 +1213,13 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
           });
 #else
   connect(&proc_jt9, &QProcess::errorOccurred, [this] (QProcess::ProcessError error) {
+                                                 if (m_closing || !m_valid) return;
+                                                 if (Jt9ProcessPhase::InitialStarting == m_jt9ProcessPhase
+                                                     || Jt9ProcessPhase::ReplacementStarting == m_jt9ProcessPhase)
+                                                   {
+                                                     failDecoderStartup (proc_jt9.errorString ());
+                                                     return;
+                                                   }
                                                  if ((Jt9ProcessPhase::StopRequested == m_jt9ProcessPhase
                                                       || Jt9ProcessPhase::Terminating == m_jt9ProcessPhase
                                                       || Jt9ProcessPhase::Killing == m_jt9ProcessPhase)
@@ -1233,7 +1230,15 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
 #endif
   connect(&proc_jt9, static_cast<void (QProcess::*) (int, QProcess::ExitStatus)> (&QProcess::finished),
           [this] (int exitCode, QProcess::ExitStatus status) {
-            if (m_closing) return;
+            if (m_closing || !m_valid) return;
+            if (Jt9ProcessPhase::InitialStarting == m_jt9ProcessPhase
+                || Jt9ProcessPhase::ReplacementStarting == m_jt9ProcessPhase)
+              {
+                readFromStdout ();
+                failDecoderStartup (tr ("The decoder exited before completing its startup handshake (code %1).")
+                                      .arg (exitCode));
+                return;
+              }
             if (decoderRestartInProgress ())
               {
                 m_decoderShutdownTimer.stop ();
@@ -1459,12 +1464,9 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
     });
   m_decoderStartTimer.setSingleShot (true);
   connect (&m_decoderStartTimer, &QTimer::timeout, this, [this] {
-      if (Jt9ProcessPhase::ReplacementStarting != m_jt9ProcessPhase
-          || QProcess::Running == proc_jt9.state ()) return;
-      MessageBox::critical_message (this, tr ("Decoder Error"),
-                                    tr ("The decoder subprocess could not be restarted."));
-      m_valid = false;
-      QTimer::singleShot (0, this, SLOT (close ()));
+      if (Jt9ProcessPhase::InitialStarting != m_jt9ProcessPhase
+          && Jt9ProcessPhase::ReplacementStarting != m_jt9ProcessPhase) return;
+      failDecoderStartup (tr ("The decoder did not complete its startup handshake within five seconds."));
     });
 
   stopWRTimer.setSingleShot(true);
@@ -5694,6 +5696,7 @@ void MainWindow::startDecoderProcess ()
                                   : Jt9ProcessPhase::InitialStarting;
   m_activeJt9Decode = {};
   m_decoderOutputFramer.reset ();
+  m_decoderSession.beginStartup ();
   QStringList jt9Args {
     "-s", QApplication::applicationName (), // shared memory key, includes rig
     "-w", "1", // FFTW planning patience
@@ -5716,8 +5719,23 @@ void MainWindow::startDecoderProcess ()
   proc_jt9.setProcessEnvironment (environment);
   proc_jt9.start (QDir::toNativeSeparators (QDir {m_appDir}.filePath ("jt9")),
                   jt9Args, QIODevice::ReadWrite | QIODevice::Unbuffered);
-  if (replacement) m_decoderStartTimer.start (5000);
+  m_decoderStartTimer.start (5000);
   updateDecodeControls ();
+}
+
+void MainWindow::failDecoderStartup (QString const& reason)
+{
+  if (m_closing || Jt9ProcessPhase::Failed == m_jt9ProcessPhase) return;
+  m_decoderStartTimer.stop ();
+  m_jt9ProcessPhase = Jt9ProcessPhase::Failed;
+  m_decoderSession.beginStartup ();
+  m_valid = false;
+  updateDecodeControls ();
+  qCritical () << "Decoder startup failed:" << reason;
+  Q_EMIT decoderBackendFailed (reason);
+  QTimer::singleShot (0, this, SLOT (close ()));
+  if (!m_automated_test)
+    MessageBox::critical_message (this, tr ("Decoder Error"), reason);
 }
 
 bool MainWindow::initializeDecoderSharedMemory ()
@@ -6660,6 +6678,43 @@ void MainWindow::activeWorked(QString call, QString band)
 bool MainWindow::handleDecoderOutputEvent (DecoderOutputFramer::Event const& event,
                                            bool& decodeCompleted)
 {
+  if (m_closing || Jt9ProcessPhase::Failed == m_jt9ProcessPhase) return true;
+  auto const starting = Jt9ProcessPhase::InitialStarting == m_jt9ProcessPhase
+    || Jt9ProcessPhase::ReplacementStarting == m_jt9ProcessPhase;
+  if (DecoderOutputFramer::EventType::Ready == event.type)
+    {
+      if (!starting || DecoderIpc::Status::Ok != m_decoderSession.acceptReady (event.protocolVersion))
+        {
+          failDecoderStartup (tr ("The decoder reported an incompatible or unexpected startup handshake (version %1).")
+                                .arg (event.protocolVersion));
+          return true;
+        }
+      m_decoderStartTimer.stop ();
+      m_decoderCompletedSinceStart = false;
+      m_jt9ProcessPhase = Jt9ProcessPhase::Ready;
+      updateDecodeControls ();
+      Q_EMIT decoderBackendStarted ();
+      QTimer::singleShot (0, this, [this] {
+          auto const pendingResult = publishPendingFt8Decode ();
+          if (DecodePublishResult::Failed == pendingResult)
+            requestDecoderRestart ("pending FT8 decode publication failed after restart");
+        });
+      return true;
+    }
+  if (DecoderOutputFramer::EventType::Error == event.type)
+    {
+      failDecoderStartup (tr ("The decoder rejected the shared-memory contract: %1.")
+                            .arg (QString::fromLatin1 (event.errorStatus)));
+      return true;
+    }
+  if ((DecoderOutputFramer::EventType::Malformed == event.type
+       && (event.rawLine.startsWith ("<DecoderReady")
+           || event.rawLine.startsWith ("<DecoderError")))
+      || (starting && DecoderOutputFramer::EventType::Malformed != event.type))
+    {
+      failDecoderStartup (tr ("The decoder reported a malformed or out-of-order startup handshake."));
+      return true;
+    }
   if (DecoderOutputFramer::EventType::Record == event.type)
     {
       if (DecodeOwner::Jt9 != m_decodeOwner

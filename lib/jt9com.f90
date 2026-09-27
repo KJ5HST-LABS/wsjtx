@@ -1,7 +1,7 @@
   use, intrinsic :: iso_c_binding, only: c_int, c_short, c_float, c_char, c_bool
   include 'constants.f90'
 
-  integer(c_int), parameter :: DECODER_IPC_VERSION = 2
+  integer(c_int), parameter :: DECODER_IPC_VERSION = 3
   integer(c_int), parameter :: DECODER_IPC_IDLE = 0
   integer(c_int), parameter :: DECODER_IPC_READY = 1
   integer(c_int), parameter :: DECODER_IPC_DECODING = 2
@@ -17,6 +17,18 @@
      integer(c_int) :: version
      integer(c_int) :: progress
   end type decoder_ipc_control
+
+  type, bind(C) :: decoder_ipc_field_layout
+     integer(c_int) :: offset, bytes
+  end type decoder_ipc_field_layout
+
+  type, bind(C) :: decoder_ipc_layout
+     integer(c_int) :: magic, protocol_version, header_bytes, payload_bytes
+     integer(c_int) :: logical_bytes, payload_offset, capabilities
+     integer(c_int) :: int_bytes, short_bytes, float_bytes, bool_bytes, char_bytes
+     integer(c_int) :: endian_marker, field_count
+     type(decoder_ipc_field_layout) :: fields(91)
+  end type decoder_ipc_layout
 
   type, bind(C) :: params_block
      integer(c_int) :: nutc
@@ -115,5 +127,6 @@
 
   type, bind(C) :: shared_dec_data
      type(decoder_ipc_control) :: control
+     type(decoder_ipc_layout) :: layout
      type(dec_data) :: payload
   end type shared_dec_data

@@ -344,6 +344,7 @@ private:
     Terminating,
     Killing,
     ReplacementStarting,
+    Failed,
     Closing
   };
 
@@ -1704,6 +1705,7 @@ private:
   bool activeDecodeOperatingContextMatchesCurrent() const;
   bool initializeDecoderSharedMemory();
   void startDecoderProcess();
+  void failDecoderStartup(QString const& reason);
   bool beginDecode(
       DecodeOwner owner, decoder_params_t const * diagnosticParams = nullptr,
       DecodeOperatingContext const * diagnosticContext = nullptr);

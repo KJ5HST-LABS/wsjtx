@@ -6,6 +6,7 @@
 #
 set (fort_qt_CXXSRCS
   lib/shmem.cpp
+  lib/decoder_ipc_layout.cpp
   )
 
 set (wsjt_qt_CXXSRCS
@@ -125,6 +126,7 @@ set (wsjt_qtmm_CXXSRCS
 
 set (jt9_FSRCS
   lib/jt9.f90
+  lib/decoder_ipc_layout.f90
   lib/jt9a.f90
   lib/streaming_io.f90
   lib/stream_setmode.c   # Windows stdin binary-mode helper (no-op on POSIX)
@@ -183,6 +185,7 @@ set (wsjtx_CXXSRCS
   HoundTransmissionPolicy.cpp
   SuperFoxTxPlanner.cpp
   DecoderIpc.cpp
+  lib/decoder_ipc_layout.cpp
   Ft8MtdDecodeScheduler.cpp
   OperatingFrequency.cpp
   Ft8MtdDecodeCoordinator.cpp

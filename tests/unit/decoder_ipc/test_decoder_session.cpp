@@ -12,6 +12,7 @@ class TestDecoderSession final : public QObject
 private Q_SLOTS:
   void ownsGenerationsAndSamples ();
   void compactSnapshotAndContextRefresh ();
+  void resetRejectsCorruption ();
 };
 
 void TestDecoderSession::ownsGenerationsAndSamples ()
@@ -20,6 +21,11 @@ void TestDecoderSession::ownsGenerationsAndSamples ()
   Session session;
   auto const key = QString {"decoder-session-%1"}.arg (QUuid::createUuid ().toString ());
   QCOMPARE (session.open (key), Status::Ok);
+  QVERIFY (!session.ready ());
+  auto unavailable = std::make_unique<dec_data_t> ();
+  QCOMPARE (session.submit (Request::snapshot (*unavailable)).status, Status::Unavailable);
+  QCOMPARE (session.acceptReady (DECODER_IPC_VERSION - 1), Status::Incompatible);
+  QCOMPARE (session.acceptReady (DECODER_IPC_VERSION), Status::Ok);
   QSharedMemory peer {key};
   QVERIFY (peer.attach ());
   auto& shared = *static_cast<shared_dec_data_t *> (peer.data ());
@@ -67,6 +73,8 @@ void TestDecoderSession::ownsGenerationsAndSamples ()
   QVERIFY (!session.accepts (2));
   session.shutdown ();
   QVERIFY (session.reset ());
+  QVERIFY (!session.ready ());
+  QCOMPARE (session.acceptReady (DECODER_IPC_VERSION), Status::Ok);
   QCOMPARE (session.submit (Request::reuse (*source, samples)).status, Status::StaleSamples);
   auto third = session.submit (Request::snapshot (*source));
   QVERIFY (third);
@@ -81,6 +89,7 @@ void TestDecoderSession::compactSnapshotAndContextRefresh ()
   Session session;
   auto const key = QString {"decoder-session-%1"}.arg (QUuid::createUuid ().toString ());
   QCOMPARE (session.open (key), Status::Ok);
+  QCOMPARE (session.acceptReady (DECODER_IPC_VERSION), Status::Ok);
   QSharedMemory peer {key};
   QVERIFY (peer.attach ());
   auto& shared = *static_cast<shared_dec_data_t *> (peer.data ());
@@ -113,6 +122,23 @@ void TestDecoderSession::compactSnapshotAndContextRefresh ()
   QVERIFY (shared.payload.params.newdat);
   QVERIFY (!shared.payload.params.nagain);
   session.shutdown ();
+}
+
+void TestDecoderSession::resetRejectsCorruption ()
+{
+  using namespace DecoderIpc;
+  Session session;
+  auto const key = QString {"decoder-session-%1"}.arg (QUuid::createUuid ().toString ());
+  QCOMPARE (session.open (key), Status::Ok);
+  QCOMPARE (session.acceptReady (DECODER_IPC_VERSION), Status::Ok);
+  QSharedMemory peer {key};
+  QVERIFY (peer.attach ());
+  auto& shared = *static_cast<shared_dec_data_t *> (peer.data ());
+  --shared.layout.payload_bytes;
+  QByteArray const before {static_cast<char const *> (peer.constData ()), peer.size ()};
+  QVERIFY (!session.reset ());
+  session.shutdown ();
+  QCOMPARE (QByteArray (static_cast<char const *> (peer.constData ()), peer.size ()), before);
 }
 
 QTEST_GUILESS_MAIN (TestDecoderSession)

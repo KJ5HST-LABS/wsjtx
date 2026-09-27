@@ -1,7 +1,7 @@
 #ifndef DECODER_IPC_PROTOCOL_H
 #define DECODER_IPC_PROTOCOL_H
 
-#define DECODER_IPC_VERSION 2
+#define DECODER_IPC_VERSION 3
 
 enum decoder_ipc_state
 {

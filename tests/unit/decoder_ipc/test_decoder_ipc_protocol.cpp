@@ -49,14 +49,15 @@ void TestDecoderIpcProtocol::layoutMatchesFortran ()
   struct CompatibleSharedData
   {
     int ipc[4];
+    decoder_ipc_layout_t layout;
     dec_data_t payload;
   };
 
   QCOMPARE (sizeof (decoder_ipc_control_t), size_t {16});
   QCOMPARE (offsetof (decoder_ipc_control_t, state), size_t {4});
-  QCOMPARE (offsetof (shared_dec_data_t, payload), size_t {16});
+  QCOMPARE (offsetof (shared_dec_data_t, payload), size_t {800});
   QCOMPARE (sizeof (shared_dec_data_t),
-            sizeof (decoder_ipc_control_t) + sizeof (dec_data_t));
+            sizeof (decoder_ipc_control_t) + sizeof (decoder_ipc_layout_t) + sizeof (dec_data_t));
   QCOMPARE (sizeof (shared_dec_data_t), sizeof (CompatibleSharedData));
   QCOMPARE (offsetof (CompatibleSharedData, ipc) + sizeof (int),
             offsetof (decoder_ipc_control_t, state));
@@ -85,19 +86,10 @@ void TestDecoderIpcProtocol::layoutMatchesFortran ()
 void TestDecoderIpcProtocol::sharedMemorySizeAllowsPlatformRounding ()
 {
   auto const required = static_cast<qint64> (sizeof (shared_dec_data_t));
-  auto const shutdownRequired = static_cast<qint64> (
-      offsetof (decoder_ipc_control_t, progress));
-  QVERIFY (!DecoderIpc::hasShutdownControlSize (shutdownRequired - 1));
-  QVERIFY (DecoderIpc::hasShutdownControlSize (shutdownRequired));
   QVERIFY (!DecoderIpc::hasUsableSize (required - 1));
   QVERIFY (DecoderIpc::hasUsableSize (required));
   QVERIFY (DecoderIpc::hasUsableSize (required + 80));
 
-  int compatibleControl[3] {17, DECODER_IPC_DECODING, 0};
-  DecoderIpc::shutdownControl (compatibleControl);
-  QCOMPARE (compatibleControl[0], 17);
-  QCOMPARE (compatibleControl[1], int {DECODER_IPC_SHUTDOWN});
-  QCOMPARE (compatibleControl[2], 1);
 }
 
 void TestDecoderIpcProtocol::publicationAndClaimValidateControl ()
@@ -303,12 +295,16 @@ void TestDecoderIpcProtocol::delayedCompletionCannotClobberNextRequest ()
 
 void TestDecoderIpcProtocol::compatibleShutdownReleasesWorkers ()
 {
-  decoder_ipc_control_t control {17, 0, DECODER_IPC_VERSION, 4};
-  DecoderIpc::shutdown (control);
+  auto shared = std::make_unique<shared_dec_data_t> ();
+  DecoderIpc::initialize (*shared);
+  auto& control = shared->control;
+  control.generation = 17;
+  control.progress = 4;
+  DecoderIpc::shutdown (*shared);
 
   QCOMPARE (control.generation, 17);
   QCOMPARE (control.state, int {DECODER_IPC_SHUTDOWN});
-  QCOMPARE (control.version, 1);
+  QCOMPARE (control.version, int {DECODER_IPC_VERSION});
   QCOMPARE (control.progress, 4);
 }
 
@@ -330,8 +326,8 @@ void TestDecoderIpcProtocol::sharedMemoryWorkerExitsOnShutdown ()
             qPrintable (memory.errorString ()));
 
   auto * shared = static_cast<shared_dec_data_t *> (memory.data ());
-  shared->control.version = DECODER_IPC_VERSION;
-  shared->control.state = DECODER_IPC_SHUTDOWN;
+  DecoderIpc::initialize (*shared);
+  DecoderIpc::shutdown (*shared);
 
   QStringList args;
   if (explicitMode) args << QStringLiteral ("-8");
@@ -361,13 +357,16 @@ void TestDecoderIpcProtocol::shutdownReplacesAnyState_data ()
 void TestDecoderIpcProtocol::shutdownReplacesAnyState ()
 {
   QFETCH (int, state);
-  decoder_ipc_control_t control {17, state, DECODER_IPC_VERSION, 0};
-
-  DecoderIpc::shutdown (control);
+  auto shared = std::make_unique<shared_dec_data_t> ();
+  DecoderIpc::initialize (*shared);
+  auto& control = shared->control;
+  control.generation = 17;
+  control.state = state;
+  DecoderIpc::shutdown (*shared);
 
   QCOMPARE (control.generation, 17);
   QCOMPARE (control.state, int {DECODER_IPC_SHUTDOWN});
-  QCOMPARE (control.version, 1);
+  QCOMPARE (control.version, int {DECODER_IPC_VERSION});
 }
 
 void TestDecoderIpcProtocol::generationWrapsWithoutUsingZero ()

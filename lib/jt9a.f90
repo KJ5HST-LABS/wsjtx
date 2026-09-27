@@ -1,5 +1,8 @@
 subroutine jt9a()
-  use, intrinsic :: iso_c_binding, only: c_f_pointer, c_null_char, c_bool, c_sizeof, c_int
+  use, intrinsic :: iso_c_binding, only: c_f_pointer, c_null_char, c_bool, c_int, &
+       c_ptr, c_null_ptr, c_size_t
+  use decoder_ipc_layout_module, only: decoder_ipc_fortran_validate, &
+       decoder_ipc_report_layout_error, DECODER_IPC_LAYOUT_VERSION, DECODER_IPC_LAYOUT_ATTACH
   use decoder_ipc_atomic, only: decoder_ipc_control_try_claim, &
        decoder_ipc_control_finish, decoder_ipc_progress_bind, &
        decoder_ipc_progress_unbind, DECODER_IPC_CLAIM_INVALID, &
@@ -23,8 +26,12 @@ subroutine jt9a()
   type(params_block) :: local_params
   logical(c_bool) :: ok
   integer(c_int) :: active_generation, claim_result
+  integer(c_int) :: layout_status
+  integer(c_size_t) :: available_bytes
+  type(c_ptr) :: shared_address
   type(decode_completion_result) :: completion
 
+  layout_status=0
   call init_timer (trim(data_dir)//'/timer.out')
 !  open(23,file=trim(data_dir)//'/CALL3.TXT',status='unknown')
 
@@ -33,23 +40,39 @@ subroutine jt9a()
 ! Multiple instances: set the shared memory key before attaching
   call shmem_setkey(trim(shm_key)//c_null_char)
   ok=shmem_attach()
-  if(.not.ok) call abort
-  msdelay=10
-  call c_f_pointer(shmem_address(),shared_memory)
-  nbytes=shmem_size()
-  if(nbytes.lt.c_sizeof(shared_memory)) then
-     ok=shmem_detach()
-     print*,'jt9a: Incompatible shared-memory layout.'
+  if(.not.ok) then
+     layout_status=DECODER_IPC_LAYOUT_ATTACH
+     call decoder_ipc_report_layout_error(layout_status,c_null_ptr,0_c_size_t)
      go to 999
   endif
+  msdelay=10
+  shared_address=shmem_address()
+  nbytes=shmem_size()
+  available_bytes=0_c_size_t
+  if(nbytes.gt.0) available_bytes=int(nbytes,c_size_t)
+  layout_status=decoder_ipc_fortran_validate(shared_address,available_bytes)
+  if(layout_status.ne.0) then
+     call decoder_ipc_report_layout_error(layout_status,shared_address,available_bytes)
+     ok=shmem_detach()
+     go to 999
+  endif
+  call c_f_pointer(shared_address,shared_memory)
 
   call decoder_ipc_progress_bind(shared_memory%control%generation, &
        shared_memory%control%state, shared_memory%control%version, &
        shared_memory%control%progress)
 
   call reset_decode_completion(completion)
+  write(*,'(a,i0)') '<DecoderReady> version=',DECODER_IPC_VERSION
+  call flush(6)
 
-10 claim_result=decoder_ipc_control_try_claim( &
+10 layout_status=decoder_ipc_fortran_validate(shared_address,available_bytes)
+  if(layout_status.ne.0) then
+     call decoder_ipc_report_layout_error(layout_status,shared_address,available_bytes)
+     ok=shmem_detach()
+     go to 999
+  endif
+  claim_result=decoder_ipc_control_try_claim( &
        shared_memory%control%generation, shared_memory%control%state, &
        shared_memory%control%version, active_generation)
   if(claim_result.eq.DECODER_IPC_CLAIM_SHUTDOWN) then
@@ -57,13 +80,16 @@ subroutine jt9a()
      go to 999
   endif
   if(claim_result.eq.DECODER_IPC_CLAIM_INCOMPATIBLE) then
+     layout_status=DECODER_IPC_LAYOUT_VERSION
+     call decoder_ipc_report_layout_error(layout_status,shared_address,available_bytes)
      ok=shmem_detach()
-     print*,'jt9a: Incompatible shared-memory protocol version.'
      go to 999
   endif
   if(claim_result.eq.DECODER_IPC_CLAIM_INVALID) then
+     layout_status=DECODER_IPC_CLAIM_INVALID
+     write(*,'(a)') '<DecoderError> status=invalid-generation'
+     call flush(6)
      ok=shmem_detach()
-     print*,'jt9a: Invalid decoder request generation.'
      go to 999
   endif
   if(claim_result.eq.DECODER_IPC_CLAIM_NONE) then
@@ -192,6 +218,7 @@ subroutine jt9a()
   
 999 call decoder_ipc_progress_unbind()
   call timer('decoder ',101)
+  if(layout_status.ne.0) stop 1
 
   return
 end subroutine jt9a

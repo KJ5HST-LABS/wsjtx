@@ -6,6 +6,7 @@
 #define RX_SAMPLE_RATE 12000
 
 #include "DecoderIpcProtocol.h"
+#include "lib/decoder_ipc_layout.h"
 
 #ifdef __cplusplus
 #include <cstddef>
@@ -114,6 +115,7 @@ typedef struct dec_data {
 
 typedef struct shared_dec_data {
   decoder_ipc_control_t control;
+  decoder_ipc_layout_t layout;
   dec_data_t payload;
 } shared_dec_data_t;
 
@@ -123,10 +125,13 @@ static_assert (sizeof (decoder_ipc_control_t) == 16,
                "decoder IPC control header must remain 16 bytes");
 static_assert (offsetof (decoder_ipc_control_t, state) == 4,
                "decoder IPC state must remain at the legacy shutdown offset");
-static_assert (offsetof (shared_dec_data_t, payload) == 16,
-               "decoder payload must immediately follow the control header");
+static_assert (offsetof (shared_dec_data_t, layout) == sizeof (decoder_ipc_control_t),
+               "decoder layout descriptor must immediately follow the control header");
+static_assert (offsetof (shared_dec_data_t, payload) ==
+               sizeof (decoder_ipc_control_t) + sizeof (decoder_ipc_layout_t),
+               "decoder payload must immediately follow the layout descriptor");
 static_assert (sizeof (shared_dec_data_t) ==
-               sizeof (decoder_ipc_control_t) + sizeof (dec_data_t),
+               sizeof (decoder_ipc_control_t) + sizeof (decoder_ipc_layout_t) + sizeof (dec_data_t),
                "decoder shared-memory layout must not contain trailing padding");
 #endif
 
