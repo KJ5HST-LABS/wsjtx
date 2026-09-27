@@ -1041,7 +1041,7 @@ void MainWindow::on_pb24G_clicked()
 
 void MainWindow::on_pbSendMessage_clicked()
 {
-  submitJttyDraft (ui->Tx_Message->text ().toUpper ());
+  submitJttyDraft (jtty_msg_expand (ui->Tx_Message->text ()).toUpper ());
 }
 
 void MainWindow::on_Tx_Message_returnPressed()

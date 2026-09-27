@@ -379,7 +379,7 @@ namespace Jtty
     macroTemplate.replace (QStringLiteral ("%Q"), context.hisCall);
     macroTemplate.replace (QStringLiteral ("%N"), formatSerialNumber (context.serialNumber));
     macroTemplate.replace (QStringLiteral ("%E"), nativeExchangeFieldText (context));
-    macroTemplate.replace (QStringLiteral ("%G"), context.grid);
+    macroTemplate.replace (QStringLiteral ("%G"), context.grid.trimmed ().toUpper ().left (4));
     macroTemplate.replace (QStringLiteral ("%R"), formatSnr (context.snr));
     return macroTemplate;
   }
