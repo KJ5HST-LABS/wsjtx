@@ -4,9 +4,12 @@
 #include "commons.h"
 #include "JttyMessages.hpp"
 #include "JttyN1mm.hpp"
+#include "JttyReceiveLine.hpp"
 #include "Logger.hpp"
+#include "models/DecodeHighlightingModel.hpp"
 #include <QByteArray>
 #include <QDateTime>
+#include <QSettings>
 #include "Modulator/Modulator.hpp"
 #include <vector>
 #ifdef WIN32
@@ -32,13 +35,15 @@ namespace
   }
 
   Jtty::NativeMacroContext jttyNativeMacroContext(
-      Configuration const& configuration, QString const& hisCall, int serialNumber)
+      Configuration const& configuration, QString const& hisCall, int serialNumber,
+      int snr)
   {
     Jtty::NativeMacroContext context;
     context.myCall = configuration.my_callsign();
     context.hisCall = hisCall;
     context.serialNumber = serialNumber;
     context.grid = configuration.my_grid();
+    context.snr = snr;
     context.exchangeProfile = jttyExchangeProfile(configuration);
 
     switch (context.exchangeProfile) {
@@ -93,7 +98,7 @@ static QString append_separator(QString message) {
 void MainWindow::updateJttyDecodeHeadings()
 {
   QString const prefix = ui->cbIncludeTime->isChecked()
-    ? QStringLiteral("  UTC  Freq  ") : QStringLiteral("Freq  ");
+    ? QStringLiteral("  UTC  Freq  dB  ") : QStringLiteral("Freq  dB  ");
   ui->lh_decodes_headings_label->setText(prefix + tr ("Message"));
   ui->rh_decodes_headings_label->setText(prefix + tr ("Message"));
 }
@@ -312,15 +317,23 @@ void MainWindow::completeJttyTxEnqueue(qint64 requestId, QString const& message,
   write_all("Tx", message);
   Q_EMIT jttyTextAccepted(requestId);
 
-  QTextCursor cursor = ui->decodedTextBrowser2->textCursor();
-  cursor.movePosition(QTextCursor::End);
-  if (cursor.position()) cursor.insertBlock();
-  QTextCharFormat format = cursor.charFormat();
-  format.setBackground(QBrush(QColor(Qt::yellow)));
-  cursor.setCharFormat(format);
-  cursor.insertText(Jtty::wrapMessage(message));
-  format.setBackground(QBrush(QColor(Qt::white)));
-  cursor.setCharFormat(format);
+  // Tracked via JttyReceiveLine (not a one-off insert) so "Include Time" toggles still reach it.
+  auto const resolved = DecodeHighlightingModel::resolve_colors(
+    m_config.decode_highlighting().items(), {DecodeHighlightingModel::Highlight::Tx},
+    QColor(Qt::yellow), QColor(Qt::black));
+  JttyReceiveLine::Presentation const presentation {
+    0, requestId, QDateTime::currentDateTimeUtc(), 0.0,
+    ui->TxFreqSpinBox_2->value(), message, -10, true,
+    resolved.background_, resolved.foreground_};
+  JttyReceiveLine::Options const options {
+    ui->cbLowerCase->isChecked(), ui->cbIncludeTime->isChecked()};
+  JttyReceiveLine txLine;
+  auto const cursor = txLine.render(*ui->decodedTextBrowser2->document(), presentation,
+                                    options, ui->decodedTextBrowser2->contentFont());
+  if (!cursor.isNull()) {
+    ui->decodedTextBrowser2->setTextCursor(cursor);
+    ui->decodedTextBrowser2->ensureCursorVisible();
+  }
 
   handleJttyContestSerial(message);
 
@@ -605,7 +618,7 @@ bool MainWindow::sendJttyFunctionKey(int index)
   if(macro.simplified().isEmpty()) return false;
 
   auto const context = jttyNativeMacroContext(
-    m_config, m_hisCall, ui->sbSerialNumber_2->value());
+    m_config, m_hisCall, ui->sbSerialNumber_2->value(), m_jttyHisCallSnr);
   auto const compiled=Jtty::compileNativeMacro(macro,context);
   if(compiled.status == Jtty::NativeMacroStatus::LiteralFallback) {
     jtty_tx(compiled.text);
@@ -637,7 +650,7 @@ bool MainWindow::sendJttyFunctionKey(int index)
 QString MainWindow::jtty_msg_expand(QString t)
 {
   auto const context = jttyNativeMacroContext(
-    m_config, m_hisCall, ui->sbSerialNumber_2->value());
+    m_config, m_hisCall, ui->sbSerialNumber_2->value(), m_jttyHisCallSnr);
   return Jtty::expandLiteralMacro(t, context);
 }
 
@@ -654,6 +667,30 @@ void MainWindow::on_TxFreqSpinBox_2_valueChanged(int n)
 void MainWindow::on_sbFtol_2_valueChanged (int n)
 {
   m_wideGraph->setTol(n);
+}
+
+void MainWindow::on_comboBoxJttyStyle_currentIndexChanged(int index)
+{
+  auto const previousStyle = static_cast<Jtty::MessageStyle>(m_jttyMessageStyle);
+  auto const newStyle = static_cast<Jtty::MessageStyle>(index);
+  QLineEdit* const msgFields[8] = {ui->msg1, ui->msg2, ui->msg3, ui->msg4,
+                                    ui->msg5, ui->msg6, ui->msg7, ui->msg8};
+
+  m_settings->beginGroup("MainWindow");
+  for (int i = 0; i < 8; ++i) {
+    // Save the outgoing style's currently displayed text before switching away,
+    // so in-session edits aren't lost.
+    m_settings->setValue(Jtty::messageStyleSettingsKey(previousStyle, i + 1),
+                          msgFields[i]->text());
+  }
+  for (int i = 0; i < 8; ++i) {
+    int const functionKey = i + 1;
+    msgFields[i]->setText(m_settings->value(
+      Jtty::messageStyleSettingsKey(newStyle, functionKey),
+      Jtty::messageStyleDefaultTemplate(newStyle, functionKey)).toString());
+  }
+  m_settings->endGroup();
+  m_jttyMessageStyle = index;
 }
 
 #ifdef WIN32
@@ -677,7 +714,7 @@ QString MainWindow::jttyRejectReasonText(JttyTxRejectReason reason) const
 void MainWindow::handleMmttyTxString(QString message)
 {
   auto const context = jttyNativeMacroContext(
-    m_config, m_hisCall, ui->sbSerialNumber_2->value());
+    m_config, m_hisCall, ui->sbSerialNumber_2->value(), m_jttyHisCallSnr);
   auto const compiled = Jtty::compileN1mmMessage(message, context);
   if (m_mode != "JTTY") {
     if (compiled.status == Jtty::N1mmCompileStatus::Literal) {

@@ -25,6 +25,11 @@ jobs:
       rc_number: ${{ steps.identity.outputs.rc_number }}
       macos_sign_mode: ${{ steps.identity.outputs.macos_sign_mode }}
       windows_signing: ${{ steps.identity.outputs.windows_signing }}
+      image_tag: ${{ steps.linux-images.outputs.image_tag }}
+      x86_64_digest: ${{ steps.linux-images.outputs.x86_64_digest }}
+      aarch64_digest: ${{ steps.linux-images.outputs.aarch64_digest }}
+      armhf_digest: ${{ steps.linux-images.outputs.armhf_digest }}
+      armhf_cross_digest: ${{ steps.linux-images.outputs.armhf_cross_digest }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -73,19 +78,11 @@ jobs:
           set -euo pipefail
           python3 .github/scripts/release-policy.py \
             public-release-line "${GITHUB_REF_NAME#v}" --remote origin
-
-  linux-images:
-    needs: prepare
-    uses: ./.github/workflows/publish-linux-ci-images.yml
-    permissions:
-      contents: read
-      packages: write
-    with:
-      publication_target: public-release
-      mode: refresh
-      promote: false
-      image_set: normal
-      include_armhf: true
+      - name: Validate prepared Linux images
+        id: linux-images
+        run: |
+          python3 .github/scripts/release-linux-images.py validate release-linux-images.json \
+            --check-remote --github-output "$GITHUB_OUTPUT"
 
   macos:
     needs: prepare
@@ -120,7 +117,7 @@ jobs:
       signing_mode: ${{ needs.prepare.outputs.macos_sign_mode }}
 
   linux:
-    needs: [prepare, linux-images]
+    needs: prepare
     uses: ./.github/workflows/build-linux.yml
     permissions:
       actions: read
@@ -131,14 +128,14 @@ jobs:
       hamlib_branch: "4.7.2"
       arch: x86_64
       image_source: public-release
-      image_tag: ${{ needs.linux-images.outputs.image_tag }}
-      image_digest: ${{ needs.linux-images.outputs.x86_64_digest }}
+      image_tag: ${{ needs.prepare.outputs.image_tag }}
+      image_digest: ${{ needs.prepare.outputs.x86_64_digest }}
       build_packages: true
       release_channel: ${{ needs.prepare.outputs.release_channel }}
       rc_number: ${{ needs.prepare.outputs.rc_number }}
 
   linux-arm:
-    needs: [prepare, linux-images]
+    needs: prepare
     uses: ./.github/workflows/build-linux.yml
     permissions:
       actions: read
@@ -149,14 +146,14 @@ jobs:
       hamlib_branch: "4.7.2"
       arch: aarch64
       image_source: public-release
-      image_tag: ${{ needs.linux-images.outputs.image_tag }}
-      image_digest: ${{ needs.linux-images.outputs.aarch64_digest }}
+      image_tag: ${{ needs.prepare.outputs.image_tag }}
+      image_digest: ${{ needs.prepare.outputs.aarch64_digest }}
       build_packages: true
       release_channel: ${{ needs.prepare.outputs.release_channel }}
       rc_number: ${{ needs.prepare.outputs.rc_number }}
 
   linux-armhf:
-    needs: [prepare, linux-images]
+    needs: prepare
     uses: ./.github/workflows/build-linux.yml
     permissions:
       actions: read
@@ -167,9 +164,9 @@ jobs:
       hamlib_branch: "4.7.2"
       arch: armhf
       image_source: public-release
-      image_tag: ${{ needs.linux-images.outputs.image_tag }}
-      image_digest: ${{ needs.linux-images.outputs.armhf_digest }}
-      armhf_cross_image_digest: ${{ needs.linux-images.outputs.armhf_cross_digest }}
+      image_tag: ${{ needs.prepare.outputs.image_tag }}
+      image_digest: ${{ needs.prepare.outputs.armhf_digest }}
+      armhf_cross_image_digest: ${{ needs.prepare.outputs.armhf_cross_digest }}
       build_packages: true
       release_channel: ${{ needs.prepare.outputs.release_channel }}
       rc_number: ${{ needs.prepare.outputs.rc_number }}
@@ -187,7 +184,7 @@ jobs:
       windows_signing: ${{ needs.prepare.outputs.windows_signing }}
 
   assemble:
-    needs: [prepare, linux-images, macos, macos-intel, linux, linux-arm, linux-armhf, windows]
+    needs: [prepare, macos, macos-intel, linux, linux-arm, linux-armhf, windows]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
@@ -248,10 +245,10 @@ jobs:
             --repository "$GITHUB_REPOSITORY" \
             --commit "$GITHUB_SHA" \
             --run-id "$GITHUB_RUN_ID" \
-            --linux-x86-64-digest "${{ needs.linux-images.outputs.x86_64_digest }}" \
-            --linux-aarch64-digest "${{ needs.linux-images.outputs.aarch64_digest }}" \
-            --linux-armhf-cross-digest "${{ needs.linux-images.outputs.armhf_cross_digest }}" \
-            --linux-armhf-digest "${{ needs.linux-images.outputs.armhf_digest }}" \
+            --linux-x86-64-digest "${{ needs.prepare.outputs.x86_64_digest }}" \
+            --linux-aarch64-digest "${{ needs.prepare.outputs.aarch64_digest }}" \
+            --linux-armhf-cross-digest "${{ needs.prepare.outputs.armhf_cross_digest }}" \
+            --linux-armhf-digest "${{ needs.prepare.outputs.armhf_digest }}" \
             --macos-mode "$MACOS_MODE" --windows-mode "$WINDOWS_MODE"
       - name: Assemble publication bundle
         env:

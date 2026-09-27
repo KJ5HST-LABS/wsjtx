@@ -87,12 +87,15 @@ class LinuxCcachePolicyTests(unittest.TestCase):
             workflow,
         )
 
-    def test_release_accepts_separately_promoted_armhf_recipe(self):
+    def test_release_requires_pinned_armhf_pair_without_stale_recipe_fallback(self):
         workflow = self.read(".github/workflows/release.yml")
         armhf_job = workflow.split("  linux-armhf:\n", 1)[1].split(
             "\n  windows:\n", 1
         )[0]
-        self.assertIn("allow_stale_image: true", armhf_job)
+        self.assertNotIn("allow_stale_image: true", armhf_job)
+        self.assertIn("image_source: public-release", armhf_job)
+        self.assertIn("image_digest: ${{ needs.prepare.outputs.armhf_digest }}", armhf_job)
+        self.assertIn("armhf_cross_image_digest: ${{ needs.prepare.outputs.armhf_cross_digest }}", armhf_job)
 
 
 if __name__ == "__main__":

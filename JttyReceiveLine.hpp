@@ -1,6 +1,7 @@
 #ifndef JTTY_RECEIVE_LINE_HPP
 #define JTTY_RECEIVE_LINE_HPP
 
+#include <QColor>
 #include <QDateTime>
 #include <QFont>
 #include <QPointer>
@@ -24,6 +25,10 @@ public:
     double startSeconds {};
     int frequency {};
     QString message;
+    int snr {-10};
+    bool blankSnrColumn {false};  // a sent message has no measured SNR
+    QColor background {};         // invalid QColor() means "no override"
+    QColor foreground {};
   };
 
   struct Options {
@@ -177,8 +182,9 @@ private:
   {
     QString const message = options.lowerCase
       ? presentation.message.toLower () : presentation.message;
-    QString text = QString {"%1  %2"}.arg (presentation.frequency, 4)
-      .arg (Jtty::wrapMessage (message));
+    QString text = presentation.blankSnrColumn
+      ? Jtty::formatJttyTxLine (presentation.frequency, Jtty::wrapMessage (message))
+      : Jtty::formatJttyDecodeLine (presentation.frequency, presentation.snr, Jtty::wrapMessage (message));
     if (options.includeTime) {
       auto const time = Jtty::jttyLineTimeLabel (presentation.startUtc);
       if (!time.isEmpty ()) text.prepend (time + " ");
@@ -197,6 +203,8 @@ private:
     record->first.setUserData (new Tag (record, 0));
     QTextCharFormat format;
     format.setFont (font);
+    if (record->presentation.background.isValid ()) format.setBackground (record->presentation.background);
+    if (record->presentation.foreground.isValid ()) format.setForeground (record->presentation.foreground);
     cursor.insertText (text, format);
     auto const * firstTag = record->first.isValid ()
       ? dynamic_cast<Tag const *> (record->first.userData ()) : nullptr;

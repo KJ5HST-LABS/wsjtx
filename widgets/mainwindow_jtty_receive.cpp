@@ -75,6 +75,8 @@ struct MainWindow::JttyReceiveState {
   JttySpectrum spectrum, diskSpectrum;
   JttyRecording recording;
   QHash<qint64, ReceiveLine> liveLines, reviewLines;
+  struct SnrHistoryEntry { QString text; int snr; bool admitted; };
+  std::deque<SnrHistoryEntry> snrHistory;
   JttyReceiveMailboxPtr liveMailbox;
   std::deque<JttyReceiveMailboxPtr> mailboxes;
   struct ReviewJob { ReceiveSpan span; qint64 first, stop; std::vector<short> pcm; bool picked; };
@@ -112,7 +114,7 @@ struct MainWindow::JttyReceiveState {
       auto const change = Jtty::compareMessages(line.text, update.text);
       JttyReceiveLine::Presentation const presentation {span.displayGroup, update.messageId,
         span.displayAnchor.addMSecs(qRound64(update.startSeconds * 1000.0)), update.startSeconds,
-        qRound(update.frequency), update.text};
+        qRound(update.frequency), update.text, update.snr};
       JttyReceiveLine::Options const options {window.ui->cbLowerCase->isChecked(),
                                              window.ui->cbIncludeTime->isChecked()};
       renderLine(window.ui->decodedTextBrowser, presentation, options, line.allLine, true);
@@ -141,13 +143,26 @@ struct MainWindow::JttyReceiveState {
         recording.noteDecoded(start, start + frameSamples);
       }
       if (source != DecodeSource::Review && update.terminal != Jtty::ReceiveTerminal::Growing) {
-        window.write_all("Rx", QStringLiteral("%1  %2").arg(qRound(update.frequency), 4)
-                         .arg(update.text), &line.context);
+        window.write_all("Rx", Jtty::formatJttyDecodeLine(
+          qRound(update.frequency), update.snr, update.text), &line.context);
       }
+      snrHistory.push_back({update.text, update.snr, line.admitted});
+      if (snrHistory.size() > 500) snrHistory.pop_front();
       if (update.terminal != Jtty::ReceiveTerminal::Growing) lines.remove(update.messageId);
     }
   }
 };
+
+int MainWindow::jttySnrForSelectedWord(QString const& word, bool leftPane) const
+{
+  if (!m_jttyReceive) return -10;
+  auto const& history = m_jttyReceive->snrHistory;
+  for (auto it = history.crbegin(); it != history.crend(); ++it) {
+    if (!leftPane && !it->admitted) continue;
+    if (it->text.split(QChar{' '}, Qt::SkipEmptyParts).contains(word)) return it->snr;
+  }
+  return -10;
+}
 
 void MainWindow::refreshJttyReceiveLines()
 {

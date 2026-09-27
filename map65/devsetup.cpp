@@ -12,12 +12,7 @@
 #include <QSignalBlocker>
 #include <QSettings>
 #include "SettingsGroup.hpp"
-
-#if !defined(Q_OS_WIN)
-extern "C" {
-    void ptt_set_override(const char *path);
-}
-#endif
+#include "libm65/ptt.h"
 
 static QStringList enumeratePorts()
 {
@@ -215,16 +210,12 @@ for (id = 0; id < numDevices; id++) {
   // restore saved selection
   QString saved = mw->m_pttPath;
   int idx = ui.pttComboBox->findText(saved);
+  if (idx < 0) {
+      ui.pttComboBox->addItem(saved);
+      idx = ui.pttComboBox->count() - 1;
+  }
   if (idx >= 0)
       ui.pttComboBox->setCurrentIndex(idx);
-
-  // backend override (Linux/macOS only)
-  #if !defined(Q_OS_WIN)
-  if (ui.pttComboBox->currentText() != "NONE")
-      ptt_set_override(ui.pttComboBox->currentText().toUtf8().constData());
-  else
-      ptt_set_override(nullptr);
-  #endif
 
   if      (mw->m_fs96000 == 2)
       oldSampleRate = 192000;
@@ -336,10 +327,12 @@ void DevSetup::accept()
   mw->m_idInt=ui.idIntSpinBox->value();
   
   mw->m_pttPath = ui.pttComboBox->currentText();
-      if (mw->m_pttPath.startsWith("COM"))
-          mw->m_pttPortNumber = mw->m_pttPath.mid(3).toInt();
-      else
-        mw->m_pttPortNumber = 1;
+  if (mw->m_pttPath == "NONE")
+      mw->m_pttPortNumber = 0;
+  else if (mw->m_pttPath.startsWith("COM"))
+      mw->m_pttPortNumber = mw->m_pttPath.mid(3).toInt();
+  else
+      mw->m_pttPortNumber = 1;
 
 #if !defined(Q_OS_WIN)
     if (ui.pttComboBox->currentText() != "NONE")

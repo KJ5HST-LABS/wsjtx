@@ -35,6 +35,7 @@
 #include <QTextStream>
 #include <QString>
 #include <QByteArray>
+#include <QElapsedTimer>
 
 //#include <io.h>
 #include <stdio.h>
@@ -50,20 +51,7 @@
 #include "fortran_mutex.hpp"
 #include "pskreporter_settings.h"
 #include "runtime_paths.h"
-
-#if !defined(Q_OS_WIN)
-extern "C" {
-    void ptt_set_override(const char *path);
-}
-#endif
-
-extern "C" {
-    int ptt_(int* nport, int* itx, int* iptt);
-}
-
-#ifdef __unix__
-extern "C" void ptt_close(void);
-#endif
+#include "libm65/ptt.h"
 
 #ifdef MessageBox
 #undef MessageBox
@@ -1068,10 +1056,12 @@ void MainWindow::readSettings()
   m_myCall=settings.value("MyCall","").toString();
   m_myGrid=settings.value("MyGrid","").toString();
   m_idInt=settings.value("IDint",0).toInt();
-  m_pttPath=settings.value("PTTpath",0).toString();
+  m_pttPath=settings.value("PTTpath","NONE").toString();
+  if (m_pttPath.isEmpty() || m_pttPath == "0") m_pttPath = "NONE";
   m_pttPortNumber = settings.value("PTTPortNumber",0).toInt();
+  if (m_pttPath == "NONE") m_pttPortNumber = 0;
   #if !defined(Q_OS_WIN)
-    ptt_set_override(m_pttPath.toUtf8().constData());
+    ptt_set_override(m_pttPath == "NONE" ? nullptr : m_pttPath.toUtf8().constData());
   #endif
   m_astroFont=settings.value("AstroFont",20).toInt();
   m_xpol=settings.value("Xpol",false).toBool();
@@ -1862,9 +1852,7 @@ void MainWindow::closeEvent(QCloseEvent *e)
     }
     if (m_wide_graph_window) m_wide_graph_window->close();
 
-#ifdef __unix__
-    ptt_close();   // close persistent Linux serial port
-#endif
+    ptt_close();
 
     if (g_pTxTune) {
         g_pTxTune->close();
@@ -2415,6 +2403,10 @@ void MainWindow::guiUpdate()
   static bool bMonitoring0=false;
   static int nc0=1;
   static int nc1=1;
+  static bool pttReleasePending=false;
+  static QElapsedTimer pttReleaseRetry;
+  static QString pttPath;
+  static int pttPortNumber=0;
   static char msgsent[23];
   static int nsendingsh=0;
   int khsym=0;
@@ -2443,25 +2435,46 @@ void MainWindow::guiUpdate()
   if(bTune and !bTune0) bMonitoring0=m_monitoring;
   bTune0=bTune;
 
-  if(m_auto or bTune) {
-    if ((bTxTime or bTune) && iptt == 0 && !m_txMute) {
+  auto stopForPttError = [this] (int error) {
+    bool deviceLost = error == PTT_DEVICE_LOST;
+    pttReleasePending = !deviceLost;
+    pttReleaseRetry.start();
+    nc0 = nc1 = 1;
+    iptt0 = iptt;
+    btxok0 = false;
+    on_stopTxButton_clicked();
+    if (bTune && g_pTxTune) g_pTxTune->accept();
+    bTune = false;
+    soundOutThread.quitExecution = true;
+    m_transmitting = false;
+    if (deviceLost) {
+      m_wide_graph_window->enableSetRxHardware(true);
+      m_pttErrorShown = false;
+      msgBox(tr("Lost connection to PTT port: %1. PTT release could not be confirmed. "
+                "Check that the radio is no longer transmitting before starting another transmission.")
+             .arg(pttPath));
+    } else if (!m_pttErrorShown) {
+      m_pttErrorShown = true;
+      msgBox(tr("Cannot open or control PTT port: %1").arg(pttPath));
+    }
+  };
 
-  if (m_pttPath != "NONE") {
-      int itx = 1;
-      int nport = m_pttPortNumber;   // the real COM port number
-      int ierr = ptt_(&nport, &itx, &iptt);
-
-      if (ierr != 0) {
-          if (!m_pttErrorShown) {
-              char s[256];
-              snprintf(s, sizeof(s), "Cannot open Port: %s",
-                      m_pttPath.toUtf8().constData());
-              msgBox(s);
-              m_pttErrorShown = true;
-          }
-          on_stopTxButton_clicked();
-      }
+  if (pttReleasePending) {
+    on_stopTxButton_clicked();
+    if (bTune && g_pTxTune) g_pTxTune->accept();
+    bTune = false;
   }
+
+  if((m_auto or bTune) && !pttReleasePending) {
+    if ((bTxTime or bTune) && iptt == 0 && !m_txMute) {
+      pttPath = m_pttPath;
+      pttPortNumber = m_pttPortNumber;
+      int itx = 1;
+      int ierr = ptt_(&pttPortNumber, &itx, &iptt);
+      if (ierr != PTT_OK) {
+        stopForPttError(ierr);
+        return;
+      }
 
         if (m_bIQxt)
             m_wide_graph_window->tx570();
@@ -2555,15 +2568,19 @@ void MainWindow::guiUpdate()
   if(!btxok && btxok0 && iptt==1) nc0=-11;  //RxDelay = 1.0 s
   btxok0=btxok;
   if(nc0 <= 0) nc0++;
-  if(nc0 == 0) {
+  if(nc0 == 0 || (pttReleasePending && pttReleaseRetry.hasExpired(1000))) {
     if(m_bIQxt) m_wide_graph_window->rx570();     // Set Si570 back to Rx Freq
-  int itx = 0;
-  int nport = m_pttPortNumber;   // the real COM port number
-  ptt_(&nport, &itx, &iptt);     // Lower PTT
-  m_pttErrorShown = false;
+    int itx = 0;
+    int ierr = ptt_(&pttPortNumber, &itx, &iptt);
+    if (ierr != PTT_OK) {
+      stopForPttError(ierr);
+      return;
+    }
+    pttReleasePending = false;
+    m_pttErrorShown = false;
 
     if(!m_txMute) {
-      soundOutThread.quitExecution=true;\
+      soundOutThread.quitExecution=true;
     }
     m_transmitting=false;
     m_wide_graph_window->enableSetRxHardware(true);
