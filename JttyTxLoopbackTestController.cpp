@@ -168,9 +168,18 @@ JttyTxLoopbackTestController::JttyTxLoopbackTestController (
              }
              m_nonSilentAudioSeen = true;
              m_firstNonSilentFrame = frame;
-             QTimer::singleShot (1500, this, [this] {
-               submitSecondMessage ();
-             });
+           });
+  connect (m_output, &FixtureSoundOutput::playbackCheckpoint,
+           this, [this] (int captureNumber, qint64 frames) {
+             if (m_finished) return;
+             if (captureNumber != 1 || m_output->restartCount () != captureNumber
+                 || m_secondRequestId || !m_nonSilentAudioSeen
+                 || frames - m_firstNonSilentFrame < 72000)
+               {
+                 fail (tr ("Synthetic playback delivered a stale or invalid append checkpoint."));
+                 return;
+               }
+             submitSecondMessage ();
            });
   connect (m_output, &FixtureSoundOutput::captureStopped,
            this, [this] (QString const& path, qint64 frames) {
@@ -313,6 +322,7 @@ void JttyTxLoopbackTestController::prepareWhenReady ()
     }
 
   m_prepared = true;
+  m_segmentEndFrames.append (encodedSampleFrames (contestExchangeMessage ()));
   qint64 longMessageFrames = 0;
   for (auto const& segment : longMessageSegments ())
     {
@@ -323,6 +333,7 @@ void JttyTxLoopbackTestController::prepareWhenReady ()
           return;
         }
       longMessageFrames += frames;
+      m_segmentEndFrames.append (m_segmentEndFrames.constLast () + frames);
     }
   m_expectedAudioFrames = encodedSampleFrames (contestExchangeMessage ())
     + longMessageFrames;
@@ -330,6 +341,20 @@ void JttyTxLoopbackTestController::prepareWhenReady ()
       || m_expectedAudioFrames >= 150 * sampleRate)
     {
       fail (tr ("The JTTY encoder did not produce a valid test waveform extent."));
+      return;
+    }
+  auto * display = m_window->findChild<QTextEdit *> ("decodedTextBrowser2");
+  if (!display)
+    {
+      fail (tr ("The JTTY transmit display was not found."));
+      return;
+    }
+  connect (display, &QTextEdit::textChanged,
+           this, &JttyTxLoopbackTestController::observeTransmittedDisplay);
+  if (!QMetaObject::invokeMethod (m_output, "configureJttyCapture", Qt::QueuedConnection,
+                                 Q_ARG (qint64, m_expectedAudioFrames)))
+    {
+      fail (tr ("Unable to configure the synthetic JTTY capture extent."));
       return;
     }
   m_firstRequestId = m_window->submitJttyText (contestExchangeMessage ());
@@ -366,9 +391,12 @@ void JttyTxLoopbackTestController::submitSecondMessage ()
       fail (tr ("The output stream restarted or stopped before the gapless append."));
       return;
     }
-  if (m_output->capturedFrames () - m_firstNonSilentFrame < sampleRate)
+  auto const consumedFrames = m_output->capturedFrames ();
+  if (consumedFrames - m_firstNonSilentFrame < 72000
+      || consumedFrames >= encodedSampleFrames (contestExchangeMessage ())
+      || m_completedRequests.contains (m_firstRequestId))
     {
-      fail (tr ("The gapless append occurred before one second of real playback."));
+      fail (tr ("The gapless append missed its playback interval within the first message."));
       return;
     }
 
@@ -413,7 +441,36 @@ void JttyTxLoopbackTestController::submitSecondMessage ()
   std::cerr << "WSJT-X JTTY TX loopback test: long draft accepted through Enter "
                "during playback; segments=4 expected_audio_frames="
             << m_expectedAudioFrames
+            << " append_frame=" << consumedFrames
             << std::endl;
+}
+
+void JttyTxLoopbackTestController::observeTransmittedDisplay ()
+{
+  if (m_finished || !m_displayError.isEmpty ()) return;
+  auto const * display = m_window->findChild<QTextEdit *> ("decodedTextBrowser2");
+  auto const text = display->toPlainText ().simplified ();
+  QStringList messages {contestExchangeMessage ()};
+  messages.append (longMessageSegments ());
+  qint64 startFrame = 0;
+  for (int i = 0; i < messages.size (); ++i)
+    {
+      auto const endFrame = m_segmentEndFrames.at (i);
+      if (i >= m_displayedFrames.size () && text.contains (messages.at (i)))
+        {
+          auto const frames = m_output->capturedFrames ();
+          if (i != m_displayedFrames.size () || frames <= startFrame
+              || frames >= endFrame)
+            {
+              m_displayError = tr ("JTTY transmit segment %1 appeared out of order or outside its playback interval (frame %2, interval %3-%4).")
+                .arg (i).arg (frames).arg (startFrame).arg (endFrame);
+              QTimer::singleShot (0, this, [this] { fail (m_displayError); });
+              return;
+            }
+          m_displayedFrames.append (frames);
+        }
+      startFrame = endFrame;
+    }
 }
 
 bool JttyTxLoopbackTestController::verifyCancellationPaths ()
@@ -480,6 +537,13 @@ void JttyTxLoopbackTestController::maybeFinish ()
     }
 
   QSet<qint64> const expectedRequests {m_firstRequestId, m_secondRequestId};
+  if (!m_displayError.isEmpty () || m_displayedFrames.size () != 5)
+    {
+      fail (m_displayError.isEmpty ()
+            ? tr ("The transmit display did not expose every segment during playback.")
+            : m_displayError);
+      return;
+    }
   QVector<qint64> const expectedOrder {m_firstRequestId, m_secondRequestId};
   if (m_acceptedRequests != expectedRequests)
     {
@@ -553,6 +617,7 @@ void JttyTxLoopbackTestController::maybeFinish ()
             << " drains=" << m_sessionDrainCount
             << " cancellations=" << m_cancelledRequests.size ()
             << " frames=" << m_capturedFrames
+            << " displayed_segments=" << m_displayedFrames.size ()
             << " capture=" << m_capturePath.toStdString () << std::endl;
   m_window->close ();
   QCoreApplication::exit (EXIT_SUCCESS);

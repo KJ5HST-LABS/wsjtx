@@ -31,6 +31,7 @@ public:
 
   explicit FixtureSoundOutput (QString capturePath,
                                Profile profile = Profile::JttyStrict,
+                               unsigned pacingSpeed = 1,
                                QObject * parent = nullptr);
   ~FixtureSoundOutput () override;
 
@@ -49,10 +50,12 @@ public Q_SLOTS:
   void restart (QIODevice * source) override;
   void restart (QIODevice * source, qint64 periodOffsetMs) override;
   void stop () override;
+  void configureJttyCapture (qint64 expectedAudioFrames);
 
 Q_SIGNALS:
   void captureStarted (QString path) const;
   void nonSilentAudioStarted (qint64 frame) const;
+  void playbackCheckpoint (int captureNumber, qint64 frames) const;
   void captureStopped (QString path, qint64 frames) const;
   void captureFailed (QString message) const;
 
@@ -71,6 +74,7 @@ private:
 
   QString m_capturePath;
   Profile m_profile;
+  unsigned const m_pacingSpeed;
   QPointer<QIODevice> m_source;
   std::unique_ptr<BWFFile> m_capture;
   QTimer * m_timer;
@@ -78,6 +82,10 @@ private:
   QVector<int> m_chunkFrames {257, 509, 1021, 2039};
   qint64 m_framesPulled {0};
   qint64 m_scheduleOriginFrame {0};
+  qint64 m_configuredAudioFrames {0};
+  qint64 m_expectedAudioFrames {0};
+  qint64 m_checkpointFrame {-1};
+  bool m_realtimeTail {false};
   std::atomic<qint64> m_capturedFrames {0};
   std::atomic<qint64> m_maxInternalSilentFrames {0};
   std::atomic<int> m_restartCount {0};

@@ -5,6 +5,7 @@
 #include "Audio/AudioInputSource.hpp"
 
 #include <QByteArray>
+#include <QElapsedTimer>
 #include <QPointer>
 #include <QString>
 #include <QVector>
@@ -25,6 +26,7 @@ public:
   };
 
   explicit FixtureAudioInput (QString path, Profile profile = Profile::Ft8,
+                              unsigned pacingSpeed = 1,
                               QObject * parent = nullptr);
 
   Q_SLOT void start (QAudioDeviceInfo const&, int framesPerBuffer,
@@ -69,6 +71,7 @@ private:
 
   QString m_path;
   Profile m_profile;
+  unsigned const m_pacingSpeed;
   QByteArray m_pcm;
   QPointer<AudioDevice> m_sink;
   QTimer * m_timer;
@@ -80,6 +83,8 @@ private:
   qint64 m_periodStartMs {0};
   qint64 m_pacingStartMs {0};
   qint64 m_jttyAcknowledgedInputFrames {0};
+  QElapsedTimer m_emissionTimer;
+  qint64 m_nextChunkMs {0};
   int m_chunkIndex {0};
   bool m_started {false};
   bool m_armed {false};

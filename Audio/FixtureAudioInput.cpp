@@ -16,10 +16,12 @@
 #include "moc_FixtureAudioInput.cpp"
 
 FixtureAudioInput::FixtureAudioInput (QString path, Profile profile,
+                                      unsigned pacingSpeed,
                                       QObject * parent)
   : AudioInputSource {parent}
   , m_path {std::move (path)}
   , m_profile {profile}
+  , m_pacingSpeed {profile == Profile::Jtty ? pacingSpeed : 1}
   , m_timer {new QTimer {this}}
 {
   m_timer->setSingleShot (true);
@@ -234,6 +236,8 @@ void FixtureAudioInput::stop ()
   m_periodStartMs = 0;
   m_pacingStartMs = 0;
   m_jttyAcknowledgedInputFrames = 0;
+  m_emissionTimer.invalidate ();
+  m_nextChunkMs = 0;
   m_chunkIndex = 0;
   m_started = false;
   m_suspended = true;
@@ -256,7 +260,9 @@ void FixtureAudioInput::arm ()
 
 void FixtureAudioInput::acknowledgeJttyFrames (qint64 detectorFrames)
 {
-  if (Profile::Jtty != m_profile || detectorFrames < 0) return;
+  if (Profile::Jtty != m_profile || detectorFrames < 0 || !m_started
+      || !m_emitting || m_suspended || !m_sink
+      || m_framesEmitted >= totalFrames ()) return;
 
   auto const inputFrames = detectorFrames * m_inputSampleRate / detectorSampleRate;
   m_jttyAcknowledgedInputFrames = std::max (
@@ -354,7 +360,8 @@ void FixtureAudioInput::fail (QString const& message)
 
 void FixtureAudioInput::maybeSchedule ()
 {
-  if (!m_started || !m_armed || m_suspended || m_emitting)
+  if (!m_started || !m_armed || m_suspended || m_emitting
+      || m_framesEmitted >= totalFrames ())
     {
       return;
     }
@@ -370,16 +377,25 @@ void FixtureAudioInput::maybeSchedule ()
       m_periodStartMs = (now / 180000) * 180000 + jttyCaptureOffsetMs ();
     }
   m_pacingStartMs = Profile::Jtty == m_profile ? now : m_periodStartMs;
+  m_emissionTimer.start ();
   m_emitting = true;
   publishCaptureAnchor (m_framesEmitted);
   if (Profile::ReceiveHandoff == m_profile) return;
-  auto const delay = Profile::ReceiveHandoff == m_profile ? qint64 {0}
-    : std::max<qint64> (0, m_pacingStartMs - now);
+  auto const delay = Profile::Jtty == m_profile && m_pacingSpeed > 1
+    ? qint64 {1} : std::max<qint64> (0, m_pacingStartMs - now);
   m_timer->start (static_cast<int> (delay));
 }
 
 void FixtureAudioInput::scheduleNextChunk ()
 {
+  if (!m_started || !m_armed || !m_emitting || m_suspended || !m_sink
+      || m_framesEmitted >= totalFrames ()) return;
+  if (Profile::Jtty == m_profile && m_pacingSpeed > 1)
+    {
+      auto const delay = std::max<qint64> (1, m_nextChunkMs - m_emissionTimer.elapsed ());
+      m_timer->start (static_cast<int> (delay));
+      return;
+    }
   if (Profile::ReceiveHandoff == m_profile)
     {
       m_timer->start (0);
@@ -399,7 +415,8 @@ void FixtureAudioInput::emitNextChunk ()
 
   auto const target = pacingTimestamp (m_framesEmitted);
   auto const now = QDateTime::currentMSecsSinceEpoch ();
-  if (Profile::ReceiveHandoff != m_profile && now < target)
+  if (Profile::ReceiveHandoff != m_profile
+      && !(Profile::Jtty == m_profile && m_pacingSpeed > 1) && now < target)
     {
       m_timer->start (static_cast<int> (target - now));
       return;
@@ -410,7 +427,9 @@ void FixtureAudioInput::emitNextChunk ()
       Q_EMIT emissionStarted (m_periodStartMs);
     }
 
-  auto remainingFrames = totalFrames () - m_framesEmitted;
+  auto const remainingFrames = totalFrames () - m_framesEmitted;
+  auto chunkFrames = std::min<qint64> (
+    remainingFrames, m_chunkFrames.at (m_chunkIndex % m_chunkFrames.size ()));
   if (Profile::Jtty == m_profile)
     {
       constexpr qint64 maxDetectorLeadFrames = 10240;
@@ -419,16 +438,13 @@ void FixtureAudioInput::emitNextChunk ()
       auto const allowedFrames = m_jttyDecoderReady
         ? m_jttyAcknowledgedInputFrames + maxInputLeadFrames
         : m_leadInFrames;
-      remainingFrames = std::min (
-        remainingFrames, allowedFrames - m_framesEmitted);
-      if (remainingFrames <= 0)
+      if (chunkFrames > allowedFrames - m_framesEmitted)
         {
           m_waitingForJttyDecoder = true;
           return;
         }
+      m_waitingForJttyDecoder = false;
     }
-  auto chunkFrames = std::min<qint64> (
-    remainingFrames, m_chunkFrames.at (m_chunkIndex % m_chunkFrames.size ()));
   if (Profile::ReceiveHandoff == m_profile)
     {
       constexpr qint64 periodFrames = 15 * detectorSampleRate;
@@ -462,6 +478,13 @@ void FixtureAudioInput::emitNextChunk ()
 
   m_framesEmitted += chunkFrames;
   ++m_chunkIndex;
+  if (Profile::Jtty == m_profile)
+    {
+      auto const scaledRate = qint64 {m_inputSampleRate} * m_pacingSpeed;
+      // Decoder backpressure must not accumulate a burst of overdue chunks.
+      m_nextChunkMs = m_emissionTimer.elapsed ()
+        + (chunkFrames * 1000 + scaledRate - 1) / scaledRate;
+    }
   if (m_framesEmitted == totalFrames ())
     {
       m_emitting = false;

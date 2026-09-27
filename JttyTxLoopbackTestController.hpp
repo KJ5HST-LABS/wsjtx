@@ -33,6 +33,7 @@ private:
   static qint64 encodedSampleFrames (QString const& message);
   void prepareWhenReady ();
   void submitSecondMessage ();
+  void observeTransmittedDisplay ();
   bool verifyCancellationPaths ();
   void maybeFinish ();
   bool verifyModeControlsEnabled (bool expected, QString * error) const;
@@ -48,6 +49,9 @@ private:
   QSet<qint64> m_cancelledRequests;
   QVector<qint64> m_acceptedOrder;
   QVector<qint64> m_completedOrder;
+  QVector<qint64> m_displayedFrames;
+  QVector<qint64> m_segmentEndFrames;
+  QString m_displayError;
   QTimer m_timeout;
   QTimer m_prepareTimer;
   QTimer m_modalTimer;

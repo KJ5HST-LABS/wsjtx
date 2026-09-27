@@ -53,6 +53,7 @@ private:
   void maybeFinish ();
   void maybeFinishFt8 ();
   void maybeFinishJtty ();
+  void observeJttyDisplay ();
   void pollJttyDisplay ();
   void checkJttyReviewAndStatus ();
   void completeJttyTest ();

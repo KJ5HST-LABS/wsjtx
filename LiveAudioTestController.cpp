@@ -652,6 +652,10 @@ void LiveAudioTestController::prepareJttyWhenReady ()
   includeTime->setChecked (true);
   lowerCase->setChecked (false);
 
+  connect (m_jttyAllDecodes, &QTextEdit::textChanged,
+           this, &LiveAudioTestController::observeJttyDisplay);
+  connect (m_jttyQsoFrequency, &QTextEdit::textChanged,
+           this, &LiveAudioTestController::observeJttyDisplay);
   m_armed = QMetaObject::invokeMethod (
     m_fixture, "arm", Qt::QueuedConnection);
   if (!m_armed)
@@ -770,9 +774,10 @@ void LiveAudioTestController::maybeFinishFt8 ()
   QCoreApplication::exit (EXIT_SUCCESS);
 }
 
-void LiveAudioTestController::pollJttyDisplay ()
+void LiveAudioTestController::observeJttyDisplay ()
 {
-  if (m_finished || !m_jttyAllDecodes || !m_jttyQsoFrequency) return;
+  if (m_finished || m_jttyCheckStage != JttyCheckStage::Live
+      || !m_jttyAllDecodes || !m_jttyQsoFrequency) return;
 
   auto const allText = m_jttyAllDecodes->toPlainText ().simplified ().toUpper ();
   auto const qsoText = m_jttyQsoFrequency->toPlainText ().simplified ().toUpper ();
@@ -786,14 +791,20 @@ void LiveAudioTestController::pollJttyDisplay ()
     {
       m_jttyAllSawPrefix = true;
       if (!m_jttyAllPrefixBlock.isValid ())
-        m_jttyAllPrefixBlock = m_jttyAllDecodes->document ()->find (m_expectedJttyPrefix).block ();
+        m_jttyAllPrefixBlock = findJttyMessageBlock (*m_jttyAllDecodes->document (), m_expectedJttyPrefix);
     }
   if (m_jttyQsoFinals.isEmpty () && qsoText.contains (m_expectedJttyPrefix))
     {
       m_jttyQsoSawPrefix = true;
       if (!m_jttyQsoPrefixBlock.isValid ())
-        m_jttyQsoPrefixBlock = m_jttyQsoFrequency->document ()->find (m_expectedJttyPrefix).block ();
+        m_jttyQsoPrefixBlock = findJttyMessageBlock (*m_jttyQsoFrequency->document (), m_expectedJttyPrefix);
     }
+}
+
+void LiveAudioTestController::pollJttyDisplay ()
+{
+  observeJttyDisplay ();
+  // GUI actions must run after text-change notifications finish updating both panes.
   maybeFinishJtty ();
 }
 
@@ -1090,6 +1101,7 @@ void LiveAudioTestController::fail (QString const& reason)
   m_timeout.stop ();
   m_prepareTimer.stop ();
   m_modalTimer.stop ();
+  m_jttyPollTimer.stop ();
   m_jttyStageTimer.stop ();
   std::cerr << "WSJT-X live audio test failed: " << reason.toStdString ()
             << " expected=" << m_expected.size ()

@@ -299,6 +299,7 @@ int main(int argc, char *argv[])
   bool jtty_tx_loopback_test {false};
   bool ft8_tx_loopback_test {false};
   bool receive_handoff_test {false};
+  unsigned test_audio_speed {1};
 #endif
   try
     {
@@ -396,6 +397,10 @@ int main(int argc, char *argv[])
         QStringList {} << "receive-handoff-test",
         "Backlog two synthetic periods at the MainWindow receive boundary.");
       parser.addOption (receive_handoff_test_option);
+      QCommandLineOption test_audio_speed_option (
+        QStringList {} << "test-audio-speed",
+        "JTTY fixture delivery speed (integer 1 through 4).", "factor", "1");
+      parser.addOption (test_audio_speed_option);
 #endif
 
       if (!parser.parse (a.arguments ()))
@@ -424,6 +429,16 @@ int main(int argc, char *argv[])
       jtty_tx_loopback_test = parser.isSet (jtty_tx_loopback_test_option);
       ft8_tx_loopback_test = parser.isSet (ft8_tx_loopback_test_option);
       receive_handoff_test = parser.isSet (receive_handoff_test_option);
+      bool audio_speed_valid {false};
+      test_audio_speed = parser.value (test_audio_speed_option).toUInt (&audio_speed_valid);
+      if (!audio_speed_valid || test_audio_speed < 1 || test_audio_speed > 4
+          || (parser.isSet (test_audio_speed_option)
+              && !jtty_live_audio_test && !jtty_tx_loopback_test))
+        {
+          std::cerr << "--test-audio-speed requires a JTTY audio test and an integer from 1 through 4"
+                    << std::endl;
+          return EXIT_FAILURE;
+        }
       if (live_audio_test != parser.isSet (live_audio_expected_option)
           || live_audio_test != parser.isSet (live_audio_data_dir_option))
         {
@@ -839,7 +854,8 @@ int main(int argc, char *argv[])
                                     : jtty_live_audio_test_option),
                   receive_handoff_test ? FixtureAudioInput::Profile::ReceiveHandoff
                     : (live_audio_test ? FixtureAudioInput::Profile::Ft8
-                                       : FixtureAudioInput::Profile::Jtty)}};
+                                       : FixtureAudioInput::Profile::Jtty),
+                  test_audio_speed}};
               fixture_input = fixture.get ();
               audio_input = std::move (fixture);
             }
@@ -852,7 +868,8 @@ int main(int argc, char *argv[])
                                 : ft8_tx_loopback_test_option),
                   ft8_tx_loopback_test
                     ? FixtureSoundOutput::Profile::Ft8Period
-                    : FixtureSoundOutput::Profile::JttyStrict}};
+                    : FixtureSoundOutput::Profile::JttyStrict,
+                  test_audio_speed}};
               fixture_output = fixture.get ();
               sound_output = std::move (fixture);
             }
