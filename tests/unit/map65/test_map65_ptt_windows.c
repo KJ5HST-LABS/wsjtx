@@ -6,6 +6,9 @@
 #ifndef PTT_WINDOWS_SOURCE
 #define PTT_WINDOWS_SOURCE "../../../map65/libm65/ptt.c"
 #endif
+/* Redirect ptt.c's call (and our mock below) so our definition doesn't collide with libkernel32's real GetLastError at link time. */
+#define GetLastError GetLastErr
+DWORD GetLastErr(void);
 #include PTT_WINDOWS_SOURCE
 
 enum { OPEN_PORT = 100, CLOSE_PORT, RTS = 1, DTR = 2 };
