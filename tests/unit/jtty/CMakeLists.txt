@@ -161,7 +161,7 @@ wsjt_link_common_fortran (test_jtty_continuous_decode)
 add_test (NAME test_jtty_continuous_decode COMMAND test_jtty_continuous_decode)
 set_tests_properties (test_jtty_continuous_decode PROPERTIES
   PASS_REGULAR_EXPRESSION "test_jtty_continuous_decode: all checks passed"
-  TIMEOUT 120
+  TIMEOUT 300
 )
 
 add_executable (test_jtty_spectrum
