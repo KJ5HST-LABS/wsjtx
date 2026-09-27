@@ -4,7 +4,9 @@
 #include "commons.h"
 #include "JttyMessages.hpp"
 #include "JttyN1mm.hpp"
+#include "JttyReceiveLine.hpp"
 #include "Logger.hpp"
+#include "models/DecodeHighlightingModel.hpp"
 #include <QByteArray>
 #include <QDateTime>
 #include <QSettings>
@@ -315,15 +317,23 @@ void MainWindow::completeJttyTxEnqueue(qint64 requestId, QString const& message,
   write_all("Tx", message);
   Q_EMIT jttyTextAccepted(requestId);
 
-  QTextCursor cursor = ui->decodedTextBrowser2->textCursor();
-  cursor.movePosition(QTextCursor::End);
-  if (cursor.position()) cursor.insertBlock();
-  QTextCharFormat format = cursor.charFormat();
-  format.setBackground(QBrush(QColor(Qt::yellow)));
-  cursor.setCharFormat(format);
-  cursor.insertText(Jtty::wrapMessage(message));
-  format.setBackground(QBrush(QColor(Qt::white)));
-  cursor.setCharFormat(format);
+  // Tracked via JttyReceiveLine (not a one-off insert) so "Include Time" toggles still reach it.
+  auto const resolved = DecodeHighlightingModel::resolve_colors(
+    m_config.decode_highlighting().items(), {DecodeHighlightingModel::Highlight::Tx},
+    QColor(Qt::yellow), QColor(Qt::black));
+  JttyReceiveLine::Presentation const presentation {
+    0, requestId, QDateTime::currentDateTimeUtc(), 0.0,
+    ui->TxFreqSpinBox_2->value(), message, -10, true,
+    resolved.background_, resolved.foreground_};
+  JttyReceiveLine::Options const options {
+    ui->cbLowerCase->isChecked(), ui->cbIncludeTime->isChecked()};
+  JttyReceiveLine txLine;
+  auto const cursor = txLine.render(*ui->decodedTextBrowser2->document(), presentation,
+                                    options, ui->decodedTextBrowser2->contentFont());
+  if (!cursor.isNull()) {
+    ui->decodedTextBrowser2->setTextCursor(cursor);
+    ui->decodedTextBrowser2->ensureCursorVisible();
+  }
 
   handleJttyContestSerial(message);
 

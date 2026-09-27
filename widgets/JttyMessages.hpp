@@ -850,6 +850,14 @@ namespace Jtty
                                                     tsyncSeconds));
   }
 
+  // Matches a decode line's freq/SNR column layout with the SNR field left
+  // blank (a sent message has no measured SNR), so Tx and Rx lines line up.
+  inline QString formatJttyTxLine (float frequency, QString const& message)
+  {
+    QString const frequencyText = QStringLiteral ("%1").arg (qRound (frequency), 4);
+    return frequencyText + QStringLiteral ("      ") + message;
+  }
+
   inline ParsedDecodeLine parseDecodeLine (QString const& line)
   {
     ParsedDecodeLine result;
