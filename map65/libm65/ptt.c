@@ -27,10 +27,10 @@ static int release_lines(void)
 {
     int rts = control_line(CLRRTS);
     int dtr = control_line(CLRDTR);
-    int brk = control_line(CLRBREAK);
-    if (rts == PTT_DEVICE_LOST || dtr == PTT_DEVICE_LOST || brk == PTT_DEVICE_LOST)
+    EscapeCommFunction(ptt_handle, CLRBREAK);
+    if (rts == PTT_DEVICE_LOST || dtr == PTT_DEVICE_LOST)
         return PTT_DEVICE_LOST;
-    return rts || dtr || brk ? PTT_ERROR : PTT_OK;
+    return rts || dtr ? PTT_ERROR : PTT_OK;
 }
 
 static int control_failure(int result, int *iptt)

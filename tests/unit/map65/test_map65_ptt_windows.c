@@ -233,7 +233,17 @@ static int release_failure(DWORD operation, int attempts)
 
 static int transient_rts_failure(void) { return release_failure(CLRRTS, 1); }
 static int persistent_dtr_failure(void) { return release_failure(CLRDTR, -1); }
-static int break_failure(void) { return release_failure(CLRBREAK, 1); }
+static int unsupported_break(void)
+{
+    CHECK(command(1) == PTT_OK && iptt);
+    event_count = 0;
+    fail(CLRBREAK, ERROR_GEN_FAILURE, -1);
+    CHECK(command(0) == PTT_OK && !iptt && !opened[10] && !lines[10]);
+    CHECK(count(CLRRTS) == 1 && count(CLRDTR) == 1 && count(CLRBREAK) == 1);
+    CHECK(count(CLOSE_PORT) == 1);
+    CHECK(command(1) == PTT_OK && iptt && opened[11]);
+    return 1;
+}
 
 static int device_loss(DWORD operation, DWORD error)
 {
@@ -290,7 +300,7 @@ int main(void)
         {"DTR key failure", dtr_key_failure},
         {"transient RTS release failure", transient_rts_failure},
         {"persistent DTR release failure", persistent_dtr_failure},
-        {"break release failure", break_failure},
+        {"unsupported break", unsupported_break},
         {"lost during key", lost_during_key},
         {"lost during release", lost_during_release},
         {"close failure", close_failure},
