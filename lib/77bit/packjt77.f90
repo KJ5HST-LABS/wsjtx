@@ -34,8 +34,6 @@ module packjt77
   ! decode threads get larger slots.
   integer, dimension(1:25) :: thread_call_index=(/0,200,300,370,420,460,500,530,560,590,610,630,650,670,690,710, &
                                         730,750,770,790,800,810,820,830,840/)
-  integer n28a_configured,n28b_configured
-!$omp threadprivate(n28a_configured,n28b_configured)
 ! Everything is private unless exported here; imported grammar/schema
 ! symbols therefore never re-export through "use packjt77".
   private
@@ -1558,7 +1556,6 @@ subroutine unpack77_decode_i3_0(c77,context,decoded)
      n28b=dxpedition_fields%n28b
      n10=dxpedition_fields%n10
      n5=dxpedition_fields%n5
-     call record_configured_n28_pair(context,n28a,n28b)
      irpt=2*n5 - 30
      crpt=pack77_format_snr_report(irpt)
      call unpack28_for_context(context,n28a,call_1,unpk28_success)
@@ -1597,7 +1594,6 @@ subroutine unpack77_decode_i3_0(c77,context,decoded)
      intx=field_day_fields%intx
      nclass=field_day_fields%nclass
      isec=field_day_fields%isec
-     call record_configured_n28_pair(context,n28a,n28b)
      if(isec.gt.PACK77_NSEC .or. isec.lt.1) then
          decoded%success=.false.
          isec=1
@@ -1724,7 +1720,6 @@ subroutine unpack77_decode_type12(c77,context,decoded)
   ipb=type12_fields%ipb
   ir=type12_fields%ir
   igrid4=type12_fields%igrid4
-  call record_configured_n28_pair(context,n28a,n28b)
   call unpack28_for_context(context,n28a,call_1,unpk28_success)
   if(context%nrx.eq.1 .and. context%mycall_set .and. &
        context%hashmy22.eq.(n28a-PACK77_NTOKENS)) then
@@ -1797,7 +1792,6 @@ subroutine unpack77_decode_type3(c77,context,decoded)
   ir=type3_fields%ir
   irpt=type3_fields%irpt
   nexch=type3_fields%nexch
-  call record_configured_n28_pair(context,n28a,n28b)
   crpt=pack77_format_rtty_report(irpt)
   call unpack28_for_context(context,n28a,call_1,unpk28_success)
   if(.not.unpk28_success) decoded%success=.false.
@@ -1988,16 +1982,6 @@ subroutine unpack28_for_context(context,n28,c13,success)
   return
 end subroutine unpack28_for_context
 
-subroutine record_configured_n28_pair(context,n28a,n28b)
-  type(unpack77_context), intent(in) :: context
-  integer, intent(in) :: n28a,n28b
-
-  if(.not.context%configured) return
-  n28a_configured=n28a
-  n28b_configured=n28b
-
-  return
-end subroutine record_configured_n28_pair
 
 logical function unpack77_type12_var_guard_ok(call_1,call_2,grid4,ir) result(ok)
 ! Configured decode rejects a few hash-collision renders that parse as valid
