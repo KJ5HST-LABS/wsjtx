@@ -18,6 +18,7 @@ set (SAMPLE_FILES
   JT65/JT65B/000000_0006.wav
   JT65/JT65B/000000_0007.wav
   JT9/130418_1742.wav
+  JTTY/260807_134110.wav
   MSK144/181211_120500.wav
   MSK144/181211_120800.wav
   WSPR/150426_0918.wav
@@ -34,6 +35,7 @@ set (SAMPLE_FILES
   Q65/120E_Ionoscatter_6m/210130_1438.wav
   Q65/120E_Ionoscatter_6m/210130_1442.wav
   Q65/300A_Optical_Scatter/201210_0505.wav
+  QMAP/241019_0403.qm
   )
 
 set (contents_file_name contents_${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.json)
@@ -52,6 +54,11 @@ find_program (RSYNC_EXECUTABLE rsync)
 add_custom_command (
   OUTPUT upload.timestamp
   COMMAND ${CMAKE_COMMAND} ARGS -E copy_if_different ${contents_file} ${web_tree}/samples/${contents_file_name}
+  # Source path must be relative (no drive letter): on MSYS2/Windows, rsync
+  # parses any "X:" prefix as a remote host spec, and with an actually-remote
+  # destination too it then refuses with "source and destination cannot both
+  # be remote." WORKING_DIRECTORY defaults to CMAKE_CURRENT_BINARY_DIR here,
+  # so a bare "web/samples" resolves the same as the old absolute path did.
   COMMAND ${RSYNC_EXECUTABLE} ARGS -avz --progress web/samples ${PROJECT_SAMPLES_UPLOAD_DEST}
   COMMAND ${CMAKE_COMMAND} ARGS -E touch upload.timestamp
   DEPENDS ${contents_file}
