@@ -264,7 +264,7 @@ void MainWindow::execute_jtty_tones(qint64 requestId, QString const& message,
   int nsps4=4*384;
   float bt=2.0;
   float fsample=48000.0;
-  float f0=frequency >= 0 ? frequency : ui->TxFreqSpinBox_2->value ();
+  float f0=(frequency >= 0 ? frequency : ui->TxFreqSpinBox_2->value ()) - m_XIT;
   int icmplx=0;
   int nwave=nsps4*m_nsym_jtty;
 
