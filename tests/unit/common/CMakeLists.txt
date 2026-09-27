@@ -2,6 +2,13 @@ add_executable (test_radio_callsign test_radio_callsign.cpp)
 target_link_libraries (test_radio_callsign wsjt_qt Qt5::Test)
 add_test (NAME test_radio_callsign COMMAND test_radio_callsign)
 
+add_executable (test_frequency_list
+  test_frequency_list.cpp
+  ${CMAKE_SOURCE_DIR}/Logger.cpp
+)
+target_link_libraries (test_frequency_list wsjt_qt Boost::log_setup Qt5::Test)
+add_test (NAME test_frequency_list COMMAND test_frequency_list)
+
 add_executable (test_qt_helpers
   test_qt_helpers.cpp
   ${CMAKE_SOURCE_DIR}/qt_helpers.cpp
