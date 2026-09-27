@@ -57,6 +57,7 @@ class QHBoxLayout;
 #include "models/FrequencyList.hpp"
 #include "Configuration.hpp"
 #include "JttyN1mmOutput.hpp"
+#include "JttyReceiveAudio.hpp"
 #include "WSPR/WSPRBandHopping.hpp"
 #include "Transceiver/Transceiver.hpp"
 #include "DisplayManual.hpp"
@@ -208,7 +209,7 @@ public:
 #endif
 
   bool decoderBusy () const
-    {return m_fastDecodePending || DecodeOwner::None != m_decodeOwner || m_ft8MtdDecodeCoordinator.hasPending ();}
+    {return m_fastDecodePending || DecodeOwner::None != m_decodeOwner || m_ft8MtdDecodeCoordinator.hasPending () || jttyReviewBusy();}
   void set_mode_from_command_line(const QString& mode, bool lock_mode = false);
   bool decoderBackendRunning () const;
   bool diskDataActive () const {return m_diskData;}
@@ -242,6 +243,10 @@ public:
   quint64 liveAudioTestDecodeCycleGeneration () const {return m_decodeCycleGeneration;}
   quint64 liveAudioTestReceiveEpoch () const {return m_receiveConsumer.epoch ();}
   bool liveAudioTestReceivingAudio () const {return m_receivingAudio;}
+  QString checkLiveAudioTestJttyFrequencyChanges();
+  bool startLiveAudioTestJttyWav(QString const& path);
+  QString checkLiveAudioTestJttyMailboxOverflow();
+  QString checkLiveAudioTestJttyDrain();
   LiveAudioTestFt8TransmitRequest startLiveAudioTestFt8Transmit (
     qint64 targetPeriodStartMs);
 #endif
@@ -306,7 +311,7 @@ public:
   void msgAvgDecode2();
   void fastPick(int x0, int x1, int y);
   void skedFreq(double sf);
-  void jttyDecodeAgainAt(float secondsAgo);
+  void jttyDecodeAgainAtSample(quint64 reception, qint64 sample);
 
 private:
   enum class DecodeOwner
@@ -619,6 +624,7 @@ private slots:
   void on_cbMenus_toggled(bool b);
   void on_cbAutoSeq_toggled(bool b);
   void on_cbIncludeTime_toggled(bool b);
+  void on_cbLowerCase_toggled(bool);
   void networkError (QString const&);
   void on_ClrAvgButton_clicked();
   void on_actionWSPR_triggered();
@@ -835,19 +841,33 @@ private:
   void handleJttyTxWatchdog();
   void resetJttyTxState();
   void startJttyTxWatchdog(int durationMs);
-  void jtty_save_wav();
   bool jtty_key_struck(QKeyEvent * e);
   bool sendJttyFunctionKey(int index);
-  // istart0/istop (sample indices into dec_data.d2) bound the Fortran scan
-  // to a window instead of the whole buffer; -1/-1 (the default) means
-  // unwindowed, matching the original behavior exactly. Returns true when
-  // this call delivers a completed message admitted to the QSO history.
-  bool jtty_decode(int k, int istart0 = -1, int istop = -1);
-  void renderJttyAllFreqLines();
-  void renderJttyQsoLines();
+  struct JttyReceiveState;
+  std::shared_ptr<JttyReceiveState> m_jttyReceive;
+  void initializeJttyReceive();
+  void consumeJttyAudio(JttyReceiveMailboxPtr mailbox);
+  void pumpJttyReceive();
+  void refreshJttyReceiveLines();
+  void cancelJttyReview();
+  void finishJttyReception();
+  void restartJttyReception();
+  void startJttyReview(quint64 reception, qint64 sample, bool picked);
+  void decodeJttyDisk(int k);
+  void finishJttyDisk();
+  void updateJttyReceivePolicy(bool continuous);
+  void updateJttyReceiveContext();
+  void updateJttySavePolicy();
+  void beginJttyDisk();
+  bool jttyReviewBusy() const;
+  bool jttyDrainInProgress() const;
+  bool jttyDiskActive() const;
+  void closeAfterJttyDrain();
+  bool m_discardJttyWavLoad = false;
+  void drainJttyReceive();
   void jtty_again();
-  void flushJttyDecodeLines();
   QString jtty_msg_expand(QString msg);
+  int jttySnrForSelectedWord(QString const& word, bool leftPane) const;
   QString specOpLabel() const;
   void initializeFFT(int nsps);
   void initializeFFT(int nsps, int fftSize);
@@ -1428,37 +1448,6 @@ private:
   JttyDraftAcceptanceTracker m_jttyDraftAcceptanceTracker;
   qint64 m_jttyTxRequestId;
   qint64 m_jttyTciEnqueueId;
-  struct JttyQsoLine
-  {
-    qint64 messageId {0};
-    float frequency {0.f};
-    QString text;
-    float sequenceStart {0.f};
-    QDateTime messageStartUtc;
-    int snr {-10};
-  };
-  QVector<JttyQsoLine> m_jttyQsoLines;
-  QTextBlock m_jttyQsoGroupStart;
-  QTextBlock m_jttyQsoGroupEnd;
-  int m_jttyQsoGroupEndPosition {-1};
-  bool m_jttyQsoRenderedLowerCase {false};
-  bool m_jttyQsoRenderedIncludeTime {false};
-  struct JttyDecodeLine
-  {
-    qint64 messageId {0};
-    float frequency {0.f};
-    QString text;
-    float sequenceStart {0.f};
-    QDateTime messageStartUtc;
-    bool complete {false};
-    bool written {false};
-    DecodeOperatingContext context;
-    int snr {-10};
-  };
-  QVector<JttyDecodeLine> m_jttyAllFreqLines;
-  int m_jttyLastAllFreqsK = -1;          // detects a restarted decode (new WAV, or "decode again")
-  qint32 m_jttyLastSavedWavK0 = -1;      // m_k0 at last JTTY WAV save; skips saving unchanged audio again
-  QTextBlock m_jttyAllFreqsGroupStart;   // start of decodedTextBrowser's currently-growing group
 #ifdef WIN32
   Jtty::N1mmOutput m_mmttyJttyOutput;
 #endif

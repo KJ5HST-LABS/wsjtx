@@ -18,6 +18,33 @@
 #include "wsjtx_config.h"
 #endif
 
+bool serial_port_name_less (QString const& lhs, QString const& rhs)
+{
+  auto suffix_start = [] (QString const& name) {
+    auto pos = name.size ();
+    while (pos && name.at (pos - 1) >= QLatin1Char {'0'}
+           && name.at (pos - 1) <= QLatin1Char {'9'}) --pos;
+    return pos;
+  };
+  auto const lhs_start = suffix_start (lhs);
+  auto const rhs_start = suffix_start (rhs);
+  auto const prefix_order = lhs.leftRef (lhs_start).compare (rhs.leftRef (rhs_start));
+  if (prefix_order) return prefix_order < 0;
+  if (lhs_start == lhs.size () || rhs_start == rhs.size ()) return lhs < rhs;
+
+  auto significant_digits = [] (QString const& name, int pos) {
+    while (pos < name.size () && name.at (pos) == QLatin1Char {'0'}) ++pos;
+    return name.midRef (pos);
+  };
+  auto const lhs_number = significant_digits (lhs, lhs_start);
+  auto const rhs_number = significant_digits (rhs, rhs_start);
+  // Comparing digits avoids overflow for long device identifiers.
+  if (lhs_number.size () != rhs_number.size ()) return lhs_number.size () < rhs_number.size ();
+  auto const number_order = lhs_number.compare (rhs_number);
+  if (number_order) return number_order < 0;
+  return lhs < rhs;
+}
+
 QString font_as_stylesheet (QFont const& font)
 {
   QString font_weight;

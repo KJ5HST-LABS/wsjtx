@@ -3010,7 +3010,7 @@ Right click for insert and delete options.</string>
             <item row="0" column="0">
              <widget class="QToolButton" name="highlighting_actions_tool_button">
               <property name="toolTip">
-               <string>Change or reset colors for the selected highlighting rule.</string>
+               <string>Change colors, or restore the selected highlighting rule to its Default 1 colors and enabled state.</string>
               </property>
               <property name="text">
                <string>Actions...</string>
@@ -3040,20 +3040,46 @@ Right click for insert and delete options.</string>
               </property>
              </widget>
             </item>
-            <item row="1" column="1">
-             <widget class="QPushButton" name="reset_highlighting_to_defaults_push_button">
+            <item>
+             <spacer name="highlighting_rule_actions_spacer">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
+            </item>
+           </layout>
+          </item>
+          <item row="2" column="0" colspan="2">
+           <layout class="QHBoxLayout" name="highlighting_global_actions_layout">
+            <item>
+             <widget class="QToolButton" name="color_presets_tool_button">
               <property name="toolTip">
-               <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Push to reset all highlight items above to default values and priorities.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+               <string>Apply a predefined color scheme without changing enabled rules or priority.</string>
               </property>
               <property name="text">
-               <string>Reset Highlighting to Default 1</string>
+               <string>Color presets...</string>
+              </property>
+              <property name="popupMode">
+               <enum>QToolButton::InstantPopup</enum>
               </property>
              </widget>
             </item>
-            <item row="2" column="0">
-             <widget class="QPushButton" name="reset_highlighting_to_defaults2_push_button">
+            <item>
+             <widget class="QToolButton" name="reset_highlighting_tool_button">
+              <property name="toolTip">
+               <string>Restore colors, enabled rules, and priority order to a complete default configuration.</string>
+              </property>
               <property name="text">
-               <string>Reset Highlighting to Default 2</string>
+               <string>Reset highlighting...</string>
+              </property>
+              <property name="popupMode">
+               <enum>QToolButton::InstantPopup</enum>
               </property>
              </widget>
             </item>
@@ -3066,6 +3092,19 @@ Right click for insert and delete options.</string>
                <string>Rescan ADIF Log</string>
               </property>
              </widget>
+            </item>
+            <item>
+             <spacer name="highlighting_global_actions_spacer">
+              <property name="orientation">
+               <enum>Qt::Horizontal</enum>
+              </property>
+              <property name="sizeHint" stdset="0">
+               <size>
+                <width>40</width>
+                <height>20</height>
+               </size>
+              </property>
+             </spacer>
             </item>
            </layout>
           </item>
@@ -3087,7 +3126,7 @@ Right click for insert and delete options.</string>
              <bool>true</bool>
             </property>
             <property name="toolTip">
-             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Enable or disable using the check boxes and right-click an item to change or unset the foreground color, background color, or reset the item to default values. Drag and drop the items to change their priority, higher in the list is higher in priority.&lt;/p&gt;&lt;p&gt;Note that each foreground or background color may be either set or unset, unset means that it is not allocated for that item's type and lower priority items may apply.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
+             <string>&lt;html&gt;&lt;head/&gt;&lt;body&gt;&lt;p&gt;Use the check boxes to enable or disable rules. Right-click a rule to change or unset its foreground or background color, or restore its Default 1 colors and enabled state. Drag rules to change their priority; higher rules have higher priority.&lt;/p&gt;&lt;p&gt;Each foreground or background color can be set or unset. An unset color is not assigned by that rule, allowing a lower-priority rule to supply it.&lt;/p&gt;&lt;/body&gt;&lt;/html&gt;</string>
             </property>
             <property name="editTriggers">
              <set>QAbstractItemView::NoEditTriggers</set>

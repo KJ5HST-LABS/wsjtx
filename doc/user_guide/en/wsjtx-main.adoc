@@ -1,6 +1,6 @@
 // This is a comment line, anything with // is ignored at process time.
 = _WSJT-X_ User Guide
-Copyright 2001-2026 by the WSJT Development Team
+Copyright 2001-2026 by the WSJT Development Team.
 :revnumber: {VERSION}
 // For web-pages, adding :badges: is ok, but is a security issue for
 // package building .deb, .rpm, etc as it exposes the IP address and the images
@@ -13,6 +13,11 @@ Copyright 2001-2026 by the WSJT Development Team
 :keywords: amateur radio weak signal communication K1JT WSJT JT65 JT9
 :description: Software for Amateur Radio Weak-Signal Communication
 :prog: WSJT-X
+
+[.copyright]
+_You may use and distribute unmodified copies of this document,
+including this copyright notice. You may not publish or distribute
+any portion of it without our express written consent._
 
 // use global link file
 include::../../common/links.adoc[]
@@ -156,6 +161,18 @@ include::tutorial-example5.adoc[]
 [[TUT_EX6]]
 === FST4W
 include::tutorial-example6.adoc[]
+
+[[JTTY]]
+=== JTTY
+include::jtty.adoc[]
+
+[[JTTY_N1MM]]
+=== JTTY and N1MM Logger+
+include::jtty_n1mm_integration.adoc[]
+
+[[QMAP]]
+=== QMAP
+include::qmap.adoc[]
 
 [[MAKE_QSOS]]
 == Making QSOs

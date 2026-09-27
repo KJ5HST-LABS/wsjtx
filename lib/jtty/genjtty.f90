@@ -70,7 +70,7 @@ end subroutine genjtty_frames
 subroutine genjtty_atoms_c(c_atoms,natoms,itone,nsym,status) bind(C,name='genjtty_atoms_c')
 
   use iso_c_binding, only: c_char,c_int,c_null_char
-  use packjt77_grammar, only: pack77_arrl_section_index
+  use packjt77_grammar, only: pack77_arrl_section_index,pack77_arrl_section_name
   use jtty_mod, only: jtty_source_atom,jtty_source_atom_c,JTTY_ATOM_CALL, &
        JTTY_ATOM_EXCH_NUM,JTTY_ATOM_EXCH_LOC,JTTY_ATOM_EXCH_PAIR, &
        JTTY_ATOM_CONTROL,JTTY_ATOM_GRID4,jtty_call_atom,jtty_exch_num_atom, &
@@ -119,7 +119,7 @@ subroutine genjtty_atoms_c(c_atoms,natoms,itone,nsym,status) bind(C,name='genjtt
         if(c_atoms(i)%subtype.ne.1) return
         if(c_atoms(i)%role.lt.0 .or. c_atoms(i)%role.gt.5) return
         section_index=pack77_arrl_section_index(descriptor_text)
-        if(section_index.lt.1) then
+        if(section_index.lt.1 .or. descriptor_text.ne.pack77_arrl_section_name(section_index)) then
            status=JTTY_ENCODE_UNKNOWN_SECTION
            return
         endif

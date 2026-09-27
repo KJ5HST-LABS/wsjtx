@@ -314,6 +314,20 @@ if (WSJT_ENABLE_TESTS)
     RUN_SERIAL TRUE
     TIMEOUT 180)
 
+  add_executable (test_map65_symspec_contract
+    ${CMAKE_SOURCE_DIR}/tests/unit/map65/test_map65_symspec_contract.f90)
+  target_include_directories (test_map65_symspec_contract PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+  target_link_libraries (test_map65_symspec_contract PRIVATE m65impl)
+  add_test (NAME test_map65_symspec_96 COMMAND test_map65_symspec_contract 96000)
+  add_test (NAME test_map65_symspec_192 COMMAND test_map65_symspec_contract 192000)
+
+  add_executable (test_map65_q65_handoff
+    ${CMAKE_SOURCE_DIR}/tests/unit/map65/test_map65_q65_handoff.f90)
+  target_include_directories (test_map65_q65_handoff PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+  target_link_libraries (test_map65_q65_handoff PRIVATE m65impl)
+  add_test (NAME test_map65_q65_handoff COMMAND test_map65_q65_handoff)
+  set_tests_properties (test_map65_q65_handoff PROPERTIES TIMEOUT 180)
+
 endif ()
 
 if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 4)

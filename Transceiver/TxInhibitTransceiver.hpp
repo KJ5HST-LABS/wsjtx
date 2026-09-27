@@ -26,6 +26,12 @@ public:
   void stop () noexcept override;
   void enqueue_jtty_pcm (QByteArray const&, TxAudioQueueEpoch, qint64) noexcept override;
   void clear_jtty_pcm (TxAudioQueueEpoch) noexcept override;
+  void receive_discontinuity (JttyReceiveReason reason) override
+  { wrapped_->receive_discontinuity (reason); }
+  void receive_stop_reason (JttyReceiveReason reason) override
+  { wrapped_->receive_stop_reason (reason); }
+  void requestContinuousReceiveDrain (quint64 requestId) override
+  { wrapped_->requestContinuousReceiveDrain (requestId); }
 
   Q_SLOT void tx_inhibit_command (QString controller, quint32 ttl_ms, QString station);
   Q_SLOT void tx_inhibit_invalid (quint64 count);

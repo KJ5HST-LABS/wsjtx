@@ -414,6 +414,11 @@ public:
   // Set period for TCI audio
   //
   Q_SLOT void transceiver_period (double = 15.0);
+  Q_SLOT void transceiver_receive_policy (ReceivePolicy);
+  Q_SLOT void transceiver_receive_context (quint64);
+  Q_SLOT void transceiver_receive_stop_reason (JttyReceiveReason);
+  Q_SLOT void requestContinuousReceiveDrain (quint64 requestId);
+  Q_SLOT void transceiver_receive_discontinuity (JttyReceiveReason);
 
   // Set blocksize for TCI audio.
   //
@@ -481,6 +486,9 @@ public:
   Q_SIGNAL void transceiver_update (Transceiver::TransceiverState const&) const;
   Q_SIGNAL void transceiver_TCIframesWritten (qint64) const;
   Q_SIGNAL void transceiverReceiveAudio (ReceiveAudio) const;
+  Q_SIGNAL void continuousAudioAvailable (JttyReceiveMailboxPtr) const;
+  Q_SIGNAL void continuousReceptionStopped (JttyReceiveMailboxPtr) const;
+  Q_SIGNAL void continuousReceiveDrained (quint64 requestId, JttyReceiveMailboxPtr) const;
   Q_SIGNAL void transceiver_TCImodActive (bool) const;
   Q_SIGNAL void txSourceCommitted (TxEvidence::TxStartSnapshot) const;
   Q_SIGNAL void rawTxPlayoutSnapshot (TxEvidence::TxRawPlayoutSnapshot) const;

@@ -7,6 +7,10 @@
 #include <QString>
 #include <QStringList>
 #include <QTimer>
+#include <QTextBlock>
+#include <QElapsedTimer>
+#include <QByteArray>
+#include <QVector>
 #include <vector>
 
 class FixtureAudioInput;
@@ -50,6 +54,8 @@ private:
   void maybeFinishFt8 ();
   void maybeFinishJtty ();
   void pollJttyDisplay ();
+  void checkJttyReviewAndStatus ();
+  void completeJttyTest ();
   void fail (QString const& reason);
   void checkForUnexpectedModal ();
   void exerciseSubmittedFt8Rollover ();
@@ -72,9 +78,21 @@ private:
   QTimer m_prepareTimer;
   QTimer m_modalTimer;
   QTimer m_jttyPollTimer;
+  QTimer m_jttyStageTimer;
   QTextEdit * m_jttyAllDecodes {nullptr};
   QTextEdit * m_jttyQsoFrequency {nullptr};
   qint64 m_emittedFrames {0};
+  qint64 m_captureStartMs {0};
+  QTextBlock m_jttyAllPrefixBlock, m_jttyQsoPrefixBlock;
+  enum class JttyCheckStage { Live, Review, Stopped, Wav, TimedMode };
+  JttyCheckStage m_jttyCheckStage {JttyCheckStage::Live};
+  QElapsedTimer m_jttyCheckElapsed;
+  QString m_jttyAllBeforeReview, m_jttyQsoBeforeReview;
+  QVector<QTextBlock> m_jttyAllLiveBlocks, m_jttyQsoLiveBlocks;
+  QString m_jttyLogPath, m_jttySaveDirectory;
+  qint64 m_jttyInitialLogSize = 0;
+  QByteArray m_jttyLogBeforeReview;
+  QSet<QString> m_jttyInitialRecordings;
   int m_completedCycles {0};
   quint64 m_submittedGeneration {0};
   quint64 m_submittedCycle {0};

@@ -309,34 +309,18 @@ void DisplayText::insertLineSpacer(QString const& line)
 namespace
 {
   using Highlight = DecodeHighlightingModel::Highlight;
-  using highlight_types = std::vector<Highlight>;
+  using highlight_types = DecodeHighlightingModel::HighlightTypes;
   Highlight set_colours (Configuration const * config, QColor * bg, QColor * fg, highlight_types const& types)
   {
-    Highlight result = Highlight::CQ;
     if (config)
       {
-        QListIterator<DecodeHighlightingModel::HighlightInfo> it {config->decode_highlighting ().items ()};
-        // iterate in reverse to honor priorities
-        it.toBack ();
-        while (it.hasPrevious ())
-          {
-            auto const& item = it.previous ();
-            auto const& type = std::find (types.begin (), types.end (), item.type_);
-            if (type != types.end () && item.enabled_)
-              {
-                if (item.background_.style () != Qt::NoBrush)
-                  {
-                    *bg = item.background_.color ();
-                  }
-                if (item.foreground_.style () != Qt::NoBrush)
-                  {
-                    *fg = item.foreground_.color ();
-                  }
-                result = item.type_;
-              }
-          }
+        auto const resolved = DecodeHighlightingModel::resolve_colors (
+          config->decode_highlighting ().items (), types, *bg, *fg);
+        *bg = resolved.background_;
+        *fg = resolved.foreground_;
+        return resolved.type_;
       }
-    return result;            // highest priority enabled highlighting
+    return Highlight::CQ;
   }
 }
 

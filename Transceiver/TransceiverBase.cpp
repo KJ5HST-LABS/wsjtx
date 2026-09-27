@@ -73,6 +73,14 @@ void TransceiverBase::set (TransceiverState const& s,
       if (requested_.online ())
         {
           bool audio_cmd {false};
+          if (requested_.receive_policy () != s.receive_policy ()) {
+            do_receive_policy (s.receive_policy ());
+            requested_.receive_policy (s.receive_policy ());
+          }
+          if (requested_.receive_context () != s.receive_context ()) {
+            do_receive_context (s.receive_context ());
+            requested_.receive_context (s.receive_context ());
+          }
           if (requested_.blocksize() != s.blocksize()) {
             do_blocksize (s.blocksize());
             audio_cmd = true;

@@ -163,6 +163,7 @@ set (wsjtx_CXXSRCS
   widgets/signalmeter.cpp
   widgets/TxDriveSlider.cpp
   widgets/plotter.cpp
+  widgets/JttySpectrum.cpp
   widgets/widegraph.cpp
   widgets/echograph.cpp
   widgets/echoplot.cpp
@@ -189,6 +190,8 @@ set (wsjtx_CXXSRCS
   widgets/SpecOpLabel.cpp
   widgets/mainwindow.cpp
   widgets/mainwindow_jtty.cpp
+  widgets/mainwindow_jtty_receive.cpp
+  JttyRecording.cpp
   Modulator/JttyTxStream.cpp
   widgets/mainwindow_settings.cpp
   widgets/mainwindow_show_messages.cpp
@@ -306,6 +309,7 @@ set (wsjt_FSRCS
   lib/jtty/jtty_fec_mod.f90
   lib/jtty/jttycom.f90
   lib/jtty/jtty_mdecode.f90
+  lib/jtty/jtty_receive_context.f90
 
   # remaining non-module sources
   lib/addit.f90

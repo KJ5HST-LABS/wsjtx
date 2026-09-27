@@ -104,7 +104,7 @@ Understanding the architecture will help you debug issues during deployment.
 
 ### How It Flows
 
-**On pushes and pull requests to `develop` or `release/**`:**
+**On pushes and pull requests to private `develop` or `release/**`:**
 ```
 Push or pull request
   └─→ ci.yml triggers
@@ -124,24 +124,29 @@ release/X.Y metadata commit
                                 └─→ verified GitHub Release publication
 ```
 
-The explicit source promotion approves disclosure of the reviewed source. After the public workflow builds, verifies, and summarizes its exact bundle, a release manager gives final publication approval on the `public-release` environment. An RC publishes a public tag without moving `master`; GA also advances `master` to the promoted commit.
+Source promotion makes the reviewed source public. The public workflow builds and verifies the bundle, then waits for final publication approval. See [Public branch history and GA line policy](#public-branch-history-and-ga-line-policy) for branch and tag behavior.
 
 ### Build Strategy
 
-Each platform build does the same two-stage process:
-1. **Build Hamlib 4.7.2** from source (cached after first run)
-2. **Build WSJT-X** against the Hamlib install prefix
+Linux candidate and public builds compile WSJT-X from the selected source commit using prepared dependency images. macOS and Windows build native dependency prefixes and reuse them through Actions caches.
 
-This matches what developers do locally but doesn't use the superbuild. The superbuild's ExternalProject approach doesn't map well to CI caching. Building Hamlib directly and caching its install prefix gives better cache hits and faster builds.
+### Cache readiness
 
-### What Gets Cached
+Native build summaries show dependency cache hits, misses, and rebuild results. Compiler-cache rows distinguish exact and fallback restores from a miss; a forced recompile is reported separately. The dependency warmer also summarizes each selected platform's result. A cache hit alone does not establish that the application build passed.
 
-| Cache | Key | Saves |
-|-------|-----|-------|
-| Hamlib install (per platform × arch) | `hamlib-{os}-{arch}-{branch}-{workflow-hash}` on macOS and Linux (separate caches for macOS arm64 vs. x86_64 and Linux x86_64 vs. aarch64); `hamlib-windows-{branch}-{workflow-hash}` on Windows (single arch) | 5-10 min per platform |
-| MSYS2 packages | Built-in `cache: true` parameter | 3-5 min on Windows |
+Use `cold_build=true` on a manually dispatched macOS or Windows build to bypass workflow-managed dependency and compiler-cache restores and saves. Windows also bypasses the MSYS2 package cache. This leaves the runner's preinstalled software in place. `recache` only forces application recompilation and does not make dependencies cold. The macOS build budget is 180 minutes; confirm a cold run completes dependency builds, tests, and packaging within that budget before relying on it for a release.
 
-Caches invalidate when the Hamlib branch changes or the workflow file changes. This is intentional — if you change build flags, the cache rebuilds.
+### Prepared Linux release images
+
+Before creating a candidate, run Prepare Release Dependencies from protected private `develop`, selecting a protected source branch and an explicit validated image generation. Refresh incompatible or missing images through the existing Linux image publisher first.
+
+Preparation verifies all four images against the selected source recipes: x86_64, aarch64, and the ARMHF cross-builder/runtime pair. It copies them to `ghcr.io/wsjtx/wsjtx` without changing their digests and verifies anonymous access. Images contain dependency tooling, not WSJT-X application builds. Review changes to copied scripts and image metadata before public preparation; a digest-preserving copy retains the original OCI labels and build metadata.
+
+The private workflow needs package read access to the internal images and write access to the destination packages through its `GITHUB_TOKEN`. Destination packages must be public. Configure those package permissions separately; the workflow does not change visibility or repository settings. Prepared image retention tags must remain available for release rebuilds.
+
+Download the successful `prepared-release-dependencies` artifact and review `release-linux-images.json`. Commit that file on the private release branch before candidate tagging. It records the validated generation, four public image digests, and their recipe fingerprints. Application-only changes may reuse it; recipe changes require a new preparation. Keep the detailed preparation record with the private workflow artifacts.
+
+Candidate and public builds consume the committed selection and build WSJT-X afresh. They stop on missing images or incompatible recipes instead of resolving `stable` or refreshing images during release. Candidate provenance binds the selection's checksum and digests; source promotion verifies that binding. The public release manifest records the same builder digests.
 
 ### What the Release Produces
 
@@ -248,8 +253,8 @@ The release-related files have distinct responsibilities:
 | `release-state.txt` | Tracked numeric version, channel, RC number, and archive revision placeholder |
 | `release-tag-helper.yml` | Validate the release-branch tip and CI, create an immutable private candidate tag, then call the candidate build |
 | `release.yml` | Build private validation artifacts only; never publish or copy source |
-| `promote-release.yml` | Validate the candidate run and manually copy its exact commit to the public tag; update public `master` only for GA |
-| `public-release.yml` | Rebuild from public source, enforce the tagged signing policy, verify and summarize the bundle, then wait for final publication approval |
+| `promote-release.yml` | Validate the candidate run and atomically create its immutable tag and create or fast-forward its public release branch; advance public `master` only for newest-line GA |
+| `public-release.yml` | Rebuild from public source, enforce tagged signing policy, verify and summarize the bundle, wait for final approval, and preserve Latest on older-line GA |
 
 `release-state.txt` is the version source of truth. Keep `revision=$Format:%H$` literal in Git; Git expands it in exported archives. The workflows reject a tag whose version/channel does not match the tracked state.
 
@@ -263,17 +268,17 @@ rg -n 'hamlib_branch:' .github/workflows
 
 ## 5. Phase 3: Create Repository Secrets
 
-Use environments to keep signing credentials out of ordinary build jobs. The current private `source-promotion` environment has no protection rules or secrets; `CROSS_REPO_TOKEN` is a repository secret. The public `public-release` environment exists, but currently has no protection rules. The public workflow checks this configuration before starting its build jobs and fails closed if it cannot read a required-reviewer rule that allows self-review. The `operation=promote` dispatch approves public source promotion; a separate approval on the final `publish` job authorizes release publication. Restricting the private promotion token to an environment remains a recommended hardening task for a repository administrator.
+The public `public-release` environment must require one approval from an eligible release manager and allow self-review. The `operation=promote` dispatch approves public source; only the final `publish` job waits for release approval. `CROSS_REPO_TOKEN` is a private repository secret.
 
 ### Public Final Publication Approval
 
-Before a public release, a repository administrator must configure `WSJTX/wsjtx` → **Settings → Environments → `public-release`**:
+Configure WSJTX/wsjtx Settings > Environments > public-release:
 
-1. Select **Required reviewers** and add one or more eligible release managers. GitHub requires only one of the listed reviewers to approve.
-2. Leave **Prevent self-review** unchecked so the release manager who promoted the source can approve their own workflow run.
-3. Save the protection rules. If deployment branches or tags are restricted, allow public release tags matching `v*`.
+1. Turn on Required reviewers and add one or more release managers. Any one may approve.
+2. Turn off Prevent self-review so the person who promoted the source can approve the same run.
+3. Save. If deployment refs are restricted, allow tags matching `v*`.
 
-The public workflow reads the environment through GitHub's API using only `Actions: read`. Its first job stops before the platform builds if the environment is missing, the reviewer rule is absent or malformed, self-review is blocked, or the API cannot be read. Do not add `public-release` to candidate, source-promotion, dependency-build, or signing jobs; only the final `publish` job waits for this approval.
+The first job reads the environment with `Actions: read` and stops before platform builds if the rule is missing, malformed, unreadable, or blocks self-review. Only the final `publish` job should use this environment.
 
 When migrating a repository secret to a restricted environment, verify the environment copy before deleting the repository-level secret. GitHub can otherwise fall back to a same-named repository secret when a job references `secrets.NAME`, defeating the intended ref restriction. Keep Apple signing credentials environment-only.
 
@@ -476,7 +481,7 @@ Linux binary signing is less critical — Linux users don't encounter SmartScree
 
 ### Verification: Credential Boundaries
 
-Confirm the current `CROSS_REPO_TOKEN` repository secret is present on the private repository. Apple material belongs only in public environment `apple-release-signing`, and `SIGNPATH_API_TOKEN` belongs only in public environment `windows-release-signing`. The public workflow currently has no environment approval boundary.
+Confirm the current `CROSS_REPO_TOKEN` repository secret is present on the private repository. Apple material belongs only in public environment `apple-release-signing`, and `SIGNPATH_API_TOKEN` belongs only in public environment `windows-release-signing`. Only the final public `publish` job uses the `public-release` approval gate.
 
 ---
 
@@ -628,17 +633,35 @@ On `release/X.Y`, commit the numeric version and matching `DEVEL`, `RC n`, or `G
 
 ### Step 2: Build the Private Candidate
 
-Run **Prepare Release Candidate** from the `release/X.Y` branch at the expected SHA. Supply the version and full SHA with `operation=validate`; review its summary, then repeat with `operation=create`. The latter creates immutable `build/v...` and calls `release.yml` inside the same workflow run. That run uploads private validation artifacts without publishing or copying source.
+Commit the reviewed [Linux image selection](#prepared-linux-release-images) before creating the candidate.
+
+Run Prepare Release Candidate on `release/X.Y` at the expected SHA. Use `operation=validate` first and review the summary, then use `operation=create`. This creates the immutable `build/v...` tag and private validation artifacts. It does not publish or copy source.
 
 ### Step 3: Approve Public Source Promotion
 
-Inspect the successful Prepare Release Candidate run and record its run ID. From the same `release/X.Y` branch and SHA, run **Promote Release Source** with that run ID, version, and `operation=validate`; after reviewing the checks, repeat with `operation=promote`. The workflow creates public `v...` at the same SHA and starts the public distribution builds. RC promotion leaves public `master` unchanged; GA promotion advances it with a guarded, fast-forward-only update.
+Record the candidate run ID. From the same branch and SHA, run Promote Release Source with `operation=validate`; review the summary, then run it with `operation=promote`. Promotion atomically creates the immutable public tag and creates or fast-forwards `release/X.Y` at the candidate SHA, following the [public branch policy](#public-branch-history-and-ga-line-policy). Conflicting tags and non-fast-forward updates fail without changing refs. If public refs change after validation, validate again.
 
 ### Step 4: Review and Approve Final Publication
 
-Wait for all public target builds, verification, and assembly to finish. Review the assemble job's **Verified public release bundle** summary before approving: it shows the public tag, full source SHA, workflow run, Windows and macOS signing modes, and every release asset's SHA-256. If manual macOS signing is selected, the two replaceable `.pkg` assets are listed with their hashes intentionally absent from `SHA256SUMS`. Windows uses SignPath by default; an explicitly source-pinned unsigned release is identified in the summary and does not require SignPath readiness. In hosted-signing mode, macOS packages must be Developer ID-signed, notarized, stapled, and Gatekeeper-accepted before publication.
+After the builds finish, review the Verified public release bundle summary before approving. It lists the tag, source SHA, run link, signing modes, assets, and checksums. The summary identifies manually replaceable macOS packages, which are excluded from `SHA256SUMS`. Windows uses SignPath by default; source-pinned unsigned releases do not need SignPath. Hosted macOS packages must be Developer ID-signed, notarized, stapled, and pass Gatekeeper.
 
-The final `publish` job waits on the public `public-release` environment. An eligible release manager approves the run there; GitHub needs only one listed reviewer, and with **Prevent self-review** off the same maintainer can approve the run they triggered by promoting source. This second deliberate click happens after the exact verified bundle is ready and before the workflow creates or updates the GitHub Release and uploads assets. The publish job then rechecks bundle checksums, manifest identity, signing modes, and the immutable public tag. RCs publish as prereleases; GAs publish as the latest release.
+Once the bundle is ready, approve the final `publish` job in `public-release`. One listed reviewer is enough. With Prevent self-review off, the person who promoted the source can approve the same run. The job rechecks the bundle and tag before publishing. RCs are prereleases. Only the newest GA version on the newest line gets Latest; other GA releases use `--latest=false`.
+
+### Public branch history and GA line policy
+
+Promotion publishes only the validated candidate SHA. Public tags are immutable; release branches contain only promoted commits and must advance by ancestry.
+
+- RCs advance `release/X.Y` and leave `master` unchanged.
+- A GA on the newest line also fast-forwards `master`.
+- An older-line GA leaves `master` and GitHub Latest unchanged.
+
+Determine the newest GA line from the highest numeric `X.Y` in public GA tags, ignoring RCs and release dates. Reject a GA below the highest GA tag on its line. Only the newest GA version on the newest line can become Latest. Stop if GA tags are missing or refs are malformed.
+
+The promotion workflow creates a missing `release/X.Y` branch. If that line already has public GA or RC tags, the candidate must descend from its latest tag. Do not seed public release branches manually. Subsequent candidates must descend from the existing branch.
+
+Before a newest-line GA, verify that public `master` is an ancestor of the candidate. If it is not, stop and review the divergent history and tree differences. Reconcile the ancestry on the private release branch through a reviewed manual merge, verify that the resulting tree matches the intended release source, and rerun private CI and candidate validation. Promotion never creates this merge or force-rewrites public history.
+
+After promotion, verify that the public release branch and tag resolve to the candidate SHA. For a newest-line GA, check `master` too. For an older-line GA, confirm that `master` and GitHub Latest did not change. Public release-branch pushes skip the full CI matrix; private release branches and pull requests still run it.
 
 If `MACOS_DISTRIBUTION_SIGNING_ENABLED` is false, after publication download both `.pkg` assets, sign and notarize them outside GitHub, verify their signatures and installed behavior, then replace the assets without changing their filenames. They are intentionally absent from `SHA256SUMS`; the manifest and assemble summary identify them as manually replaceable. Enable the variable after the `apple-release-signing` environment is fully configured.
 
@@ -733,9 +756,9 @@ When modifying workflow files, keep in mind:
 
 Protect `develop` and `release/*` from force-push and deletion, and apply the team's normal CI/review policy. The two manual helper workflows must be run from the current protected `release/X.Y` tip; they reject any other workflow ref or SHA.
 
-On the public repository, add a tag ruleset for `v*` that blocks update and deletion and limits creation to the source-promotion identity. Protect `master` from force-push and deletion. `promote-release.yml` additionally requires GA to advance the prior public `master` and updates the branch and new tag atomically.
+On WSJTX/wsjtx, protect `v*` tags from updates and deletion, and limit creation to the source-promotion identity. Protect `master` and `release/*` from force-pushes and deletion.
 
-Restrict `candidate-tagging` and `source-promotion` to protected private `release/*` branches, `apple-release-signing` to public `v*` tags, and `windows-release-signing` to protected public `master` plus `v*` tags. These restrictions keep modified workflow code on an arbitrary branch from receiving a release credential after secrets have been migrated into those environments. Configure `public-release` with eligible release-manager reviewers, one approval, and **Prevent self-review** off; the public workflow verifies this rule before building and gates only its final publish job.
+Restrict `candidate-tagging` and `source-promotion` to protected private `release/*` branches, `apple-release-signing` to public `v*` tags, and `windows-release-signing` to protected public `master` plus `v*` tags. Configure `public-release` as described in [Public Final Publication Approval](#public-final-publication-approval).
 
 ### Dependabot & Auto-merge Policy
 
@@ -869,7 +892,7 @@ gh secret set CROSS_REPO_TOKEN --repo WSJTX/wsjtx-internal
 | `entitlements.plist` | macOS app entitlements | None (if not already in repo) |
 | `Darwin/com.wsjtx.sysctl.plist` | macOS shared memory config | None (if not already in repo) |
 | `release-state.txt` | Tracked version, channel, RC number, and archival revision | Set before each candidate |
-| `.github/scripts/release-policy.py` | Release identity, asset, archive, signing-report, and manifest gates | None |
+| `.github/scripts/release-policy.py` | Release identity, asset, archive, signing-report, manifest, and public ref promotion policy | None |
 
 ### Secrets Required on `wsjtx-internal`
 

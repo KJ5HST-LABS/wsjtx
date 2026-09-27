@@ -105,4 +105,136 @@ program test_map65_wideband_sync_rows
   call get_candidates(ss,savg,.true.,jz,1,2,0,1,candidates,ncand)
   if (sync(target_bin)%ccfmax /= ccf_before) &
        error stop 'invalid covariance did not preserve the legacy Q65 score'
+
+  call test_candidate_search()
+
+contains
+
+  subroutine reset_search_floor()
+    integer :: bin,row
+    ss(:,1:jz,ia:ib)=1.0
+    savg(:,ia:ib)=real(jz)
+    do bin=ia,ib
+       do row=1,jz
+          ss(1,row,bin)=1.0+0.002*real(mod(17*row+13*bin,23))
+       enddo
+       savg(1,bin)=sum(ss(1,1:jz,bin))
+    enddo
+  end subroutine reset_search_floor
+
+  subroutine add_search_sync(bin,level)
+    integer, intent(in) :: bin
+    real, intent(in) :: level
+    integer :: symbol,row,offset
+    do symbol=1,size(expanded_sync)
+       row=expanded_sync(symbol)+lag
+       do offset=0,2
+          if(row+offset<=jz) ss(1,row+offset,bin)=ss(1,row+offset,bin)+level
+       enddo
+    enddo
+    savg(1,bin)=sum(ss(1,1:jz,bin))
+  end subroutine add_search_sync
+
+  subroutine add_jt65_sync(bin,ooo)
+    integer, intent(in) :: bin
+    logical, intent(in) :: ooo
+    integer, parameter :: standard_symbols(63) = [ &
+         1,4,5,9,10,11,12,13,14,16,18,22,24,25,28,32, &
+         33,34,37,38,39,40,42,43,45,46,47,48,52,53,55,57, &
+         59,60,63,64,66,68,70,73,80,81,89,90,92,95,97,98, &
+         100,102,104,107,108,111,114,119,120,121,122,123,124,125,126]
+    integer :: symbol,row
+    do symbol=1,126
+       if(ooo .eqv. any(standard_symbols==symbol)) cycle
+       row=2*(symbol-1)+1+lag
+       ss(1,row:row+1,bin)=ss(1,row:row+1,bin)+50.0
+    enddo
+    savg(1,bin)=sum(ss(1,1:jz,bin))
+  end subroutine add_jt65_sync
+
+  subroutine assert_one_at(bin,description)
+    integer, intent(in) :: bin
+    character(len=*), intent(in) :: description
+    integer :: index
+    logical :: matches
+    matches=.false.
+    do index=1,ncand
+       if(candidates(index)%iflip==0 .and. &
+            abs(candidates(index)%f-0.001*(bin-1)*df)<0.0005*df .and. &
+            abs(candidates(index)%xdt-(lag*2048.0/11025.0-1.0))<0.001) matches=.true.
+    enddo
+    if(.not.matches) then
+       print '(a)', 'FAIL: '//description
+       error stop 1
+    endif
+  end subroutine assert_one_at
+
+  subroutine test_candidate_search()
+    type(candidate) :: first
+    integer :: first_count, second_bin
+
+    second_bin=target_bin+120
+    call reset_search_floor()
+    call add_search_sync(target_bin,50.0)
+    call get_candidates(ss,savg,.false.,jz,1,2,0,1,candidates,ncand)
+    if(ncand/=1) error stop 'one MAP65 Q65 sync candidate was not isolated'
+    call assert_one_at(target_bin,'one MAP65 Q65 candidate frequency and time')
+    first_count=ncand
+    first=candidates(1)
+
+    call reset_search_floor()
+    call add_search_sync(second_bin,50.0)
+    call get_candidates(ss,savg,.false.,jz,1,2,0,1,candidates,ncand)
+    if(ncand/=1) error stop 'alternate MAP65 candidate was not isolated'
+    call assert_one_at(second_bin,'alternate MAP65 candidate frequency and time')
+
+    call reset_search_floor()
+    call add_search_sync(target_bin,50.0)
+    call get_candidates(ss,savg,.false.,jz,1,2,0,1,candidates,ncand)
+    if(ncand/=first_count .or. candidates(1)%f/=first%f .or. &
+         candidates(1)%xdt/=first%xdt .or. candidates(1)%snr/=first%snr .or. &
+         candidates(1)%iflip/=first%iflip) error stop 'MAP65 A-B-A candidate changed'
+
+    ss(2:4,1:jz,ia:ib)=1.0e20
+    savg(2:4,ia:ib)=1.0e20
+    call get_candidates(ss,savg,.false.,jz,1,2,0,1,candidates,ncand)
+    if(ncand/=first_count .or. candidates(1)%f/=first%f .or. &
+         candidates(1)%snr/=first%snr) error stop 'inactive MAP65 polarization affected search'
+
+    call reset_search_floor()
+    call add_search_sync(target_bin,50.0)
+    call add_search_sync(second_bin,45.0)
+    call get_candidates(ss,savg,.false.,jz,1,2,0,1,candidates,ncand)
+    if(ncand/=2) error stop 'separated MAP65 Q65 signals did not survive'
+
+    call reset_search_floor()
+    call add_search_sync(target_bin,50.0)
+    call add_search_sync(target_bin+2,20.0)
+    call get_candidates(ss,savg,.false.,jz,1,2,0,1,candidates,ncand)
+    if(ncand/=1) error stop 'nearby MAP65 peaks did not collapse to one candidate'
+    call assert_one_at(target_bin,'stronger MAP65 nearby peak survived')
+
+    call reset_search_floor()
+    ss(1,1:jz,target_bin)=ss(1,1:jz,target_bin)+80.0
+    savg(1,target_bin)=sum(ss(1,1:jz,target_bin))
+    call get_candidates(ss,savg,.false.,jz,1,2,0,1,candidates,ncand)
+    if(ncand/=0) error stop 'continuous MAP65 carrier entered the Q65 candidate list'
+
+    call reset_search_floor()
+    call add_jt65_sync(second_bin,.false.)
+    call get_candidates(ss,savg,.false.,jz,1,2,0,1,candidates,ncand)
+    if(sync(second_bin)%iflip/=1) error stop 'standard JT65 sync fixture was not recognized'
+    if(ncand/=0) error stop 'standard JT65 sync entered Q65-only search'
+
+    call reset_search_floor()
+    call add_jt65_sync(second_bin,.true.)
+    call get_candidates(ss,savg,.false.,jz,1,2,0,1,candidates,ncand)
+    if(sync(second_bin)%iflip/=-1) error stop 'OOO JT65 sync fixture was not recognized'
+    if(ncand/=0) error stop 'OOO JT65 sync entered Q65-only search'
+
+    call reset_search_floor()
+    call add_search_sync(target_bin,50.0)
+    call get_candidates(ss,savg,.false.,jz,2,3,0,1,candidates,ncand)
+    if(ncand/=0) error stop 'MAP65 candidate outside search band was admitted'
+  end subroutine test_candidate_search
 end program test_map65_wideband_sync_rows

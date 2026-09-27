@@ -16,6 +16,7 @@
 #include "Audio/TxPlaybackEvidence.hpp"
 #include "Audio/TxRequest.hpp"
 #include "ReceiveAudio.hpp"
+#include "JttyReceiveAudio.hpp"
 
 class QString;
 
@@ -126,6 +127,8 @@ public:
     bool tune () const {return tune_;}
     bool quick () const {return quick_;}
     double period () const {return period_;}
+    ReceivePolicy receive_policy () const { return receive_policy_; }
+    quint64 receive_context () const { return receive_context_; }
     qint32 blocksize () const {return blocksize_;}
     unsigned symbolslength () const {return tx_request_.symbols_length;}
     double framespersymbol () const {return tx_request_.frames_per_symbol;}
@@ -158,6 +161,8 @@ public:
     void tune (bool state) {tune_ = state;}
     void quick (bool state) {quick_ = state;}
     void period (double period) {period_ = period;}
+    void receive_policy (ReceivePolicy policy) { receive_policy_ = policy; }
+    void receive_context (quint64 context) { receive_context_ = context; }
     void blocksize (qint32 blocksize) {blocksize_ = blocksize;}
     void symbolslength (unsigned symbolslength) {tx_request_.symbols_length = symbolslength;}
     void framespersymbol (double framespersymbol) {tx_request_.frames_per_symbol = framespersymbol;}
@@ -191,6 +196,8 @@ public:
     bool tune_;
     bool quick_;
     double period_;
+    ReceivePolicy receive_policy_ = ReceivePolicy::Timed;
+    quint64 receive_context_ = 0;
     qint32 blocksize_;
     TxEvidence::TxRequest tx_request_;
     double spread_;
@@ -245,6 +252,13 @@ public:
   // rig audio data transfer w3sz tci
   Q_SIGNAL void tciframeswritten (qint64);
   Q_SIGNAL void receiveAudio (ReceiveAudio);
+  Q_SIGNAL void continuousAudioAvailable (JttyReceiveMailboxPtr);
+  Q_SIGNAL void continuousReceptionStopped (JttyReceiveMailboxPtr);
+  Q_SIGNAL void continuousReceiveDrained (quint64 requestId, JttyReceiveMailboxPtr);
+  Q_SLOT virtual void requestContinuousReceiveDrain (quint64 requestId)
+  { Q_EMIT continuousReceiveDrained (requestId, {}); }
+  Q_SLOT virtual void receive_discontinuity (JttyReceiveReason) {}
+  Q_SLOT virtual void receive_stop_reason (JttyReceiveReason) {}
 
   // rig audio data transfer  w3sz tci
   Q_SIGNAL void tci_mod_active (bool);

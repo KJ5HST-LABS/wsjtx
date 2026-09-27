@@ -31,7 +31,12 @@ jobs:
       public_tag: ${{ steps.candidate.outputs.public_tag }}
       channel: ${{ steps.candidate.outputs.channel }}
       prior_master: ${{ steps.public.outputs.prior_master }}
+      prior_release_branch: ${{ steps.public.outputs.prior_release_branch }}
       tag_exists: ${{ steps.public.outputs.tag_exists }}
+      advance_master: ${{ steps.public.outputs.advance_master }}
+      newest_ga_line: ${{ steps.public.outputs.newest_ga_line }}
+      legacy_tag_only: ${{ steps.public.outputs.legacy_tag_only }}
+      public_refs_digest: ${{ steps.public.outputs.public_refs_digest }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
@@ -84,6 +89,10 @@ jobs:
           test "$(jq -r .tag "$PROVENANCE")" = "$TAG"
           test "$(jq -r .commit "$PROVENANCE")" = "$TAG_SHA"
           test "$(jq -r .version "$PROVENANCE")" = "$VERSION"
+          python3 .github/scripts/release-linux-images.py verify-provenance \
+            release-linux-images.json "$PROVENANCE"
+          python3 .github/scripts/release-linux-images.py validate \
+            release-linux-images.json --check-remote
           {
             echo "sha=$TAG_SHA"
             echo "tag=$TAG"
@@ -95,22 +104,22 @@ jobs:
       - name: Validate public ref state
         id: public
         env:
-          PUBLIC_TAG: ${{ steps.candidate.outputs.public_tag }}
+          VERSION: ${{ inputs.version }}
           SHA: ${{ steps.candidate.outputs.sha }}
         run: |
           set -euo pipefail
           git remote add public https://github.com/WSJTX/wsjtx.git
-          PUBLIC_TAG_SHA=$(git ls-remote public "refs/tags/$PUBLIC_TAG^{}" | awk '{print $1}')
-          if [ -z "$PUBLIC_TAG_SHA" ]; then
-            PUBLIC_TAG_SHA=$(git ls-remote public "refs/tags/$PUBLIC_TAG" | awk '{print $1}')
-          fi
-          if [ -n "$PUBLIC_TAG_SHA" ] && [ "$PUBLIC_TAG_SHA" != "$SHA" ]; then
-            echo "::error::Public $PUBLIC_TAG already exists at $PUBLIC_TAG_SHA; tags are never moved"
-            exit 1
-          fi
-          PRIOR_MASTER=$(git ls-remote public refs/heads/master | awk '{print $1}')
-          echo "tag_exists=$([ "$PUBLIC_TAG_SHA" = "$SHA" ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
-          echo "prior_master=$PRIOR_MASTER" >> "$GITHUB_OUTPUT"
+          PLAN=$(python3 .github/scripts/release-policy.py plan-public-promotion \
+            "$VERSION" --sha "$SHA" --remote public)
+          {
+            echo "prior_master=$(jq -r '.prior_master // ""' <<<"$PLAN")"
+            echo "prior_release_branch=$(jq -r '.prior_release_branch // ""' <<<"$PLAN")"
+            echo "tag_exists=$(jq -r .tag_exists <<<"$PLAN")"
+            echo "advance_master=$(jq -r .advance_master <<<"$PLAN")"
+            echo "newest_ga_line=$(jq -r .newest_ga_line <<<"$PLAN")"
+            echo "legacy_tag_only=$(jq -r .legacy_tag_only <<<"$PLAN")"
+            echo "public_refs_digest=$(jq -r .public_refs_digest <<<"$PLAN")"
+          } >> "$GITHUB_OUTPUT"
 
       - name: Summarize validation
         env:
@@ -118,7 +127,13 @@ jobs:
           RUN_ID: ${{ inputs.candidate_run_id }}
           SHA: ${{ steps.candidate.outputs.sha }}
           CHANNEL: ${{ steps.candidate.outputs.channel }}
+          BRANCH: ${{ steps.candidate.outputs.branch }}
           PRIOR_MASTER: ${{ steps.public.outputs.prior_master }}
+          PRIOR_RELEASE_BRANCH: ${{ steps.public.outputs.prior_release_branch }}
+          TAG_EXISTS: ${{ steps.public.outputs.tag_exists }}
+          ADVANCE_MASTER: ${{ steps.public.outputs.advance_master }}
+          NEWEST_GA_LINE: ${{ steps.public.outputs.newest_ga_line }}
+          LEGACY_TAG_ONLY: ${{ steps.public.outputs.legacy_tag_only }}
         run: |
           {
             echo "## Public source validation"
@@ -128,11 +143,28 @@ jobs:
             echo "- Exact commit: \`$SHA\`"
             echo "- Public tag: \`v$VERSION\`"
             echo "- Prior public master: \`${PRIOR_MASTER:-<none>}\`"
+            echo "- Public $BRANCH branch: \`${PRIOR_RELEASE_BRANCH:-<create on promotion>}\`"
+            echo "- Newest public GA line: $NEWEST_GA_LINE$([ "$LEGACY_TAG_ONLY" = true ] && echo ' (legacy tag-only state)')"
+            if [ "$TAG_EXISTS" = true ]; then
+              echo "- Existing public tag: already resolves to the exact candidate SHA"
+            else
+              echo "- Existing public tag: will be created"
+            fi
+            if [ "$CHANNEL" = GA ] && [ "$ADVANCE_MASTER" = true ]; then
+              echo "- Public master: advance by fast-forward with the newest-line GA"
+            elif [ "$CHANNEL" = GA ]; then
+              echo "- Public master: leave unchanged; this is an older-line GA"
+            else
+              echo "- Public master: leave unchanged for an RC"
+            fi
           } >> "$GITHUB_STEP_SUMMARY"
 
   promote:
     if: inputs.operation == 'promote'
     needs: validate
+    concurrency:
+      group: public-release-source-promotion
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     timeout-minutes: 10
     environment: source-promotion
@@ -145,11 +177,9 @@ jobs:
       - name: Promote exact source commit
         env:
           TOKEN: ${{ secrets.CROSS_REPO_TOKEN }}
-          PUBLIC_TAG: ${{ needs.validate.outputs.public_tag }}
           SHA: ${{ needs.validate.outputs.sha }}
-          CHANNEL: ${{ needs.validate.outputs.channel }}
-          PRIOR_MASTER: ${{ needs.validate.outputs.prior_master }}
-          TAG_EXISTS: ${{ needs.validate.outputs.tag_exists }}
+          VERSION: ${{ inputs.version }}
+          PUBLIC_REFS_DIGEST: ${{ needs.validate.outputs.public_refs_digest }}
         run: |
           set -euo pipefail
           if [ -z "$TOKEN" ]; then
@@ -157,29 +187,6 @@ jobs:
             exit 1
           fi
           git remote add public "https://x-access-token:${TOKEN}@github.com/WSJTX/wsjtx.git"
-          CURRENT_TAG=$(git ls-remote public "refs/tags/$PUBLIC_TAG" | awk '{print $1}')
-          CURRENT_MASTER=$(git ls-remote public refs/heads/master | awk '{print $1}')
-          test "$CURRENT_MASTER" = "$PRIOR_MASTER"
-          if [ -n "$CURRENT_TAG" ] && [ "$CURRENT_TAG" != "$SHA" ]; then
-            echo "::error::$PUBLIC_TAG was created at a different commit after validation"
-            exit 1
-          fi
-          if [ "$CHANNEL" = GA ] && [ -n "$PRIOR_MASTER" ]; then
-            git cat-file -e "$PRIOR_MASTER^{commit}" 2>/dev/null || git fetch public master
-            git merge-base --is-ancestor "$PRIOR_MASTER" "$SHA" || {
-              echo "::error::GA promotion must advance public master"
-              exit 1
-            }
-          fi
-          if [ "$CHANNEL" = GA ] && [ -z "$CURRENT_TAG" ]; then
-            git push --atomic public \
-              "$SHA:refs/heads/master" "$SHA:refs/tags/$PUBLIC_TAG" \
-              --force-with-lease="refs/heads/master:$PRIOR_MASTER"
-          elif [ "$CHANNEL" = GA ]; then
-            git push public "$SHA:refs/heads/master" \
-              --force-with-lease="refs/heads/master:$PRIOR_MASTER"
-          elif [ -z "$CURRENT_TAG" ]; then
-            git push public "$SHA:refs/tags/$PUBLIC_TAG"
-          else
-            echo "$PUBLIC_TAG already points to $SHA; promotion is idempotently satisfied."
-          fi
+          python3 .github/scripts/release-policy.py promote-public-source \
+            "$VERSION" --sha "$SHA" --remote public \
+            --expected-refs-digest "$PUBLIC_REFS_DIGEST"

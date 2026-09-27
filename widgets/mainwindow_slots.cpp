@@ -175,9 +175,6 @@ void MainWindow::on_stopButton_clicked()                       //stopButton
 {
   ui->pbBandHopping->setChecked(false); // disable band hopping
   monitor (false);
-  if(m_mode=="JTTY" and m_saveAll and !m_diskData) {
-    jtty_save_wav();
-  }
   m_loopall=false;
   finishReferenceSpectrumMeasurement(true);
   if (ui->DX_Call_Button->isChecked()) ui->DX_Call_Button->click ();
