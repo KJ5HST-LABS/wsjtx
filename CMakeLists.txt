@@ -424,7 +424,7 @@ endif ()
 
 # build a library of package functionality (without and optionally with OpenMP support)
 add_library (wsjt_cxx STATIC ${wsjt_CSRCS} ${wsjt_CXXSRCS})
-target_link_libraries (wsjt_cxx ${LIBM_LIBRARIES} Boost::log_setup ${LIBM_LIBRARIES})
+target_link_libraries (wsjt_cxx Boost::log_setup ${LIBM_LIBRARIES})
 
 # build Fortran library routines without and optionally with OpenMP support
 if (WSJT_BUILD_FORTRAN_NON_OPENMP)
