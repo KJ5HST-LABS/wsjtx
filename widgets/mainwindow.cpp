@@ -12789,7 +12789,7 @@ void MainWindow::transmit (double snr)
     double txt=m_nsym_jtty*384.0/12000.0;
     request.symbols_length = m_nsym_jtty;
     request.frames_per_symbol = 384.0;
-    request.frequency_hz = 1500.0;
+    request.frequency_hz = ui->TxFreqSpinBox_2->value () - m_XIT;
     request.tone_spacing = toneSpacing;
     request.synchronize = false;
     request.tr_period_s = txt;
