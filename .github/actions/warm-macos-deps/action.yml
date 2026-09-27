@@ -66,6 +66,7 @@ runs:
         key: ${{ steps.qt-key.outputs.key }}
 
     - name: Build Qt
+      id: qt-build
       if: steps.qt-cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
@@ -154,6 +155,7 @@ runs:
         key: libusb-macos-${{ inputs.arch }}-${{ inputs.runner }}-1.0.27-min${{ inputs.deployment_target }}-epoch1-${{ hashFiles('.github/scripts/build-libusb-macos.sh') }}
 
     - name: Build libusb
+      id: libusb-build
       if: steps.libusb-cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
@@ -177,6 +179,7 @@ runs:
         key: portaudio-macos-${{ inputs.arch }}-${{ inputs.runner }}-19.7.0-min${{ inputs.deployment_target }}-epoch1-${{ hashFiles('.github/scripts/build-portaudio-macos.sh') }}
 
     - name: Build PortAudio
+      id: portaudio-build
       if: steps.portaudio-cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
@@ -200,6 +203,7 @@ runs:
         key: fftw-macos-${{ inputs.arch }}-${{ inputs.runner }}-3.3.10-min${{ inputs.deployment_target }}-epoch1-${{ hashFiles('.github/scripts/build-fftw-macos.sh') }}
 
     - name: Build FFTW
+      id: fftw-build
       if: steps.fftw-cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
@@ -223,6 +227,7 @@ runs:
         key: boost-macos-${{ inputs.arch }}-${{ inputs.runner }}-1.85.0-7009fe1faa1697476bdc7027703a2badb84e849b7b0baad5086b087b971f8617-min${{ inputs.deployment_target }}-epoch1-${{ hashFiles('.github/scripts/build-boost-macos.sh') }}
 
     - name: Build Boost
+      id: boost-build
       if: steps.boost-cache.outputs.cache-hit != 'true'
       shell: bash
       run: |
@@ -263,6 +268,7 @@ runs:
         key: hamlib-macos-${{ inputs.arch }}-${{ inputs.runner }}-${{ inputs.hamlib_branch }}-libusb1.0.27-min${{ inputs.deployment_target }}-epoch1-${{ hashFiles('.github/scripts/build-hamlib-macos.sh', '.github/scripts/build-libusb-macos.sh') }}
 
     - name: Build Hamlib
+      id: hamlib-build
       if: steps.hamlib-cache.outputs.cache-hit != 'true'
       shell: bash
       env:
@@ -300,6 +306,7 @@ runs:
         key: pfunit-macos-${{ inputs.arch }}-${{ inputs.runner }}-v4.14.0-${{ steps.fc.outputs.cache_key }}-min${{ inputs.deployment_target }}-epoch3-${{ hashFiles('.github/scripts/build-pfunit-macos.sh') }}
 
     - name: Build pFUnit
+      id: pfunit-build
       if: steps.pfunit-cache.outputs.cache-hit != 'true'
       shell: bash
       env:
@@ -328,3 +335,11 @@ runs:
       with:
         path: pfunit-prefix
         key: ${{ steps.pfunit-cache.outputs.cache-primary-key }}
+
+    - name: Summarize dependency caches
+      if: always()
+      shell: bash
+      env:
+        CACHE_STEPS: ${{ toJSON(steps) }}
+        COLD_BUILD: "false"
+      run: python3 .github/scripts/summarize-native-caches.py qt libusb portaudio fftw boost hamlib pfunit >> "$GITHUB_STEP_SUMMARY"

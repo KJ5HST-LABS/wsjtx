@@ -238,7 +238,7 @@ contains
     if(nwords.lt.2 .or. length.lt.2 .or. length.gt.3) return
     call decimal_value(words(1)(1:length-1),value,numeric)
     if(.not.numeric) return
-    section_index=pack77_arrl_section_index(trim(words(2)))
+    section_index=pack77_arrl_section_index(words(2))
     call offer(jtty_class_section_atom(value,words(1)(length:length),section_index))
   end subroutine try_compact
 

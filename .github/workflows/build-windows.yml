@@ -12,6 +12,11 @@ on:
         required: false
         type: string
         default: "4.7.2"
+      cold_build:
+        description: "Bypass workflow dependency and compiler caches without saving them"
+        required: false
+        type: boolean
+        default: false
       recache:
         description: "Force ccache to recompile and refresh cached objects"
         required: false
@@ -56,6 +61,11 @@ on:
         required: false
         type: string
         default: "4.7.2"
+      cold_build:
+        description: "Bypass workflow dependency and compiler caches without saving them"
+        required: false
+        type: boolean
+        default: false
       recache:
         description: "Force ccache to recompile and refresh cached objects"
         required: false
@@ -124,7 +134,7 @@ jobs:
         with:
           msystem: MINGW64
           update: true
-          cache: true
+          cache: ${{ !inputs.cold_build }}
           install: >-
             git make tar
             mingw-w64-x86_64-gcc
@@ -161,6 +171,7 @@ jobs:
 
       - name: Restore ccache
         id: ccache
+        if: ${{ !inputs.cold_build }}
         uses: actions/cache/restore@v6
         with:
           path: .ccache
@@ -171,7 +182,11 @@ jobs:
       - name: Configure ccache
         run: |
           WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
-          echo "CCACHE_DIR=${WORKSPACE}/.ccache" >> "$GITHUB_ENV"
+          if [ "${{ inputs.cold_build }}" = "true" ]; then
+            echo "CCACHE_DIR=$(mktemp -d)" >> "$GITHUB_ENV"
+          else
+            echo "CCACHE_DIR=${WORKSPACE}/.ccache" >> "$GITHUB_ENV"
+          fi
           echo "ccache recache: ${{ inputs.recache }}"
           if [ "${{ inputs.recache }}" = "true" ]; then
             echo "CCACHE_RECACHE=1" >> "$GITHUB_ENV"
@@ -189,6 +204,7 @@ jobs:
           boost_source_sha256: ${{ env.BOOST_SOURCE_SHA256 }}
           windows_api_floor: ${{ env.WSJT_WINDOWS_API_FLOOR }}
           hamlib_branch: ${{ inputs.hamlib_branch }}
+          cold_build: ${{ inputs.cold_build }}
           save_caches: ${{ github.event_name != 'pull_request' }}
 
       - name: Install OmniRig
@@ -241,6 +257,7 @@ jobs:
             -Wno-dev
 
       - name: Build and test targets
+        id: compile
         run: cmake --build wsjtx-build -j$(nproc)
 
       - name: Show ccache stats
@@ -248,11 +265,11 @@ jobs:
         run: ccache --show-stats
 
       - name: Report suppressed ccache save
-        if: ${{ (inputs.save_ccache || inputs.recache) && github.ref != 'refs/heads/develop' }}
+        if: ${{ !inputs.cold_build && (inputs.save_ccache || inputs.recache) && github.ref != 'refs/heads/develop' }}
         run: echo "::notice::Not saving ccache because shared compiler caches are published only from develop"
 
       - name: Save ccache
-        if: ${{ success() && (inputs.save_ccache || inputs.recache) && github.ref == 'refs/heads/develop' && steps.ccache.outputs.cache-hit != 'true' }}
+        if: ${{ !inputs.cold_build && success() && (inputs.save_ccache || inputs.recache) && github.ref == 'refs/heads/develop' && steps.ccache.outputs.cache-hit != 'true' }}
         uses: actions/cache/save@v6
         with:
           path: .ccache
@@ -392,3 +409,12 @@ jobs:
             wsjtx-build/jt9.exe
             wsjtx-build/wsprd.exe
             wsjtx-build/wsjtx.exe
+
+      - name: Summarize native caches
+        if: always()
+        shell: bash
+        env:
+          CACHE_STEPS: ${{ toJSON(steps) }}
+          COLD_BUILD: ${{ inputs.cold_build }}
+          RECACHE: ${{ inputs.recache }}
+        run: python .github/scripts/summarize-native-caches.py --compiler >> "$GITHUB_STEP_SUMMARY"

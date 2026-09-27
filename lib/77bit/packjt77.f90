@@ -34,8 +34,6 @@ module packjt77
   ! decode threads get larger slots.
   integer, dimension(1:25) :: thread_call_index=(/0,200,300,370,420,460,500,530,560,590,610,630,650,670,690,710, &
                                         730,750,770,790,800,810,820,830,840/)
-  integer n28a_configured,n28b_configured
-!$omp threadprivate(n28a_configured,n28b_configured)
 ! Everything is private unless exported here; imported grammar/schema
 ! symbols therefore never re-export through "use packjt77".
   private
@@ -232,21 +230,6 @@ type(unpack77_core_result) function pack77_decode_neutral(c77) result(decoded)
   decoded=unpack77_core(c77,context)
 end function pack77_decode_neutral
 
-integer function pack77_wspr_payload_type(c77) result(wspr_type)
-  character(len=77), intent(in) :: c77
-
-! Bit columns 49/50 are the j49/j50 subtype selector fields fixed by the
-! WSPR schemas in packjt77_schema; keep in sync with those field offsets.
-  wspr_type=0
-  if(c77(50:50).eq.'1') then
-     wspr_type=2
-  else if(c77(49:49).eq.'0') then
-     wspr_type=1
-  else if(c77(49:49).eq.'1') then
-     ! Invalid selector 110 reaches Type 3; the schema decoder rejects it.
-     wspr_type=3
-  endif
-end function pack77_wspr_payload_type
 
 
 
@@ -759,25 +742,7 @@ integer function pack77_free_text_reject_status(msg) result(status)
   endif
 end function pack77_free_text_reject_status
 
-logical function pack77_exact_free_text_ok(msg) result(ok)
-  character(len=*), intent(in) :: msg
 
-  ok=.false.
-  if(len_trim(msg).gt.13) return
-  ok=pack77_free_text_alphabet_ok(msg(1:len_trim(msg)))
-end function pack77_exact_free_text_ok
-
-logical function pack77_free_text_alphabet_ok(msg) result(ok)
-  character(len=*), intent(in) :: msg
-  character(len=42), parameter :: alphabet=' 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ+-./?'
-  integer :: i
-
-  ok=.false.
-  do i=1,len_trim(msg)
-     if(index(alphabet,msg(i:i)).eq.0) return
-  enddo
-  ok=.true.
-end function pack77_free_text_alphabet_ok
 
 ! Must mirror the character canonicalization of pack77_split_source_tokens
 ! (NUL->space, uppercase fold, blank collapse) so free text and structured
@@ -1573,7 +1538,6 @@ subroutine unpack77_decode_i3_0(c77,context,decoded)
      n28b=dxpedition_fields%n28b
      n10=dxpedition_fields%n10
      n5=dxpedition_fields%n5
-     call record_configured_n28_pair(context,n28a,n28b)
      irpt=2*n5 - 30
      crpt=pack77_format_snr_report(irpt)
      call unpack28_for_context(context,n28a,call_1,unpk28_success)
@@ -1612,7 +1576,6 @@ subroutine unpack77_decode_i3_0(c77,context,decoded)
      intx=field_day_fields%intx
      nclass=field_day_fields%nclass
      isec=field_day_fields%isec
-     call record_configured_n28_pair(context,n28a,n28b)
      if(isec.gt.PACK77_NSEC .or. isec.lt.1) then
          decoded%success=.false.
          isec=1
@@ -1640,7 +1603,7 @@ subroutine unpack77_decode_i3_0(c77,context,decoded)
 1007 format(3z6.6)
 
   else if(decoded%n3.eq.6) then
-     select case(pack77_wspr_payload_type(c77))
+     select case(pack77_wspr_payload_type(c77,.true.))
      case(2)
         call decode_pack77_wspr_type2(c77,wspr2_fields,ok,.true.)
         if(.not.ok) then
@@ -1739,7 +1702,6 @@ subroutine unpack77_decode_type12(c77,context,decoded)
   ipb=type12_fields%ipb
   ir=type12_fields%ir
   igrid4=type12_fields%igrid4
-  call record_configured_n28_pair(context,n28a,n28b)
   call unpack28_for_context(context,n28a,call_1,unpk28_success)
   if(context%nrx.eq.1 .and. context%mycall_set .and. &
        context%hashmy22.eq.(n28a-PACK77_NTOKENS)) then
@@ -1773,7 +1735,7 @@ subroutine unpack77_decode_type12(c77,context,decoded)
      if(.not.unpkg4_success) decoded%success=.false.
      decoded%msg=pack77_format_exchange_message(call_1,call_2,ir,grid4,.true.)
      if(decoded%msg(1:3).eq.'CQ ' .and. ir.eq.1) decoded%success=.false.
-     if(context%strict_var_guards .and. .not.unpack77_type12_var_guard_ok( &
+     if(context%strict_var_guards .and. .not.pack77_configured_type12_ok( &
           call_1,call_2,grid4,ir)) decoded%success=.false.
   else
      irpt=igrid4-PACK77_MAXGRID4
@@ -1812,7 +1774,6 @@ subroutine unpack77_decode_type3(c77,context,decoded)
   ir=type3_fields%ir
   irpt=type3_fields%irpt
   nexch=type3_fields%nexch
-  call record_configured_n28_pair(context,n28a,n28b)
   crpt=pack77_format_rtty_report(irpt)
   call unpack28_for_context(context,n28a,call_1,unpk28_success)
   if(.not.unpk28_success) decoded%success=.false.
@@ -1885,7 +1846,7 @@ subroutine unpack77_decode_type4(c77,context,decoded)
   else
      decoded%msg='CQ '//trim(call_2)
   endif
-  if(context%strict_var_guards .and. .not.unpack77_type4_var_guard_ok( &
+  if(context%strict_var_guards .and. .not.pack77_configured_type4_ok( &
        call_1,call_2,decoded%msg,iflip,icq,nrpt)) decoded%success=.false.
 
   return
@@ -2003,92 +1964,9 @@ subroutine unpack28_for_context(context,n28,c13,success)
   return
 end subroutine unpack28_for_context
 
-subroutine record_configured_n28_pair(context,n28a,n28b)
-  type(unpack77_context), intent(in) :: context
-  integer, intent(in) :: n28a,n28b
 
-  if(.not.context%configured) return
-  n28a_configured=n28a
-  n28b_configured=n28b
 
-  return
-end subroutine record_configured_n28_pair
 
-logical function unpack77_type12_var_guard_ok(call_1,call_2,grid4,ir) result(ok)
-! Configured decode rejects a few hash-collision renders that parse as valid
-! source messages but cannot round-trip through the configured var encoder.
-  character(len=*), intent(in) :: call_1,call_2,grid4
-  integer, intent(in) :: ir
-  type(pack77_type12_call_source) :: source
-  logical :: source_ok
-
-  ok=.true.
-  if(ir.eq.0 .and. call_1(1:1).eq.'<' .and. grid4.ne.'RR73') then
-     call pack77_parse_type12_call(call_2,.false.,source,source_ok)
-     if(source_ok .and. source%suffix.eq.PACK77_TYPE12_SUFFIX_R) ok=.false.
-  endif
-
-  return
-end function unpack77_type12_var_guard_ok
-
-logical function unpack77_type4_var_guard_ok(call_1,call_2,msg,iflip,icq,nrpt) result(ok)
-! Type 4 can decode arbitrary 58-bit text as plausible calls; configured var
-! mode keeps only renders that also satisfy the source-side Type 4 grammar.
-  character(len=*), intent(in) :: call_1,call_2,msg
-  integer, intent(in) :: iflip,icq,nrpt
-  integer :: nmsglen,indxp,nlencall2,nindxspace
-  type(pack77_type4_source) :: source
-  logical :: source_ok
-
-  ok=.true.
-  call pack77_parse_type4_source(msg,source,source_ok)
-  if(.not.source_ok) ok=.false.
-  if(.not.unpack77_type4_call_guard_ok(call_2)) ok=.false.
-  if(msg(1:3).ne.'CQ ' .and. .not.unpack77_type4_call_guard_ok(call_1)) &
-       ok=.false.
-  nmsglen=len_trim(msg)
-  if(ok .and. nmsglen.gt.0) then
-     indxp=index(msg,'/P ')
-     if((icq.eq.0 .and. nrpt.eq.0 .and. (indxp.lt.1 .or. indxp.gt.7)) .or. &
-          icq.eq.1) then
-        if(msg(nmsglen:nmsglen).eq.'>') ok=.false.
-     endif
-  endif
-  if(ok .and. iflip.eq.0 .and. icq.eq.0 .and. nrpt.eq.0) then
-     nlencall2=len_trim(call_2)
-     if(nlencall2.gt.9) then
-        if(call_2(1:1).eq.'/' .or. call_2(nlencall2:nlencall2).eq.'/') &
-             ok=.false.
-        nindxspace=index(call_2,' ')
-        if(nindxspace.gt.0 .and. nindxspace.lt.nlencall2) ok=.false.
-     endif
-  endif
-
-  return
-end function unpack77_type4_var_guard_ok
-
-logical function unpack77_type4_call_guard_ok(call_text) result(ok)
-  character(len=*), intent(in) :: call_text
-  integer :: ispace,islash
-
-  ok=pack77_valid_hash_call_token(call_text) .or. &
-       pack77_valid_type4_c11(call_text)
-  if(.not.ok) return
-  if(pack77_valid_hash_call_token(call_text)) return
-  if(pack77_is_digit_char(call_text(1:1)) .and. &
-       pack77_is_digit_char(call_text(2:2))) ok=.false.
-  if(len_trim(call_text).eq.11) then
-     ispace=index(call_text,' ')
-     if(ispace.gt.0 .and. ispace.lt.12) ok=.false.
-     islash=index(call_text,'/')
-     if(islash.eq.1 .or. islash.eq.2 .or. islash.eq.11 .or. &
-          (islash.eq.10 .and. pack77_is_letter_char(call_text(11:11)) .and. &
-          call_text(11:11).ne.'P')) ok=.false.
-     if(islash.lt.6 .and. pack77_is_digit_char(call_text(11:11))) ok=.false.
-  endif
-
-  return
-end function unpack77_type4_call_guard_ok
 
 subroutine lower_c28_slot(token,allow_auto_hash,n28,hash_facts,ok)
   character(len=*), intent(in) :: token

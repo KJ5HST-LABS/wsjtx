@@ -128,20 +128,25 @@ Source promotion makes the reviewed source public. The public workflow builds an
 
 ### Build Strategy
 
-Each platform build does the same two-stage process:
-1. **Build Hamlib 4.7.2** from source (cached after first run)
-2. **Build WSJT-X** against the Hamlib install prefix
+Linux candidate and public builds compile WSJT-X from the selected source commit using prepared dependency images. macOS and Windows build native dependency prefixes and reuse them through Actions caches.
 
-This matches what developers do locally but doesn't use the superbuild. The superbuild's ExternalProject approach doesn't map well to CI caching. Building Hamlib directly and caching its install prefix gives better cache hits and faster builds.
+### Cache readiness
 
-### What Gets Cached
+Native build summaries show dependency cache hits, misses, and rebuild results. Compiler-cache rows distinguish exact and fallback restores from a miss; a forced recompile is reported separately. The dependency warmer also summarizes each selected platform's result. A cache hit alone does not establish that the application build passed.
 
-| Cache | Key | Saves |
-|-------|-----|-------|
-| Hamlib install (per platform × arch) | `hamlib-{os}-{arch}-{branch}-{workflow-hash}` on macOS and Linux (separate caches for macOS arm64 vs. x86_64 and Linux x86_64 vs. aarch64); `hamlib-windows-{branch}-{workflow-hash}` on Windows (single arch) | 5-10 min per platform |
-| MSYS2 packages | Built-in `cache: true` parameter | 3-5 min on Windows |
+Use `cold_build=true` on a manually dispatched macOS or Windows build to bypass workflow-managed dependency and compiler-cache restores and saves. Windows also bypasses the MSYS2 package cache. This leaves the runner's preinstalled software in place. `recache` only forces application recompilation and does not make dependencies cold. The macOS build budget is 180 minutes; confirm a cold run completes dependency builds, tests, and packaging within that budget before relying on it for a release.
 
-Caches invalidate when the Hamlib branch changes or the workflow file changes. This is intentional — if you change build flags, the cache rebuilds.
+### Prepared Linux release images
+
+Before creating a candidate, run Prepare Release Dependencies from protected private `develop`, selecting a protected source branch and an explicit validated image generation. Refresh incompatible or missing images through the existing Linux image publisher first.
+
+Preparation verifies all four images against the selected source recipes: x86_64, aarch64, and the ARMHF cross-builder/runtime pair. It copies them to `ghcr.io/wsjtx/wsjtx` without changing their digests and verifies anonymous access. Images contain dependency tooling, not WSJT-X application builds. Review changes to copied scripts and image metadata before public preparation; a digest-preserving copy retains the original OCI labels and build metadata.
+
+The private workflow needs package read access to the internal images and write access to the destination packages through its `GITHUB_TOKEN`. Destination packages must be public. Configure those package permissions separately; the workflow does not change visibility or repository settings. Prepared image retention tags must remain available for release rebuilds.
+
+Download the successful `prepared-release-dependencies` artifact and review `release-linux-images.json`. Commit that file on the private release branch before candidate tagging. It records the validated generation, four public image digests, and their recipe fingerprints. Application-only changes may reuse it; recipe changes require a new preparation. Keep the detailed preparation record with the private workflow artifacts.
+
+Candidate and public builds consume the committed selection and build WSJT-X afresh. They stop on missing images or incompatible recipes instead of resolving `stable` or refreshing images during release. Candidate provenance binds the selection's checksum and digests; source promotion verifies that binding. The public release manifest records the same builder digests.
 
 ### What the Release Produces
 
@@ -627,6 +632,8 @@ Only do this after CI is green on all six targets.
 On `release/X.Y`, commit the numeric version and matching `DEVEL`, `RC n`, or `GA` state in `release-state.txt`. For `3.2.0-rc1`, use `version=3.2.0`, `channel=RC`, and `rc=1`. Leave its `$Format:%H$` revision placeholder intact so Git substitutes the source SHA when exporting an archive. Wait for branch CI before tagging. This metadata commit is required even when GA application source is otherwise identical to the last RC, because it makes builds from GitHub's source archives identify themselves correctly.
 
 ### Step 2: Build the Private Candidate
+
+Commit the reviewed [Linux image selection](#prepared-linux-release-images) before creating the candidate.
 
 Run Prepare Release Candidate on `release/X.Y` at the expected SHA. Use `operation=validate` first and review the summary, then use `operation=create`. This creates the immutable `build/v...` tag and private validation artifacts. It does not publish or copy source.
 

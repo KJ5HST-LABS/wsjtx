@@ -28,12 +28,12 @@ on:
         type: string
         default: ""
       image_source:
-        description: "Builder image source: internal or public-release"
+        description: "Builder image source: internal or prepared public-release"
         required: false
         type: string
         default: "internal"
       image_digest:
-        description: "Required sha256 digest for a public-release builder image"
+        description: "Required sha256 digest for a prepared public builder image"
         required: false
         type: string
         default: ""
@@ -205,6 +205,7 @@ jobs:
           IMAGE_DIGEST: ${{ inputs.image_digest }}
           ARMHF_CROSS_IMAGE_DIGEST: ${{ inputs.armhf_cross_image_digest }}
           REQUEST_REPOSITORY: ${{ github.repository }}
+          ALLOW_STALE_IMAGE: ${{ inputs.allow_stale_image }}
         shell: bash
         run: |
           case "$ARCH" in
@@ -226,8 +227,15 @@ jobs:
               package_root=ghcr.io/wsjtx/wsjtx-internal
               ;;
             public-release)
-              if [ "$REQUEST_REPOSITORY" != WSJTX/wsjtx ]; then
-                echo "::error::Public release images may only be used by WSJTX/wsjtx"
+              case "$REQUEST_REPOSITORY:$GITHUB_REF" in
+                WSJTX/wsjtx:refs/tags/v*|WSJTX/wsjtx-internal:refs/heads/release/*) ;;
+                *)
+                  echo "::error::Prepared public images require a public release tag or private release branch"
+                  exit 2
+                  ;;
+              esac
+              if [ "$ALLOW_STALE_IMAGE" = true ]; then
+                echo "::error::Prepared public images require strict recipe verification"
                 exit 2
               fi
               if [[ ! "$IMAGE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
@@ -244,7 +252,7 @@ jobs:
                 exit 2
               fi
               if [ -z "$REQUESTED_TAG" ]; then
-                echo "::error::public-release images require their release-specific image_tag"
+                echo "::error::public-release images require their validated generation tag"
                 exit 2
               fi
               package_root=ghcr.io/wsjtx/wsjtx

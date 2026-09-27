@@ -31,6 +31,8 @@ set (UG_SRCS
   install-windows.adoc
   introduction.adoc
   intro_subsections.adoc
+  jtty.adoc
+  jtty_n1mm_integration.adoc
   keyboard_mouse.adoc
   logging.adoc
   make-qso.adoc
@@ -40,6 +42,7 @@ set (UG_SRCS
   new_features.adoc
   platform-dependencies.adoc
   protocols.adoc
+  qmap.adoc
   settings-advanced.adoc
   settings-alerts.adoc
   settings-audio.adoc
@@ -120,6 +123,7 @@ set (UG_IMGS
   images/JT4F.png
   images/JT65B.png
   images/jtalert.png
+  images/jtty.png
   images/keyboard-shortcuts.png
   images/letter-s.png
   images/log-qso.png
@@ -142,6 +146,7 @@ set (UG_IMGS
   images/psk-reporter.png
   images/Q65-60A_EME_6m.png
   images/Q65_6m_ionoscatter.png
+  images/qmap_all.png
   images/r3666-config-screen-80.png
   images/r3666-main-ui-80.png
   images/r4148-txmac-ui.png

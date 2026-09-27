@@ -60,6 +60,8 @@ jobs:
           fi
           git checkout --detach "$EXPECTED_SHA"
           python3 .github/scripts/release-policy.py validate-source "$VERSION"
+          python3 .github/scripts/release-linux-images.py validate \
+            release-linux-images.json --check-remote
 
           CI_RUN=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$EXPECTED_SHA&status=completed&per_page=20" \
             --jq '.workflow_runs | sort_by(.created_at) | reverse | .[0]')

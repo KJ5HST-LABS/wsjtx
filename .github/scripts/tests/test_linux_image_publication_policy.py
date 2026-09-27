@@ -177,5 +177,32 @@ class LinuxImagePublicationPolicyTests(unittest.TestCase):
         self.assertIn("stable_packages+=(linux-noble)", rollback)
 
 
+    def test_release_paths_consume_the_same_committed_selection(self):
+        candidate = (ROOT / ".github/workflows/release.yml").read_text()
+        public = (ROOT / ".github/workflows/public-release.yml").read_text()
+        tagging = (ROOT / ".github/workflows/release-tag-helper.yml").read_text()
+        promotion = (ROOT / ".github/workflows/promote-release.yml").read_text()
+        for workflow in (candidate, public):
+            self.assertIn("release-linux-images.py validate release-linux-images.json", workflow)
+            self.assertIn('--check-remote --github-output "$GITHUB_OUTPUT"', workflow)
+            self.assertEqual(workflow.count("image_source: public-release"), 3)
+            for output in ("x86_64_digest", "aarch64_digest", "armhf_digest", "armhf_cross_digest"):
+                self.assertIn("needs.prepare.outputs." + output, workflow)
+            self.assertNotIn("allow_stale_image: true", workflow)
+            self.assertNotIn("resolve-linux-ci-image-tag.py", workflow)
+        self.assertNotIn("publish-linux-ci-images.yml", public)
+        self.assertNotIn("packages: write", public)
+        self.assertIn("environment: public-release", public)
+        self.assertIn("linux_images: $linux_images", candidate)
+        self.assertIn("release-linux-images.py provenance release-linux-images.json", candidate)
+        self.assertIn("release-linux-images.py verify-provenance", promotion)
+        self.assertLess(tagging.index("release-linux-images.py validate"), tagging.index("- name: Create candidate tag"))
+
+    def test_prepared_image_consumption_keeps_source_and_recipe_guards(self):
+        self.assertIn("WSJTX/wsjtx:refs/tags/v*|WSJTX/wsjtx-internal:refs/heads/release/*", BUILD)
+        self.assertIn('if [ "$ALLOW_STALE_IMAGE" = true ]; then', BUILD)
+        self.assertIn("Prepared public images require strict recipe verification", BUILD)
+
+
 if __name__ == "__main__":
     unittest.main()
