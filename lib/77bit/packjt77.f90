@@ -232,21 +232,6 @@ type(unpack77_core_result) function pack77_decode_neutral(c77) result(decoded)
   decoded=unpack77_core(c77,context)
 end function pack77_decode_neutral
 
-integer function pack77_wspr_payload_type(c77) result(wspr_type)
-  character(len=77), intent(in) :: c77
-
-! Bit columns 49/50 are the j49/j50 subtype selector fields fixed by the
-! WSPR schemas in packjt77_schema; keep in sync with those field offsets.
-  wspr_type=0
-  if(c77(50:50).eq.'1') then
-     wspr_type=2
-  else if(c77(49:49).eq.'0') then
-     wspr_type=1
-  else if(c77(49:49).eq.'1') then
-     ! Invalid selector 110 reaches Type 3; the schema decoder rejects it.
-     wspr_type=3
-  endif
-end function pack77_wspr_payload_type
 
 
 
@@ -1640,7 +1625,7 @@ subroutine unpack77_decode_i3_0(c77,context,decoded)
 1007 format(3z6.6)
 
   else if(decoded%n3.eq.6) then
-     select case(pack77_wspr_payload_type(c77))
+     select case(pack77_wspr_payload_type(c77,.true.))
      case(2)
         call decode_pack77_wspr_type2(c77,wspr2_fields,ok,.true.)
         if(.not.ok) then

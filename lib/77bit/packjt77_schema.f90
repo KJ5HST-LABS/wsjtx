@@ -611,6 +611,36 @@ contains
     endif
   end subroutine decode_pack77_tag
 
+  integer function pack77_wspr_payload_type(c77,binary_checked) result(wspr_type)
+    character(len=77), intent(in) :: c77
+    logical, intent(in), optional :: binary_checked
+    type(bit_field) :: selector
+    integer :: value
+    logical :: ok
+
+    wspr_type=0
+    ok=pack77_binary_precondition(c77,binary_checked)
+    selector=PACK77_SCHEMA_WSPR_TYPE2%fields(4)
+    selector%min_value=0_int64
+    call get_int(ok,c77,selector,value)
+    if(.not.ok) return
+    if(value.eq.1) then
+       wspr_type=2
+       return
+    endif
+
+    selector=PACK77_SCHEMA_WSPR_TYPE1%fields(4)
+    selector%max_value=1_int64
+    call get_int(ok,c77,selector,value)
+    if(.not.ok) return
+    if(value.eq.0) then
+       wspr_type=1
+    else
+       ! Selector 110 belongs to this dispatch path but fails Type 3 decoding.
+       wspr_type=3
+    endif
+  end function pack77_wspr_payload_type
+
   subroutine decode_pack77_free_text(c77,fields,ok,binary_checked)
     character(len=77), intent(in) :: c77
     type(pack77_free_text_fields), intent(out) :: fields
