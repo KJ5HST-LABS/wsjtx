@@ -27,6 +27,18 @@ namespace Radio
     // suffixes that are often used and should not be interpreted as a
     // DXCC Entity prefix used as a suffix
     QRegularExpression non_prefix_suffix {R"(\A([0-9AMPQR]|QRP|F[DF]|[AM]M|L[HT]|LGT)\z)"};
+
+    QString callsign_without_operating_suffixes (QString callsign)
+    {
+      callsign = callsign.toUpper ();
+      auto slash_pos = callsign.lastIndexOf ('/');
+      while (slash_pos >= 0 && callsign.mid (slash_pos + 1).contains (non_prefix_suffix))
+        {
+          callsign.truncate (slash_pos);
+          slash_pos = callsign.lastIndexOf ('/');
+        }
+      return callsign;
+    }
   }
 
 
@@ -145,10 +157,10 @@ namespace Radio
       && !callsign.contains (strict_standard_callsign_re);
   }
 
-  // split on first '/' and return the larger portion or the whole if
-  // there is no '/'
+  // Ignore operating suffixes and return the larger callsign component.
   QString base_callsign (QString callsign)
   {
+    callsign = callsign_without_operating_suffixes (callsign);
     auto slash_pos = callsign.indexOf ('/');
     if (slash_pos >= 0)
       {
@@ -162,13 +174,14 @@ namespace Radio
             callsign = callsign.left (slash_pos);
           }
       }
-    return callsign.toUpper ();
+    return callsign;
   }
 
   // analyze the callsign and determine the effective prefix, returns
   // the full call if no valid prefix (or prefix as a suffix) is specified
   QString effective_prefix (QString callsign)
   {
+    callsign = callsign_without_operating_suffixes (callsign);
     auto prefix = callsign;
     auto slash_pos = callsign.indexOf ('/');
     if (slash_pos >= 0)
@@ -182,14 +195,8 @@ namespace Radio
         else
           {
             prefix = callsign.mid (slash_pos + 1);
-            if (prefix.contains (non_prefix_suffix))
-              {
-                prefix = callsign.left (slash_pos); // ignore
-                                                    // non-prefix
-                                                    // suffixes
-              }
           }
       }
-    return prefix.toUpper ();
+    return prefix;
   }
 }
