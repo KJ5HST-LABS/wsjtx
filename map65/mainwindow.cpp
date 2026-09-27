@@ -51,20 +51,7 @@
 #include "fortran_mutex.hpp"
 #include "pskreporter_settings.h"
 #include "runtime_paths.h"
-
-#if !defined(Q_OS_WIN)
-extern "C" {
-    void ptt_set_override(const char *path);
-}
-#endif
-
-extern "C" {
-    int ptt_(int* nport, int* itx, int* iptt);
-}
-
-#if !defined(Q_OS_WIN)
-extern "C" void ptt_close(void);
-#endif
+#include "libm65/ptt.h"
 
 #ifdef MessageBox
 #undef MessageBox
@@ -1865,9 +1852,7 @@ void MainWindow::closeEvent(QCloseEvent *e)
     }
     if (m_wide_graph_window) m_wide_graph_window->close();
 
-#if !defined(Q_OS_WIN)
     ptt_close();
-#endif
 
     if (g_pTxTune) {
         g_pTxTune->close();
@@ -2450,8 +2435,9 @@ void MainWindow::guiUpdate()
   if(bTune and !bTune0) bMonitoring0=m_monitoring;
   bTune0=bTune;
 
-  auto stopForPttError = [this] {
-    pttReleasePending = true;
+  auto stopForPttError = [this] (int error) {
+    bool deviceLost = error == PTT_DEVICE_LOST;
+    pttReleasePending = !deviceLost;
     pttReleaseRetry.start();
     nc0 = nc1 = 1;
     iptt0 = iptt;
@@ -2461,7 +2447,13 @@ void MainWindow::guiUpdate()
     bTune = false;
     soundOutThread.quitExecution = true;
     m_transmitting = false;
-    if (!m_pttErrorShown) {
+    if (deviceLost) {
+      m_wide_graph_window->enableSetRxHardware(true);
+      m_pttErrorShown = false;
+      msgBox(tr("Lost connection to PTT port: %1. PTT release could not be confirmed. "
+                "Check that the radio is no longer transmitting before starting another transmission.")
+             .arg(pttPath));
+    } else if (!m_pttErrorShown) {
       m_pttErrorShown = true;
       msgBox(tr("Cannot open or control PTT port: %1").arg(pttPath));
     }
@@ -2479,8 +2471,8 @@ void MainWindow::guiUpdate()
       pttPortNumber = m_pttPortNumber;
       int itx = 1;
       int ierr = ptt_(&pttPortNumber, &itx, &iptt);
-      if (ierr != 0) {
-        stopForPttError();
+      if (ierr != PTT_OK) {
+        stopForPttError(ierr);
         return;
       }
 
@@ -2579,8 +2571,9 @@ void MainWindow::guiUpdate()
   if(nc0 == 0 || (pttReleasePending && pttReleaseRetry.hasExpired(1000))) {
     if(m_bIQxt) m_wide_graph_window->rx570();     // Set Si570 back to Rx Freq
     int itx = 0;
-    if (ptt_(&pttPortNumber, &itx, &iptt) != 0) {
-      stopForPttError();
+    int ierr = ptt_(&pttPortNumber, &itx, &iptt);
+    if (ierr != PTT_OK) {
+      stopForPttError(ierr);
       return;
     }
     pttReleasePending = false;

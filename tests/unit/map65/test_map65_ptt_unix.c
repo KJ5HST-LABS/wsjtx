@@ -8,14 +8,17 @@
 #include <errno.h>
 #include <string.h>
 #include <stdarg.h>
+#include <poll.h>
 
 static int serial_open(const char *, int, ...);
 static int serial_ioctl(int, unsigned long, ...);
 static int serial_close(int);
+static int serial_poll(struct pollfd *, nfds_t, int);
 
 #define open serial_open
 #define ioctl serial_ioctl
 #define close serial_close
+#define poll serial_poll
 #ifndef PTT_UNIX_SOURCE
 #define PTT_UNIX_SOURCE "../../../map65/libm65/ptt_unix.c"
 #endif
@@ -23,6 +26,7 @@ static int serial_close(int);
 #undef open
 #undef ioctl
 #undef close
+#undef poll
 
 enum operation { OPEN_PORT, GET_LINES, SET_LINES, CLOSE_PORT };
 struct event {
@@ -40,6 +44,9 @@ static int next_descriptor = 10;
 static int fail_open;
 static unsigned long fail_ioctl_request;
 static int fail_ioctl_countdown;
+static int failed_descriptor;
+static short poll_events;
+static int fail_poll;
 static int mock_failed;
 static int iptt;
 static const int ptt_lines = TIOCM_RTS | TIOCM_DTR;
@@ -70,7 +77,8 @@ static int serial_open(const char *path, int flags, ...)
     int descriptor = next_descriptor++;
     struct event *event = record(OPEN_PORT, descriptor);
     snprintf(event->path, sizeof(event->path), "%s", path);
-    if (!(flags & O_NONBLOCK) || (flags & O_ACCMODE) != O_RDWR
+    if (!(flags & O_NONBLOCK) || !(flags & O_NOCTTY)
+        || (flags & O_ACCMODE) != O_RDWR
         || descriptor >= (int)(sizeof(opened) / sizeof(opened[0]))) {
         mock_failed = 1;
         return -1;
@@ -99,7 +107,8 @@ static int serial_ioctl(int descriptor, unsigned long request, ...)
         return -1;
     }
     event->lines = request == TIOCMSET ? *value : lines[descriptor];
-    if (request == fail_ioctl_request && --fail_ioctl_countdown == 0) {
+    if (descriptor == failed_descriptor
+        || (request == fail_ioctl_request && --fail_ioctl_countdown == 0)) {
         errno = EIO;
         return -1;
     }
@@ -121,6 +130,21 @@ static int serial_close(int descriptor)
     return 0;
 }
 
+static int serial_poll(struct pollfd *ports, nfds_t count, int timeout)
+{
+    if (count != 1 || timeout != 0 || ports[0].events != 0
+        || ports[0].fd < 0 || ports[0].fd >= 64 || !opened[ports[0].fd]) {
+        mock_failed = 1;
+        return -1;
+    }
+    if (fail_poll) {
+        errno = EINTR;
+        return -1;
+    }
+    ports[0].revents = poll_events;
+    return poll_events ? 1 : 0;
+}
+
 static int command(int on)
 {
     int unused = 0;
@@ -137,6 +161,9 @@ static void reset(void)
 {
     fail_open = 0;
     fail_ioctl_request = 0;
+    failed_descriptor = -1;
+    poll_events = 0;
+    fail_poll = 0;
     ptt_close();
     ptt_set_override(NULL);
     event_count = 0;
@@ -335,6 +362,71 @@ static int release_get_failure(void) { return release_failure(TIOCMGET, "/dev/se
 static int release_set_failure(void) { return release_failure(TIOCMSET, "/dev/serial-B"); }
 static int disable_release_failure(void) { return release_failure(TIOCMSET, NULL); }
 
+static int disconnected_port(int during_tx, const char *next_path)
+{
+    ptt_set_override("/dev/serial-A");
+    CHECK(command(1) == PTT_OK);
+    if (!during_tx)
+        CHECK(command(0) == PTT_OK);
+    failed_descriptor = 10;
+    poll_events = POLLHUP | POLLERR;
+    event_count = 0;
+    CHECK(command(during_tx ? 0 : 1) == PTT_DEVICE_LOST && iptt == 0);
+    CHECK(!opened[10] && count(CLOSE_PORT) == 1);
+    CHECK(count(OPEN_PORT) == 0);
+    ptt_set_override(next_path);
+    poll_events = 0;
+    CHECK(command(1) == PTT_OK && iptt == 1);
+    CHECK(count(OPEN_PORT) == (next_path ? 1 : 0));
+    if (next_path)
+        CHECK(strcmp(events[first(OPEN_PORT)].path, next_path) == 0);
+    CHECK(command(0) == PTT_OK && iptt == 0);
+    return 1;
+}
+
+static int disconnect_idle(void) { return disconnected_port(0, "/dev/serial-B"); }
+static int disconnect_active(void) { return disconnected_port(1, "/dev/serial-B"); }
+static int disconnect_same_path(void) { return disconnected_port(1, "/dev/serial-A"); }
+static int disconnect_disable(void) { return disconnected_port(1, NULL); }
+
+static int persistent_control_failure(void)
+{
+    int i;
+    ptt_set_override("/dev/serial-A");
+    CHECK(command(1) == PTT_OK);
+    ptt_set_override("/dev/serial-B");
+    failed_descriptor = 10;
+    event_count = 0;
+    for (i = 0; i < 3; ++i) {
+        poll_events = i == 1 ? POLLERR : 0;
+        fail_poll = i == 2;
+        CHECK(command(0) == PTT_ERROR && iptt == 1);
+        CHECK(command(1) == PTT_ERROR && iptt == 1);
+        CHECK(opened[10] && count(CLOSE_PORT) == 0 && count(OPEN_PORT) == 0);
+    }
+    fail_poll = 0;
+    poll_events = POLLHUP;
+    CHECK(command(0) == PTT_DEVICE_LOST && iptt == 0);
+    CHECK(!opened[10] && count(CLOSE_PORT) == 1);
+    poll_events = 0;
+    CHECK(command(1) == PTT_OK && iptt == 1);
+    CHECK(strcmp(events[first(OPEN_PORT)].path, "/dev/serial-B") == 0);
+    return 1;
+}
+
+static int disconnect_initialization(void)
+{
+    ptt_set_override("/dev/serial-A");
+    failed_descriptor = 10;
+    poll_events = POLLHUP;
+    CHECK(command(1) == PTT_DEVICE_LOST && iptt == 0);
+    CHECK(!opened[10] && count(CLOSE_PORT) == 1);
+    CHECK(count(SET_LINES) == 0);
+    poll_events = 0;
+    CHECK(command(1) == PTT_OK && iptt == 1);
+    return 1;
+}
+
 static int shutdown_cleanup(void)
 {
     ptt_set_override("/dev/serial-A");
@@ -375,6 +467,12 @@ int main(void)
         {"release get failure", release_get_failure},
         {"release set failure", release_set_failure},
         {"disable release failure", disable_release_failure},
+        {"disconnect while idle", disconnect_idle},
+        {"disconnect while active", disconnect_active},
+        {"disconnect and reuse path", disconnect_same_path},
+        {"disconnect and disable", disconnect_disable},
+        {"persistent control failure", persistent_control_failure},
+        {"disconnect during initialization", disconnect_initialization},
         {"shutdown cleanup", shutdown_cleanup}
     };
     int failed = 0;

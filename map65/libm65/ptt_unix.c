@@ -19,6 +19,8 @@
 #include <fcntl.h>
 #include <sys/ioctl.h>
 #include <string.h>
+#include <poll.h>
+#include "ptt.h"
 
 static char ptt_override[256] = {0};
 static char opened_path[256] = {0};
@@ -35,7 +37,7 @@ int ptt_serial(int port_fd, int *ntx, int *iptt)
 {
     int status = 0;
     if (ioctl(port_fd, TIOCMGET, &status) < 0)
-        return 1;
+        return PTT_ERROR;
 
     if (*ntx)
         status |= TIOCM_RTS | TIOCM_DTR;
@@ -43,10 +45,10 @@ int ptt_serial(int port_fd, int *ntx, int *iptt)
         status &= ~(TIOCM_RTS | TIOCM_DTR);
 
     if (ioctl(port_fd, TIOCMSET, &status) < 0)
-        return 1;
+        return PTT_ERROR;
 
     *iptt = *ntx;
-    return 0;
+    return PTT_OK;
 }
 
 static void close_port(void)
@@ -58,58 +60,64 @@ static void close_port(void)
     ptt_state = PTT_IDLE;
 }
 
-/* Return nonzero on failure, leaving the caller's confirmed PTT state intact. */
+static int control_error(int *iptt)
+{
+    struct pollfd port = {fd, 0, 0};
+    /* EIO alone can be transient; hangup identifies a dead connection. */
+    if (poll(&port, 1, 0) > 0 && (port.revents & POLLHUP)) {
+        close_port();
+        *iptt = 0;
+        return PTT_DEVICE_LOST;
+    }
+    ptt_state = PTT_UNCERTAIN;
+    return PTT_ERROR;
+}
+
 int ptt_(int *nport, int *ntx, int *iptt)
 {
     (void)nport;
 
     /* Always release the open port, even when the next selection is disabled. */
     if (!*ntx) {
-        if (fd >= 0 && ptt_serial(fd, ntx, iptt)) {
-            ptt_state = PTT_UNCERTAIN;
-            return 1;
-        }
+        if (fd >= 0 && ptt_serial(fd, ntx, iptt))
+            return control_error(iptt);
         ptt_state = PTT_IDLE;
         *iptt = 0;
         if (fd >= 0 && strcmp(opened_path, ptt_override))
             close_port();
-        return 0;
+        return PTT_OK;
     }
 
     /* A failed operation must be followed by a confirmed release before TX. */
     if (ptt_state == PTT_UNCERTAIN)
-        return 1;
+        return PTT_ERROR;
     if (ptt_state == PTT_KEYED) {
         *iptt = 1;
-        return 0;
+        return PTT_OK;
     }
 
     if (fd >= 0 && strcmp(opened_path, ptt_override))
         close_port();
     if (!*ptt_override) {
         *iptt = *ntx;
-        return 0;
+        return PTT_OK;
     }
 
     if (fd < 0) {
-        fd = open(ptt_override, O_RDWR | O_NONBLOCK);
+        fd = open(ptt_override, O_RDWR | O_NONBLOCK | O_NOCTTY);
         if (fd < 0)
-            return 1;
+            return PTT_ERROR;
         strcpy(opened_path, ptt_override);
         int off = 0;
         int status = 0;
-        if (ptt_serial(fd, &off, &status)) {
-            ptt_state = PTT_UNCERTAIN;
-            return 1;
-        }
+        if (ptt_serial(fd, &off, &status))
+            return control_error(iptt);
     }
 
-    if (ptt_serial(fd, ntx, iptt)) {
-        ptt_state = PTT_UNCERTAIN;
-        return 1;
-    }
+    if (ptt_serial(fd, ntx, iptt))
+        return control_error(iptt);
     ptt_state = PTT_KEYED;
-    return 0;
+    return PTT_OK;
 }
 
 void ptt_close(void)

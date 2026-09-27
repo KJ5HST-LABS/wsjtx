@@ -12,12 +12,7 @@
 #include <QSignalBlocker>
 #include <QSettings>
 #include "SettingsGroup.hpp"
-
-#if !defined(Q_OS_WIN)
-extern "C" {
-    void ptt_set_override(const char *path);
-}
-#endif
+#include "libm65/ptt.h"
 
 static QStringList enumeratePorts()
 {

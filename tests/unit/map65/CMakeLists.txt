@@ -26,3 +26,8 @@ if (UNIX)
   set_target_properties (test_map65_ptt_unix PROPERTIES AUTOMOC OFF)
   add_test (NAME test_map65_ptt_unix COMMAND test_map65_ptt_unix)
 endif ()
+
+add_executable (test_map65_ptt_windows test_map65_ptt_windows.c)
+target_include_directories (test_map65_ptt_windows PRIVATE windows_fake)
+set_target_properties (test_map65_ptt_windows PROPERTIES AUTOMOC OFF)
+add_test (NAME test_map65_ptt_windows COMMAND test_map65_ptt_windows)
