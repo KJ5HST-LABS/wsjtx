@@ -68,7 +68,8 @@ void TestDecoderIpcHandshake::readyBeforePublication ()
       output += child.readAllStandardOutput ();
       if (child.state () == QProcess::NotRunning) break;
     }
-  QVERIFY2 (output.startsWith ("<DecoderReady> version=3\n"), output.constData ());
+  QVERIFY2 (output.startsWith ("<DecoderReady> version=3\r\n")
+            || output.startsWith ("<DecoderReady> version=3\n"), output.constData ());
   QVERIFY (!output.contains ("<DecodeStarted>"));
   QCOMPARE (session.acceptReady (DECODER_IPC_VERSION), Status::Ok);
   QVERIFY (session.ready ());
