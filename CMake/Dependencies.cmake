@@ -14,9 +14,6 @@ include (CheckIncludeFiles)
 include (CheckSymbolExists)
 include (generate_version_info)
 
-find_program(CTAGS ctags)
-find_program(ETAGS etags)
-
 #
 # Platform checks
 #

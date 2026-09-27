@@ -554,13 +554,7 @@ set (CMAKE_INCLUDE_CURRENT_DIR ON)
 #
 # source navigation
 #
-set (sources
-  ${CMAKE_SOURCE_DIR}/*
-  ${CMAKE_SOURCE_DIR}/logbook/*
-  ${CMAKE_SOURCE_DIR}/lib/*
-  )
-add_custom_target (ctags COMMAND ${CTAGS} -o ${CMAKE_SOURCE_DIR}/tags -R ${sources})
-add_custom_target (etags COMMAND ${ETAGS} -o ${CMAKE_SOURCE_DIR}/TAGS -R ${sources})
+include (CMake/SourceNavigation.cmake)
 
 
 # Qt i18n - always include the country generic if any regional variant is included
