@@ -24,6 +24,14 @@ else ()
 endif ()
 add_test (NAME test_decoder_ipc_protocol COMMAND test_decoder_ipc_protocol)
 
+add_executable (test_decoder_session
+  test_decoder_session.cpp
+  ${CMAKE_SOURCE_DIR}/DecoderIpc.cpp
+  ${CMAKE_SOURCE_DIR}/lib/decoder_ipc_control.cpp
+)
+target_link_libraries (test_decoder_session Qt5::Test)
+add_test (NAME test_decoder_session COMMAND test_decoder_session)
+
 add_executable (test_decoder_output_framer
   test_decoder_output_framer.cpp
   ${CMAKE_SOURCE_DIR}/DecoderOutputFramer.cpp

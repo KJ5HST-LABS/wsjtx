@@ -1,6 +1,7 @@
 #include "DecoderIpc.hpp"
 
 #include "lib/decoder_ipc_control.h"
+#include <QThread>
 
 #include <algorithm>
 #include <cstring>
@@ -50,6 +51,150 @@ namespace
       }
     return parseField (text, generation) && generation > 0;
   }
+}
+
+DecoderIpc::Request::Request (Kind kind, dec_data_t const * source,
+                              Ft8MtdPayload const * compact, SampleIdentity samples)
+  : kind_ {kind}, source_ {source}, compact_ {compact}, samples_ {samples}
+{
+}
+
+DecoderIpc::Request DecoderIpc::Request::snapshot (dec_data_t const& source)
+{
+  return {Kind::Snapshot, &source, nullptr};
+}
+
+DecoderIpc::Request DecoderIpc::Request::reuse (dec_data_t const& source,
+                                             SampleIdentity samples)
+{
+  return {Kind::Reuse, &source, nullptr, samples};
+}
+
+DecoderIpc::Request DecoderIpc::Request::ft8 (Ft8MtdPayload const& source)
+{
+  return {Kind::Ft8, nullptr, &source};
+}
+
+decoder_params_t const& DecoderIpc::Request::options () const
+{
+  return compact_ ? compact_->params : source_->params;
+}
+
+DecoderIpc::Status DecoderIpc::Session::open (QString const& key)
+{
+  detach ();
+  error_.clear ();
+  memory_.setKey (key);
+  for (int attempt = 0; attempt < 3; ++attempt)
+    {
+      if (!memory_.attach ()) break;
+      if (hasShutdownControlSize (memory_.size ()))
+        shutdownControl (memory_.data ());
+      memory_.detach ();
+      QThread::sleep (1);
+    }
+  if (memory_.attach ())
+    {
+      error_ = QStringLiteral ("Orphaned decoder shared memory remained after shutdown attempts");
+      memory_.detach ();
+      return Status::Orphaned;
+    }
+  if (!memory_.create (sizeof (shared_dec_data_t)))
+    {
+      error_ = memory_.errorString ();
+      return Status::CreateFailed;
+    }
+  initialize (*static_cast<shared_dec_data_t *> (memory_.data ()));
+  return Status::Ok;
+}
+
+shared_dec_data_t const * DecoderIpc::Session::storage () const
+{
+  if (!hasUsableSize (memory_.size ()) || !memory_.constData ()) return nullptr;
+  auto const * shared = static_cast<shared_dec_data_t const *> (memory_.constData ());
+  return hasCurrentProtocol (*shared) ? shared : nullptr;
+}
+
+shared_dec_data_t * DecoderIpc::Session::storage ()
+{
+  return const_cast<shared_dec_data_t *> (static_cast<Session const *> (this)->storage ());
+}
+
+bool DecoderIpc::Session::reset ()
+{
+  if (!hasUsableSize (memory_.size ()) || !memory_.data ()) return false;
+  auto * shared = static_cast<shared_dec_data_t *> (memory_.data ());
+  abort ();
+  initialize (*shared);
+  return true;
+}
+
+void DecoderIpc::Session::shutdown ()
+{
+  if (auto * shared = storage ()) DecoderIpc::shutdown (*shared);
+}
+
+void DecoderIpc::Session::detach ()
+{
+  abort ();
+  if (memory_.isAttached ()) memory_.detach ();
+}
+
+DecoderIpc::Submission DecoderIpc::Session::submit (Request const& request)
+{
+  auto * shared = storage ();
+  if (!shared) return {Status::Unavailable, {}, {}};
+  if (activeGeneration_.value () || DECODER_IPC_IDLE != state (*shared))
+    return {Status::Busy, {}, {}};
+  if (request.sampleCount () < 0 || request.sampleCount () > NTMAX * RX_SAMPLE_RATE)
+    return {Status::InvalidRequest, {}, {}};
+  if (Request::Kind::Reuse == request.kind_
+      && (!completedSamples_ || request.samples_ != completedSamples_))
+    return {Status::StaleSamples, {}, {}};
+  auto const generation = nextGeneration (lastGeneration_);
+  bool const refreshSamples = Request::Kind::Reuse != request.kind_
+    || shared->payload.params.nmode != request.mode ()
+    || shared->payload.params.ntrperiod != request.options ().ntrperiod;
+  bool const published = Request::Kind::Ft8 == request.kind_
+    ? publishFt8Mtd (*shared, *request.compact_, generation)
+    : publish (*shared, *request.source_, Request::Kind::Snapshot == request.kind_, generation);
+  if (!published) return {Status::InvalidRequest, {}, {}};
+  lastGeneration_ = generation;
+  activeGeneration_ = Generation {generation};
+  activeSamples_ = refreshSamples ? SampleIdentity {this, ++lastSamples_}
+                                 : completedSamples_;
+  return {Status::Ok, activeGeneration_, activeSamples_};
+}
+
+bool DecoderIpc::Session::accepts (qint32 generation) const
+{
+  return generation > 0 && generation == activeGeneration_.value ();
+}
+
+DecoderIpc::Status DecoderIpc::Session::complete (Completion const& completion)
+{
+  if (!accepts (completion.generation)) return Status::StaleGeneration;
+  auto * shared = storage ();
+  if (!shared) return Status::Unavailable;
+  if (!consume (*shared, completion.generation)) return Status::Busy;
+  completedSamples_ = activeSamples_;
+  activeGeneration_ = {};
+  activeSamples_ = {};
+  return Status::Ok;
+}
+
+DecoderIpc::Diagnostics DecoderIpc::Session::diagnostics () const
+{
+  auto const * shared = storage ();
+  return shared ? Diagnostics {state (*shared), generation (*shared), progress (*shared)}
+                : Diagnostics {};
+}
+
+void DecoderIpc::Session::abort ()
+{
+  activeGeneration_ = {};
+  activeSamples_ = {};
+  completedSamples_ = {};
 }
 
 qint32 DecoderIpc::nextGeneration (qint32 current)

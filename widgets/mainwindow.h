@@ -199,7 +199,7 @@ public:
   static QRegularExpression const non_r_db_regexp;
 
   explicit MainWindow(QDir const& temp_directory, bool multiple, MultiSettings *,
-                      QSharedMemory *shdmem, unsigned downSampleFactor,
+                      DecoderIpc::Session& decoderSession, unsigned downSampleFactor,
                       QSplashScreen *, QProcessEnvironment const&, bool automated_test,
                       QString base_style_sheet,
                       std::unique_ptr<AudioInputSource> audio_input_source = {},
@@ -242,7 +242,7 @@ public:
   quint64 liveAudioTestPublishedDecoderGeneration () const
   {
     return m_automated_test && DecodeOwner::Jt9 == m_decodeOwner
-      && m_activeJt9Decode.generation == m_nextDecoderGeneration
+      && m_decoderSession.accepts (m_activeJt9Decode.generation)
       ? m_activeJt9Decode.generation : 0;
   }
   quint64 liveAudioTestDecodeCycleGeneration () const {return m_decodeCycleGeneration;}
@@ -358,7 +358,6 @@ private:
   {
     qint32 generation {0};
     DecodeOperatingContext context;
-    bool copiedSamples {false};
     bool obsolete {false};
     Ft8MtdDecodeCoordinator::Stage ft8Stage {Ft8MtdDecodeCoordinator::Stage::None};
     qint64 ft8Period {-1};
@@ -1091,7 +1090,6 @@ private:
   qint32  m_position;
   qint64  m_decoderDiagSequence=0;
   qint64  m_decoderDiagActiveSequence=0;
-  qint32  m_nextDecoderGeneration=0;
   qint32  m_decoderDiagStartIhsym=0;
   qint32  m_decoderDiagStartHsymStop=0;
   qint32  m_decoderDiagStartNzhsym=0;
@@ -1117,7 +1115,6 @@ private:
   bool    m_decoderDiagHardHangLogged=false;
   bool    m_decoderDiagAbnormalClear=false;
   bool    m_decoderCompletedSinceStart=false;
-  bool    m_jt9PayloadValid=false;
   bool    m_closing=false;
   bool    m_txFirst;
   bool    m_tx1_enabled_preference {true};
@@ -1424,7 +1421,7 @@ private:
   QDateTime m_dateTimeBestSP;
   QDateTime m_dateTimeSeqStart;        //Nominal start time of Rx sequence about to be decoded
 
-  QSharedMemory *mem_jt9;
+  DecoderIpc::Session& m_decoderSession;
   QString m_QSOText;
   unsigned m_downSampleFactor;
   QThread::Priority m_audioThreadPriority;

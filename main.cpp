@@ -11,7 +11,6 @@
 #include <fftw3.h>
 
 #include <QApplication>
-#include <QSharedMemory>
 #include <QProcessEnvironment>
 #include <QTemporaryFile>
 #include <QDateTime>
@@ -283,7 +282,7 @@ int main(int argc, char *argv[])
   register_types ();
 
   // Multiple instances communicate with jt9 via this
-  QSharedMemory mem_jt9;
+  DecoderIpc::Session decoderSession;
 
   if (test_mode_requested (argc, argv)) QStandardPaths::setTestModeEnabled (true);
   QApplication::setAttribute (Qt::AA_EnableHighDpiScaling);
@@ -728,64 +727,21 @@ int main(int argc, char *argv[])
               sys_lg.push_record (boost::move (rec));
             }
 
-          // Create and initialize shared memory segment
-          // Multiple instances: use rig_name as shared memory key
-          mem_jt9.setKey(a.applicationName ());
-
-          // try and shut down any orphaned jt9 process
-          for (int i = 3; i; --i) // three tries to close old jt9
+          auto const sessionStatus = decoderSession.open (a.applicationName ());
+          if (DecoderIpc::Status::Ok != sessionStatus)
             {
-              if (mem_jt9.attach ()) // shared memory presence implies
-                                     // orphaned jt9 sub-process
-                {
-                  if (DecoderIpc::hasShutdownControlSize (mem_jt9.size ()))
-                    {
-                      DecoderIpc::shutdownControl (mem_jt9.data ());
-                    }
-                  mem_jt9.detach (); // start again
-                }
-              else
-                {
-                  break;        // good to go
-                }
-              QThread::sleep (1); // wait for jt9 to end
-            }
-          if (!mem_jt9.attach ())
-            {
-              if (!mem_jt9.create (sizeof (shared_dec_data_t)))
-              {
-                auto const shared_memory_error = mem_jt9.error ();
-                auto const shared_memory_error_text = mem_jt9.errorString ();
-                std::cerr << "WSJT-X startup: shared memory creation failed"
-                          << " (error " << static_cast<int> (shared_memory_error) << "): "
-                          << shared_memory_error_text.toStdString () << std::endl;
-                if (!automated_test)
-                  {
-                    splash.hide ();
-                    MessageBox::critical_message (
-                      nullptr, a.translate ("main", "Shared memory error"),
-                      a.translate ("main", "Unable to create shared memory segment"));
-                  }
-                throw std::runtime_error {"Shared memory error"};
-              }
-              LOG_INFO ("shmem size: " << mem_jt9.size ());
-            }
-          else
-            {
-              std::cerr << "WSJT-X startup: orphaned jt9 shared memory segment remained after "
-                           "shutdown attempts"
+              std::cerr << "WSJT-X startup: " << decoderSession.errorString ().toStdString ()
                         << std::endl;
               if (!automated_test)
                 {
                   splash.hide ();
                   MessageBox::critical_message (
-                    nullptr, a.translate ("main", "Sub-process error"),
-                    a.translate ("main", "Failed to close orphaned jt9 process"));
+                    nullptr, a.translate ("main", "Shared memory error"),
+                    decoderSession.errorString ());
                 }
-              throw std::runtime_error {"Sub-process error"};
+              throw std::runtime_error {"Decoder session error"};
             }
-          auto * shared = reinterpret_cast<shared_dec_data_t *> (mem_jt9.data ());
-          DecoderIpc::initialize (*shared);
+          LOG_INFO ("shmem size: " << decoderSession.size ());
 
           unsigned downSampleFactor;
           {
@@ -876,7 +832,7 @@ int main(int argc, char *argv[])
 #else
           std::unique_ptr<AudioInputSource> audio_input;
 #endif
-          MainWindow w(temp_dir, multiple, &multi_settings, &mem_jt9, downSampleFactor, &splash, env,
+          MainWindow w(temp_dir, multiple, &multi_settings, decoderSession, downSampleFactor, &splash, env,
                        automated_test, original_style_sheet, std::move (audio_input),
 #ifdef WSJT_ENABLE_LIVE_AUDIO_TEST
                        std::move (sound_output),

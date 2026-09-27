@@ -513,7 +513,7 @@ constexpr int MainWindow::MaxQ65PileupCallers;
 
 //--------------------------------------------------- MainWindow constructor
 MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
-                       MultiSettings * multi_settings, QSharedMemory *shdmem,
+                       MultiSettings * multi_settings, DecoderIpc::Session& decoderSession,
                        unsigned downSampleFactor,
                        QSplashScreen * splash, QProcessEnvironment const& env,
                        bool automated_test,
@@ -669,7 +669,7 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
   m_rpt {"-15"},
   m_pfx {Radio::PrefixSuffix::type1Prefixes()},
   m_sfx {Radio::PrefixSuffix::type1Suffixes()},
-  mem_jt9 {shdmem},
+  m_decoderSession {decoderSession},
   m_downSampleFactor (downSampleFactor),
   m_audioThreadPriority (QThread::HighPriority),
   m_bandEdited {false},
@@ -1248,7 +1248,6 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
                     QTimer::singleShot (0, this, SLOT (close ()));
                     return;
                   }
-                m_jt9PayloadValid = false;
                 m_activeJt9Decode = {};
                 m_decoderOutputFramer.reset ();
                 startDecoderProcess ();
@@ -4444,12 +4443,7 @@ void MainWindow::closeEvent(QCloseEvent * e)
   plotsave_(&sw,&nw,&nh,&irow);
   {
     PerformanceTrace::Phase decoder_shutdown {"decoder.shutdown"};
-    if (DecoderIpc::hasUsableSize (mem_jt9->size ())
-        && mem_jt9->data ())
-      {
-        auto * shared = reinterpret_cast<shared_dec_data_t *> (mem_jt9->data ());
-        DecoderIpc::shutdown (*shared);
-      }
+    m_decoderSession.shutdown ();
     if (proc_jt9.state() != QProcess::NotRunning) {
       if (!proc_jt9.waitForFinished(5000)) {
         proc_jt9.terminate();
@@ -4461,7 +4455,7 @@ void MainWindow::closeEvent(QCloseEvent * e)
     }
     proc_jt9.close();
   }
-  mem_jt9->detach();
+  m_decoderSession.detach ();
   Q_EMIT finished ();
   QMainWindow::closeEvent (e);
   close.finish ();
@@ -5191,7 +5185,7 @@ void MainWindow::decode (Ft8MtdDecodeCoordinator::Stage ft8Stage,
       showStatusMessage (tr ("Decoder is starting; decode request skipped."));
       return;
     }
-  if (usesJt9Process () && !dec_data.params.newdat && !m_jt9PayloadValid)
+  if (usesJt9Process () && !dec_data.params.newdat && !m_decoderSession.samples ())
     {
       dec_data.params.newdat = true;
       dec_data.params.nagain = false;
@@ -5627,20 +5621,7 @@ MainWindow::startLiveAudioTestFt8Transmit (qint64 targetPeriodStartMs)
 
 QString MainWindow::liveAudioTestFt8BackpressureDiagnostics () const
 {
-  qint32 ipcState {-1};
-  qint32 ipcGeneration {-1};
-  qint32 ipcProgress {-1};
-  if (DecoderIpc::hasUsableSize (mem_jt9->size ()) && mem_jt9->data ())
-    {
-      auto const * shared = reinterpret_cast<shared_dec_data_t const *> (
-          mem_jt9->constData ());
-      if (DECODER_IPC_VERSION == DecoderIpc::protocolVersion (*shared))
-        {
-          ipcState = DecoderIpc::state (*shared);
-          ipcGeneration = DecoderIpc::generation (*shared);
-          ipcProgress = DecoderIpc::progress (*shared);
-        }
-    }
+  auto const ipc = m_decoderSession.diagnostics ();
 
   return QString {"degraded=%1 pending_final=%2 backoff_periods=%3 "
                   "next_probe_period=%4 owner=%5 process_phase=%6 "
@@ -5654,9 +5635,9 @@ QString MainWindow::liveAudioTestFt8BackpressureDiagnostics () const
     .arg (static_cast<int> (m_decodeOwner))
     .arg (static_cast<int> (m_jt9ProcessPhase))
     .arg (m_activeJt9Decode.generation)
-    .arg (ipcState)
-    .arg (ipcGeneration)
-    .arg (ipcProgress)
+    .arg (ipc.state)
+    .arg (ipc.generation)
+    .arg (ipc.progress)
     .arg (decoderDiagnosticElapsedMs ())
     .arg (decoderDiagnosticIdleMs ());
 }
@@ -5741,14 +5722,7 @@ void MainWindow::startDecoderProcess ()
 
 bool MainWindow::initializeDecoderSharedMemory ()
 {
-  if (!DecoderIpc::hasUsableSize (mem_jt9->size ())
-      || !mem_jt9->data ())
-    {
-      return false;
-    }
-  auto * shared = reinterpret_cast<shared_dec_data_t *> (mem_jt9->data ());
-  DecoderIpc::initialize (*shared);
-  return true;
+  return m_decoderSession.reset ();
 }
 
 DecodeOperatingContext MainWindow::currentDecodeOperatingContext () const
@@ -5897,9 +5871,7 @@ MainWindow::DecodePublishResult MainWindow::publishDecodeRequest (
     {
       return DecodePublishResult::Unavailable;
     }
-  if ((!copySamples && !m_jt9PayloadValid)
-      || !DecoderIpc::hasUsableSize (mem_jt9->size ())
-      || !mem_jt9->data ())
+  if (!copySamples && !m_decoderSession.samples ())
     {
       return DecodePublishResult::Failed;
     }
@@ -5910,24 +5882,22 @@ MainWindow::DecodePublishResult MainWindow::publishDecodeRequest (
       m_currentBandPeriod = m_config.bands ()->find (m_operatingFrequency.rx ());
     }
 
-  auto const generation = DecoderIpc::nextGeneration (m_nextDecoderGeneration);
   if (!beginDecode (DecodeOwner::Jt9))
     {
       return DecodePublishResult::Failed;
     }
   m_activeJt9Decode = {};
-  m_activeJt9Decode.generation = generation;
   m_activeJt9Decode.context = currentDecodeOperatingContext ();
-  m_activeJt9Decode.copiedSamples = copySamples;
   m_activeJt9Decode.ft8Stage = ft8Stage;
   m_activeJt9Decode.ft8Period = ft8Period;
-  bool published {false};
+  DecoderIpc::Submission submitted;
   {
     QMutexLocker payloadLock {&dec_data_mutex ()};
-    auto * shared = reinterpret_cast<shared_dec_data_t *> (mem_jt9->data ());
-    published = DecoderIpc::publish (*shared, dec_data, copySamples, generation);
+    submitted = m_decoderSession.submit (copySamples
+      ? DecoderIpc::Request::snapshot (dec_data)
+      : DecoderIpc::Request::reuse (dec_data, m_decoderSession.samples ()));
   }
-  if (!published)
+  if (!submitted)
     {
       logDecoderAbnormalClear ("decode publication failed");
       m_activeJt9Decode = {};
@@ -5935,7 +5905,7 @@ MainWindow::DecodePublishResult MainWindow::publishDecodeRequest (
       return DecodePublishResult::Failed;
     }
 
-  m_nextDecoderGeneration = generation;
+  m_activeJt9Decode.generation = submitted.generation.value ();
   return DecodePublishResult::Published;
 }
 
@@ -5955,27 +5925,18 @@ MainWindow::DecodePublishResult MainWindow::publishPendingFt8Decode ()
         {
           return PendingPublishResult::Unavailable;
         }
-      if (!DecoderIpc::hasUsableSize (mem_jt9->size ()) || !mem_jt9->data ())
-        {
-          return PendingPublishResult::Failed;
-        }
-
-      auto const generation = DecoderIpc::nextGeneration (
-        m_nextDecoderGeneration);
       if (!beginDecode (DecodeOwner::Jt9, &pending.payload.params,
                         &pending.context))
         {
           return PendingPublishResult::Unavailable;
         }
       m_activeJt9Decode = {};
-      m_activeJt9Decode.generation = generation;
       m_activeJt9Decode.context = pending.context;
-      m_activeJt9Decode.copiedSamples = true;
       m_activeJt9Decode.ft8Stage = Ft8MtdDecodeCoordinator::Stage::Final;
       m_activeJt9Decode.ft8Period = pending.period;
 
-      auto * shared = reinterpret_cast<shared_dec_data_t *> (mem_jt9->data ());
-      if (!DecoderIpc::publishFt8Mtd (*shared, pending.payload, generation))
+      auto const submitted = m_decoderSession.submit (DecoderIpc::Request::ft8 (pending.payload));
+      if (!submitted)
         {
           logDecoderAbnormalClear ("pending FT8 decode publication failed");
           m_activeJt9Decode = {};
@@ -5983,11 +5944,11 @@ MainWindow::DecodePublishResult MainWindow::publishPendingFt8Decode ()
           return PendingPublishResult::Failed;
         }
 
-      m_nextDecoderGeneration = generation;
+      m_activeJt9Decode.generation = submitted.generation.value ();
       emitFt8DecoderInvocation (pending.payload.params);
       qInfo () << "Published pending FT8 final decode"
                << "period:" << pending.period
-               << "generation:" << generation;
+               << "generation:" << submitted.generation.value ();
       return PendingPublishResult::Published;
     });
 
@@ -6026,12 +5987,7 @@ void MainWindow::requestDecoderRestart (QString const& reason)
   abortJt9Transaction ();
   updateDecodeControls ();
 
-  if (DecoderIpc::hasUsableSize (mem_jt9->size ())
-      && mem_jt9->data ())
-    {
-      auto * shared = reinterpret_cast<shared_dec_data_t *> (mem_jt9->data ());
-      DecoderIpc::shutdown (*shared);
-    }
+  m_decoderSession.shutdown ();
 
   if (QProcess::NotRunning == proc_jt9.state ())
     {
@@ -6117,7 +6073,7 @@ void MainWindow::abortJt9Transaction ()
   m_ft8MtdDecodeCoordinator.publicationFailed (
     m_activeJt9Decode.ft8Stage, m_activeJt9Decode.ft8Period);
   m_activeJt9Decode = {};
-  m_jt9PayloadValid = false;
+  m_decoderSession.abort ();
   dec_data.params.nagain = false;
   dec_data.params.ndiskdat = false;
   m_nclearave = 0;
@@ -6218,19 +6174,13 @@ void MainWindow::logDecoderProgress()
 {
   if(DecodeOwner::Jt9 != m_decodeOwner || !m_decoderDiagActive) return;
 
-  if (DecoderIpc::hasUsableSize (mem_jt9->size ()) && mem_jt9->data ())
+  auto const ipc = m_decoderSession.diagnostics ();
+  if (m_decoderSession.accepts (ipc.generation))
     {
-      auto const * shared = reinterpret_cast<shared_dec_data_t const *> (
-          mem_jt9->constData ());
-      if (DECODER_IPC_VERSION == DecoderIpc::protocolVersion (*shared)
-          && m_activeJt9Decode.generation == DecoderIpc::generation (*shared))
+      if (ipc.progress != m_decoderDiagProgressCount)
         {
-          auto const progress = DecoderIpc::progress (*shared);
-          if (progress != m_decoderDiagProgressCount)
-            {
-              m_decoderDiagProgressCount = progress;
-              markDecoderProgress ();
-            }
+          m_decoderDiagProgressCount = ipc.progress;
+          markDecoderProgress ();
         }
     }
 
@@ -6713,8 +6663,7 @@ bool MainWindow::handleDecoderOutputEvent (DecoderOutputFramer::Event const& eve
   if (DecoderOutputFramer::EventType::Record == event.type)
     {
       if (DecodeOwner::Jt9 != m_decodeOwner
-          || !m_activeJt9Decode.generation
-          || event.generation != m_activeJt9Decode.generation)
+          || !m_decoderSession.accepts (event.generation))
         {
           return true;
         }
@@ -6753,8 +6702,7 @@ bool MainWindow::handleDecoderOutputEvent (DecoderOutputFramer::Event const& eve
     {
       auto const authoritative = Jt9ProcessPhase::Ready == m_jt9ProcessPhase
         && DecodeOwner::Jt9 == m_decodeOwner
-        && m_activeJt9Decode.generation
-        && event.generation == m_activeJt9Decode.generation;
+        && m_decoderSession.accepts (event.generation);
       if (!authoritative)
         {
           qWarning () << "Quarantining stale decoder output"
@@ -6775,8 +6723,7 @@ bool MainWindow::handleDecoderOutputEvent (DecoderOutputFramer::Event const& eve
 
   auto const completion = event.completion;
   auto const authoritative = DecodeOwner::Jt9 == m_decodeOwner
-    && m_activeJt9Decode.generation
-    && event.generation == m_activeJt9Decode.generation;
+    && m_decoderSession.accepts (event.generation);
   if (!authoritative)
     {
       qWarning () << "Ignoring stale decoder completion"
@@ -6792,24 +6739,12 @@ bool MainWindow::handleDecoderOutputEvent (DecoderOutputFramer::Event const& eve
                << "generation:" << event.generation;
     }
 
-  bool consumed {false};
-  int state {-1};
-  if (DecoderIpc::hasUsableSize (mem_jt9->size ())
-      && mem_jt9->data ())
-    {
-      auto * shared = reinterpret_cast<shared_dec_data_t *> (mem_jt9->data ());
-      if (DECODER_IPC_VERSION == DecoderIpc::protocolVersion (*shared)
-          && completion.generation == DecoderIpc::generation (*shared))
-        {
-          state = DecoderIpc::state (*shared);
-          consumed = DecoderIpc::consume (*shared, completion.generation);
-        }
-    }
-  if (!consumed)
+  auto const ipc = m_decoderSession.diagnostics ();
+  if (DecoderIpc::Status::Ok != m_decoderSession.complete (completion))
     {
       qWarning () << "Unable to consume matching decoder completion"
                   << "generation:" << completion.generation
-                  << "state:" << state;
+                  << "state:" << ipc.state;
       requestDecoderRestart ("matching decoder completion could not be consumed");
       return true;
     }
@@ -7279,7 +7214,6 @@ void MainWindow::readFromStdout()                             //readFromStdout
           m_ft8MtdDecodeCoordinator.completed (
             m_activeJt9Decode.ft8Stage, m_activeJt9Decode.ft8Period);
           m_decoderCompletedSinceStart = true;
-          m_jt9PayloadValid = m_jt9PayloadValid || m_activeJt9Decode.copiedSamples;
           m_activeJt9Decode = {};
           finishDecodeUi ();
           endDecode (DecodeOwner::Jt9);
