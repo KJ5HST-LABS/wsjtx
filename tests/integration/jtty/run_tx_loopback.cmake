@@ -4,6 +4,9 @@ foreach (required_variable WSJTX WORK_DIR EXPECTED)
   endif ()
 endforeach ()
 
+string (RANDOM LENGTH 12 ALPHABET 0123456789abcdef run_id)
+set (rig_name "CTEST-JTTY-${run_id}")
+
 set (ipc_dir "${WORK_DIR}-ipc")
 file (REMOVE_RECURSE "${WORK_DIR}" "${ipc_dir}")
 file (MAKE_DIRECTORY
@@ -49,7 +52,7 @@ execute_process (
     ${capture_environment}
     "${WSJTX}"
     --jtty-tx-loopback-test "${capture}"
-    --rig-name CTEST-JTTY-TX-CAPTURE
+    --rig-name "${rig_name}-CAPTURE"
   WORKING_DIRECTORY "${WORK_DIR}/capture"
   TIMEOUT 210
   RESULT_VARIABLE capture_result
@@ -82,7 +85,7 @@ execute_process (
     "${WSJTX}"
     --jtty-live-audio-test "${capture}"
     --jtty-live-audio-expected "${EXPECTED}"
-    --rig-name CTEST-JTTY-TX-REPLAY
+    --rig-name "${rig_name}-REPLAY"
   WORKING_DIRECTORY "${WORK_DIR}/replay"
   TIMEOUT 400
   RESULT_VARIABLE replay_result

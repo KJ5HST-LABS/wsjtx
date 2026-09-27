@@ -109,10 +109,12 @@ JttyTxLoopbackTestController::JttyTxLoopbackTestController (
                  m_cancelledRequests.insert (requestId);
                  return;
                }
-             fail (tr ("JTTY request %1 was rejected with reason %2 (probe=%3, probe_started=%4, decoder_busy=%5).")
+             auto const send = m_window->findChild<QAbstractButton *> ("pbSendMessage");
+             fail (tr ("JTTY request %1 was rejected with reason %2 (probe=%3, probe_started=%4, decoder_busy=%5). %6")
                    .arg (requestId).arg (static_cast<int> (reason))
                    .arg (m_modeChangeProbeId).arg (m_modeChangeProbeStarted)
-                   .arg (m_window->decoderBusy ()));
+                   .arg (m_window->decoderBusy ())
+                   .arg (send ? send->toolTip () : QString {}));
            });
   connect (m_window, &MainWindow::jttyTextCompleted,
            this, [this] (qint64 requestId) {
