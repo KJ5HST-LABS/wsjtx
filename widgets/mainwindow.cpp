@@ -1466,6 +1466,11 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
   connect (&m_decoderStartTimer, &QTimer::timeout, this, [this] {
       if (Jt9ProcessPhase::InitialStarting != m_jt9ProcessPhase
           && Jt9ProcessPhase::ReplacementStarting != m_jt9ProcessPhase) return;
+      // A GUI stall can delay stdout notification past the handshake deadline.
+      proc_jt9.waitForReadyRead (0);
+      if (proc_jt9.bytesAvailable ()) readFromStdout ();
+      if (Jt9ProcessPhase::InitialStarting != m_jt9ProcessPhase
+          && Jt9ProcessPhase::ReplacementStarting != m_jt9ProcessPhase) return;
       failDecoderStartup (tr ("The decoder did not complete its startup handshake within five seconds."));
     });
 
