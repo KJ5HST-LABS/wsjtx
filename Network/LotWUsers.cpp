@@ -6,6 +6,7 @@
 #include <QHash>
 #include <QString>
 #include <QDate>
+#include <QDateTime>
 #include <QFile>
 #include <QTextStream>
 #include <QDir>
@@ -112,7 +113,12 @@ public:
         for (auto l = s.readLine (); !l.isNull (); l = s.readLine ())
           {
             auto pos = l.indexOf (',');
-            result[l.left (pos)] = QDate::fromString (l.mid (pos + 1, l.indexOf (',', pos + 1) - pos - 1), "yyyy-MM-dd");
+            auto const date_end = l.indexOf (',', pos + 1);
+            if (pos <= 0) continue;
+            auto const date_field = date_end < 0 ? l.mid (pos + 1) : l.mid (pos + 1, date_end - pos - 1);
+            auto const call = l.left (pos).trimmed ();
+            auto const date = QDate::fromString (date_field.trimmed (), "yyyy-MM-dd");
+            if (!call.isEmpty () && date.isValid ()) result[call] = date;
           }
       }
     else
@@ -189,7 +195,8 @@ bool LotWUsers::user (QString const& call) const
       auto p = m_->last_uploaded_.constFind (call);
       if (p != m_->last_uploaded_.end ())
         {
-          return p.value ().daysTo (QDate::currentDate ()) <= m_->age_constraint_;
+          auto const age = p.value ().daysTo (QDateTime::currentDateTimeUtc ().date ());
+          return p.value ().isValid () && age >= 0 && age <= m_->age_constraint_;
         }
     }
   return false;
