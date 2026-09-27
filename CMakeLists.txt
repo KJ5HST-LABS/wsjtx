@@ -169,7 +169,7 @@ if (CMAKE_BUILD_TYPE MATCHES "[Dd][Ee][Bb][Uu][Gg]")
   set (is_debug_build 1)
 endif ()
 
-#uncomment line below to test for Qt 5.15.2 and later deprecations
+# Uncomment locally to catch uses of Qt APIs deprecated through 5.15.
 #add_definitions(-DQT_DISABLE_DEPRECATED_BEFORE=0x050F00)
 
 #
