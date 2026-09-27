@@ -88,9 +88,6 @@ wsjt_link_common_fortran (q65_ftn_test)
 add_executable (jt49sim lib/jt49sim.f90)
 wsjt_link_common_fortran (jt49sim)
 
-#add_executable (allsim lib/allsim.f90)
-#target_link_libraries (allsim wsjt_fort wsjt_cxx)
-
 add_executable (rtty_spec lib/rtty_spec.f90)
 wsjt_link_common_fortran (rtty_spec)
 
