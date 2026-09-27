@@ -427,7 +427,7 @@ QString FrequencyList_v2_101::Item::toString () const
 }
 
 QJsonObject FrequencyList_v2_101::Item::toJson() const {
-  return {{"frequency", Radio::frequency_MHz_string (frequency_) },
+  return {{"frequency", Radio::frequency_MHz_string (frequency_, 6, QLocale::c ()) },
           {"mode", Modes::name (mode_) },
           {"region", IARURegions::name (region_)},
           {"description", description_},
@@ -1394,8 +1394,18 @@ FrequencyList_v2_101::FrequencyItems FrequencyList_v2_101::from_json_file(QFile 
       region_s = obj["region"].toString();
       mode_s = obj["mode"].toString();
 
-      freq.frequency_ = obj["frequency"].toString().toDouble() * 1e6;
-      freq.region_ = IARURegions::value(region_s);
+      bool frequency_ok;
+      freq.frequency_ = Radio::frequency (obj["frequency"].toString(), 6, &frequency_ok, QLocale::c ());
+      freq.region_ = IARURegions::SENTINAL;
+      for (int region = IARURegions::ALL; region < IARURegions::SENTINAL; ++region)
+        {
+          auto const candidate = static_cast<IARURegions::Region> (region);
+          if (region_s == IARURegions::name (candidate))
+            {
+              freq.region_ = candidate;
+              break;
+            }
+        }
       freq.mode_ = Modes::value(mode_s);
       freq.description_ = obj["description"].toString();
       freq.source_ = obj["source"].toString();
@@ -1403,8 +1413,7 @@ FrequencyList_v2_101::FrequencyItems FrequencyList_v2_101::from_json_file(QFile 
       freq.end_time_ = QDateTime::fromString(obj["end_time"].toString(), Qt::ISODate);
       freq.preferred_ = obj["preferred"].toBool();
 
-      if ((freq.mode_ != Modes::ALL || QString::compare("ALL", mode_s)) &&
-          (freq.region_ != IARURegions::ALL || QString::compare("ALL", region_s, Qt::CaseInsensitive)) &&
+      if (frequency_ok && mode_s == Modes::name (freq.mode_) &&
           freq.isSane())
         {
           list.push_back(freq);
