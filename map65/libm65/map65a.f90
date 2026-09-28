@@ -99,6 +99,9 @@ contains
       integer :: best_i, best_ipol2
       real :: sync1_tmp, dt_tmp, flipk_tmp, syncshort_tmp, snr2_tmp, dt2_tmp
       integer :: ipol_tmp, ipol2_tmp,ftol_bins, manualDecodeFlag_initial
+      integer :: i_click, il, iu, jsep, sh_j, sh_il, sh_iu, sh_ipol2
+      real :: sh_sync, sh_snr2, sh_dt2, u_snr2, u_dt2
+      integer :: u_ipol2
       real :: freq_q65
       integer :: nhsym_prev_call
       integer(c_int64_t) :: previous_input_generation = -1
@@ -221,6 +224,7 @@ contains
 
          i = nint(freq*1000.0/df) + icenter   ! bin corresponding to that RF
          i = max(51, min(nfft_active - 51, i))
+         i_click = i
 
          ! --- local search around clicked bin within ftol ---
          ftol = real(ntol)
@@ -284,27 +288,64 @@ contains
          !===========================
          ! SHORTHAND DETECTION (JT65)
          !===========================
+         ! Same rule as the wideband quick decode (nqd=1): a shorthand is a
+         ! square wave between the sync tone and a tone 10*j*mode65 spacings
+         ! above it (j = 2, 3, 4 for RO, RRR, 73). Look for the upper tone
+         ! with its lower tone within ftol of the click, and report the lower
+         ! tone's frequency, as the wideband pass does. The bin chosen above
+         ! by sync1 can't be used: a shorthand has no JT65 sync pattern.
          shorthand_detected = .false.
-
          thresh0 = 1.0
-         if (syncshort > thresh0 .and. mode65 > 0) then
+         if (ntol .le. 100) thresh0 = 0.
+         sh_j = 0
+         if (mode65 > 0) then
+            sh_sync = thresh0
+            do j = 2, 4
+               jsep = nint(j*mode65*10.0*(11025.0/4096.0)/df)
+               do ii = -ftol_bins, ftol_bins
+                  il = i_click + ii
+                  iu = il + jsep
+                  if (il < 51 .or. iu > nfft_active - 51) cycle
+                  ssmax = 1.e30
+                  call ccf65(ss_dec(:,:,iu), nhsym, ssmax, sync1_tmp, ipol_tmp, jpz, dt_tmp, flipk_tmp, &
+                             syncshort_tmp, u_snr2, u_ipol2, u_dt2)
+                  if (syncshort_tmp <= sh_sync) cycle
+                  syncshort = syncshort_tmp
+                  ssmax = 1.e30
+                  call ccf65(ss_dec(:,:,il), nhsym, ssmax, sync1_tmp, ipol_tmp, jpz, dt_tmp, flipk_tmp, &
+                             syncshort_tmp, snr2_tmp, ipol2_tmp, dt2_tmp)
+                  if (syncshort_tmp <= thresh0) cycle
+                  sh_sync  = syncshort
+                  sh_j     = j
+                  sh_il    = il
+                  sh_iu    = iu
+                  sh_snr2  = u_snr2
+                  sh_ipol2 = u_ipol2
+                  sh_dt2   = u_dt2
+               enddo
+            enddo
+         endif
+         call dbg('map65a manual: shorthand search thresh0=' // rtoa(thresh0) // ' found=' // itoa(sh_j) // &
+                  ' syncshort=' // rtoa(merge(sh_sync, -99.0, sh_j > 0)))
+
+         if (sh_j > 0) then
             shorthand_detected = .true.
 
             km = 1
             sig(1,1) = nfile
             sig(1,2) = nutc
-            sig(1,3) = freq + 0.5*(nfa + nfb)
-            sig(1,4) = syncshort
-            sig(1,5) = dt2
-            sig(1,6) = 45*(ipol2 - 1)/57.2957795
+            sig(1,3) = 0.001*(sh_il - icenter)*df + 0.5*(nfa + nfb)
+            sig(1,4) = sh_sync
+            sig(1,5) = sh_dt2
+            sig(1,6) = 45*(sh_ipol2 - 1)/57.2957795
             sig(1,7) = 0
-            sig(1,8) = snr2
+            sig(1,8) = sh_snr2
             sig(1,9) = 0
             sig(1,10)= 0
-            sig(1,12)= savg_dec(ipol2,i)
+            sig(1,12)= savg_dec(sh_ipol2, sh_iu)
             sig(1,13:16) = 0
             sig(1,18)    = 0
-            msg(1)   = shmsg0(1)
+            msg(1)   = shmsg0(sh_j)
          endif
 
          ! Bin frequency for this click (for decode1a’s f00)
@@ -315,11 +356,12 @@ contains
 
          noffset = nint(1000.0*(freq - fqso) - mousedf)
 
-         ! JT65-specific rejects only when JT65 is active
+         ! JT65-specific rejects only when JT65 is active. A detected
+         ! shorthand is still reported even though sync1 failed.
          if (mode65 > 0) then
             if (sync1 <= thresh1) then
 
-               if (.not. bq65) then
+               if (.not. bq65 .and. .not. shorthand_detected) then
                      ! JT65-only mode → real reject
                      newdat = 0
                      km     = 0
@@ -338,7 +380,7 @@ contains
 
             if (abs(noffset) > ntol) then
 
-               if (.not. bq65) then
+               if (.not. bq65 .and. .not. shorthand_detected) then
                      ! JT65-only mode → real reject
 
                   newdat = 0
