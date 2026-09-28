@@ -173,6 +173,7 @@
 #include <QComboBox>
 #include <QScopedValueRollback>
 #include <QScopedPointer>
+#include <QSignalBlocker>
 #include <QNetworkInterface>
 #include <QHostInfo>
 #include <QHostAddress>
@@ -527,6 +528,7 @@ public:
 class Configuration::impl final
   : public QDialog
 {
+  friend class TestConfigurationRadio;
   Q_OBJECT;
 
 public:
@@ -621,7 +623,10 @@ private:
   void close_rig (bool failed = false);
   TransceiverFactory::ParameterPack gather_rig_data ();
   void enumerate_rigs ();
+  void normalize_rig_selections (bool restore = false);
   void set_rig_invariants ();
+  enum class RadioValidationError { none, invalid_ptt_method, invalid_ptt_port };
+  RadioValidationError validate_radio_settings ();
   bool validate ();
   void fill_port_combo_box (QComboBox *);
   Frequency apply_calibration (Frequency) const;
@@ -645,8 +650,8 @@ private:
 
   Q_SLOT void on_font_push_button_clicked ();
   Q_SLOT void on_decoded_text_font_push_button_clicked ();
-  Q_SLOT void on_PTT_port_combo_box_activated (int);
-  Q_SLOT void on_CAT_port_combo_box_activated (int);
+  Q_SLOT void on_PTT_port_combo_box_currentTextChanged (QString const&);
+  Q_SLOT void on_CAT_port_combo_box_currentTextChanged (QString const&);
   Q_SLOT void on_CAT_serial_baud_combo_box_currentIndexChanged (int);
   Q_SLOT void on_CAT_poll_interval_spin_box_valueChanged (int);
   Q_SLOT void on_test_CAT_push_button_clicked ();
@@ -3172,6 +3177,8 @@ void Configuration::impl::initialize_models ()
 
   check_visibility ();
 
+  normalize_rig_selections (true);
+  initializing_models_ = false;
   set_rig_invariants ();
 }
 
@@ -3829,17 +3836,98 @@ void Configuration::impl::write_settings ()
   settings_->sync ();
 }
 
+void Configuration::impl::normalize_rig_selections (bool restore)
+{
+  QSignalBlocker cat_signals {ui_->CAT_port_combo_box};
+  QSignalBlocker ptt_signals {ui_->PTT_port_combo_box};
+  auto const rig = ui_->rig_combo_box->currentText ();
+  auto const port_type = transceiver_factory_.CAT_port_type (rig);
+  if (TransceiverFactory::basic_transceiver_name_ != rig
+      && (restore || port_type != last_port_type_))
+    {
+      last_port_type_ = port_type;
+      switch (port_type)
+        {
+        case TransceiverFactory::Capabilities::serial:
+          fill_port_combo_box (ui_->CAT_port_combo_box);
+          ui_->CAT_port_combo_box->addItem ("USB");
+          ui_->CAT_port_combo_box->setItemData (ui_->CAT_port_combo_box->count () - 1, "Custom USB device", Qt::ToolTipRole);
+          ui_->CAT_port_combo_box->setCurrentText (rig_params_.serial_port);
+          if (ui_->CAT_port_combo_box->currentText ().isEmpty () && ui_->CAT_port_combo_box->count ())
+            {
+              ui_->CAT_port_combo_box->setCurrentText (ui_->CAT_port_combo_box->itemText (0));
+            }
+          ui_->CAT_port_label->setText (tr ("Serial Port:"));
+          ui_->CAT_port_combo_box->setToolTip (tr ("Serial port used for CAT control"));
+          ui_->CAT_port_combo_box->setEnabled (true);
+          break;
+
+        case TransceiverFactory::Capabilities::tci:
+          ui_->CAT_port_combo_box->clear ();
+          ui_->CAT_port_combo_box->setCurrentText (rig_params_.tci_port);
+          ui_->CAT_port_label->setText (tr ("TCI Server:"));
+          ui_->CAT_port_combo_box->setToolTip (tr ("Optional hostname and port of TCI service.\n"
+                                                 "Leave blank for a sensible default on this machine.\n"
+                                                 "Formats:\n"
+                                                 "\thostname:port\n"
+                                                 "\tIPv4-address:port\n"
+                                                 "\t[IPv6-address]:port"));
+          ui_->CAT_port_combo_box->setEnabled (true);
+          break;
+
+        case TransceiverFactory::Capabilities::network:
+          ui_->CAT_port_combo_box->clear ();
+          ui_->CAT_port_combo_box->setCurrentText (rig_params_.network_port);
+          ui_->CAT_port_label->setText (tr ("Network Server:"));
+          ui_->CAT_port_combo_box->setToolTip (tr ("Optional hostname and port of network service.\n"
+                                                   "Leave blank for a sensible default on this machine.\n"
+                                                   "Formats:\n"
+                                                   "\thostname:port\n"
+                                                   "\tIPv4-address:port\n"
+                                                   "\t[IPv6-address]:port"));
+          ui_->CAT_port_combo_box->setEnabled (true);
+          break;
+
+        case TransceiverFactory::Capabilities::usb:
+          ui_->CAT_port_combo_box->clear ();
+          ui_->CAT_port_combo_box->setCurrentText (rig_params_.usb_port);
+          ui_->CAT_port_label->setText (tr ("USB Device:"));
+          ui_->CAT_port_combo_box->setToolTip (tr ("Optional device identification.\n"
+                                                   "Leave blank for a sensible default for the rig.\n"
+                                                   "Format:\n"
+                                                   "\t[VID[:PID[:VENDOR[:PRODUCT]]]]"));
+          ui_->CAT_port_combo_box->setEnabled (true);
+          break;
+
+        default:
+          ui_->CAT_port_combo_box->clear ();
+          ui_->CAT_port_combo_box->setEnabled (false);
+          break;
+        }
+    }
+  auto const indirect_ptt = transceiver_factory_.has_CAT_indirect_serial_PTT (rig);
+  ui_->PTT_port_combo_box->setItemData (ui_->PTT_port_combo_box->findText ("CAT")
+                                     , indirect_ptt ? combo_box_item_enabled : combo_box_item_disabled
+                                     , Qt::UserRole - 1);
+  auto const ptt_port = ui_->PTT_port_combo_box->currentText ();
+  if (("CAT" == ptt_port && !indirect_ptt) || "USB" == ptt_port)
+    {
+      ui_->PTT_port_combo_box->setCurrentIndex (-1);
+      ui_->PTT_port_combo_box->clearEditText ();
+    }
+}
+
 void Configuration::impl::set_rig_invariants ()
 {
+  if (initializing_models_) return;
+
+  normalize_rig_selections ();
   auto const& rig = ui_->rig_combo_box->currentText ();
   auto const& ptt_port = ui_->PTT_port_combo_box->currentText ();
   auto ptt_method = static_cast<TransceiverFactory::PTTMethod> (ui_->PTT_method_button_group->checkedId ());
 
   auto CAT_PTT_enabled = transceiver_factory_.has_CAT_PTT (rig);
-  auto CAT_indirect_serial_PTT = transceiver_factory_.has_CAT_indirect_serial_PTT (rig);
   auto asynchronous_CAT = transceiver_factory_.has_asynchronous_CAT (rig);
-  auto is_hw_handshake = ui_->CAT_handshake_group_box->isEnabled ()
-    && TransceiverFactory::handshake_hardware == static_cast<TransceiverFactory::Handshake> (ui_->CAT_handshake_button_group->checkedId ());
   is_tci_ = ui_->rig_combo_box->currentText().startsWith("TCI Cli");
   ui_->tci_audio_check_box->setVisible(is_tci_);
   ui_->TCI_spin_box->setVisible(is_tci_);
@@ -3856,6 +3944,8 @@ void Configuration::impl::set_rig_invariants ()
   auto port_type = transceiver_factory_.CAT_port_type (rig);
 
   bool is_serial_CAT (TransceiverFactory::Capabilities::serial == port_type);
+  auto const is_hw_handshake = is_serial_CAT
+    && TransceiverFactory::handshake_hardware == static_cast<TransceiverFactory::Handshake> (ui_->CAT_handshake_button_group->checkedId ());
   auto const& cat_port = ui_->CAT_port_combo_box->currentText ();
 
   // only enable CAT option if transceiver has CAT PTT
@@ -3867,20 +3957,6 @@ void Configuration::impl::set_rig_invariants ()
   ui_->PTT_port_combo_box->setEnabled (enable_ptt_port);
   ui_->PTT_port_label->setEnabled (enable_ptt_port);
 
-  if (CAT_indirect_serial_PTT)
-    {
-      ui_->PTT_port_combo_box->setItemData (ui_->PTT_port_combo_box->findText ("CAT")
-                                            , combo_box_item_enabled, Qt::UserRole - 1);
-    }
-  else
-    {
-      ui_->PTT_port_combo_box->setItemData (ui_->PTT_port_combo_box->findText ("CAT")
-                                            , combo_box_item_disabled, Qt::UserRole - 1);
-      if ("CAT" == ui_->PTT_port_combo_box->currentText () && ui_->PTT_port_combo_box->currentIndex () > 0)
-        {
-          ui_->PTT_port_combo_box->setCurrentIndex (ui_->PTT_port_combo_box->currentIndex () - 1);
-        }
-    }
   ui_->PTT_RTS_radio_button->setEnabled (!((is_serial_CAT && ptt_port == cat_port && is_hw_handshake) || is_tci_));
 
   if (TransceiverFactory::basic_transceiver_name_ == rig)
@@ -3911,66 +3987,6 @@ void Configuration::impl::set_rig_invariants ()
       ui_->test_CAT_push_button->setEnabled (true);
       ui_->test_PTT_push_button->setEnabled (false);
       ui_->TX_audio_source_group_box->setEnabled (transceiver_factory_.has_CAT_PTT_mic_data (rig) && TransceiverFactory::PTT_method_CAT == ptt_method);
-      if (port_type != last_port_type_)
-        {
-          last_port_type_ = port_type;
-          switch (port_type)
-            {
-            case TransceiverFactory::Capabilities::serial:
-              fill_port_combo_box (ui_->CAT_port_combo_box);
-              ui_->CAT_port_combo_box->setCurrentText (rig_params_.serial_port);
-              if (ui_->CAT_port_combo_box->currentText ().isEmpty () && ui_->CAT_port_combo_box->count ())
-                {
-                  ui_->CAT_port_combo_box->setCurrentText (ui_->CAT_port_combo_box->itemText (0));
-                }
-              ui_->CAT_port_label->setText (tr ("Serial Port:"));
-              ui_->CAT_port_combo_box->setToolTip (tr ("Serial port used for CAT control"));
-              ui_->CAT_port_combo_box->setEnabled (true);
-              break;
-
-            case TransceiverFactory::Capabilities::tci:
-              ui_->CAT_port_combo_box->clear ();
-              ui_->CAT_port_combo_box->setCurrentText (rig_params_.tci_port);
-              ui_->CAT_port_label->setText (tr ("TCI Server:"));
-              ui_->CAT_port_combo_box->setToolTip (tr ("Optional hostname and port of TCI service.\n"
-                                                     "Leave blank for a sensible default on this machine.\n"
-                                                     "Formats:\n"
-                                                     "\thostname:port\n"
-                                                     "\tIPv4-address:port\n"
-                                                     "\t[IPv6-address]:port"));
-              ui_->CAT_port_combo_box->setEnabled (true);
-              break;
-
-            case TransceiverFactory::Capabilities::network:
-              ui_->CAT_port_combo_box->clear ();
-              ui_->CAT_port_combo_box->setCurrentText (rig_params_.network_port);
-              ui_->CAT_port_label->setText (tr ("Network Server:"));
-              ui_->CAT_port_combo_box->setToolTip (tr ("Optional hostname and port of network service.\n"
-                                                       "Leave blank for a sensible default on this machine.\n"
-                                                       "Formats:\n"
-                                                       "\thostname:port\n"
-                                                       "\tIPv4-address:port\n"
-                                                       "\t[IPv6-address]:port"));
-              ui_->CAT_port_combo_box->setEnabled (true);
-              break;
-
-            case TransceiverFactory::Capabilities::usb:
-              ui_->CAT_port_combo_box->clear ();
-              ui_->CAT_port_combo_box->setCurrentText (rig_params_.usb_port);
-              ui_->CAT_port_label->setText (tr ("USB Device:"));
-              ui_->CAT_port_combo_box->setToolTip (tr ("Optional device identification.\n"
-                                                       "Leave blank for a sensible default for the rig.\n"
-                                                       "Format:\n"
-                                                       "\t[VID[:PID[:VENDOR[:PRODUCT]]]]"));
-              ui_->CAT_port_combo_box->setEnabled (true);
-              break;
-
-            default:
-              ui_->CAT_port_combo_box->clear ();
-              ui_->CAT_port_combo_box->setEnabled (false);
-              break;
-            }
-        }
       ui_->CAT_serial_port_parameters_group_box->setEnabled (is_serial_CAT);
       ui_->force_DTR_combo_box->setEnabled (is_serial_CAT
                                             && (cat_port != ptt_port
@@ -3988,8 +4004,33 @@ void Configuration::impl::set_rig_invariants ()
                                               || TransceiverFactory::basic_transceiver_name_ != rig);
 }
 
+auto Configuration::impl::validate_radio_settings () -> RadioValidationError
+{
+  set_rig_invariants ();
+
+  if (!ui_->PTT_method_button_group->checkedButton ()->isEnabled ())
+    {
+      return RadioValidationError::invalid_ptt_method;
+    }
+
+  auto ptt_method = static_cast<TransceiverFactory::PTTMethod> (ui_->PTT_method_button_group->checkedId ());
+  auto ptt_port = ui_->PTT_port_combo_box->currentText ();
+  auto const ptt_port_index = ui_->PTT_port_combo_box->findText (ptt_port);
+  if ((TransceiverFactory::PTT_method_DTR == ptt_method || TransceiverFactory::PTT_method_RTS == ptt_method)
+      && (ptt_port.trimmed ().isEmpty ()
+          || (ptt_port_index >= 0
+              && combo_box_item_disabled == ui_->PTT_port_combo_box->itemData (ptt_port_index, Qt::UserRole - 1))))
+    {
+      return RadioValidationError::invalid_ptt_port;
+    }
+
+  return RadioValidationError::none;
+}
+
 bool Configuration::impl::validate ()
 {
+  auto const radio_error = validate_radio_settings ();
+
   if (ui_->sound_input_combo_box->currentIndex () < 0
       && next_audio_input_device_.isNull ())
     {
@@ -4014,20 +4055,14 @@ bool Configuration::impl::validate ()
       // don't reject as we can work without an audio output
     }
 
-  if (!ui_->PTT_method_button_group->checkedButton ()->isEnabled ())
+  if (RadioValidationError::invalid_ptt_method == radio_error)
     {
       find_tab (ui_->PTT_method_button_group->checkedButton ());
       MessageBox::critical_message (this, tr ("Invalid PTT method"));
       return false;
     }
 
-  auto ptt_method = static_cast<TransceiverFactory::PTTMethod> (ui_->PTT_method_button_group->checkedId ());
-  auto ptt_port = ui_->PTT_port_combo_box->currentText ();
-  auto const ptt_port_index = ui_->PTT_port_combo_box->findText (ptt_port);
-  if ((TransceiverFactory::PTT_method_DTR == ptt_method || TransceiverFactory::PTT_method_RTS == ptt_method)
-      && (ptt_port.isEmpty ()
-          || (ptt_port_index >= 0
-              && combo_box_item_disabled == ui_->PTT_port_combo_box->itemData (ptt_port_index, Qt::UserRole - 1))))
+  if (RadioValidationError::invalid_ptt_port == radio_error)
     {
       find_tab (ui_->PTT_port_combo_box);
       MessageBox::critical_message (this, tr ("Invalid PTT port"));
@@ -4843,12 +4878,12 @@ void Configuration::impl::update_DXCC_control_availability ()
   ui_->show_country_names_check_box->setEnabled (enabled);
 }
 
-void Configuration::impl::on_PTT_port_combo_box_activated (int /* index */)
+void Configuration::impl::on_PTT_port_combo_box_currentTextChanged (QString const& /* text */)
 {
   set_rig_invariants ();
 }
 
-void Configuration::impl::on_CAT_port_combo_box_activated (int /* index */)
+void Configuration::impl::on_CAT_port_combo_box_currentTextChanged (QString const& /* text */)
 {
   set_rig_invariants ();
 }
@@ -6918,8 +6953,6 @@ void Configuration::impl::fill_port_combo_box(QComboBox* cb)
         }
     }
 
-    cb->addItem("USB");
-    cb->setItemData(cb->count() - 1, "Custom USB device", Qt::ToolTipRole);
     cb->setEditText(current_text);
 }
 

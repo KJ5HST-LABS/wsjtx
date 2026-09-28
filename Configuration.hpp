@@ -525,6 +525,7 @@ public slots:
   Q_SLOT void transceiver_txvolume (double = 0, bool force = false);
 
 private:
+  friend class TestConfigurationRadio;
   class impl;
   pimpl<impl> m_;
 };
