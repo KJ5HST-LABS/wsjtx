@@ -142,6 +142,7 @@ subroutine jt9a()
         if(local_params%ndecoderstart.eq.3) shared_memory%payload%params%nzhsym=49
         if(local_params%ndecoderstart.eq.4) shared_memory%payload%params%nzhsym=50
      endif
+     local_params%nzhsym=nearly
   elseif (local_params%nmode.eq.8 .and. local_params%lmultift8 .and. .not. &
        local_params%ndiskdat) then
      npts1=min(180000,local_params%nzhsym*3456)
