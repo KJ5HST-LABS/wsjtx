@@ -106,7 +106,7 @@ endif ()
 #
 
 # Widgets finds its own dependencies.
-find_package (Qt5 COMPONENTS Widgets SerialPort Multimedia PrintSupport Sql LinguistTools WebSockets REQUIRED)
+find_package (Qt5 COMPONENTS Widgets SerialPort Multimedia PrintSupport Sql LinguistTools WebSockets Concurrent REQUIRED)
 
 if (CMAKE_CROSSCOMPILING)
   if (NOT WSJT_QT_HOST_PATH)

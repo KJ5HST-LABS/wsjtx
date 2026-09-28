@@ -658,7 +658,7 @@ add_library (wsjt_qt STATIC ${wsjt_qt_CXXSRCS} ${wsjt_qt_GENUISRCS} ${GENAXSRCS}
 wsjt_enable_qt_automoc (wsjt_qt)
 # set wsjtx_udp exports to static variants
 target_compile_definitions (wsjt_qt PUBLIC UDP_STATIC_DEFINE)
-target_link_libraries (wsjt_qt Hamlib::Hamlib Boost::log qcp Qt5::Widgets Qt5::Network Qt5::Multimedia Qt5::SerialPort Qt5::Sql Qt5::WebSockets)
+target_link_libraries (wsjt_qt Hamlib::Hamlib Boost::log qcp Qt5::Widgets Qt5::Network Qt5::Multimedia Qt5::SerialPort Qt5::Sql Qt5::WebSockets Qt5::Concurrent)
 if (WIN32)
   target_link_libraries (wsjt_qt Qt5::AxContainer Qt5::AxBase)
 endif (WIN32)
