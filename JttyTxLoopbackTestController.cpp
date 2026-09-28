@@ -85,8 +85,10 @@ JttyTxLoopbackTestController::JttyTxLoopbackTestController (
                  m_prepareTimer.start (100);
                  return;
                }
-             fail (tr ("JTTY request %1 was rejected with reason %2.")
-                   .arg (requestId).arg (static_cast<int> (reason)));
+             fail (tr ("JTTY request %1 was rejected with reason %2 (probe=%3, probe_started=%4, decoder_busy=%5).")
+                   .arg (requestId).arg (static_cast<int> (reason))
+                   .arg (m_modeChangeProbeId).arg (m_modeChangeProbeStarted)
+                   .arg (m_window->decoderBusy ()));
            });
   connect (m_window, &MainWindow::jttyTextCompleted,
            this, [this] (qint64 requestId) {
@@ -238,6 +240,11 @@ void JttyTxLoopbackTestController::prepareWhenReady ()
       return;
     }
   if (!m_modeChangeProbeComplete)
+    {
+      m_prepareTimer.start (50);
+      return;
+    }
+  if (m_window->decoderBusy ())
     {
       m_prepareTimer.start (50);
       return;
@@ -479,9 +486,11 @@ void JttyTxLoopbackTestController::fail (QString const& reason)
             << " stops=" << m_output->stopCount ()
             << " drains=" << m_sessionDrainCount
             << " frames=" << m_capturedFrames << std::endl;
-  if (auto * modal = QApplication::activeModalWidget ()) modal->close ();
-  m_window->close ();
-  QCoreApplication::exit (EXIT_FAILURE);
+  QTimer::singleShot (0, this, [this] {
+    if (auto * modal = QApplication::activeModalWidget ()) modal->close ();
+    m_window->close ();
+    QCoreApplication::exit (EXIT_FAILURE);
+  });
 }
 
 void JttyTxLoopbackTestController::checkForUnexpectedModal ()
