@@ -1364,9 +1364,55 @@ auto FrequencyList_v2_101::all_bands (Region region, Mode mode) const -> BandSet
   return result;
 }
 
-FrequencyList_v2_101::FrequencyItems FrequencyList_v2_101::from_json_file(QFile *input_file)
+namespace
+{
+  Radio::Frequency json_frequency (QString const& value, bool * ok)
+  {
+    auto const text = value.trimmed ();
+    bool c_locale_ok;
+    auto const c_locale_frequency = Radio::frequency (text, 6, &c_locale_ok, QLocale::c ());
+    if (c_locale_ok && Radio::frequency_MHz_string (c_locale_frequency, 6, QLocale::c ()) == text)
+      {
+        *ok = true;
+        return c_locale_frequency;
+      }
+    static auto const locales = QLocale::matchingLocales (QLocale::AnyLanguage,
+                                                           QLocale::AnyScript,
+                                                           QLocale::AnyCountry);
+    for (auto const& locale : locales)
+      {
+        auto normalized = text;
+        auto const group_separator = locale.groupSeparator ();
+        normalized.replace (QChar::Nbsp, group_separator);
+        normalized.replace (QChar {0x202f}, group_separator);
+        normalized.replace (QChar {'\''}, group_separator);
+        normalized.replace (QChar {0x2019}, group_separator);
+        bool parsed;
+        auto const frequency = Radio::frequency (normalized, 6, &parsed, locale);
+        if (parsed && Radio::frequency_MHz_string (frequency, 6, locale) == normalized)
+          {
+            *ok = true;
+            return frequency;
+          }
+      }
+    if (text.contains (',') || text.contains (QChar {'\''})
+        || text.contains (QChar {0x2019}) || text.contains (QChar::Nbsp)
+        || text.contains (QChar {0x202f}) || text.contains (QChar {0x066b})
+        || text.contains (QChar {0x066c}))
+      {
+        *ok = false;
+        return 0;
+      }
+    *ok = c_locale_ok;
+    return c_locale_frequency;
+  }
+}
+
+FrequencyList_v2_101::FrequencyItems FrequencyList_v2_101::from_json_file(QFile *input_file,
+                                                                           ImportReport * report)
 {
   FrequencyList_v2_101::FrequencyItems list;
+  ImportReport result;
   QJsonDocument doc = QJsonDocument::fromJson(input_file->readAll());
   if (doc.isNull())
     {
@@ -1382,56 +1428,64 @@ FrequencyList_v2_101::FrequencyItems FrequencyList_v2_101::from_json_file(QFile 
     {
       throw ReadFileException{tr ("No Frequencies were found")};
     }
-#ifdef DUMP_ENTRY_COUNTS
-  int valid_entry_count = 0;
-  int skipped_entry_count = 0;
-#endif
   for (auto const &item: arr)
     {
-      QString mode_s, region_s;
+      ++result.entries;
       QJsonObject obj = item.toObject();
       FrequencyList_v2_101::Item freq;
-      region_s = obj["region"].toString();
-      mode_s = obj["mode"].toString();
+      auto const region_s = obj["region"].toString().trimmed();
+      auto const mode_s = obj["mode"].toString().trimmed();
 
       bool frequency_ok;
-      freq.frequency_ = Radio::frequency (obj["frequency"].toString(), 6, &frequency_ok, QLocale::c ());
-      freq.region_ = IARURegions::SENTINAL;
-      for (int region = IARURegions::ALL; region < IARURegions::SENTINAL; ++region)
+      freq.frequency_ = json_frequency (obj["frequency"].toString(), &frequency_ok);
+      if (!frequency_ok || !freq.frequency_)
         {
-          auto const candidate = static_cast<IARURegions::Region> (region);
-          if (region_s == IARURegions::name (candidate))
+          ++result.invalid_frequency;
+          continue;
+        }
+      freq.region_ = IARURegions::fromCanonicalName (region_s);
+      if (freq.region_ == IARURegions::SENTINAL)
+        {
+          ++result.invalid_region;
+          continue;
+        }
+      freq.mode_ = Modes::ALL;
+      bool mode_ok = mode_s.isEmpty ();
+      for (int mode = Modes::ALL; !mode_ok && mode < Modes::MODES_END_SENTINAL_AND_COUNT; ++mode)
+        {
+          auto const candidate = static_cast<Modes::Mode> (mode);
+          if (mode_s.compare (Modes::name (candidate), Qt::CaseInsensitive) == 0)
             {
-              freq.region_ = candidate;
-              break;
+              freq.mode_ = candidate;
+              mode_ok = true;
             }
         }
-      freq.mode_ = Modes::value(mode_s);
+      if (!mode_ok)
+        {
+          ++result.unknown_modes[mode_s];
+          continue;
+        }
       freq.description_ = obj["description"].toString();
       freq.source_ = obj["source"].toString();
-      freq.start_time_ = QDateTime::fromString(obj["start_time"].toString(), Qt::ISODate);
-      freq.end_time_ = QDateTime::fromString(obj["end_time"].toString(), Qt::ISODate);
+      auto const start_time = obj["start_time"].toString().trimmed();
+      auto const end_time = obj["end_time"].toString().trimmed();
+      freq.start_time_ = QDateTime::fromString(start_time, Qt::ISODate);
+      freq.end_time_ = QDateTime::fromString(end_time, Qt::ISODate);
       freq.preferred_ = obj["preferred"].toBool();
 
-      if (frequency_ok && mode_s == Modes::name (freq.mode_) &&
-          freq.isSane())
+      if ((start_time.isEmpty () || freq.start_time_.isValid ())
+          && (end_time.isEmpty () || freq.end_time_.isValid ())
+          && freq.isSane())
         {
           list.push_back(freq);
-#ifdef DUMP_ENTRY_COUNTS          
-          valid_entry_count++;
-#endif          
-        } else {
-#ifdef DUMP_ENTRY_COUNTS            
-        skipped_entry_count++;
-#endif    
-    	}
+          ++result.imported;
+        }
+      else
+        {
+          ++result.invalid_item;
+        }
     }
-
-#ifdef DUMP_ENTRY_COUNTS
-  MessageBox::information_message(this, tr("Loaded Frequencies from %1").arg(file_name),
-                                  tr("Entries Valid/Skipped %1").arg(QString::number(valid_entry_count) + "/" +
-                                                                     QString::number(skipped_entry_count)));
-#endif
+  if (report) *report = result;
   return list;
 }
 

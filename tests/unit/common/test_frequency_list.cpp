@@ -56,9 +56,12 @@ class TestFrequencyList : public QObject
 private Q_SLOTS:
   void json_round_trip_data ();
   void json_round_trip ();
+  void legacy_locale_frequencies_data ();
+  void legacy_locale_frequencies ();
   void invalid_documents_data ();
   void invalid_documents ();
   void invalid_entries_are_isolated ();
+  void mode_names_are_normalized ();
   void eligibility_filters ();
   void selection_uses_eligible_frequencies ();
 };
@@ -94,9 +97,54 @@ void TestFrequencyList::json_round_trip ()
   QVERIFY (file.open ());
   model.to_json_file (&file, "test", "101", expected);
   QVERIFY (file.seek (0));
+  auto const document = QJsonDocument::fromJson (file.readAll ());
+  QCOMPARE (document.object ()["frequencies"].toArray ()[0].toObject ()["frequency"].toString (),
+            QStringLiteral ("1.000001"));
+  QVERIFY (file.seek (0));
   auto const actual = WorkingFrequencies::from_json_file (&file);
   QCOMPARE (actual.size (), expected.size ());
   for (int i = 0; i < expected.size (); ++i) QCOMPARE (actual[i], expected[i]);
+}
+
+void TestFrequencyList::legacy_locale_frequencies_data ()
+{
+  QTest::addColumn<QString> ("frequency_text");
+  QTest::addColumn<Radio::Frequency> ("frequency_hz");
+  QTest::newRow ("German decimal comma") << QStringLiteral ("14,074000") << Radio::Frequency {14074000};
+  QTest::newRow ("German grouping") << QStringLiteral ("1.296,000000") << Radio::Frequency {1296000000};
+  QTest::newRow ("French narrow-space grouping") << QStringLiteral ("1\u202f296,000000")
+                                                 << Radio::Frequency {1296000000};
+  QTest::newRow ("French older grouping") << QStringLiteral ("1\u00a0296,000000")
+                                           << Radio::Frequency {1296000000};
+  QTest::newRow ("Russian grouping") << QLocale {"ru_RU"}.toString (1296., 'f', 6)
+                                      << Radio::Frequency {1296000000};
+  QTest::newRow ("Swiss apostrophe grouping") << QStringLiteral ("1\u2019296.000000")
+                                                << Radio::Frequency {1296000000};
+  QTest::newRow ("Swiss older grouping") << QStringLiteral ("1'296.000000")
+                                          << Radio::Frequency {1296000000};
+}
+
+void TestFrequencyList::legacy_locale_frequencies ()
+{
+  QFETCH (QString, frequency_text);
+  QFETCH (Radio::Frequency, frequency_hz);
+  LocaleGuard restore_locale;
+  QLocale::setDefault (QLocale::c ());
+  QVERIFY (frequency_text != QLocale::c ().toString (frequency_hz / 1e6, 'f', 6));
+  QJsonArray entries {QJsonObject {{"frequency", frequency_text}, {"mode", "FT8"},
+                                  {"region", "Region 1"}}};
+  QTemporaryFile file;
+  QVERIFY (file.open ());
+  auto const contents = QJsonDocument {QJsonObject {{"frequencies", entries}}}.toJson ();
+  QCOMPARE (file.write (contents), qint64 (contents.size ()));
+  QVERIFY (file.seek (0));
+  WorkingFrequencies::ImportReport report;
+  auto const actual = WorkingFrequencies::from_json_file (&file, &report);
+  QCOMPARE (report.entries, 1);
+  QCOMPARE (report.imported, 1);
+  QCOMPARE (report.skipped (), 0);
+  QCOMPARE (actual.size (), 1);
+  QCOMPARE (actual.front ().frequency_, frequency_hz);
 }
 
 void TestFrequencyList::invalid_documents_data ()
@@ -122,7 +170,7 @@ void TestFrequencyList::invalid_entries_are_isolated ()
   QJsonObject const valid {{"frequency", "14.074000"}, {"mode", "FT8"},
                            {"region", "Region 1"}};
   QJsonArray entries;
-  for (auto const& frequency : {"invalid", "-1", "18446744073709.551616", "0"})
+  for (auto const& frequency : {"invalid", "-1", "18446744073709.551616", "0", "14,074"})
     {
       auto invalid = valid;
       invalid["frequency"] = frequency;
@@ -135,16 +183,61 @@ void TestFrequencyList::invalid_entries_are_isolated ()
       entries.append (invalid);
     }
   entries.insert (2, valid);
+  auto unknown_mode = valid;
+  unknown_mode["mode"] = "FT2";
+  entries.append (unknown_mode);
+  auto invalid_dates = valid;
+  invalid_dates["start_time"] = "2026-12-31T00:00:00Z";
+  invalid_dates["end_time"] = "2026-01-01T00:00:00Z";
+  entries.append (invalid_dates);
+  auto malformed_date = valid;
+  malformed_date["start_time"] = "not a date";
+  entries.append (malformed_date);
   QTemporaryFile file;
   QVERIFY (file.open ());
   auto const contents = QJsonDocument {QJsonObject {{"frequencies", entries}}}.toJson ();
   QCOMPARE (file.write (contents), qint64 (contents.size ()));
   QVERIFY (file.seek (0));
-  auto const actual = WorkingFrequencies::from_json_file (&file);
+  WorkingFrequencies::ImportReport report;
+  auto const actual = WorkingFrequencies::from_json_file (&file, &report);
   QCOMPARE (actual.size (), 1);
   QCOMPARE (actual.front ().frequency_, Radio::Frequency {14074000});
   QCOMPARE (actual.front ().mode_, Modes::FT8);
   QCOMPARE (actual.front ().region_, IARURegions::R1);
+  QCOMPARE (report.entries, entries.size ());
+  QCOMPARE (report.imported, 1);
+  QCOMPARE (report.invalid_frequency, 5);
+  QCOMPARE (report.invalid_region, 1);
+  QCOMPARE (report.unknown_modes.value ("Unknown"), 1);
+  QCOMPARE (report.unknown_modes.value ("FT2"), 1);
+  QCOMPARE (report.invalid_item, 2);
+  QCOMPARE (report.skipped (), 10);
+}
+
+void TestFrequencyList::mode_names_are_normalized ()
+{
+  QJsonArray entries;
+  for (auto const& mode : {"ft8", " FT8 ", "", "All"})
+    {
+      QJsonObject entry {{"frequency", "14.074000"}, {"region", "Region 1"}};
+      entry["mode"] = mode;
+      entries.append (entry);
+    }
+  entries.append (QJsonObject {{"frequency", "7.074000"}, {"region", "Region 1"}});
+  QTemporaryFile file;
+  QVERIFY (file.open ());
+  auto const contents = QJsonDocument {QJsonObject {{"frequencies", entries}}}.toJson ();
+  QCOMPARE (file.write (contents), qint64 (contents.size ()));
+  QVERIFY (file.seek (0));
+  WorkingFrequencies::ImportReport report;
+  auto const actual = WorkingFrequencies::from_json_file (&file, &report);
+  QCOMPARE (report.imported, entries.size ());
+  QCOMPARE (report.skipped (), 0);
+  QCOMPARE (actual[0].mode_, Modes::FT8);
+  QCOMPARE (actual[1].mode_, Modes::FT8);
+  QCOMPARE (actual[2].mode_, Modes::ALL);
+  QCOMPARE (actual[3].mode_, Modes::ALL);
+  QCOMPARE (actual[4].mode_, Modes::ALL);
 }
 
 void TestFrequencyList::eligibility_filters ()

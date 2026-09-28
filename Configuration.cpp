@@ -5740,7 +5740,34 @@ FrequencyList_v2_101::FrequencyItems Configuration::impl::read_frequencies_file 
     {
       try
         {
-          list = FrequencyList_v2_101::from_json_file(&frequencies_file);
+          FrequencyList_v2_101::ImportReport report;
+          list = FrequencyList_v2_101::from_json_file (&frequencies_file, &report);
+          if (report.skipped ())
+            {
+              QStringList reasons;
+              if (report.invalid_frequency)
+                reasons << tr ("Invalid frequency: %1").arg (report.invalid_frequency);
+              if (report.invalid_region)
+                reasons << tr ("Unknown region: %1").arg (report.invalid_region);
+              if (!report.unknown_modes.isEmpty ())
+                {
+                  QStringList examples;
+                  int unknown_count = 0;
+                  for (auto it = report.unknown_modes.cbegin (); it != report.unknown_modes.cend (); ++it)
+                    {
+                      unknown_count += it.value ();
+                      if (examples.size () < 3)
+                        examples << tr ("%1 (%2)").arg (it.key ()).arg (it.value ());
+                    }
+                  reasons << tr ("Unknown mode: %1 (%2)").arg (unknown_count).arg (examples.join (", "));
+                }
+              if (report.invalid_item)
+                reasons << tr ("Invalid dates: %1").arg (report.invalid_item);
+              MessageBox::warning_message (this, tr ("Some working frequencies were skipped"),
+                                           tr ("Imported %1 of %2 entries. Skipped %3:\n%4")
+                                             .arg (report.imported).arg (report.entries).arg (report.skipped ())
+                                             .arg (reasons.join ("\n")));
+            }
         }
       catch (ReadFileException const &e)
         {
