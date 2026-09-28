@@ -5,6 +5,7 @@ module decode_history_observations
   integer :: jt65_attempts = 0, q65_successes = 0
   integer :: phase_attempts(0:12) = 0
   integer :: summary_count = 0, fitted_phase = -999
+  integer :: display_calls = 0
   logical :: phase_has_signal(0:12) = .true.
 end module
 
@@ -139,11 +140,13 @@ contains
 end module
 
 module display_mod
+  use decode_history_observations
   implicit none
 contains
   subroutine display(nkeep, ftol)
     integer, intent(in) :: nkeep
     real, intent(in) :: ftol
+    display_calls = display_calls + 1
   end subroutine
 end module
 

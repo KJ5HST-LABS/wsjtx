@@ -8,6 +8,8 @@ program test_map65_decode_history
   implicit none
   real, allocatable :: samples(:,:)
   integer :: unit, before_jt65, before_q65
+  integer :: messages, rx_log, before_display
+  character(len=*), parameter :: JT65_MSG = 'K1ABC W9XYZ FN42'
 
   ! Only the center bin has signal power; DSP stand-ins never read samples.
   nfft_active = 1024
@@ -60,6 +62,27 @@ program test_map65_decode_history
   call run_pass(nhsym2, 0, 0)
   call require(jt65_attempts == before_jt65+2 .and. q65_successes == before_q65+2, &
                'final pass retains successes after a skipped-period boundary')
+
+  ! A double-click decode goes to the Messages/Band Map history (unit 26)
+  ! and map65_rx.log (unit 21), not only the main window, without repeating
+  ! a decode either file already holds.
+  messages = count_records(26, JT65_MSG)
+  rx_log = count_records(21, JT65_MSG)
+  call require(messages >= 1 .and. rx_log >= 1, 'wideband pass records the JT65 decode')
+  before_jt65 = jt65_attempts
+  before_display = display_calls
+  call click()
+  call require(jt65_attempts == before_jt65+1, 'click decodes JT65 at the cursor')
+  call require(count_records(26, JT65_MSG) == messages .and. count_records(21, JT65_MSG) == rx_log, &
+               'click does not repeat a decode the wideband pass recorded')
+  call require(display_calls == before_display+1, 'click refreshes the Messages window')
+  active_input_generation = 4
+  call click()
+  call require(count_records(26, JT65_MSG) == messages+1 .and. count_records(21, JT65_MSG) == rx_log+1, &
+               'click records a decode the wideband pass did not')
+  call click()
+  call require(count_records(26, JT65_MSG) == messages+1 .and. count_records(21, JT65_MSG) == rx_log+1, &
+               'second click on the same signal is not recorded again')
   print '(a)', 'MAP65 decode history tests passed.'
 
 contains
@@ -78,6 +101,28 @@ contains
                 -1270,20,mcall3b,nsum,nsave,0,'K1ABC       ','FN42  ',0,3,0, &
                 'W9XYZ       ','EN50  ',half_symbols,96000,0,1,11,0)
   end subroutine
+
+  subroutine click()
+    ! MainWindow::freezeDecode() sets nagain=1 and the manual decode flag.
+    manualDecodeFlag = 1
+    call run_pass(nhsym2, 1, 0)
+  end subroutine
+
+  ! Leaves the unit at its end, ready for map65a's next append.
+  integer function count_records(u, text)
+    integer, intent(in) :: u
+    character(len=*), intent(in) :: text
+    character(len=128) :: rec
+    integer :: ios
+    count_records = 0
+    rewind(u)
+    do
+      read(u, '(a)', iostat=ios) rec
+      if (ios /= 0) exit
+      if (index(rec, text) > 0) count_records = count_records + 1
+    enddo
+    backspace(u)
+  end function
 
   subroutine require(condition, description)
     logical, intent(in) :: condition
