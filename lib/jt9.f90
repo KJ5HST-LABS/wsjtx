@@ -45,7 +45,7 @@ program jt9
        bLowSidelobes = .false., nexp_decode_set = .false.,                   &
        have_ntol = .false.,multift8 = .false.,hidedupes = .false.,           &
        lft8lowth = .true.,lft8subpass = .true.,lwidedxcsearch = .true.,      &
-       stream_mode = .false.
+       stream_mode = .false., use_mtd_fft_plans = .false.
   type (option) :: long_options(43) = [                                      &
     option ('help', .false., 'h', 'Display this help message', ''),          &
     option ('version', .false., 'v', 'Display version and build revision', ''),&
@@ -593,7 +593,10 @@ program jt9
 
 ! Save FFTW wisdom and free memory
   if(len(trim(wisfile)).gt.0) iret=fftwf_export_wisdom_to_filename(wisfile)
-  if(mode.eq.8 .and. shared_data%params%lmultift8) then
+  if(allocated(shared_data)) then
+     use_mtd_fft_plans=mode.eq.8 .and. shared_data%params%lmultift8
+  endif
+  if(use_mtd_fft_plans) then
      call four2avar(a,-1,1,1,1)
      call filbigvar(-1.,0,0.,0,0.,0.,0)       !used for FFT plans for FT8 multithread detector
   else

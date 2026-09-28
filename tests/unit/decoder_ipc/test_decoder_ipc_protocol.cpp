@@ -1,4 +1,7 @@
 #include <QtTest>
+#include <QProcess>
+#include <QSharedMemory>
+#include <QUuid>
 
 #include <cstring>
 #include <limits>
@@ -28,6 +31,8 @@ private Q_SLOTS:
   void sharedProgressTracksActiveGeneration ();
   void delayedCompletionCannotClobberNextRequest ();
   void compatibleShutdownReleasesWorkers ();
+  void sharedMemoryWorkerExitsOnShutdown_data ();
+  void sharedMemoryWorkerExitsOnShutdown ();
   void shutdownReplacesAnyState_data ();
   void shutdownReplacesAnyState ();
   void generationWrapsWithoutUsingZero ();
@@ -305,6 +310,43 @@ void TestDecoderIpcProtocol::compatibleShutdownReleasesWorkers ()
   QCOMPARE (control.state, int {DECODER_IPC_SHUTDOWN});
   QCOMPARE (control.version, 1);
   QCOMPARE (control.progress, 4);
+}
+
+void TestDecoderIpcProtocol::sharedMemoryWorkerExitsOnShutdown_data ()
+{
+  QTest::addColumn<bool> ("explicitMode");
+  QTest::newRow ("mode-from-shared-memory") << false;
+  QTest::newRow ("explicit-ft8-mode") << true;
+}
+
+void TestDecoderIpcProtocol::sharedMemoryWorkerExitsOnShutdown ()
+{
+  QFETCH (bool, explicitMode);
+
+  auto const key = QStringLiteral ("jt9-exit-")
+    + QUuid::createUuid ().toString (QUuid::WithoutBraces);
+  QSharedMemory memory {key};
+  QVERIFY2 (memory.create (sizeof (shared_dec_data_t)),
+            qPrintable (memory.errorString ()));
+
+  auto * shared = static_cast<shared_dec_data_t *> (memory.data ());
+  shared->control.version = DECODER_IPC_VERSION;
+  shared->control.state = DECODER_IPC_SHUTDOWN;
+
+  QStringList args;
+  if (explicitMode) args << QStringLiteral ("-8");
+  args << QStringLiteral ("-s") << key;
+
+  QProcess decoder;
+  decoder.start (QString::fromLocal8Bit (JT9_TEST_EXECUTABLE), args);
+  if (!decoder.waitForFinished (15000))
+    {
+      decoder.kill ();
+      decoder.waitForFinished ();
+      QFAIL ("jt9 did not exit after shared-memory shutdown");
+    }
+  QCOMPARE (decoder.exitStatus (), QProcess::NormalExit);
+  QCOMPARE (decoder.exitCode (), 0);
 }
 
 void TestDecoderIpcProtocol::shutdownReplacesAnyState_data ()

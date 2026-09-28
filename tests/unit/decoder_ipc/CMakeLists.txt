@@ -14,6 +14,9 @@ add_executable (test_decoder_ipc_protocol
 )
 set_target_properties (test_decoder_ipc_protocol PROPERTIES LINKER_LANGUAGE CXX)
 target_include_directories (test_decoder_ipc_protocol PRIVATE ${CMAKE_SOURCE_DIR}/lib)
+target_compile_definitions (test_decoder_ipc_protocol PRIVATE
+  JT9_TEST_EXECUTABLE="$<TARGET_FILE:jt9>")
+add_dependencies (test_decoder_ipc_protocol jt9)
 if (APPLE)
   target_link_libraries (test_decoder_ipc_protocol Qt5::Test test_decoder_ipc_fortran_probe)
 else ()
