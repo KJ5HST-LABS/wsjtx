@@ -5,7 +5,7 @@ foreach (required_variable WSJTX WORK_DIR EXPECTED)
 endforeach ()
 
 set (ipc_dir "${WORK_DIR}-ipc")
-file (REMOVE_RECURSE "${WORK_DIR}")
+file (REMOVE_RECURSE "${WORK_DIR}" "${ipc_dir}")
 file (MAKE_DIRECTORY
   "${WORK_DIR}/capture/config"
   "${WORK_DIR}/capture/data"
@@ -31,6 +31,18 @@ if (NOT APPLE)
   list (APPEND capture_environment "TMPDIR=${ipc_dir}/capture")
   list (APPEND replay_environment "TMPDIR=${ipc_dir}/replay")
 endif ()
+if (WIN32)
+  list (APPEND capture_environment
+    "APPDATA=${WORK_DIR}/capture/config"
+    "LOCALAPPDATA=${WORK_DIR}/capture/data"
+    "TEMP=${ipc_dir}/capture"
+    "TMP=${ipc_dir}/capture")
+  list (APPEND replay_environment
+    "APPDATA=${WORK_DIR}/replay/config"
+    "LOCALAPPDATA=${WORK_DIR}/replay/data"
+    "TEMP=${ipc_dir}/replay"
+    "TMP=${ipc_dir}/replay")
+endif ()
 
 execute_process (
   COMMAND "${CMAKE_COMMAND}" -E env
@@ -39,6 +51,7 @@ execute_process (
     --jtty-tx-loopback-test "${capture}"
     --rig-name CTEST-JTTY-TX-CAPTURE
   WORKING_DIRECTORY "${WORK_DIR}/capture"
+  TIMEOUT 70
   RESULT_VARIABLE capture_result
   OUTPUT_VARIABLE capture_stdout
   ERROR_VARIABLE capture_stderr)
@@ -71,6 +84,7 @@ execute_process (
     --jtty-live-audio-expected "${EXPECTED}"
     --rig-name CTEST-JTTY-TX-REPLAY
   WORKING_DIRECTORY "${WORK_DIR}/replay"
+  TIMEOUT 100
   RESULT_VARIABLE replay_result
   OUTPUT_VARIABLE replay_stdout
   ERROR_VARIABLE replay_stderr)

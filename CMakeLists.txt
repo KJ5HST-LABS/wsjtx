@@ -1124,7 +1124,6 @@ if (WSJT_ENABLE_TESTS AND WSJT_ENABLE_GUI_SMOKE_TESTS
     AND (APPLE OR
       (CMAKE_SYSTEM_NAME STREQUAL "Linux"
         AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")))
-  add_dependencies (wsjtx sjtty)
 
   # Each full WSJT-X process allocates about 48 MiB of System V shared memory.
   # The macOS CI pool is sized for three concurrent instances, so keep GUI
@@ -1197,38 +1196,6 @@ if (WSJT_ENABLE_TESTS AND WSJT_ENABLE_GUI_SMOKE_TESTS
     LABELS "gui;audio;integration;receive-handoff"
     PROCESSORS 1
     TIMEOUT 30)
-
-  set (wsjtx_jtty_live_audio_test_root
-    "${CMAKE_BINARY_DIR}/Testing/LiveAudio/test_wsjtx_live_audio_jtty")
-  add_test (
-    NAME test_wsjtx_live_audio_jtty
-    COMMAND ${CMAKE_COMMAND}
-      "-DSJTTY=$<TARGET_FILE:sjtty>"
-      "-DWSJTX=$<TARGET_FILE:wsjtx>"
-      "-DWORK_DIR=${wsjtx_jtty_live_audio_test_root}"
-      "-DEXPECTED=${CMAKE_SOURCE_DIR}/tests/integration/jtty/live_audio.expected.txt"
-      -P ${CMAKE_SOURCE_DIR}/tests/integration/jtty/run_live_audio.cmake)
-  set_tests_properties (test_wsjtx_live_audio_jtty PROPERTIES
-    COST 21
-    LABELS "gui;audio;jtty;integration"
-    PROCESSORS 1
-    TIMEOUT 120)
-
-  set (wsjtx_jtty_tx_loopback_test_root
-    "${CMAKE_BINARY_DIR}/Testing/LiveAudio/test_wsjtx_jtty_tx_loopback")
-  add_test (
-    NAME test_wsjtx_jtty_tx_loopback
-    COMMAND ${CMAKE_COMMAND}
-      "-DWSJTX=$<TARGET_FILE:wsjtx>"
-      "-DWORK_DIR=${wsjtx_jtty_tx_loopback_test_root}"
-      "-DEXPECTED=${CMAKE_SOURCE_DIR}/tests/integration/jtty/tx_loopback.expected.txt"
-      -P ${CMAKE_SOURCE_DIR}/tests/integration/jtty/run_tx_loopback.cmake)
-  set_tests_properties (test_wsjtx_jtty_tx_loopback PROPERTIES
-    COST 37
-    LABELS "gui;audio;jtty;integration"
-    PROCESSORS 1
-    TIMEOUT 180)
-
   set (wsjtx_ft8_tx_loopback_test_root
     "${CMAKE_BINARY_DIR}/Testing/LiveAudio/test_wsjtx_ft8_tx_loopback")
   add_test (
@@ -1246,9 +1213,52 @@ if (WSJT_ENABLE_TESTS AND WSJT_ENABLE_GUI_SMOKE_TESTS
     TIMEOUT 150)
   if (WSJT_ENABLE_TSAN)
     set_tests_properties (
+      test_wsjtx_ft8_tx_loopback
+      PROPERTIES ENVIRONMENT "TSAN_OPTIONS=${wsjt_tsan_gui_options}")
+  endif ()
+endif ()
+
+if (WSJT_ENABLE_TESTS AND WSJT_ENABLE_GUI_SMOKE_TESTS
+    AND WSJT_BUILD_FORTRAN_OPENMP
+    AND (APPLE OR WIN32 OR
+      (CMAKE_SYSTEM_NAME STREQUAL "Linux"
+        AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")))
+  add_dependencies (wsjtx sjtty)
+
+  set (wsjtx_jtty_live_audio_test_root
+    "${CMAKE_BINARY_DIR}/Testing/LiveAudio/test_wsjtx_live_audio_jtty")
+  add_test (
+    NAME test_wsjtx_live_audio_jtty
+    COMMAND ${CMAKE_COMMAND}
+      "-DSJTTY=$<TARGET_FILE:sjtty>"
+      "-DWSJTX=$<TARGET_FILE:wsjtx>"
+      "-DWORK_DIR=${wsjtx_jtty_live_audio_test_root}"
+      "-DEXPECTED=${CMAKE_SOURCE_DIR}/tests/integration/jtty/live_audio.expected.txt"
+      -P ${CMAKE_SOURCE_DIR}/tests/integration/jtty/run_live_audio.cmake)
+  set_tests_properties (test_wsjtx_live_audio_jtty PROPERTIES
+    COST 21
+    LABELS "gui;audio;jtty;integration"
+    PROCESSORS 1
+    TIMEOUT 140)
+
+  set (wsjtx_jtty_tx_loopback_test_root
+    "${CMAKE_BINARY_DIR}/Testing/LiveAudio/test_wsjtx_jtty_tx_loopback")
+  add_test (
+    NAME test_wsjtx_jtty_tx_loopback
+    COMMAND ${CMAKE_COMMAND}
+      "-DWSJTX=$<TARGET_FILE:wsjtx>"
+      "-DWORK_DIR=${wsjtx_jtty_tx_loopback_test_root}"
+      "-DEXPECTED=${CMAKE_SOURCE_DIR}/tests/integration/jtty/tx_loopback.expected.txt"
+      -P ${CMAKE_SOURCE_DIR}/tests/integration/jtty/run_tx_loopback.cmake)
+  set_tests_properties (test_wsjtx_jtty_tx_loopback PROPERTIES
+    COST 37
+    LABELS "gui;audio;jtty;integration"
+    PROCESSORS 1
+    TIMEOUT 190)
+  if (WSJT_ENABLE_TSAN)
+    set_tests_properties (
       test_wsjtx_live_audio_jtty
       test_wsjtx_jtty_tx_loopback
-      test_wsjtx_ft8_tx_loopback
       PROPERTIES ENVIRONMENT "TSAN_OPTIONS=${wsjt_tsan_gui_options}")
   endif ()
 endif ()

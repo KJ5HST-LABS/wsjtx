@@ -611,11 +611,14 @@ void LiveAudioTestController::prepareJttyWhenReady ()
     fail (tr ("JTTY recording or logging controls were not found."));
     return;
   }
-  m_jttySaveDirectory = QFileInfo (savePath->text ()).canonicalFilePath ();
-  auto const dataRoot = QFileInfo (dataDirectory.absolutePath ()).canonicalFilePath ();
+  m_jttySaveDirectory = QDir::fromNativeSeparators (
+    QFileInfo (savePath->text ()).canonicalFilePath ());
+  auto const dataRoot = QDir::fromNativeSeparators (
+    QFileInfo (dataDirectory.absolutePath ()).canonicalFilePath ());
   if (!QCoreApplication::applicationName ().endsWith (" - test") || dataRoot.isEmpty ()
-      || !m_jttySaveDirectory.startsWith (dataRoot + QDir::separator ())) {
-    fail (tr ("JTTY recording validation requires a save directory inside the isolated test data directory."));
+      || !m_jttySaveDirectory.startsWith (dataRoot + QLatin1Char ('/'))) {
+    fail (tr ("JTTY recording validation requires a save directory inside the isolated test data directory: save=%1 data=%2.")
+          .arg (m_jttySaveDirectory, dataRoot));
     return;
   }
   for (auto const& name : QDir (m_jttySaveDirectory).entryList ({"*.wav"}, QDir::Files))

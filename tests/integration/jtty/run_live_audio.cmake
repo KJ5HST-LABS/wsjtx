@@ -5,7 +5,7 @@ foreach (required_variable SJTTY WSJTX WORK_DIR EXPECTED)
 endforeach ()
 
 set (ipc_dir "${WORK_DIR}-ipc")
-file (REMOVE_RECURSE "${WORK_DIR}")
+file (REMOVE_RECURSE "${WORK_DIR}" "${ipc_dir}")
 file (MAKE_DIRECTORY
   "${WORK_DIR}/config"
   "${WORK_DIR}/data"
@@ -17,6 +17,7 @@ execute_process (
     "CQ TEST DE KA1ABC LIVE AUDIO SMOKE TEST"
     1500 0.25 AW 0 384 1 99
   WORKING_DIRECTORY "${WORK_DIR}"
+  TIMEOUT 20
   RESULT_VARIABLE generator_result
   OUTPUT_VARIABLE generator_stdout
   ERROR_VARIABLE generator_stderr)
@@ -44,6 +45,13 @@ set (wsjtx_environment
 if (NOT APPLE)
   list (APPEND wsjtx_environment "TMPDIR=${ipc_dir}")
 endif ()
+if (WIN32)
+  list (APPEND wsjtx_environment
+    "APPDATA=${WORK_DIR}/config"
+    "LOCALAPPDATA=${WORK_DIR}/data"
+    "TEMP=${ipc_dir}"
+    "TMP=${ipc_dir}")
+endif ()
 
 execute_process (
   COMMAND "${CMAKE_COMMAND}" -E env
@@ -53,6 +61,7 @@ execute_process (
     --jtty-live-audio-expected "${EXPECTED}"
     --rig-name CTEST-LIVE-AUDIO-JTTY
   WORKING_DIRECTORY "${WORK_DIR}"
+  TIMEOUT 110
   RESULT_VARIABLE wsjtx_result
   OUTPUT_VARIABLE wsjtx_stdout
   ERROR_VARIABLE wsjtx_stderr)

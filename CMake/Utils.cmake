@@ -7,13 +7,13 @@
 # top-level file.
 #
 
-# The Linux live-audio smoke tests synthesize their fixture at test time. Keep
-# this one generator in the build graph even in lean CI configurations where
-# the rest of the simulator utilities are disabled.
+# The JTTY live-audio smoke test synthesizes its fixture at test time. Keep
+# its generator available when simulator utilities are disabled.
 set (wsjt_jtty_live_audio_tests FALSE)
 if (WSJT_ENABLE_TESTS AND WSJT_BUILD_FORTRAN_OPENMP
-    AND CMAKE_SYSTEM_NAME STREQUAL "Linux"
-    AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
+    AND ((CMAKE_SYSTEM_NAME STREQUAL "Linux"
+          AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
+      OR (WSJT_ENABLE_GUI_SMOKE_TESTS AND (APPLE OR WIN32))))
   set (wsjt_jtty_live_audio_tests TRUE)
 endif ()
 

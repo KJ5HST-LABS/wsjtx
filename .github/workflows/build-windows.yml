@@ -247,6 +247,7 @@ jobs:
             -DCMAKE_Fortran_FLAGS="-fallow-argument-mismatch -std=legacy" \
             -DWSJT_SKIP_MANPAGES=ON \
             -DWSJT_ENABLE_TESTS=ON \
+            -DWSJT_ENABLE_GUI_SMOKE_TESTS=ON \
             -DWSJT_FORTRAN_LIBRARY_VARIANTS=OPENMP_ONLY \
             -DWSJT_RELEASE_CHANNEL="${WSJT_RELEASE_CHANNEL}" \
             -DWSJT_RC_NUMBER="${WSJT_RC_NUMBER}" \
@@ -288,6 +289,16 @@ jobs:
           # libhamlib-4.dll in.
           export PATH="${{ steps.windows-deps.outputs.boost_prefix }}/lib:${{ steps.windows-deps.outputs.hamlib_prefix }}/bin:${PATH}"
           ctest --output-on-failure --output-junit ctest-results.xml
+          python3 - <<'PY'
+          import xml.etree.ElementTree as ET
+
+          root = ET.parse('ctest-results.xml').getroot()
+          for name in ('test_wsjtx_live_audio_jtty', 'test_wsjtx_jtty_tx_loopback'):
+              test = root.find(f".//testcase[@name='{name}']")
+              if test is None or test.find('failure') is not None or test.find('skipped') is not None:
+                  raise SystemExit(f'{name} was not executed successfully')
+              print(f'{name} passed')
+          PY
         working-directory: wsjtx-build
 
       - name: Publish test summary
