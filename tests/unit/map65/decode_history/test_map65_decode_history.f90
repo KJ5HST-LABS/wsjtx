@@ -9,6 +9,9 @@ program test_map65_decode_history
   real, allocatable :: samples(:,:)
   integer :: unit, before_jt65, before_q65
   integer :: messages, rx_log, before_display
+  integer :: band_nfa = 0, band_nfb = 0, cursor_khz = 0, fits(3)
+  real :: rec_khz
+  character(len=128) :: rec
   character(len=*), parameter :: JT65_MSG = 'K1ABC W9XYZ FN42'
 
   ! Only the center bin has signal power; DSP stand-ins never read samples.
@@ -83,6 +86,25 @@ program test_map65_decode_history
   call click()
   call require(count_records(26, JT65_MSG) == messages+1 .and. count_records(21, JT65_MSG) == rx_log+1, &
                'second click on the same signal is not recorded again')
+
+  ! A shorthand click is recorded at the clicked kHz like a normal decode,
+  ! without fit values left in sig by an earlier decode. The band center
+  ! (nfa+nfb)/2 = 130 kHz and cursor 130 kHz give 144.130 MHz.
+  stub_fit = 7.0
+  active_input_generation = 5
+  call run_pass(nhsym1, 0, 0)
+  stub_fit = 0.0
+  stub_syncshort = 10.0
+  band_nfa = 100
+  band_nfb = 160
+  cursor_khz = 130
+  active_input_generation = 6
+  call click()
+  call require(last_record(26, 'ATT', rec), 'shorthand click is recorded for the Messages window')
+  read(rec(1:8), *) rec_khz
+  read(rec(14:22), '(3i3)') fits
+  call require(abs(rec_khz - 144.130) < 0.0005, 'shorthand click is recorded at the clicked kHz')
+  call require(all(fits == 0), 'shorthand click records no stale fit values')
   print '(a)', 'MAP65 decode history tests passed.'
 
 contains
@@ -97,7 +119,8 @@ contains
     nsum = 0
     nsave = 0
     call system_clock(t_start)
-    call map65a(samples,newdat,utc,144.0_real64,100,0,0,0,0,0,again,done,0,ndphi,0, &
+    call map65a(samples,newdat,utc,144.0_real64,100,0,band_nfa,band_nfb,0,cursor_khz, &
+                again,done,0,ndphi,0, &
                 -1270,20,mcall3b,nsum,nsave,0,'K1ABC       ','FN42  ',0,3,0, &
                 'W9XYZ       ','EN50  ',half_symbols,96000,0,1,11,0)
   end subroutine
@@ -108,7 +131,27 @@ contains
     call run_pass(nhsym2, 1, 0)
   end subroutine
 
-  ! Leaves the unit at its end, ready for map65a's next append.
+  ! Both leave the unit at its end, ready for map65a's next append.
+  logical function last_record(u, text, found)
+    integer, intent(in) :: u
+    character(len=*), intent(in) :: text
+    character(len=*), intent(out) :: found
+    character(len=128) :: line
+    integer :: ios
+    last_record = .false.
+    found = ' '
+    rewind(u)
+    do
+      read(u, '(a)', iostat=ios) line
+      if (ios /= 0) exit
+      if (index(line, text) > 0) then
+        found = line
+        last_record = .true.
+      endif
+    enddo
+    backspace(u)
+  end function
+
   integer function count_records(u, text)
     integer, intent(in) :: u
     character(len=*), intent(in) :: text

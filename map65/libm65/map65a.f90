@@ -293,7 +293,7 @@ contains
             km = 1
             sig(1,1) = nfile
             sig(1,2) = nutc
-            sig(1,3) = freq
+            sig(1,3) = freq + 0.5*(nfa + nfb)
             sig(1,4) = syncshort
             sig(1,5) = dt2
             sig(1,6) = 45*(ipol2 - 1)/57.2957795
@@ -302,6 +302,8 @@ contains
             sig(1,9) = 0
             sig(1,10)= 0
             sig(1,12)= savg_dec(ipol2,i)
+            sig(1,13:16) = 0
+            sig(1,18)    = 0
             msg(1)   = shmsg0(1)
          endif
 
