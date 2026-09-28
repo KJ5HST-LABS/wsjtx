@@ -21,7 +21,11 @@ subroutine display(nkeep, ftol)
   integer, parameter :: MX       = MAXLINES + 2   ! one group plus two separators
   ! Sorted output: each record plus a blank line between frequency groups.
   integer, parameter :: MAXOUT   = 2*MAXLINES
-  integer, parameter :: MAXCALLS = 500
+  ! Band Map entries: at most one per record, plus the two separators and
+  ! two blank entries written after the loop. Sized from MAXLINES for
+  ! consistency; real activity stays far below it (even the ARRL EME
+  ! contest sees a few hundred stations over the whole weekend).
+  integer, parameter :: MAXCALLS = MAXLINES + 4
 
   ! Locals. The large arrays are static, not on the decode thread's stack.
   integer, save   :: indx(MAXLINES), indx2(MX)
@@ -66,9 +70,6 @@ subroutine display(nkeep, ftol)
   call dbg('display: ENTRY at t=' // rtoa(sec_midn()) // ' nkeep=' // itoa(nkeep))
 
   !------------------ Read and filter valid lines ---------------------
-  ! Read the newest MAXLINES records. Reading from the start of the file
-  ! instead left the newest decodes out of the Messages window whenever the
-  ! file held more than MAXLINES, until the age trim below caught up.
   rewind(26)
   nrec = 0
   do

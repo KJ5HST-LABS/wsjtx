@@ -1084,8 +1084,6 @@ void MainWindow::readSettings()
   }
   m_editorCommand=settings.value("Editor","notepad").toString();
   m_dxccPfx=settings.value("DXCCpfx","").toString();
-  // Minutes kept in the Messages and Band Map windows; same range as the
-  // Setup spinbox, so an out-of-range saved value can't reach the decoder.
   m_timeout=qBound(10,settings.value("Timeout",20).toInt(),40);
   m_applyIQcal=settings.value("ApplyIQcal",0).toInt();
   ui->actionApply_IQ_Calibration->setChecked(m_applyIQcal!=0);
