@@ -332,7 +332,8 @@ void MainWindow::completeJttyTxEnqueue(qint64 requestId, QString const& message,
     startJttyTxWatchdog(pendingMs + 1000 * m_config.txDelay() + 10000);
   }
 
-  monitor(false);
+  if (m_monitoring && !ui->actionFull_Duplex_Mode->isChecked())
+    monitor(false);
 
 #ifdef WIN32
   if (m_mmttyif) {
