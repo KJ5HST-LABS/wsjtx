@@ -288,12 +288,7 @@ contains
          !===========================
          ! SHORTHAND DETECTION (JT65)
          !===========================
-         ! Same rule as the wideband quick decode (nqd=1): a shorthand is a
-         ! square wave between the sync tone and a tone 10*j*mode65 spacings
-         ! above it (j = 2, 3, 4 for RO, RRR, 73). Look for the upper tone
-         ! with its lower tone within ftol of the click, and report the lower
-         ! tone's frequency, as the wideband pass does. The bin chosen above
-         ! by sync1 can't be used: a shorthand has no JT65 sync pattern.
+         ! Same rule as the wideband quick decode (nqd=1).
          shorthand_detected = .false.
          thresh0 = 1.0
          if (ntol .le. 100) thresh0 = 0.
