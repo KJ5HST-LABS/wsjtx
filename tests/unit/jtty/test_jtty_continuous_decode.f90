@@ -8,6 +8,7 @@ program test_jtty_continuous_decode
 
   integer, parameter :: nsps=384, rate=12000, step=59*nsps/4, block=3456
   integer, parameter :: max_events=256
+  integer, parameter :: review_interval=16*rate
   integer(c_int64_t), parameter :: high_origin=2_c_int64_t**40
   character(len=*), parameter :: wanted='WB9XYZ 599 0123'
   character(len=*), parameter :: overlap_strong='MAYBE YOU SHOULD HELP'
@@ -129,6 +130,7 @@ contains
     integer, optional, intent(in) :: high_frequency
     integer(c_int) :: live,manual,processed,ignored
     integer :: available,first,rotations,discard_count,nfb,review_restarts
+    integer :: next_review_sample,last_review_restart
     integer(c_int64_t) :: required
     type(update_event) :: discarded(max_events)
 
@@ -137,6 +139,8 @@ contains
     if(present(high_frequency)) nfb=high_frequency
     rotations=0
     review_restarts=0
+    next_review_sample=0
+    last_review_restart=0
     first=1
     live=jtty_rx_create()
     call expect(live.ne.0,'live decoder context is available')
@@ -156,7 +160,7 @@ contains
           call expect(processed.ge.0,'retained audio covers the forward and retro search windows')
           call collect(live,events,event_count)
           if(processed.eq.0) exit
-          if(review) then
+          if(review .and. available.ge.next_review_sample) then
              ignored=jtty_rx_process(manual,samples,9*rate,0_c_int64_t,int(9*rate,c_int64_t), &
                   1,200,nfb,1500.0,50.0)
              call expect(ignored.ge.0,'review decoding remains independently valid')
@@ -168,6 +172,8 @@ contains
                 call collect(manual,discarded,discard_count)
                 call jtty_rx_begin(manual,2_c_int64_t,0_c_int64_t,0_c_int64_t,nsps)
                 review_restarts=review_restarts+1
+                last_review_restart=available
+                next_review_sample=next_review_sample+review_interval
              endif
           endif
        enddo
@@ -182,6 +188,7 @@ contains
     if(storage_size.gt.0) call expect(rotations.gt.0,'the fixture actually rotates storage')
     if(storage_size.eq.7*rate) call expect(rotations.gt.20,'short storage repeats many rotations')
     if(review) call expect(review_restarts.gt.10,'review decoding remains active through later storage boundaries')
+    if(review) call expect(last_review_restart.ge.180*rate,'review decoding continues past the 180-second boundary')
     call jtty_rx_end(live,UPDATE_RECEPTION_ENDED)
     call collect(live,events,event_count)
     call jtty_rx_destroy(live)
