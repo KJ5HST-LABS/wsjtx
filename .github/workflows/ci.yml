@@ -91,12 +91,12 @@ jobs:
           REQUEST_SAVE_CCACHE: ${{ inputs.save_ccache || false }}
           RECACHE: ${{ inputs.recache || false }}
         run: .github/scripts/select-linux-ccache-save.sh
+      # Routine PRs and develop pushes build and test without packaging.
+      # Full CI, manual runs, and release-branch pushes also validate packages.
       - id: packaging-policy
         name: Select Linux packaging policy
         env:
           EVENT_NAME: ${{ github.event_name }}
-          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          CURRENT_SHA: ${{ github.sha }}
           FULL_CI: ${{ contains(github.event.pull_request.labels.*.name, 'full-ci') }}
         run: .github/scripts/select-linux-packaging.sh
       - id: linux-image
