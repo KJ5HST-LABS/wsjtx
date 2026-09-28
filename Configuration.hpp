@@ -114,6 +114,9 @@ public:
 
   QString my_callsign () const;
   QString my_grid () const;
+  bool has_precise_home_coordinates () const;
+  double home_latitude () const;
+  double home_longitude () const;
   QString Field_Day_Exchange() const;
   QString RTTY_Exchange() const;
   QString Contest_Name() const;
