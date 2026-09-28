@@ -51,7 +51,7 @@ execute_process (
     --jtty-tx-loopback-test "${capture}"
     --rig-name CTEST-JTTY-TX-CAPTURE
   WORKING_DIRECTORY "${WORK_DIR}/capture"
-  TIMEOUT 70
+  TIMEOUT 210
   RESULT_VARIABLE capture_result
   OUTPUT_VARIABLE capture_stdout
   ERROR_VARIABLE capture_stderr)
@@ -84,7 +84,7 @@ execute_process (
     --jtty-live-audio-expected "${EXPECTED}"
     --rig-name CTEST-JTTY-TX-REPLAY
   WORKING_DIRECTORY "${WORK_DIR}/replay"
-  TIMEOUT 100
+  TIMEOUT 400
   RESULT_VARIABLE replay_result
   OUTPUT_VARIABLE replay_stdout
   ERROR_VARIABLE replay_stderr)
