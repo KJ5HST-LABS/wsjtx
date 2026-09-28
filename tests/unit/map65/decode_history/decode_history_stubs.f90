@@ -5,6 +5,10 @@ module decode_history_observations
   integer :: jt65_attempts = 0, q65_successes = 0
   integer :: phase_attempts(0:12) = 0
   integer :: summary_count = 0, fitted_phase = -999
+  integer :: display_calls = 0
+  ! ccf65's shorthand sync and decode1a's fit values (a), so a test can make
+  ! a click see a shorthand message after a decode with non-zero fits.
+  real :: stub_syncshort = -99.0, stub_fit = 0.0
   logical :: phase_has_signal(0:12) = .true.
 end module
 
@@ -47,6 +51,7 @@ contains
 end module
 
 module ccf65_legacy_mod
+  use decode_history_observations
   implicit none
 contains
   subroutine ccf65(ss_plane, nhsym, ssmax, sync1, ipol1, jpz, dt1, flipk, &
@@ -58,7 +63,7 @@ contains
     sync1 = 10.0
     dt1 = 0.0
     flipk = 1.0
-    syncshort = -99.0
+    syncshort = stub_syncshort
     snr2 = 0.0
     dt2 = 0.0
     ipol1 = 1
@@ -96,7 +101,7 @@ contains
     endif
     decoded = 'K1ABC W9XYZ FN42'
     sync2 = 100.0
-    a = 0.0
+    a = stub_fit
     dt = 0.0
     pol = 0.0
     qual = 5.0 + 4.0*sin(dphi)
@@ -139,11 +144,13 @@ contains
 end module
 
 module display_mod
+  use decode_history_observations
   implicit none
 contains
   subroutine display(nkeep, ftol)
     integer, intent(in) :: nkeep
     real, intent(in) :: ftol
+    display_calls = display_calls + 1
   end subroutine
 end module
 
