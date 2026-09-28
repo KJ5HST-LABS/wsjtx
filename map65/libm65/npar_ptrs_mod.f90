@@ -475,14 +475,6 @@ contains
   subroutine set_map65RxLog(val) bind(C, name="set_map65RxLog")
     use iso_c_binding
     integer(c_int), value :: val
-    ! map65RxLog is read back by get_map65RxLog() for debug logging only.
-    ! nrxlog is the variable m65c()/decode0.f90 actually check (iand bits
-    ! 1/2/4/8) to write the date header, erase map65_rx.log, clear the
-    ! decode-history file on Erase, and force manual dPhi. Before this fix
-    ! nrxlog was never assigned anywhere, so all four of those flag bits
-    ! were permanently dead -- e.g. Erase Band Map and Messages never
-    ! actually cleared unit 26, so the next display() cycle just replayed
-    ! the full decode history back into the Messages window.
     call lock_decode_requests()
     draft%map65RxLog = val
     draft%nrxlog = val

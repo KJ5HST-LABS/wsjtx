@@ -150,8 +150,8 @@ module display_mod
   use decode_history_observations
   implicit none
 contains
-  subroutine display(nkeep, ftol)
-    integer, intent(in) :: nkeep
+  subroutine display(nkeep, ftol, nutc)
+    integer, intent(in) :: nkeep, nutc
     real, intent(in) :: ftol
     display_calls = display_calls + 1
   end subroutine

@@ -4,6 +4,7 @@ program test_map65_decode_history
   use datcom_ptrs_mod, only: ss_old, savg_old
   use decodes_mod, only: nhsym1, nhsym2
   use map65a_mod, only: map65a
+  use message_history_mod, only: message_record, recent_messages
   use decode_history_observations
   implicit none
   real, allocatable :: samples(:,:)
@@ -67,25 +68,24 @@ program test_map65_decode_history
   call require(jt65_attempts == before_jt65+2 .and. q65_successes == before_q65+2, &
                'final pass retains successes after a skipped-period boundary')
 
-  ! A double-click decode goes to the Messages/Band Map history (unit 26)
-  ! and map65_rx.log (unit 21), not only the main window, without repeating
-  ! a decode either file already holds.
-  messages = count_records(26, JT65_MSG)
+  ! A double-click decode reaches Messages/Band Map and map65_rx.log
+  ! without repeating a decode already recorded by the wideband pass.
+  messages = count_history_records(JT65_MSG)
   rx_log = count_records(21, JT65_MSG)
   call require(messages >= 1 .and. rx_log >= 1, 'wideband pass records the JT65 decode')
   before_jt65 = jt65_attempts
   before_display = display_calls
   call click()
   call require(jt65_attempts == before_jt65+1, 'click decodes JT65 at the cursor')
-  call require(count_records(26, JT65_MSG) == messages .and. count_records(21, JT65_MSG) == rx_log, &
+  call require(count_history_records(JT65_MSG) == messages .and. count_records(21, JT65_MSG) == rx_log, &
                'click does not repeat a decode the wideband pass recorded')
   call require(display_calls == before_display+1, 'click refreshes the Messages window')
   active_input_generation = 4
   call click()
-  call require(count_records(26, JT65_MSG) == messages+1 .and. count_records(21, JT65_MSG) == rx_log+1, &
+  call require(count_history_records(JT65_MSG) == messages+1 .and. count_records(21, JT65_MSG) == rx_log+1, &
                'click records a decode the wideband pass did not')
   call click()
-  call require(count_records(26, JT65_MSG) == messages+1 .and. count_records(21, JT65_MSG) == rx_log+1, &
+  call require(count_history_records(JT65_MSG) == messages+1 .and. count_records(21, JT65_MSG) == rx_log+1, &
                'second click on the same signal is not recorded again')
 
   ! A click on a JT65C RRR shorthand: its sync tone in the clicked bin and
@@ -109,7 +109,7 @@ program test_map65_decode_history
   cursor_khz = 130
   active_input_generation = 6
   call click()
-  call require(last_record(26, 'RRR', rec), 'shorthand click is found and labeled RRR')
+  call require(last_history_record('RRR', rec), 'shorthand click is found and labeled RRR')
   read(rec(1:8), *) rec_khz
   read(rec(14:22), '(3i3)') fits
   call require(abs(rec_khz - 144.130) < 0.0005, 'shorthand click is recorded at the clicked kHz')
@@ -117,6 +117,34 @@ program test_map65_decode_history
   print '(a)', 'MAP65 decode history tests passed.'
 
 contains
+  integer function count_history_records(text)
+    character(len=*), intent(in) :: text
+    type(message_record), allocatable :: records(:)
+    integer :: i
+
+    call recent_messages(huge(0), records)
+    count_history_records = 0
+    do i = 1, size(records)
+      if (index(records(i)%line, text) > 0) count_history_records = count_history_records + 1
+    enddo
+  end function
+
+  logical function last_history_record(text, found)
+    character(len=*), intent(in) :: text
+    character(len=*), intent(out) :: found
+    type(message_record), allocatable :: records(:)
+    integer :: i
+
+    call recent_messages(huge(0), records)
+    last_history_record = .false.
+    found = ' '
+    do i = 1, size(records)
+      if (index(records(i)%line, text) == 0) cycle
+      found = records(i)%line
+      last_history_record = .true.
+    enddo
+  end function
+
   subroutine run_pass(half_symbols, again, find_phase)
     integer, intent(in) :: half_symbols, again, find_phase
     integer :: newdat, utc, done, ndphi, mcall3b, nsum, nsave
@@ -139,27 +167,6 @@ contains
     manualDecodeFlag = 1
     call run_pass(nhsym2, 1, 0)
   end subroutine
-
-  ! Both leave the unit at its end, ready for map65a's next append.
-  logical function last_record(u, text, found)
-    integer, intent(in) :: u
-    character(len=*), intent(in) :: text
-    character(len=*), intent(out) :: found
-    character(len=128) :: line
-    integer :: ios
-    last_record = .false.
-    found = ' '
-    rewind(u)
-    do
-      read(u, '(a)', iostat=ios) line
-      if (ios /= 0) exit
-      if (index(line, text) > 0) then
-        found = line
-        last_record = .true.
-      endif
-    enddo
-    backspace(u)
-  end function
 
   integer function count_records(u, text)
     integer, intent(in) :: u

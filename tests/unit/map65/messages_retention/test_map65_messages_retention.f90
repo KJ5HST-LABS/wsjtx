@@ -2,80 +2,125 @@ program test_map65_messages_retention
   use iso_fortran_env, only: real64
   use stdout_channel_mod
   use display_mod, only: display
+  use message_history_mod, only: message_record, append_message, clear_messages, recent_messages
   implicit none
-  integer :: minute, missed, unmapped, nrec
+  integer :: missed, retained, begins_before
 
   ! A light band keeps exactly Timeout minutes of history.
-  call run_band(40, 3, 60, .false., missed, unmapped, nrec)
+  call run_band(40, 3, 60, missed, retained)
   call require(missed == 0, 'light band: every minute''s decodes are shown')
   call require(oldest_utc == 1219, '40-minute timeout keeps 40 minutes (1219-1259)')
-  call run_band(10, 3, 60, .false., missed, unmapped, nrec)
+  call run_band(10, 3, 60, missed, retained)
   call require(oldest_utc == 1249, '10-minute timeout keeps 10 minutes (1249-1259)')
 
-  ! A busy band overflows the display() window. The newest decodes must
-  ! still be shown every minute, and the history file must stay bounded.
-  call run_band(40, 25, 120, .false., missed, unmapped, nrec)
+  ! History retains the timeout interval while display shows the newest rows.
+  call run_band(40, 25, 120, missed, retained)
   call require(missed == 0, 'busy band: newest decodes shown every minute')
-  call require(nrec <= 800, 'busy band: history file stays bounded')
-  call run_band(20, 18, 120, .false., missed, unmapped, nrec)
+  call require(retained == 1025, 'busy band: all 40 minutes remain in memory')
+  call run_band(20, 18, 120, missed, retained)
   call require(missed == 0, '20-minute timeout, 18 decodes/min: newest shown every minute')
-
-  ! Every decode from a different call, so the Band Map needs one entry per
-  ! record (more than 500 in a full window). Each new call must reach it.
-  call run_band(40, 20, 60, .true., missed, unmapped, nrec)
-  call require(missed == 0, 'distinct calls: newest decodes shown every minute')
-  call require(unmapped == 0, 'distinct calls: newest calls reach the Band Map every minute')
+  call test_bandmap_capacity()
+  call test_midnight_expiry()
+  call test_bandmap_newest_across_groups()
+  call clear_messages()
+  shown = 0
+  begins_before = display_begins
+  call display(10, 0.010, 1200)
+  call require(shown == 0, 'empty history emits no Messages rows')
+  call require(display_begins == begins_before + 1, 'empty history emits a snapshot boundary')
   print '(a)', 'MAP65 Messages retention tests passed.'
 
 contains
-  ! Simulate map65a's writes to unit 26: each minute an early pass writes
-  ! per_min decodes plus an end-of-pass marker, and a final pass writes
-  ! another marker; display() runs after each pass. missed counts minutes
-  ! whose decodes were not all in the Messages window after the final pass,
-  ! and unmapped those whose calls were not all in the Band Map. With
-  ! new_calls, each minute's decodes come from calls not heard before.
-  subroutine run_band(nkeep, per_min, minutes, new_calls, missed, unmapped, nrec)
+  subroutine run_band(nkeep, per_min, minutes, missed, retained)
     integer, intent(in) :: nkeep, per_min, minutes
-    logical, intent(in) :: new_calls
-    integer, intent(out) :: missed, unmapped, nrec
-    integer :: k, nutc, ios
+    integer, intent(out) :: missed, retained
+    integer :: k, minute, nutc
     character(len=22) :: msg
     character(len=83) :: rec
     real(real64) :: f0
-    open(26, status='scratch')
+    type(message_record), allocatable :: records(:)
+    call clear_messages()
     missed = 0
-    unmapped = 0
     do minute = 0, minutes - 1
       nutc = 100*(12 + minute/60) + mod(minute, 60)
       do k = 1, per_min
         f0 = 144.0_real64 + 0.001_real64*(100 + 3*k)
-        if (new_calls) then
-          write(msg, '(a,i2.2,2a)') 'CQ K', mod(minute, 100), 'A'//achar(64 + k), ' FN42'
-        else
-          write(msg, '(a,i3.3,a)') 'CQ K', k, 'X FN42'
-        endif
-        write(26, 1014) f0, 0, 0, 0, 0, 0.0, 0, 5, -20, nutc, msg, '#', ' ', '#B'
+        write(msg, '(a,i3.3,a)') 'CQ K', k, 'X FN42'
+        write(rec, 1014) f0, 0, 0, 0, 0, 0.0, 0, 5, -20, nutc, msg, '#', ' ', '#B'
+        call append_message(rec, nutc, f0, 0)
       enddo
-      write(26, 1015) nutc
-      call display(nkeep, 0.010)
-      write(26, 1015) nutc
+      call display(nkeep, 0.010, nutc)
       shown = 0; shown_at_utc = 0; want_utc = nutc; oldest_utc = 9999
-      mapped_calls = 0
-      write(want_call_prefix, '(a,i2.2)') 'K', mod(minute, 100)
-      call display(nkeep, 0.010)
+      call display(nkeep, 0.010, nutc)
       if (shown_at_utc /= per_min) missed = missed + 1
-      if (new_calls .and. mapped_calls /= per_min) unmapped = unmapped + 1
     enddo
-    rewind(26)
-    nrec = 0
-    do
-      read(26, '(a83)', iostat=ios) rec
-      if (ios /= 0) exit
-      nrec = nrec + 1
-    enddo
-    close(26)
+    call recent_messages(2000, records)
+    retained = size(records)
 1014 format(f8.3, i5, 3i3, f5.1, i4, i3, i4, i5.4, 4x, a22, 7x, 2a1, 2x, a2)
-1015 format(37x, i6.4, ' ')
+  end subroutine
+
+  subroutine test_midnight_expiry()
+    character(len=83) :: rec
+    character(len=22) :: msg
+    type(message_record), allocatable :: records(:)
+
+    call clear_messages()
+    msg = 'CQ K001X FN42'
+    write(rec, 1014) 144.100_real64, 0, 0, 0, 0, 0.0, 0, 5, -20, 2358, msg, '#', ' ', '#B'
+    call append_message(rec, 2358, 144.100_real64, 0)
+    write(rec, 1014) 144.101_real64, 0, 0, 0, 0, 0.0, 0, 5, -20, 1, msg, '#', ' ', '#B'
+    call append_message(rec, 1, 144.101_real64, 0)
+    shown = 0; bandmap_entries = 0; first_bandmap_frequency = ' '
+    call display(10, 0.010, 2)
+    call recent_messages(10, records)
+    call require(size(records) == 2, 'midnight: recent records remain')
+    call require(first_shown_utc == 2358 .and. second_shown_utc == 1, &
+                 'midnight: Messages preserve chronological order')
+    call require(bandmap_entries == 1 .and. first_bandmap_frequency == '101', &
+                 'midnight: Band Map uses the newest frequency for a call')
+    call display(10, 0.010, 10)
+    call recent_messages(10, records)
+    call require(size(records) == 1 .and. records(1)%utc == 1, 'midnight: old record expires')
+1014 format(f8.3, i5, 3i3, f5.1, i4, i3, i4, i5.4, 4x, a22, 7x, 2a1, 2x, a2)
+  end subroutine
+
+  subroutine test_bandmap_newest_across_groups()
+    character(len=22) :: msg
+    character(len=83) :: rec
+
+    call clear_messages()
+    msg = 'CQ K001X FN42'
+    write(rec, 1014) 144.200_real64, 0, 0, 0, 0, 0.0, 0, 5, -20, 1200, msg, '#', ' ', '#B'
+    call append_message(rec, 1200, 144.200_real64, 0)
+    write(rec, 1014) 144.100_real64, 0, 0, 0, 0, 0.0, 0, 5, -20, 1201, msg, '#', ' ', '#B'
+    call append_message(rec, 1201, 144.100_real64, 0)
+    bandmap_entries = 0; first_bandmap_frequency = ' '
+    call display(10, 0.010, 1201)
+    call require(bandmap_entries == 1 .and. first_bandmap_frequency == '100', &
+                 'Band Map uses the newest decode across frequency groups')
+1014 format(f8.3, i5, 3i3, f5.1, i4, i3, i4, i5.4, 4x, a22, 7x, 2a1, 2x, a2)
+  end subroutine
+
+  subroutine test_bandmap_capacity()
+    integer :: k
+    character(len=22) :: msg
+    character(len=83) :: rec
+    real(real64) :: f0
+
+    call clear_messages()
+    do k = 1, 600
+      f0 = 144.0_real64 + 0.001_real64*(100 + k)
+      write(msg, '(a,i3.3,a)') 'CQ K', k, 'X FN42'
+      write(rec, 1014) f0, 0, 0, 0, 0, 0.0, 0, 5, -20, 1200, msg, '#', ' ', '#B'
+      call append_message(rec, 1200, f0, 0)
+    enddo
+    shown = 0; shown_at_utc = 0; want_utc = 1200; bandmap_entries = 0
+    first_bandmap_frequency = ' '
+    call display(40, 0.010, 1200)
+    call require(shown_at_utc == 600, '600 busy-band Messages rows are shown')
+    call require(bandmap_entries == 600, 'Band Map includes every visible call')
+    call require(first_bandmap_frequency == '101', 'Band Map remains frequency ordered')
+1014 format(f8.3, i5, 3i3, f5.1, i4, i3, i4, i5.4, 4x, a22, 7x, 2a1, 2x, a2)
   end subroutine
 
   subroutine require(condition, description)

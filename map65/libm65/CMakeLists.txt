@@ -5,6 +5,7 @@ set (libm65_FSRCS
   decodes_mod.f90
   extract_shared_mod.f90
   gran_interface.f90
+  message_history_mod.f90
   m65_mod.f90
   map65_polarization_score.f90
   four2a_legacy_wrap.f90

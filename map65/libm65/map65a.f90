@@ -23,6 +23,7 @@ contains
       use stdout_channel_mod, only: write_stdout
       use decodes_mod, only: nhsym1, ldecoded, ljt65decoded, ndecodes, mcall3a, decodes_init
       use display_mod
+      use message_history_mod, only: append_message, has_message
       use timf2_mod
       use getdphi_mod
       use datcom_ptrs_mod, only: ss_old, savg_old
@@ -86,6 +87,7 @@ contains
       type(candidate) :: cand(MAX_CANDIDATES)
       real(real64) :: f00
       character(len=256) :: line
+      character(len=83) :: history_line
       integer :: n_rms, i2
       real*8 :: rms, sumsq, v
       real*4 :: tsec_mod
@@ -502,9 +504,9 @@ contains
 
             q65_success = (nsnr0 .gt. -99)
             ! On success, q65b has already written the decoded text itself
-            ! (write_stdout, plus units 26/21/12) because nqd=1 and the result
-            ! is within ntol of mousedf -- the same mechanism the wideband
-            ! quick-decode pass uses. Nothing further to add to km/msg/sig here.
+            ! (write_stdout, plus the history and units 21/12) because nqd=1
+            ! and the result is within ntol of mousedf. The wideband quick
+            ! decode uses the same path. Nothing further to add to km/msg/sig.
          endif
 
          !===========================
@@ -562,12 +564,9 @@ contains
                      nkHz, ndf, npol, nutc, dt, nsync2, cm, decoded, nkv, nqual, ntxpol, cp
                   call write_stdout(trim(line)//new_line('a'))
 
-                  ! Also record the decode for the Messages/Band Map windows
-                  ! (unit 26) and map65_rx.log (unit 21), in the same formats
-                  ! as the wideband write-out at label 700. Skip it if unit 26
-                  ! already holds this decode (e.g. the wideband pass got it,
-                  ! or it was clicked twice), so neither file gets duplicates.
-                  if (.not. unit26_has_record(f0, nutc, decoded)) then
+                  ! Keep manual decodes out of both histories when the wideband
+                  ! pass or an earlier click already recorded the same decode.
+                  if (.not. has_message(f0, nutc, decoded)) then
                      do j = 1, 5
                         a(j) = sig(k, 12 + j)
                      enddo
@@ -577,8 +576,9 @@ contains
                      cmode = '#A'
                      if (mode65 .eq. 2) cmode = '#B'
                      if (mode65 .eq. 4) cmode = '#C'
-                     write (26, 1014) f0, ndf, ndf0, ndf1, ndf2, dt, npol, nsync1, &
+                     write (history_line, 1014) f0, ndf, ndf0, ndf1, ndf2, dt, npol, nsync1, &
                         nsync2, nutc, decoded, '#', cp, cmode
+                     call append_message(history_line, nutc, f0, ndf)
                      ndecodes = ndecodes + 1
                      write (21, 1100) f0, ndf, dt, npol, nsync2, nutc, decoded, '#', cp, &
                         cmode(1:1), cmode(2:2)
@@ -586,16 +586,11 @@ contains
                endif
             enddo  ! k=1,km
 
-            ! Refresh the Messages and Band Map windows now rather than on
-            ! the next automatic pass. q65b has already written any manual
-            ! Q65 decode to units 26/21. display() treats the last unit-26
-            ! record as the end-of-pass marker, so write one first, as the
-            ! wideband path does. 0.010 is the wideband pass's ftol (kHz);
-            ! the ftol above is the click tolerance in Hz.
-            write (26, 1015) nutc
+            ! Refresh Messages and Band Map after the manual pass.
+            ! 0.010 is the wideband pass's ftol (kHz); the ftol above is
+            ! the click tolerance in Hz.
             flush (21)
-            flush (26)
-            call display(nkeep, 0.010)
+            call display(nkeep, 0.010, nutc)
 
             manualDecodeFlag = 0
             return
@@ -1213,9 +1208,10 @@ endif
                cmode = '#A'
                if (mode65 .eq. 2) cmode = '#B'
                if (mode65 .eq. 4) cmode = '#C'
-               write (26, 1014) f0, ndf, ndf0, ndf1, ndf2, dt, npol, nsync1, &
+               write (history_line, 1014) f0, ndf, ndf0, ndf1, ndf2, dt, npol, nsync1, &
                   nsync2, nutc, decoded, '#', cp, cmode ! was decoded,cp,
 1014           format(f8.3, i5, 3i3, f5.1, i4, i3, i4, i5.4, 4x, a22, 7x, 2a1, 2x, a2) ! was a22,2x,a1,3x,a2
+               call append_message(history_line, nutc, f0, ndf)
                ndecodes = ndecodes + 1
                write (21, 1100) f0, ndf, dt, npol, nsync2, nutc, decoded, '#', cp, &
                   cmode(1:1), cmode(2:2)! was decoded,cp,
@@ -1223,11 +1219,8 @@ endif
          endif
       enddo
 
-      write (26, 1015) nutc
-1015  format(37x, i6.4, ' ')
       flush (21)
-      flush (26)
-      call display(nkeep, ftol)
+      call display(nkeep, ftol, nutc)
       ndecdone = 2
 
 900   close (23)
@@ -1237,32 +1230,5 @@ endif
 
       return
    end subroutine map65a
-
-   ! True if unit 26 already holds a record with this frequency, UTC and
-   ! message (the columns of map65a's format 1014 that display() uses to
-   ! suppress duplicates). Like display(), it reads to the end and backs up
-   ! over the end-of-file, leaving unit 26 ready for the next append.
-   logical function unit26_has_record(f0, nutc, decoded)
-      real(real64), intent(in) :: f0
-      integer, intent(in) :: nutc
-      character(len=*), intent(in) :: decoded
-      character(len=83) :: rec, probe
-      integer :: ios
-
-      probe = ' '
-      write (probe(1:8), '(f8.3)') f0
-      write (probe(39:43), '(i5.4)') nutc
-      probe(48:69) = decoded
-
-      unit26_has_record = .false.
-      rewind (26)
-      do
-         read (26, '(a83)', iostat=ios) rec
-         if (ios .ne. 0) exit
-         if (rec(1:8) .eq. probe(1:8) .and. rec(39:43) .eq. probe(39:43) .and. &
-             rec(48:69) .eq. probe(48:69)) unit26_has_record = .true.
-      enddo
-      backspace (26)
-   end function unit26_has_record
 
 end module map65a_mod

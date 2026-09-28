@@ -6,7 +6,7 @@
 #include <QScopedPointer>
 #include <QLabel>
 #include <QDateTime>
-#include <QHash>
+#include <QSet>
 #include <QProcess>
 #include "soundin.h"
 #include "soundout.h"
@@ -319,7 +319,7 @@ private:
   char hisgrid[6] = {};
   char datetime[17] = {};
 
-  QHash<QString,bool> m_worked;
+  QSet<QString> m_worked;
 
   SignalMeter *xSignalMeter;
   SignalMeter *ySignalMeter;
@@ -343,7 +343,7 @@ private:
   void stub();
   bool isGrid4(QString g);
   bool subProcessFailed (QProcess *, int exit_code, QProcess::ExitStatus);
-  void read_log();
+  void loadWorkedLog();
   void writeCrashData();
   void savetf2(QString fname, bool xpol);
   void getfile(QString fname, bool m_xpol, int dbDgrd);

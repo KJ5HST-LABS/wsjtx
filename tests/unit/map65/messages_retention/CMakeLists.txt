@@ -4,6 +4,7 @@
 add_executable (test_map65_messages_retention
   messages_retention_stubs.f90
   test_map65_messages_retention.f90
+  ${CMAKE_SOURCE_DIR}/map65/libm65/message_history_mod.f90
   ${CMAKE_SOURCE_DIR}/map65/libm65/display.f90)
 target_include_directories (test_map65_messages_retention BEFORE PRIVATE
   ${CMAKE_CURRENT_BINARY_DIR}

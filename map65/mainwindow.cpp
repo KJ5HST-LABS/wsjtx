@@ -30,7 +30,6 @@
 #include <QApplication>
 #include <QDebug>
 #include <QDateTime>
-#include <QTime>
 #include <QFile>
 #include <QTextStream>
 #include <QString>
@@ -101,34 +100,6 @@ MainWindow::DecoderContext::DecoderContext()
 MainWindow::DecoderContext::~DecoderContext()
 {
     delete stdoutChan;
-}
-
-// TEMP diagnostic 2026-09-10 for the "decode reaches map65_rx.log but not the
-// Messages window, only on the first decode cycle after MAP65 starts" report.
-// Writes to its own separate log file rather than the shared w3sz_debug.log
-// Fortran's dbg() uses -- the two processes/threads have no lock between
-// them, and sharing a file produces torn, interleaved lines. Timestamps use
-// the same sec_midn()-style local h*3600+m*60+s+ms/1000 format as the
-// Fortran log, so the two can still be correlated by eye. Strip both files'
-// worth of logging before merge.
-//
-// Mirrors run_m65.f90's dbg_enabled flag -- flip to true to re-enable this
-// log without touching any of the cppDbg(...) call sites scattered through
-// this file.
-static bool const cppDbgEnabled = false;
-
-static void cppDbg(const QString &msg)
-{
-    if (!cppDbgEnabled) return;
-    double const t = [] {
-        QTime const now = QTime::currentTime();
-        return now.hour() * 3600.0 + now.minute() * 60.0 + now.second() + now.msec() / 1000.0;
-    }();
-    QFile f("w3sz_debug_cpp.log");
-    if (f.open(QIODevice::Append | QIODevice::Text)) {
-        QTextStream out(&f);
-        out << "mainwindow: " << msg << " at t=" << QString::number(t, 'f', 3) << "\n";
-    }
 }
 
 //-------------------------------------------------- MainWindow constructor
@@ -498,21 +469,7 @@ MainWindow::MainWindow(QWidget *parent) :
   m_wide_graph_window->m_TxOffset=m_TxOffset;
   if(m_initIQplus) m_wide_graph_window->initIQplus();
 
-// Create "m_worked", a dictionary of all calls in wsjt.log
-  QFile f("wsjt.log");
-  qDebug() << "MainWindow Constructor File open result:" << f.open(QFileDevice::ReadOnly);
-  if(f.isOpen()) {
-    QTextStream in(&f);
-    QString line,t,callsign;
-    for(int i=0; i<99999; i++) {
-      line=in.readLine();
-      if(line.length()<=0) break;
-      t=line.mid(18,12);
-      callsign=t.mid(0,t.indexOf(","));
-      m_worked[callsign]=true;
-    }
-    f.close();
-  }
+  loadWorkedLog();
 
   if(ui->actionLinrad->isChecked()) on_actionLinrad_triggered();
   if(ui->actionCuteSDR->isChecked()) on_actionCuteSDR_triggered();
@@ -629,24 +586,26 @@ void MainWindow::startSharedMemoryStdoutReader(DecoderContext* ctx)
         // Linux: eventHandle is a void* pointing to posix_event_t
         void* ev = ctx->stdoutChan->eventHandle;
 
-      // NEW: start reading from the current writeIndex
       StdoutSharedHeader h0 = region->header;
       std::uint32_t readIndex = h0.writeIndex;
       if (readIndex >= bufSize)
           readIndex = 0;
       region->header.readIndex = readIndex;
 
-      // TEMP diagnostic 2026-09-10: h0.writeIndex should always be 0 here --
-      // StdoutSharedMemory's constructor unconditionally zeroes writeIndex/
-      // readIndex right after mapping (see stdout_shared_memory.cpp), and
-      // that happens synchronously on the main thread before this reader
-      // thread is even spawned. If this ever logs a nonzero value, that
-      // assumption is wrong and this "start from current writeIndex" line
-      // is silently skipping over real data written before this point.
-      cppDbg(QString("stdout reader INIT readIndex=%1 (h0.writeIndex=%2) bufSize=%3")
-                 .arg(readIndex).arg(h0.writeIndex).arg(bufSize));
-
       std::string lineBuffer;
+      QStringList displayLines;
+      auto flushDisplayLines = [this, &displayLines]() {
+          if (displayLines.isEmpty()) return;
+          QStringList lines;
+          lines.swap(displayLines);
+          QMetaObject::invokeMethod(
+              this,
+              [this, lines]() {
+                  for (const QString& line : lines) processStdOut(line);
+              },
+              Qt::QueuedConnection
+          );
+      };
 
       while (!stdoutReaderStop.load()) {
 
@@ -671,6 +630,11 @@ void MainWindow::startSharedMemoryStdoutReader(DecoderContext* ctx)
                   lineBuffer.clear();
 
                   QString text = QString::fromStdString(line);
+                  if (text.startsWith('@') || text.startsWith('&')) {
+                      displayLines.append(text);
+                      continue;
+                  }
+                  flushDisplayLines();
                   QMetaObject::invokeMethod(
                       this,
                       [this, text]() { processStdOut(text); },
@@ -685,6 +649,8 @@ void MainWindow::startSharedMemoryStdoutReader(DecoderContext* ctx)
           region->header.readIndex = readIndex;
       }
 
+      flushDisplayLines();
+
     });
 }
 
@@ -693,16 +659,14 @@ void MainWindow::processStdOut(QString t)
 
 //  qDebug().noquote() << QDateTime::currentMSecsSinceEpoch() << "PROCESS STDOUT:" << t;
 
-  // TEMP diagnostic 2026-09-10: confirms whether a decode line that made it
-  // into map65_rx.log (written Fortran-side, independent of this whole
-  // path) ever actually arrived here on the GUI thread. If a "!"-prefixed
-  // line is missing from this log around the time of a report-vs-rx.log
-  // mismatch, the loss is upstream (shared-memory ring buffer / reader
-  // thread); if it IS here but never appended to the Messages window, the
-  // loss is in handleControlLine/shouldDisplay below.
-  cppDbg(QString("processStdOut RECV \"%1\"").arg(t.trimmed()));
-
   if (m_decodeDisplayFilter.handleControlLine(t)) return;
+
+  if (t.startsWith("<Map65DisplayBegin>")) {
+    m_messagesText.clear();
+    m_bandmapText.clear();
+    m_widebandDecode = true;
+    return;
+  }
 
   if (t.startsWith("<DecodeSkipped>")) {
     bool validRequestId = false;
@@ -769,9 +733,6 @@ if (t.indexOf("<QuickDecodeDone>") >= 0) {
     return;
 }
 
-    // --- same position as legacy ---
-    read_log();
-
     // --- "!" decoded text lines ---
     if (t.startsWith("!")) {
         int n = t.length();
@@ -790,11 +751,6 @@ if (t.indexOf("<QuickDecodeDone>") >= 0) {
 
         if (n >= 30 || t.indexOf("Best-fit") >= 0) {
           bool const display = m_decodeDisplayFilter.shouldDisplay(decode_line);
-          // TEMP diagnostic 2026-09-10 -- see the matching note at the top
-          // of processStdOut(). If display=false here for a line that has
-          // no legitimate earlier-pass duplicate, the display filter itself
-          // (map65_decode_display_filter.cpp) is the culprit.
-          cppDbg(QString("shouldDisplay=%1 for \"%2\"").arg(display ? "true" : "false").arg(decode_line));
           if (display)
             ui->decodedTextBrowser->append(decode_line);
         }
@@ -866,9 +822,6 @@ if (t.indexOf("<QuickDecodeDone>") >= 0) {
             }
         }
 
-        // clear snapshots for this decode run, just like legacy
-        m_messagesText.clear();
-        m_bandmapText.clear();
     }
 
     // --- "@" message lines ---
@@ -897,7 +850,7 @@ if (t.indexOf("<QuickDecodeDone>") >= 0) {
         QString callsign = q.mid(call_start);
         callsign = callsign.mid(0, callsign.indexOf(" "));
         if (callsign.length() > 2) {
-            if (m_worked[callsign]) {
+            if (m_worked.contains(callsign)) {
                 q = q.mid(1,4) + "  " + q.mid(call_start);
             } else {
                 q = q.mid(1,4) + " *" + q.mid(call_start);
@@ -2085,11 +2038,6 @@ void MainWindow::on_actionErase_Band_Map_and_Messages_triggered()
   m_band_map_window->setText("");
   m_messages_window->setText("","");
   m_messages_window->clearLiveCQHistory();
-  // m_messagesText/m_bandmapText accumulate across decode cycles and are
-  // only reset when a "!" line arrives (processStdOut). Without clearing
-  // them here too, the next <EarlyFinished>/<DecodeFinished> redisplay
-  // (or a cycle with no fresh decodes) repaints the stale pre-erase text
-  // right back into the windows.
   m_messagesText.clear();
   m_bandmapText.clear();
   m_widebandDecode = false;
@@ -2762,7 +2710,7 @@ void MainWindow::selectCall2(bool ctrl)                         //selectCall2
                                                           //doubleClickOnCall
 void MainWindow::doubleClickOnCall(QString hiscall, bool ctrl)
 {
-  if(m_worked[hiscall]) {
+  if(m_worked.contains(hiscall)) {
     msgBox("Possible dupe: " + hiscall + " already in log.");
   }
   ui->dxCallEntry->setText(hiscall);
@@ -2804,7 +2752,7 @@ void MainWindow::doubleClickOnCall(QString hiscall, bool ctrl)
 void MainWindow::doubleClickOnMessages(QString hiscall, QString t2, bool ctrl)
 {
   if(hiscall.length()<3) return;
-  if(m_worked[hiscall]) {
+  if(m_worked.contains(hiscall)) {
     msgBox("Possible dupe: " + hiscall + " already in log.");
   }
   ui->dxCallEntry->setText(hiscall);
@@ -3132,8 +3080,13 @@ void MainWindow::on_logQSOButton_clicked()                 //Log QSO button
   }
   QTextStream out(&f);
   out << logEntry;
+  out.flush();
+  if (out.status() != QTextStream::Ok || !f.flush()) {
+    msgBox("Cannot write file \"wsjt.log\".");
+    return;
+  }
   f.close();
-  m_worked[m_hisCall]=true;
+  m_worked.insert(m_hisCall);
 }
 
 void MainWindow::on_actionErase_map65_rx_log_triggered()     //Erase Rx log
@@ -3286,7 +3239,7 @@ void MainWindow::on_actionFUNcube_Dongle_triggered()
 
 void MainWindow::on_actionEdit_wsjt_log_triggered()
 {
-  proc_editor.start (QDir::toNativeSeparators (m_editorCommand), {QDir::toNativeSeparators (m_appDir + "/wsjt.log"), });
+  proc_editor.start (QDir::toNativeSeparators (m_editorCommand), {QDir::toNativeSeparators (m_dataDir + "/wsjt.log"), });
 }
 
 void MainWindow::on_actionTx_Tune_triggered()
@@ -3326,25 +3279,18 @@ bool MainWindow::isGrid4(QString g)
   return true;
 }
 
-void MainWindow::read_log()
+void MainWindow::loadWorkedLog()
 {
-  // Update "m_worked" by reading wsjtx.log
-  m_worked.clear();                     //Start from scratch
-  QFile f("wsjtx.log");
-  qDebug() << "MainWindow::read_log File open result:" << f.open(QFileDevice::ReadOnly);
-  if(f.isOpen()) {
-    QTextStream in(&f);
-    QString line,callsign;
-    for(int i=0; i<99999; i++) {
-      line=in.readLine();
-      if(line.length()<=0) break;
-      callsign=line.mid(40,6);
-      int n=callsign.indexOf(",");
-      if(n>0) callsign=callsign.left(n);
-      m_worked[callsign]=true;
-    }
-    f.close();
+  QFile f("wsjt.log");
+  if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return;
+  QSet<QString> worked;
+  QTextStream in(&f);
+  while (!in.atEnd()) {
+    const QString callsign = in.readLine().section(',', 2, 2).trimmed();
+    if (!callsign.isEmpty()) worked.insert(callsign);
   }
+  if (in.status() != QTextStream::Ok) return;
+  m_worked.swap(worked);
 }
 
 void pa_deinit()

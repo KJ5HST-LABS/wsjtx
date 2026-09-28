@@ -93,6 +93,7 @@
       use timer_module, only: timer
       use debug_log
       use stdout_channel_mod, only: write_stdout
+      use message_history_mod, only: append_message
       use decodes_mod,  only: ldecoded, ndecodes
       use cacb_mod
       use four2a_mod
@@ -161,6 +162,7 @@
       character(len=1)  :: cp
       character(len=2)  :: cmode
       character(len=256) :: linenew
+      character(len=83) :: history_line
 
       integer :: t_now, t_rate
       logical :: search_cursor
@@ -397,13 +399,14 @@
             call write_stdout(trim(linenew)//new_line('a'))
          endif
 
-! Write to lu 26, for Messages and Band Map windows
+! Retain wideband decodes for Messages and Band Map.
          cmode = ': '
          cmode(2:2) = char(ichar('A') + mode_q65 - 1)
          freq1 = freq0 + 0.001d0*(ikhz1 - ikhz)
-         write (26, 1014) freq1, ndf, 0, 0, 0, xdt0, npol, 0, nsnr0, nutc, msg0(1:28), &
+         write (history_line, 1014) freq1, ndf, 0, 0, 0, xdt0, npol, 0, nsnr0, nutc, msg0(1:28), &
             ':', cp, cmode ! was 1:22
 1014     format(f8.3, i5, 3i3, f5.1, i4, i3, i4, i5.4, 4x, a28, 1x, 2a1, 2x, a2) ! was a22
+         call append_message(history_line, nutc, freq1, ndf)
 
 ! Suppress writing duplicates (same time, decoded message, and frequency)
 ! to map65_rx.log
