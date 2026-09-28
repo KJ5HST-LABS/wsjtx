@@ -209,6 +209,8 @@ wsjt_link_common_fortran (m65impl)
 if (WSJT_ENABLE_TESTS)
   add_subdirectory (${CMAKE_SOURCE_DIR}/tests/unit/map65/decode_history
     ${CMAKE_CURRENT_BINARY_DIR}/decode_history)
+  add_subdirectory (${CMAKE_SOURCE_DIR}/tests/unit/map65/messages_retention
+    ${CMAKE_CURRENT_BINARY_DIR}/messages_retention)
 
   add_executable (test_map65_deep_search_cache
     ${CMAKE_SOURCE_DIR}/tests/unit/map65/test_map65_deep_search_cache.f90)

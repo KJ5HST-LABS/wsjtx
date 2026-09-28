@@ -1084,7 +1084,7 @@ void MainWindow::readSettings()
   }
   m_editorCommand=settings.value("Editor","notepad").toString();
   m_dxccPfx=settings.value("DXCCpfx","").toString();
-  m_timeout=settings.value("Timeout",20).toInt();
+  m_timeout=qBound(10,settings.value("Timeout",20).toInt(),40);
   m_applyIQcal=settings.value("ApplyIQcal",0).toInt();
   ui->actionApply_IQ_Calibration->setChecked(m_applyIQcal!=0);
   m_dPhi=settings.value("dPhi",0).toInt();

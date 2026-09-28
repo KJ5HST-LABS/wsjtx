@@ -60,7 +60,7 @@ contains
                   ' nhsym0=' // itoa(nhsym0) // ' nagain=' // itoa(nagain))
       endif
 
-      nkeep = 20
+      nkeep = min(max(ntimeout, 10), 40)
 
       call sec0(0, tquick)
       call timer('decode0 ', 0)
