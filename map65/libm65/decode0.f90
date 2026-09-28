@@ -60,7 +60,9 @@ contains
                   ' nhsym0=' // itoa(nhsym0) // ' nagain=' // itoa(nagain))
       endif
 
-      nkeep = 20
+      ! Minutes of history kept in the Messages and Band Map windows, from
+      ! the Setup "Timeout (min)" spinbox (10-40, saved in map65.ini).
+      nkeep = min(max(ntimeout, 10), 40)
 
       call sec0(0, tquick)
       call timer('decode0 ', 0)

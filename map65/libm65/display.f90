@@ -15,13 +15,17 @@ subroutine display(nkeep, ftol)
   real,    intent(in) :: ftol
 
   ! Parameters
-  integer, parameter :: MAXLINES = 400
-  integer, parameter :: MX       = 400
+  ! Unit-26 records shown at once. A 40-minute Timeout on a busy band can
+  ! exceed this; the oldest records beyond it are then skipped (below).
+  integer, parameter :: MAXLINES = 800
+  integer, parameter :: MX       = MAXLINES + 2   ! one group plus two separators
+  ! Sorted output: each record plus a blank line between frequency groups.
+  integer, parameter :: MAXOUT   = 2*MAXLINES
   integer, parameter :: MAXCALLS = 500
 
-  ! Locals
-  integer         :: indx(MAXLINES), indx2(MX)
-  character(len=83)  :: line(MAXLINES), line2(MX), line3(MAXLINES)
+  ! Locals. The large arrays are static, not on the decode thread's stack.
+  integer, save   :: indx(MAXLINES), indx2(MX)
+  character(len=83), save :: line(MAXLINES), line2(MX), line3(MAXOUT)
   character(len=63)  :: out, out0
   character(len=3)   :: cfreq0
   character(len=6)   :: callsign, callsign0
@@ -33,8 +37,9 @@ subroutine display(nkeep, ftol)
   ! non-zero ndf.
   character(len=18)  :: freqcall(MAXCALLS)
 
-  real            :: freqkHz(MAXLINES)
-  integer         :: utc(MAXLINES), utc2(MX), utcz
+  real, save      :: freqkHz(MAXLINES)
+  integer, save   :: utc(MAXLINES), utc2(MX)
+  integer         :: utcz
   real(real64)    :: f0
 
   character(len=83)  :: livecq2, livecq3
@@ -46,6 +51,7 @@ subroutine display(nkeep, ftol)
   integer :: i, j, j0, k, k3, kz
   integer :: nz, nage, iage, nquad
   integer :: i0, i1, i2, len, nc, m, nstart
+  integer :: nrec, nskip
 
   ! Initialize some scalars/arrays defensively
   out0      = ' '
@@ -60,11 +66,25 @@ subroutine display(nkeep, ftol)
   call dbg('display: ENTRY at t=' // rtoa(sec_midn()) // ' nkeep=' // itoa(nkeep))
 
   !------------------ Read and filter valid lines ---------------------
+  ! Read the newest MAXLINES records. Reading from the start of the file
+  ! instead left the newest decodes out of the Messages window whenever the
+  ! file held more than MAXLINES, until the age trim below caught up.
   rewind(26)
-  nz = 0
+  nrec = 0
+  do
+     read(26,1010,iostat=io_status)
+     if (io_status /= 0) exit
+     nrec = nrec + 1
+  enddo
+  nskip = max(nrec - MAXLINES, 0)
+  if (nskip > 0) call dbg('display: skipping ' // itoa(nskip) // ' oldest unit-26 records')
+  rewind(26)
+  do i = 1, nskip
+     read(26,1010)
+  enddo
 
-  do i = 1, MAXLINES
-     read(26,1010,end=10) line(i)
+  do i = 1, nrec - nskip
+     read(26,1010) line(i)
 1010 format(a83)
      read(line(i),1020,iostat=io_status) f0, ndf, nh, nm
 1020 format(f8.3,i5,25x,i3,i2)
@@ -75,8 +95,9 @@ subroutine display(nkeep, ftol)
      freqkHz(i) = 1000.d0*(f0 - 144.d0) + 0.001d0*ndf
   enddo
 
-10 backspace(26)
-  nz = i -1
+  ! Every record has been read and EOF not yet hit, so unit 26 is already
+  ! positioned for the next append.
+  nz = nrec - nskip
   call dbg('display: read from unit 26, raw record count nz=' // itoa(nz))
   if (nz >= 1) utcz = utc(nz)
   nz=nz-1
@@ -95,7 +116,9 @@ subroutine display(nkeep, ftol)
 
   nage = utcz - utc(1)
   if (nage < 0) nage = nage + 1440
-  if (nage > nkeep) then
+  ! Also rewrite when records were skipped above, so they leave the file;
+  ! otherwise a busy band grows it without limit.
+  if (nage > nkeep .or. nskip > 0) then
      do i = 1, nz
         nage = utcz - utc(i)
         if (nage < 0) nage = nage + 1440
@@ -156,14 +179,14 @@ subroutine display(nkeep, ftol)
            call indexx(float(utc2(1:kz)), kz, indx2)
            k3=0
         do k = 1, kz
-           k3 = min(k3+1, MAXLINES)
+           k3 = min(k3+1, MAXOUT)
            line3(k3) = line2(indx2(k))
         enddo
         nstart = 0
         else
            call indexx(float(utc2(1:kz)),kz,indx2)
            do k=1,kz
-              k3=min(k3+1,400)
+              k3=min(k3+1,MAXOUT)
               line3(k3)=line2(indx2(k))
            enddo
         endif
@@ -182,7 +205,7 @@ subroutine display(nkeep, ftol)
   kz = k
   call indexx(float(utc2(1:kz)), kz, indx2)
   do k = 1, kz
-     k3 = min(k3+1, MAXLINES)
+     k3 = min(k3+1, MAXOUT)
      line3(k3) = line2(indx2(k))
   enddo
 
