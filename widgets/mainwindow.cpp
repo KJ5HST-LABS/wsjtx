@@ -12492,7 +12492,7 @@ void MainWindow::setXIT(int n, Frequency base)
   if (!(m_bSimplex || (SpecOp::FOX==m_specOp && m_config.superFox()))) {
     // m_bSimplex is false, so we can use split mode if requested
     if (m_config.split_mode () && (!m_config.enable_VHF_features () ||
-        m_mode=="FT4" || m_mode == "FT8" || m_mode=="FST4")) {
+        m_mode=="FT4" || m_mode == "FT8" || m_mode=="FST4" || m_mode=="JTTY")) {
       // Don't use XIT for VHF & up
       requested_xit=(n/500)*500 - 1500;
     }
