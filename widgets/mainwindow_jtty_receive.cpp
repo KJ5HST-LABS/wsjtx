@@ -8,6 +8,7 @@
 #include "JttyMessages.hpp"
 #include "JttyReceiveLine.hpp"
 #include "Detector/Detector.hpp"
+#include "Decoder/decodedtext.h"
 #include "Logger.hpp"
 #ifdef WIN32
 #include "MMTTYIF.hpp"
@@ -145,6 +146,30 @@ struct MainWindow::JttyReceiveState {
       if (source != DecodeSource::Review && update.terminal != Jtty::ReceiveTerminal::Growing) {
         window.write_all("Rx", Jtty::formatJttyDecodeLine(
           qRound(update.frequency), update.snr, update.text), &line.context);
+
+        // JTTY terminal decodes use this receive path rather than
+        // fast_decode_done(), so submit live spots to PSK Reporter here.
+        if (source == DecodeSource::Live && window.m_config.spot_to_psk_reporter()) {
+          auto const fields = parseDecodedMessage(update.text);
+          auto const baseCall = Radio::base_callsign(line.context.myCall);
+          bool const selfSpot = update.text.contains(baseCall)
+            && update.text.contains(window.m_config.my_grid().left(4));
+          bool const reportable = !fields.sender.isEmpty()
+            && (fields.grid.contains(MainWindow::grid_regexp) || fields.cq);
+
+          if (!selfSpot && reportable) {
+            auto const frequency = line.context.periodFrequency
+              + qRound(update.frequency);
+            auto const spotTime = line.context.sequenceStart.toUTC();
+            if (spotTime.isValid()
+                && !window.m_psk_Reporter.addRemoteStation(
+                     fields.sender, fields.grid, frequency, QStringLiteral("JTTY"),
+                     update.snr, spotTime)) {
+              window.showStatusMessage(
+                MainWindow::tr("PSK Reporter spot queue full; oldest spot dropped"));
+            }
+          }
+        }
       }
       snrHistory.push_back({update.text, update.snr, line.admitted});
       if (snrHistory.size() > 500) snrHistory.pop_front();
