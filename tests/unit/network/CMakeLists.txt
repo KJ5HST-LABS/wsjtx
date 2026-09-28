@@ -1,3 +1,10 @@
+add_executable (test_lotw_users
+  test_lotw_users.cpp
+  ${CMAKE_SOURCE_DIR}/Logger.cpp
+)
+target_link_libraries (test_lotw_users wsjt_qt Boost::log_setup Qt5::Test Qt5::Network)
+add_test (NAME test_lotw_users COMMAND test_lotw_users)
+
 add_executable (test_pskreporter_ipfix
   test_pskreporter_ipfix.cpp
   ${CMAKE_SOURCE_DIR}/Network/PSKReporterIPFIX.cpp
