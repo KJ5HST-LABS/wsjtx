@@ -1225,40 +1225,43 @@ if (WSJT_ENABLE_TESTS AND WSJT_ENABLE_GUI_SMOKE_TESTS
         AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")))
   add_dependencies (wsjtx sjtty)
 
-  set (wsjtx_jtty_live_audio_test_root
-    "${CMAKE_BINARY_DIR}/Testing/LiveAudio/test_wsjtx_live_audio_jtty")
+  set (live_test "test_wsjtx_live_audio_jtty")
+  set (loopback_test "test_wsjtx_jtty_tx_loopback")
+  set (wsjtx_jtty_tests ${live_test} ${loopback_test})
   add_test (
-    NAME test_wsjtx_live_audio_jtty
+    NAME ${live_test}
     COMMAND ${CMAKE_COMMAND}
       "-DSJTTY=$<TARGET_FILE:sjtty>"
       "-DWSJTX=$<TARGET_FILE:wsjtx>"
-      "-DWORK_DIR=${wsjtx_jtty_live_audio_test_root}"
+      "-DWORK_DIR=${CMAKE_BINARY_DIR}/Testing/LiveAudio/${live_test}"
+      "-DTEST_ID=${live_test}"
+      "-DAUDIO_SPEED=4"
       "-DEXPECTED=${CMAKE_SOURCE_DIR}/tests/integration/jtty/live_audio.expected.txt"
       -P ${CMAKE_SOURCE_DIR}/tests/integration/jtty/run_live_audio.cmake)
-  set_tests_properties (test_wsjtx_live_audio_jtty PROPERTIES
+  set_tests_properties (${live_test} PROPERTIES
     COST 21
-    LABELS "gui;audio;jtty;integration"
+    LABELS "gui;audio;jtty;integration;accelerated"
     PROCESSORS 1
-    TIMEOUT 140)
+    TIMEOUT 120)
 
-  set (wsjtx_jtty_tx_loopback_test_root
-    "${CMAKE_BINARY_DIR}/Testing/LiveAudio/test_wsjtx_jtty_tx_loopback")
   add_test (
-    NAME test_wsjtx_jtty_tx_loopback
+    NAME ${loopback_test}
     COMMAND ${CMAKE_COMMAND}
       "-DWSJTX=$<TARGET_FILE:wsjtx>"
-      "-DWORK_DIR=${wsjtx_jtty_tx_loopback_test_root}"
+      "-DWORK_DIR=${CMAKE_BINARY_DIR}/Testing/LiveAudio/${loopback_test}"
+      "-DTEST_ID=${loopback_test}"
+      "-DAUDIO_SPEED=4"
       "-DEXPECTED=${CMAKE_SOURCE_DIR}/tests/integration/jtty/tx_loopback.expected.txt"
       -P ${CMAKE_SOURCE_DIR}/tests/integration/jtty/run_tx_loopback.cmake)
-  set_tests_properties (test_wsjtx_jtty_tx_loopback PROPERTIES
+  set_tests_properties (${loopback_test} PROPERTIES
     COST 37
-    LABELS "gui;audio;jtty;integration"
+    LABELS "gui;audio;jtty;integration;accelerated"
     PROCESSORS 1
-    TIMEOUT 660)
+    TIMEOUT 600)
+
   if (WSJT_ENABLE_TSAN)
     set_tests_properties (
-      test_wsjtx_live_audio_jtty
-      test_wsjtx_jtty_tx_loopback
+      ${wsjtx_jtty_tests}
       PROPERTIES ENVIRONMENT "TSAN_OPTIONS=${wsjt_tsan_gui_options}")
   endif ()
 endif ()
