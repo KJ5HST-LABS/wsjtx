@@ -209,7 +209,7 @@ contains
     my_ft8var%context=context
 
      if(ncontest.eq.6 .and. context%render_legacy) then
-        ! Fox mode: initialize and open houndcallers.txt     
+        ! Fox mode: initialize and open houndcallers.txt
         inquire(file=trim(temp_dir)//'/houndcallers.txt',exist=ex)
         if(.not.ex) then
            c2fox='            '
@@ -264,12 +264,12 @@ contains
                  dd8(1:nsamplesdel)=0.
               endif
            endif
-  
+
            if(.not.params%nagain) nutc=params%nutc
 
            if(first) then
               call cwfilter(first,knowledge,context%render_legacy)
-              first=.false. 
+              first=.false.
            endif ! + ALLCALL to memory
            lenabledxcsearch=params%lenabledxcsearch
            lwidedxcsearch=params%lwidedxcsearch
@@ -285,7 +285,7 @@ contains
            lhound=params%lhound
            nft8cycles=params%nft8cycles
            forcedt=0.
-        
+
            if((hiscall.ne.hiscall12_0 .and. hiscall.ne.'            ')          &
                 .or. (mycall.ne.mycall12_0 .and. mycall.ne.'            ') .or. &
                 (lhound.neqv.lhoundprev)) then
@@ -369,7 +369,7 @@ contains
               odd%lstate=.false.
               even%lstate=.false.
               oddcopy%lstate=.false.
-              evencopy%lstate=.false.  
+              evencopy%lstate=.false.
            endif
 
            if(firstsd) then
@@ -455,7 +455,7 @@ contains
 
            if(params%ndelay.eq.0) then
               nFT8decd=my_ft8var%decodedvar
-              dtmed=0.            
+              dtmed=0.
 !            if(params%lforcesync) then; nintcount=3 ! fast track after Sync
 !            elseif(nintcount.gt.0) then; nintcount=nintcount-1
               if(nintcount.gt.0) then
@@ -510,7 +510,7 @@ contains
                  endif
               endif
            endif
-           
+
            if(nFT8decd.gt.10 .and. nintcount.eq.1) avexdt=sumxdt/nFT8decd ! fast track after Sync or mode change on crowded bands
            call fillhashvar(numthreads,.true.,knowledge)
            call write_decode_progress(active_progress_generation)
@@ -527,7 +527,7 @@ contains
            call timer('decft8  ',1)
         endif       ! end of 'still FT8 but not ft8md'
      endif         ! end of 'if not in SuperFox mode'
-     
+
      j=0
      if(ncontest.eq.6) then
         ! Fox mode: save decoded Hound calls for possible selection by FoxOp
@@ -580,9 +580,9 @@ contains
      if(params%nzhsym.eq.50) then
         ndecoded=ndec41+ndec46+ndec47+ndec48+ndec49+ndecoded
      endif
-  elseif(params%nmode.eq.8 .and. params%nzhsym.eq.41) then 
+  elseif(params%nmode.eq.8 .and. params%nzhsym.eq.41) then
      ndec41=ndecoded
-  elseif(params%nmode.eq.8 .and. params%nzhsym.eq.47) then 
+  elseif(params%nmode.eq.8 .and. params%nzhsym.eq.47) then
      ndec47=ndecoded
   elseif(params%nmode.eq.8 .and. params%nzhsym.eq.50) then
      ndecoded=ndec41+ndec47+ndecoded
