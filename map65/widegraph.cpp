@@ -230,9 +230,9 @@ void WideGraph::addDecodeLabel(double freq_khz, const QString& callsign,
       // includes ndf, leaving the tick up to ~500 Hz off the signal.
       if (freq_reliable) lab.freq_khz = freq_khz;
       // Only overwrite the mode flag when the caller knows for sure.
-      // The "&" bandmap-line tap has no cmode in its payload, so it
-      // would otherwise stomp on an authoritative JT65 mark from the
-      // "!" decoder tap and flip the label color.
+      // An "&" bandmap line without the mode character would otherwise
+      // stomp on an authoritative JT65 mark from the "!" decoder tap and
+      // flip the label color.
       if (mode_reliable) lab.is_jt65 = is_jt65;
       ++lab.hits;
       if (ui && ui->widePlot) ui->widePlot->setDecodeLabels(m_decodeLabels);

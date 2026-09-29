@@ -21,6 +21,8 @@ subroutine display(nkeep, ftol, nutc)
   character(len=83), save :: line(MAXLINES)
   character(len=63)  :: out, out0
   character(len=6)   :: callsign, seen_calls(MAXLINES)
+  ! The 18th character is the record's mode (# JT65, : Q65), so the GUI
+  ! can color the waterfall callsign label.
   character(len=18)  :: freqcall(MAXLINES)
 
   real, save      :: freqkHz(MAXLINES), call_freqkHz(MAXLINES)
@@ -101,7 +103,7 @@ subroutine display(nkeep, ftol, nutc)
      if (any(seen_calls(1:nc) == callsign)) cycle
      nc = nc + 1
      seen_calls(nc) = callsign
-     freqcall(nc) = out(6:8)//line(i)(9:13)//' '//callsign//line(i)(79:80)
+     freqcall(nc) = out(6:8)//line(i)(9:13)//' '//callsign//line(i)(79:81)
      call_freqkHz(nc) = freqkHz(i)
   enddo
   if (nc > 0) call indexx(call_freqkHz, nc, call_order)

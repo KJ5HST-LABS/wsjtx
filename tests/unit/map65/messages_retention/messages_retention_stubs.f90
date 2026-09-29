@@ -1,11 +1,13 @@
-! Stand-in for the decoder's stdout channel: summarizes the "@" lines one
-! display() call sends to the Messages window.
+! Stand-in for the decoder's stdout channel: summarizes the "@" (Messages)
+! and "&" (Band Map) lines one display() call sends to the GUI.
 module stdout_channel_mod
   implicit none
   integer :: shown = 0, shown_at_utc = 0, want_utc = -1, oldest_utc = 9999
   integer :: bandmap_entries = 0, display_begins = 0
   integer :: first_shown_utc = -1, second_shown_utc = -1
   character(len=3) :: first_bandmap_frequency = ' '
+  ! Mode character (# JT65, : Q65) of each of the first 8 Band Map entries.
+  character(len=8) :: bandmap_modes = ' '
 contains
   subroutine write_stdout(line)
     character(len=*), intent(in) :: line
@@ -14,6 +16,9 @@ contains
     if (line(1:1) == '&' .and. len_trim(line) > 2) then
       bandmap_entries = bandmap_entries + 1
       if (bandmap_entries == 1) first_bandmap_frequency = line(2:4)
+      ! "&" + kHz(3) + ndf(5) + " " + callsign(6) + age(2) + mode(1)
+      if (bandmap_entries <= 8 .and. len(line) >= 19) &
+        bandmap_modes(bandmap_entries:bandmap_entries) = line(19:19)
     endif
     if (line(1:1) /= '@') return
     shown = shown + 1

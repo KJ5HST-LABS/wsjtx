@@ -50,8 +50,8 @@ public:
   // parsing the freq + sender callsign out of the "!"-prefix line);
   // the list ages out after m_decodeLabelPeriods ? TR period of no
   // refresh and gets pushed to the plotter for rendering.
-  // mode_reliable=false: caller has no authoritative mode (e.g. "&"
-  // bandmap line, where display.f90 writes no cmode). On dedup, the
+  // mode_reliable=false: caller has no authoritative mode (e.g. an "&"
+  // bandmap line without the mode character). On dedup, the
   // existing label's is_jt65 is preserved. For brand-new labels the
   // caller's is_jt65 is used as a best-guess seed.
   // freq_reliable=false: caller only has integer-kHz precision (e.g.

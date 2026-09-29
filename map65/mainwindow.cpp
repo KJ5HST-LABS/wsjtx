@@ -833,7 +833,8 @@ if (t.indexOf("<QuickDecodeDone>") >= 0) {
     // --- "&" bandmap lines ---
     // N6NU 2026-05-24: format widened to include the 5-char ndf from
     // line3(k)(9:13). New layout:
-    //   "&" + I3 kHz + I5 ndf + " " + A6 call + A2 age
+    //   "&" + I3 kHz + I5 ndf + " " + A6 call + A2 age + A1 mode
+    // where mode is '#' (JT65) or ':' (Q65); older builds omit it.
     // Old layout (pre-260524, used by stock map65):
     //   "&" + I3 kHz + " " + A6 call + A2 age
     // We auto-detect by checking column 4: if it's a digit/space-of-int,
@@ -858,11 +859,14 @@ if (t.indexOf("<QuickDecodeDone>") >= 0) {
             m_bandmapText += q;
 
             // Fallback overlay tap (N6NU 2026-05-13, DG2YCB feedback r4).
-            // We can't know the mode from this line, so pass is_jt65=false
-            // and mode_reliable=false. With the new format we now also
-            // have ndf precision, so freq_reliable=true. Old format
-            // callers still pass freq_reliable=false (integer kHz only).
+            // The mode character, when present, sets the label color;
+            // without it, pass is_jt65=false and mode_reliable=false. With
+            // the new format we now also have ndf precision, so
+            // freq_reliable=true. Old format callers still pass
+            // freq_reliable=false (integer kHz only).
             if (m_wide_graph_window) {
+                const QString mode = ndf_ok ? t.mid(call_start + 8, 1) : QString();
+                const bool mode_known = (mode == "#" || mode == ":");
                 bool ok_khz = false;
                 const int nkHz = t.mid(1, 3).trimmed().toInt(&ok_khz);
                 const double freq_khz = ndf_ok
@@ -873,8 +877,8 @@ if (t.indexOf("<QuickDecodeDone>") >= 0) {
                 if (ok_khz && freq_khz > 0
                     && call_re.match(callsign.toUpper()).hasMatch()) {
                     m_wide_graph_window->addDecodeLabel(
-                        freq_khz, callsign, /*is_jt65=*/false,
-                        /*mode_reliable=*/false,
+                        freq_khz, callsign, /*is_jt65=*/mode == "#",
+                        /*mode_reliable=*/mode_known,
                         /*freq_reliable=*/ndf_ok);
                 }
             }
