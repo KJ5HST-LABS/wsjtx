@@ -6,9 +6,11 @@ module decode_history_observations
   integer :: phase_attempts(0:12) = 0
   integer :: summary_count = 0, fitted_phase = -999
   integer :: display_calls = 0
-  ! ccf65's shorthand sync and decode1a's fit values (a), so a test can make
-  ! a click see a shorthand message after a decode with non-zero fits.
-  real :: stub_syncshort = -99.0, stub_fit = 0.0
+  ! decode1a's fit values (a), and whether ccf65 reports each bin's
+  ! shorthand sync from ss(2,1) of that bin instead of -99, so a test can
+  ! place a shorthand's two tones in chosen bins.
+  real :: stub_fit = 0.0
+  logical :: stub_short_from_ss = .false.
   logical :: phase_has_signal(0:12) = .true.
 end module
 
@@ -63,7 +65,8 @@ contains
     sync1 = 10.0
     dt1 = 0.0
     flipk = 1.0
-    syncshort = stub_syncshort
+    syncshort = -99.0
+    if (stub_short_from_ss) syncshort = ss_plane(2,1)
     snr2 = 0.0
     dt2 = 0.0
     ipol1 = 1

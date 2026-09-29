@@ -9,7 +9,8 @@ program test_map65_decode_history
   real, allocatable :: samples(:,:)
   integer :: unit, before_jt65, before_q65
   integer :: messages, rx_log, before_display
-  integer :: band_nfa = 0, band_nfb = 0, cursor_khz = 0, fits(3)
+  integer :: band_nfa = 0, band_nfb = 0, cursor_khz = 0, fits(3), test_nmode = 11
+  integer :: click_bin
   real :: rec_khz
   character(len=128) :: rec
   character(len=*), parameter :: JT65_MSG = 'K1ABC W9XYZ FN42'
@@ -87,20 +88,28 @@ program test_map65_decode_history
   call require(count_records(26, JT65_MSG) == messages+1 .and. count_records(21, JT65_MSG) == rx_log+1, &
                'second click on the same signal is not recorded again')
 
-  ! A shorthand click is recorded at the clicked kHz like a normal decode,
-  ! without fit values left in sig by an earlier decode. The band center
-  ! (nfa+nfb)/2 = 130 kHz and cursor 130 kHz give 144.130 MHz.
+  ! A click on a JT65C RRR shorthand: its sync tone in the clicked bin and
+  ! the upper tone 30*4 tone spacings (~3 bins) above, noise elsewhere. It
+  ! must be found although the click's best JT65 sync bin is elsewhere, be
+  ! labeled RRR, be recorded at the clicked kHz (band center (nfa+nfb)/2 =
+  ! 130 kHz, cursor 130 kHz: 144.130 MHz), and carry no fit values left in
+  ! sig by an earlier decode.
   stub_fit = 7.0
   active_input_generation = 5
   call run_pass(nhsym1, 0, 0)
   stub_fit = 0.0
-  stub_syncshort = 10.0
+  click_bin = nfft_active/2 + 1
+  ss_old(2,1,:) = -99.0
+  ss_old(2,1,click_bin) = 10.0
+  ss_old(2,1,click_bin + nint(3*4*10.0*(11025.0/4096.0)/(96000.0/nfft_active))) = 10.0
+  stub_short_from_ss = .true.
+  test_nmode = 13
   band_nfa = 100
   band_nfb = 160
   cursor_khz = 130
   active_input_generation = 6
   call click()
-  call require(last_record(26, 'ATT', rec), 'shorthand click is recorded for the Messages window')
+  call require(last_record(26, 'RRR', rec), 'shorthand click is found and labeled RRR')
   read(rec(1:8), *) rec_khz
   read(rec(14:22), '(3i3)') fits
   call require(abs(rec_khz - 144.130) < 0.0005, 'shorthand click is recorded at the clicked kHz')
@@ -122,7 +131,7 @@ contains
     call map65a(samples,newdat,utc,144.0_real64,100,0,band_nfa,band_nfb,0,cursor_khz, &
                 again,done,0,ndphi,0, &
                 -1270,20,mcall3b,nsum,nsave,0,'K1ABC       ','FN42  ',0,3,0, &
-                'W9XYZ       ','EN50  ',half_symbols,96000,0,1,11,0)
+                'W9XYZ       ','EN50  ',half_symbols,96000,0,1,test_nmode,0)
   end subroutine
 
   subroutine click()
