@@ -40,7 +40,56 @@ module npar_ptrs_mod
     character(len=20) :: datetime = ''
   end type
 
-  ! GUI setters prepare draft; only the decoder changes active after claiming a request.
+  ! ---------------------------------------------------------------------------
+  ! Decode parameters: draft vs. active
+  !
+  ! Two copies of decode_parameters exist, and which one you touch matters.
+  !
+  !   draft   Owned by the GUI thread. Every set_xxx()/get_xxx() bind(C)
+  !           routine in this module reads or writes draft, under
+  !           lock_decode_requests(). It holds the *pending* GUI state, not
+  !           necessarily what the decoder is using right now.
+  !
+  !   active  Owned by the decode thread. The module pointers below (nkeep,
+  !           ntimeout, mycall, ...) alias fields of active, so Fortran decode
+  !           code that says "ntimeout" is reading active%ntimeout.
+  !
+  ! Flow:
+  !   MainWindow::decode() -> set_xxx() writes draft
+  !   publish_decode_request() copies draft into a queued request (forcing
+  !                            newdat = 1 in that copy) and clears
+  !                            draft%manualDecodeFlag
+  !   claim_decode_request()   copies the oldest request into active; an
+  !                            automatic live request whose input generation
+  !                            is out of date is marked expired, and run_m65
+  !                            skips it (<DecodeSkipped>)
+  !   initialize_decode_parameters() copies draft into active once, at startup
+  !   The decoder then sees a consistent snapshot for the whole pass, even if
+  !   the GUI changes draft meanwhile.
+  !
+  ! Why a lock alone is not enough: a decode pass runs for many seconds and
+  ! reads its parameters throughout. The lock only protects the instant of a
+  ! write, so if setters wrote the decoder's own variables directly, a GUI
+  ! change mid-pass would still alter values partway through the decode. The
+  ! draft/active copy is what freezes the parameters for a pass and lets
+  ! requests queue; the lock keeps publish_decode_request from copying a
+  ! half-written draft.
+  !
+  ! Rules:
+  !   * C++ callers: a get_xxx() returns draft, i.e. the pending GUI value,
+  !     not the value the running decode is using.
+  !   * A parameter only reaches the decoder if the GUI writes it to draft
+  !     before a request is published. Setting it once and never re-pushing
+  !     works only if nothing else overwrites it (decode() currently re-pushes
+  !     most values every cycle).
+  !   * Fortran code may write active fields only for state it owns (e.g.
+  !     manualDecodeFlag = 0, nkeep = ...). Such writes do NOT flow back to
+  !     draft, so the next published request will carry draft's old value.
+  !     If a value must persist across requests, change it in draft too.
+  !   * Never add a second variable for the same setting (cf. the old
+  !     map65RxLog vs. nrxlog bug, where the setter wrote one variable and the
+  !     decoder read the other).
+  ! ---------------------------------------------------------------------------
   type(decode_parameters), target, save :: active
   type(decode_parameters), save :: draft
   type :: decode_request
