@@ -8,7 +8,6 @@
 #include "JttyMessages.hpp"
 #include "JttyReceiveLine.hpp"
 #include "Detector/Detector.hpp"
-#include "Decoder/decodedtext.h"
 #include "Logger.hpp"
 #ifdef WIN32
 #include "MMTTYIF.hpp"
@@ -148,25 +147,37 @@ struct MainWindow::JttyReceiveState {
           qRound(update.frequency), update.snr, update.text), &line.context);
 
         // JTTY terminal decodes use this receive path rather than
-        // fast_decode_done(), so submit live spots to PSK Reporter here.
-        if (source == DecodeSource::Live && window.m_config.spot_to_psk_reporter()) {
-          auto const fields = parseDecodedMessage(update.text);
-          auto const baseCall = Radio::base_callsign(line.context.myCall);
-          bool const selfSpot = update.text.contains(baseCall)
-            && update.text.contains(window.m_config.my_grid().left(4));
-          bool const reportable = !fields.sender.isEmpty()
-            && (fields.grid.contains(MainWindow::grid_regexp) || fields.cq);
+        // fast_decode_done(). Report only completed, live FT8-style messages
+        // whose first two fields have the standard %H/%M (or CQ/%M) structure.
+        if (source == DecodeSource::Live
+            && update.terminal == Jtty::ReceiveTerminal::Complete
+            && window.m_config.spot_to_psk_reporter()
+            && static_cast<Jtty::MessageStyle>(window.m_jttyMessageStyle)
+                 == Jtty::MessageStyle::Ft8) {
+          auto const fields = update.text.simplified().split(QChar{' '}, Qt::SkipEmptyParts);
+          if (fields.size() >= 2) {
+            auto const& first = fields.at(0);
+            auto const& sender = fields.at(1);
+            bool const structured = (first.compare(QStringLiteral("CQ"), Qt::CaseInsensitive) == 0
+                                     || window.stdCall(first))
+                                    && window.stdCall(sender);
+            bool const selfSpot =
+              sender.compare(line.context.myCall, Qt::CaseInsensitive) == 0;
 
-          if (!selfSpot && reportable) {
-            auto const frequency = line.context.periodFrequency
-              + qRound(update.frequency);
-            auto const spotTime = line.context.sequenceStart.toUTC();
-            if (spotTime.isValid()
-                && !window.m_psk_Reporter.addRemoteStation(
-                     fields.sender, fields.grid, frequency, QStringLiteral("JTTY"),
-                     update.snr, spotTime)) {
-              window.showStatusMessage(
-                MainWindow::tr("PSK Reporter spot queue full; oldest spot dropped"));
+            if (structured && !selfSpot) {
+              QString grid;
+              if (fields.size() >= 3 && fields.at(2).contains(MainWindow::grid_regexp))
+                grid = fields.at(2);
+
+              auto const frequency = line.context.periodFrequency + qRound(update.frequency);
+              auto const spotTime = line.context.sequenceStart.toUTC();
+              if (spotTime.isValid()
+                  && !window.m_psk_Reporter.addRemoteStation(
+                       sender, grid, frequency, QStringLiteral("JTTY"),
+                       update.snr, spotTime)) {
+                window.showStatusMessage(
+                  MainWindow::tr("PSK Reporter spot queue full; oldest spot dropped"));
+              }
             }
           }
         }
