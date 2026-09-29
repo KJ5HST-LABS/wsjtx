@@ -219,6 +219,7 @@ case "$expected_role" in
       *) echo "ARMHF AppImage QEMU helper is not x86-64: $qemu_metadata" >&2; exit 1 ;;
     esac
     for plugin in \
+      /usr/lib/arm-linux-gnueabihf/libQt5Concurrent.so.5 \
       /usr/lib/arm-linux-gnueabihf/qt5/plugins/platforms/libqxcb.so \
       /usr/lib/arm-linux-gnueabihf/qt5/plugins/sqldrivers/libqsqlite.so; do
       require_armhf_elf "$plugin"
