@@ -58,9 +58,12 @@ public:
   // "&" bandmap line — cfreq0 is 3 chars, no ndf). On dedup, the
   // existing label's freq_khz is preserved so a precise "!" tick
   // is not stomped by a later imprecise "&" refresh.
+  // decode_utc: UTC (hhmm) of the decode an "&" bandmap line reports, or
+  // -1 if unknown. The Band Map repeats old decodes on every redisplay,
+  // so such a line keeps a label alive only when its UTC is new.
   void   addDecodeLabel(double freq_khz, const QString& callsign,
                         bool is_jt65, bool mode_reliable = true,
-                        bool freq_reliable = true);
+                        bool freq_reliable = true, int decode_utc = -1);
   void   clearDecodeLabels();
   bool   decodeLabelsEnabled() const { return m_decodeLabelsEnabled; }
   void   setDecodeLabelsEnabled(bool on);

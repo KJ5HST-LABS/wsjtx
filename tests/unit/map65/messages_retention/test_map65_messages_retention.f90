@@ -95,10 +95,12 @@ contains
     call append_message(rec, 1200, 144.200_real64, 0)
     write(rec, 1014) 144.100_real64, 0, 0, 0, 0, 0.0, 0, 5, -20, 1201, msg, '#', ' ', '#B'
     call append_message(rec, 1201, 144.100_real64, 0)
-    bandmap_entries = 0; first_bandmap_frequency = ' '
+    bandmap_entries = 0; first_bandmap_frequency = ' '; first_bandmap_utc = ' '
     call display(10, 0.010, 1201)
     call require(bandmap_entries == 1 .and. first_bandmap_frequency == '100', &
                  'Band Map uses the newest decode across frequency groups')
+    ! The waterfall label ages from this UTC, so it must be the newest decode's.
+    call require(first_bandmap_utc == '1201', 'Band Map entry carries the newest decode''s UTC')
 1014 format(f8.3, i5, 3i3, f5.1, i4, i3, i4, i5.4, 4x, a22, 7x, 2a1, 2x, a2)
   end subroutine
 

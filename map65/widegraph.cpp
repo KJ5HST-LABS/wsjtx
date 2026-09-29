@@ -215,14 +215,15 @@ void WideGraph::saveSettings()
 
 void WideGraph::addDecodeLabel(double freq_khz, const QString& callsign,
                                bool is_jt65, bool mode_reliable,
-                               bool freq_reliable)
+                               bool freq_reliable, int decode_utc)
 {
   if (callsign.isEmpty()) return;
   if (!m_decodeLabelsEnabled) return;
   const qint64 now = QDateTime::currentMSecsSinceEpoch();
   for (auto& lab : m_decodeLabels) {
     if (lab.callsign == callsign) {
-      lab.last_seen_ms = now;
+      if (decode_utc < 0 || decode_utc != lab.last_utc) lab.last_seen_ms = now;
+      if (decode_utc >= 0) lab.last_utc = decode_utc;
       // Only overwrite freq when the caller has sub-kHz precision.
       // The "&" bandmap tap only has 3-char integer-kHz precision
       // (display.f90 cfreq0 is character(3) � no ndf field), so it
@@ -243,6 +244,7 @@ void WideGraph::addDecodeLabel(double freq_khz, const QString& callsign,
     m_decodeLabels.removeFirst();
   }
   m_decodeLabels.append(DecodeLabel{freq_khz, callsign, now, 1, is_jt65});
+  m_decodeLabels.last().last_utc = decode_utc;
   if (ui && ui->widePlot) ui->widePlot->setDecodeLabels(m_decodeLabels);
 }
 

@@ -8,6 +8,7 @@ module stdout_channel_mod
   character(len=3) :: first_bandmap_frequency = ' '
   ! Mode character (# JT65, : Q65) of each of the first 8 Band Map entries.
   character(len=8) :: bandmap_modes = ' '
+  character(len=4) :: first_bandmap_utc = ' '
 contains
   subroutine write_stdout(line)
     character(len=*), intent(in) :: line
@@ -16,9 +17,10 @@ contains
     if (line(1:1) == '&' .and. len_trim(line) > 2) then
       bandmap_entries = bandmap_entries + 1
       if (bandmap_entries == 1) first_bandmap_frequency = line(2:4)
-      ! "&" + kHz(3) + ndf(5) + " " + callsign(6) + age(2) + mode(1)
+      ! "&" + kHz(3) + ndf(5) + " " + callsign(6) + age(2) + mode(1) + UTC(4)
       if (bandmap_entries <= 8 .and. len(line) >= 19) &
         bandmap_modes(bandmap_entries:bandmap_entries) = line(19:19)
+      if (bandmap_entries == 1 .and. len(line) >= 23) first_bandmap_utc = line(20:23)
     endif
     if (line(1:1) /= '@') return
     shown = shown + 1
