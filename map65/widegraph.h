@@ -2,6 +2,7 @@
 #define WIDEGRAPH_H
 
 #include <QDialog>
+#include <QHash>
 #include <QList>
 #include <QString>
 #include <QTimer>
@@ -135,6 +136,9 @@ private:
 
   // Decoded-callsign overlay state.
   QList<DecodeLabel> m_decodeLabels;
+  // Callsign -> UTC of the decode an aged-out label showed. The Band Map
+  // keeps re-sending that decode, which must not bring the label back.
+  QHash<QString, int> m_expiredLabelUtc;
   bool   m_decodeLabelsEnabled {true};
   int    m_decodeLabelPeriods  {5};   // disappear after N×TRperiod of no decode
   // Overlay opacity preset (0..255). UI offers None=255 / Medium=200 /

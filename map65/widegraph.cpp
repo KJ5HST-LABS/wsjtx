@@ -240,6 +240,8 @@ void WideGraph::addDecodeLabel(double freq_khz, const QString& callsign,
       return;
     }
   }
+  if (decode_utc >= 0 && m_expiredLabelUtc.value(callsign, -1) == decode_utc) return;
+  m_expiredLabelUtc.remove(callsign);
   if (m_decodeLabels.size() >= kDecodeLabelMax) {
     m_decodeLabels.removeFirst();
   }
@@ -250,6 +252,7 @@ void WideGraph::addDecodeLabel(double freq_khz, const QString& callsign,
 
 void WideGraph::clearDecodeLabels()
 {
+  m_expiredLabelUtc.clear();
   if (m_decodeLabels.isEmpty()) return;
   m_decodeLabels.clear();
   if (ui && ui->widePlot) ui->widePlot->setDecodeLabels(m_decodeLabels);
@@ -262,6 +265,10 @@ void WideGraph::ageDecodeLabels()
   const qint64 ttl_ms = static_cast<qint64>(trp * m_decodeLabelPeriods * 1000.0);
   const qint64 cutoff = QDateTime::currentMSecsSinceEpoch() - ttl_ms;
   const int    before = m_decodeLabels.size();
+  for (const auto& l : m_decodeLabels) {
+    if (l.last_seen_ms < cutoff && l.last_utc >= 0)
+      m_expiredLabelUtc.insert(l.callsign, l.last_utc);
+  }
   m_decodeLabels.erase(
       std::remove_if(m_decodeLabels.begin(), m_decodeLabels.end(),
                      [cutoff](const DecodeLabel& l) {
@@ -279,6 +286,7 @@ void WideGraph::setDecodeLabelsEnabled(bool on)
   m_decodeLabelsEnabled = on;
   if (!on) {
     m_decodeLabels.clear();
+    m_expiredLabelUtc.clear();
     if (ui && ui->widePlot) ui->widePlot->setDecodeLabels(m_decodeLabels);
   }
   // Persist immediately so the choice survives a crash before saveSettings runs.
