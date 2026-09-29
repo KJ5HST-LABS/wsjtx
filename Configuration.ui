@@ -3012,11 +3012,8 @@ Right click for insert and delete options.</string>
          </property>
          <layout class="QGridLayout" name="gridLayout_5">
           <item row="1" column="0" colspan="2">
-           <layout class="QGridLayout" name="horizontalLayout_20">
-            <property name="verticalSpacing">
-             <number>4</number>
-            </property>
-            <item row="0" column="0">
+           <layout class="QHBoxLayout" name="horizontalLayout_20">
+            <item>
              <widget class="QToolButton" name="highlighting_actions_tool_button">
               <property name="toolTip">
                <string>Change colors, or restore the selected highlighting rule to its Default 1 colors and enabled state.</string>
@@ -3029,7 +3026,7 @@ Right click for insert and delete options.</string>
               </property>
              </widget>
             </item>
-            <item row="0" column="1">
+            <item>
              <widget class="QPushButton" name="move_highlighting_up_push_button">
               <property name="toolTip">
                <string>Move the selected highlighting rule earlier in priority order.</string>
@@ -3039,7 +3036,7 @@ Right click for insert and delete options.</string>
               </property>
              </widget>
             </item>
-            <item row="1" column="0">
+            <item>
              <widget class="QPushButton" name="move_highlighting_down_push_button">
               <property name="toolTip">
                <string>Move the selected highlighting rule later in priority order.</string>
