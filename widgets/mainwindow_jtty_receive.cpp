@@ -147,18 +147,17 @@ struct MainWindow::JttyReceiveState {
           qRound(update.frequency), update.snr, update.text), &line.context);
 
         // JTTY terminal decodes use this receive path rather than
-        // fast_decode_done(). Report only completed, live FT8-style messages
-        // whose first two fields have the standard %H/%M (or CQ/%M) structure.
+        // fast_decode_done(). Report only completed, live messages whose
+        // leading fields identify the transmitting station.
         if (source == DecodeSource::Live
             && update.terminal == Jtty::ReceiveTerminal::Complete
-            && window.m_config.spot_to_psk_reporter()
-            && static_cast<Jtty::MessageStyle>(window.m_jttyMessageStyle)
-                 == Jtty::MessageStyle::Ft8) {
+            && window.m_config.spot_to_psk_reporter()) {
           auto const fields = update.text.simplified().split(QChar{' '}, Qt::SkipEmptyParts);
           if (fields.size() >= 2) {
             auto const& first = fields.at(0);
             auto const& sender = fields.at(1);
             bool const structured = (first.compare(QStringLiteral("CQ"), Qt::CaseInsensitive) == 0
+                                     || first.compare(QStringLiteral("DE"), Qt::CaseInsensitive) == 0
                                      || window.stdCall(first))
                                     && window.stdCall(sender);
             bool const selfSpot =
