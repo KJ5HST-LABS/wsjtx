@@ -12,11 +12,10 @@ program jt9
   use readwav
   use jt9_input_validation, only: parse_integer, parse_real, parse_wav_filename_nutc
   use, intrinsic :: iso_fortran_env, only: error_unit
-  use ft8_mod1, only : dd8
-  use jt65_mod6, only : dd
   use streaming_emit, only: streaming_emit_set_enabled, streaming_emit_error
   use jt9_params_init, only: init_default_params, init_streaming_extra_fields, &
        apply_per_mode_policy, cli_args_t
+  use decode_completion_module, only: decode_completion_result, write_decode_completion
 
   include 'jt9com.f90'
 
@@ -32,6 +31,8 @@ program jt9
   real*4 s(NSMAX)
   real*8 TRperiod
   integer npct_unused
+  integer(c_int) :: ft8_attempt_no, ft8_valid_samples
+  integer(c_int64_t) :: ft8_input_id
 
   character c
   character(len=500) optarg, infile
@@ -394,6 +395,7 @@ program jt9
      npts=TRperiod*12000.d0
      kstep=nsps/2
      k=0
+     ft8_valid_samples=0
      nhsym=0
      nhsym0=-999
      if(iarg .eq. offset + 1) then
@@ -424,6 +426,7 @@ program jt9
            print*,'EOF on input file ',trim(infile)
            exit
         end if
+        ft8_valid_samples=min(180000,k0+samples_read)
         nhsym=(k-2048)/kstep
         if(nhsym.ge.1 .and. nhsym.ne.nhsym0) then
            if(mode.eq.9 .or. mode.eq.74) then
@@ -445,6 +448,8 @@ program jt9
         end if
      enddo
      close(unit=wav%lun)
+     ft8_input_id=int(iarg-offset,c_int64_t)
+     ft8_attempt_no=0
 
      ! WAV-path-only mode adjustment (mode=164 with submode<100 bumps by 100).
      ! Hoisted before init_default_params so the bumped value is threaded
@@ -518,19 +523,16 @@ program jt9
         shared_data%params%nzhsym=nearly
         id2a(1:nearly*3456)=shared_data%id2(1:nearly*3456)
         id2a(nearly*3456+1:)=0
-        call multimode_decoder(shared_data%ss,id2a,      &
-             shared_data%params,nfsample)
+        call run_ft8_wav(id2a,nearly*3456)
         nearly=47
         shared_data%params%nzhsym=nearly
         id2a(1:nearly*3456)=shared_data%id2(1:nearly*3456)
         id2a(nearly*3456+1:)=0
-        call multimode_decoder(shared_data%ss,id2a,      &
-             shared_data%params,nfsample)
+        call run_ft8_wav(id2a,nearly*3456)
         id2a(nearly*3456+1:50*3456)=shared_data%id2(nearly*3456+1:50*3456)
         id2a(50*3456+1:)=0
         shared_data%params%nzhsym=50
-        call multimode_decoder(shared_data%ss,id2a,      &
-             shared_data%params,nfsample)
+        call run_ft8_wav(id2a,50*3456)
         cycle
      else if(mode.eq.8 .and. shared_data%params%lmultift8) then
         if(shared_data%params%ndecoderstart.lt.2) then
@@ -539,38 +541,24 @@ program jt9
            shared_data%params%nzhsym=nearly
            id2a(1:nearly*3456)=shared_data%id2(1:nearly*3456)
            id2a(nearly*3456+1:)=0
-           call multimode_decoder(shared_data%ss,id2a,      &
-                shared_data%params,nfsample)
+           call run_ft8_wav(id2a,nearly*3456)
            if(shared_data%params%ndecoderstart.lt.2) then
               nearly=46
               shared_data%params%lmultift8=.false.
               shared_data%params%nzhsym=nearly
               id2a(1:nearly*3456)=shared_data%id2(1:nearly*3456)
               id2a(nearly*3456+1:)=0
-              call multimode_decoder(shared_data%ss,id2a,      &
-                   shared_data%params,nfsample)
+              call run_ft8_wav(id2a,nearly*3456)
            endif
            if(shared_data%params%ndecoderstart.eq.0) nearly=49
            if(shared_data%params%ndecoderstart.eq.1) nearly=50
            shared_data%params%lmultift8=.true.
            shared_data%params%nzhsym=nearly
-           id2a(1:nearly*3456)=shared_data%id2(1:nearly*3456)
-           id2a(nearly*3456+1:)=0
-           dd(1:nearly*3456)=shared_data%id2(1:nearly*3456)
-           dd(nearly*3456+1:)=0
-           dd8(1:nearly*3456)=shared_data%id2(1:nearly*3456)
-           dd8(nearly*3456+1:)=0
         else
            if(shared_data%params%ndecoderstart.eq.2) nearly=48
            if(shared_data%params%ndecoderstart.eq.3) nearly=49
            if(shared_data%params%ndecoderstart.eq.4) nearly=50
            shared_data%params%nzhsym=nearly
-           id2a(1:nearly*3456)=shared_data%id2(1:nearly*3456)
-           id2a(nearly*3456+1:)=0
-           dd(1:nearly*3456)=shared_data%id2(1:nearly*3456)
-           dd(nearly*3456+1:)=0
-           dd8(1:nearly*3456)=shared_data%id2(1:nearly*3456)
-           dd8(nearly*3456+1:)=0
         endif
 
      ! MSK144        
@@ -579,8 +567,12 @@ program jt9
      endif
 
 ! Normal decoding pass
-     call multimode_decoder(shared_data%ss,shared_data%id2, &
-          shared_data%params,nfsample)
+     if(mode.eq.8) then
+        call run_ft8_wav(shared_data%id2,engine_valid_samples)
+     else
+        call multimode_decoder(shared_data%ss,shared_data%id2, &
+             shared_data%params,nfsample)
+     endif
   enddo
 
   call timer('jt9     ',1)
@@ -608,6 +600,20 @@ program jt9
   if (allocated(shared_data)) deallocate(shared_data)
 
 contains
+
+  subroutine run_ft8_wav(samples, pass_samples)
+    integer*2, intent(inout) :: samples(*)
+    integer, intent(in) :: pass_samples
+    type(decode_completion_result) :: completion
+
+    ft8_attempt_no=ft8_attempt_no+1
+    call run_engine_ft8(shared_data%ss,samples,shared_data%params, &
+         nfsample,completion,0,ft8_input_id,ft8_input_id, &
+         ft8_attempt_no,min(ft8_valid_samples,pass_samples))
+    if(.not.completion%available) return
+    if(.not.lquiet) call write_decode_completion(completion)
+    call flush(6)
+  end subroutine run_ft8_wav
 
   subroutine require_integer(option, text, value)
     character(len=*), intent(in) :: option, text

@@ -14,8 +14,6 @@ subroutine jt9a()
   use timer_module, only: timer
   use timer_impl, only: init_timer !, limtrace
   use shmem
-  use ft8_mod1, only : dd8
-  use jt65_mod6, only : dd
 
   include 'jt9com.f90'
 
@@ -25,7 +23,7 @@ subroutine jt9a()
   type(shared_dec_data), pointer, volatile :: shared_memory
   type(params_block) :: local_params
   logical(c_bool) :: ok
-  integer(c_int) :: active_generation, claim_result
+  integer(c_int) :: active_generation, claim_result, pass_attempt_no, pass_valid_samples
   integer(c_int) :: layout_status
   integer(c_size_t) :: available_bytes
   type(c_ptr) :: shared_address
@@ -100,6 +98,7 @@ subroutine jt9a()
   write(*,'(a,i0)') '<DecodeStarted> gen=',active_generation
   call flush(6)
   local_params=shared_memory%payload%params
+  pass_attempt_no=shared_memory%metadata%attempt_no
   call timer('decoder ',0)
   if(local_params%nmode.eq.8 .and. local_params%ndiskdat .and.    &
        .not. local_params%nagain .and.  .not. local_params%lmultift8) then
@@ -108,48 +107,53 @@ subroutine jt9a()
      local_params%nzhsym=nearly
      id2a(1:nearly*3456)=shared_memory%payload%id2(1:nearly*3456)
      id2a(nearly*3456+1:)=0
-     call multimode_decoder_core(shared_memory%payload%ss,id2a,local_params, &
-          12000,completion,active_generation)
+     call run_engine_ft8(shared_memory%payload%ss,id2a,local_params, &
+          12000,completion,active_generation,shared_memory%metadata%input_id, &
+          shared_memory%metadata%analysis_id,pass_attempt_no, &
+          min(shared_memory%metadata%valid_samples,nearly*3456))
+     pass_attempt_no=pass_attempt_no+1
      nearly=47
      local_params%nzhsym=nearly
      id2a(1:nearly*3456)=shared_memory%payload%id2(1:nearly*3456)
      id2a(nearly*3456+1:)=0
-     call multimode_decoder_core(shared_memory%payload%ss,id2a,local_params, &
-          12000,completion,active_generation)
+     call run_engine_ft8(shared_memory%payload%ss,id2a,local_params, &
+          12000,completion,active_generation,shared_memory%metadata%input_id, &
+          shared_memory%metadata%analysis_id,pass_attempt_no, &
+          min(shared_memory%metadata%valid_samples,nearly*3456))
+     pass_attempt_no=pass_attempt_no+1
      local_params%nzhsym=50
   endif
   
   !ft8md
   if(local_params%nmode.eq.8 .and. local_params%lmultift8 .and.   &
        .not. local_params%nagain .and. local_params%ndiskdat) then 
-     npts1=180000
      if(local_params%ndecoderstart.lt.2) then
         nearly=41
         local_params%lmultift8=.false.
         local_params%nzhsym=nearly
         id2a(1:nearly*3456)=shared_memory%payload%id2(1:nearly*3456)
         id2a(nearly*3456+1:)=0
-        call multimode_decoder_core(shared_memory%payload%ss,id2a,local_params, &
-             12000,completion,active_generation)
+        call run_engine_ft8(shared_memory%payload%ss,id2a,local_params, &
+             12000,completion,active_generation,shared_memory%metadata%input_id, &
+             shared_memory%metadata%analysis_id,pass_attempt_no, &
+             min(shared_memory%metadata%valid_samples,nearly*3456))
+        pass_attempt_no=pass_attempt_no+1
         if(local_params%ndecoderstart.lt.2) then
            nearly=46
            local_params%lmultift8=.false.
            local_params%nzhsym=nearly
            id2a(1:nearly*3456)=shared_memory%payload%id2(1:nearly*3456)
            id2a(nearly*3456+1:)=0
-           call multimode_decoder_core(shared_memory%payload%ss,id2a,local_params, &
-                12000,completion,active_generation)
+           call run_engine_ft8(shared_memory%payload%ss,id2a,local_params, &
+                12000,completion,active_generation,shared_memory%metadata%input_id, &
+                shared_memory%metadata%analysis_id,pass_attempt_no, &
+                min(shared_memory%metadata%valid_samples,nearly*3456))
+           pass_attempt_no=pass_attempt_no+1
         endif
         if(local_params%ndecoderstart.eq.0) nearly=49
         if(local_params%ndecoderstart.eq.1) nearly=50
         local_params%lmultift8=.true.
         shared_memory%payload%params%nzhsym=nearly
-        id2a(1:nearly*3456)=shared_memory%payload%id2(1:nearly*3456)
-        id2a(nearly*3456+1:)=0
-        dd(1:nearly*3456)=shared_memory%payload%id2(1:nearly*3456)
-        dd(nearly*3456+1:)=0
-        dd8(1:nearly*3456)=shared_memory%payload%id2(1:nearly*3456)
-        dd8(nearly*3456+1:)=0
         if(local_params%ndecoderstart.eq.0) shared_memory%payload%params%nzhsym=49
         if(local_params%ndecoderstart.eq.1) shared_memory%payload%params%nzhsym=50
      else
@@ -158,37 +162,11 @@ subroutine jt9a()
         if(local_params%ndecoderstart.eq.3) nearly=49
         if(local_params%ndecoderstart.eq.4) nearly=50
         shared_memory%payload%params%nzhsym=nearly
-        id2a(1:nearly*3456)=shared_memory%payload%id2(1:nearly*3456)
-        id2a(nearly*3456+1:)=0
-        dd(1:nearly*3456)=shared_memory%payload%id2(1:nearly*3456)
-        dd(nearly*3456+1:)=0
-        dd8(1:nearly*3456)=shared_memory%payload%id2(1:nearly*3456)
-        dd8(nearly*3456+1:)=0
         if(local_params%ndecoderstart.eq.2) shared_memory%payload%params%nzhsym=48
         if(local_params%ndecoderstart.eq.3) shared_memory%payload%params%nzhsym=49
         if(local_params%ndecoderstart.eq.4) shared_memory%payload%params%nzhsym=50
      endif
      local_params%nzhsym=nearly
-  elseif (local_params%nmode.eq.8 .and. local_params%lmultift8 .and. .not. &
-       local_params%ndiskdat) then
-     npts1=min(180000,local_params%nzhsym*3456)
-     dd(1:npts1)=shared_memory%payload%id2(1:npts1)
-     dd(npts1+1:)=0
-     rms=sum(abs(dd(1:10))) + sum(abs(dd(76001:76010))) + sum(abs(dd(151670:151680)))
-     dd8(1:npts1)=dd(1:npts1)
-     dd8(npts1+1:)=0
-
-!### WHY WAS THIS STUFF HERE ??? ###
-!     if(rms.gt.0.001) then
-!        dd(1:npts1)=shared_memory%payload%dd2(1:npts1)
-!        dd8(1:npts1)=dd(1:npts1)
-!print *,'win7',rms
-!     else ! workaround for zero data values of dd2 array under WinXP
-!        dd(1:npts1)=shared_memory%payload%id2(1:npts1)
-!        dd8(1:npts1)=dd(1:npts1)
-!print *, 'winxp',rms
-!     endif
-!###
   endif
   !end ft8md
 
@@ -196,6 +174,12 @@ subroutine jt9a()
     ! MSK144
      call decode_msk144_core(shared_memory%payload%id2, local_params, data_dir, &
           completion)
+  elseif(local_params%nmode.eq.8) then
+     pass_valid_samples=min(shared_memory%metadata%valid_samples,180000)
+     call run_engine_ft8(shared_memory%payload%ss,shared_memory%payload%id2, &
+          local_params,12000,completion,active_generation, &
+          shared_memory%metadata%input_id,shared_memory%metadata%analysis_id, &
+          pass_attempt_no,pass_valid_samples)
   else
     ! Normal decoding pass
      call multimode_decoder_core(shared_memory%payload%ss, &

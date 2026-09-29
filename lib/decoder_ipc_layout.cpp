@@ -128,6 +128,11 @@ extern "C" void decoder_ipc_expected_layout (decoder_ipc_layout_t * layout)
   FIELD (payload.params.lmultinst);
   FIELD (payload.params.lskiptx1);
   FIELD (payload.params.ndecoderstart);
+  FIELD (metadata);
+  FIELD (metadata.input_id);
+  FIELD (metadata.analysis_id);
+  FIELD (metadata.attempt_no);
+  FIELD (metadata.valid_samples);
 #undef FIELD
 }
 

@@ -9,6 +9,7 @@ class TestDecodeOperatingContext final : public QObject
 private Q_SLOTS:
   void identityMatchesEquivalentContext ();
   void sequenceStartIsAttributionOnly ();
+  void receiveRolloverPreservesPendingSnapshot ();
   void identityChangeMakesContextObsolete_data ();
   void identityChangeMakesContextObsolete ();
   void ft8PendingIdentityChangeMakesSnapshotObsolete_data ();
@@ -60,6 +61,19 @@ void TestDecodeOperatingContext::sequenceStartIsAttributionOnly ()
   current.sequenceStart = current.sequenceStart.addSecs (15);
 
   QVERIFY (captured.hasSameDecodeIdentity (current));
+}
+
+void TestDecodeOperatingContext::receiveRolloverPreservesPendingSnapshot ()
+{
+  auto captured = context ();
+  captured.inputId = 10;
+  captured.analysisId = 20;
+  auto current = captured;
+  ++current.inputId;
+  ++current.analysisId;
+  current.sequenceStart = current.sequenceStart.addSecs (15);
+
+  QVERIFY (captured.hasSameFt8PendingIdentity (current));
 }
 
 void TestDecodeOperatingContext::identityChangeMakesContextObsolete_data ()

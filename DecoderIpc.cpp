@@ -9,6 +9,16 @@
 
 namespace
 {
+  int attemptCount (decoder_params_t const& params)
+  {
+    return params.nmode == 8 && params.ndiskdat && !params.nagain
+      && (!params.lmultift8 || params.ndecoderstart < 2) ? 3 : 1;
+  }
+
+  bool publishRequest (shared_dec_data_t& shared, dec_data_t const& payload,
+                       decoder_params_t const& params, bool copySamples,
+                       qint32 generation, decoder_input_metadata_t const& metadata);
+
   int sampleCountToCopy (int period)
   {
     switch (period)
@@ -54,21 +64,59 @@ namespace
   }
 }
 
+void DecoderIpc::InputState::beginInput ()
+{
+  inputId_ = ++nextInputId_;
+  analysisId_ = ++nextAnalysisId_;
+  lastAttempt_ = 0;
+}
+
+decoder_input_metadata_t DecoderIpc::InputState::nextMetadata (
+    decoder_params_t const& params, SampleSnapshot const * reused)
+{
+  if (!inputId_) beginInput ();
+  auto const input = reused ? reused->metadata.input_id : inputId_;
+  auto analysis = reused ? reused->metadata.analysis_id : analysisId_;
+  auto lastAttempt = reused ? reused->lastAttempt : lastAttempt_;
+  if (input == inputId_ && analysis == analysisId_)
+    lastAttempt = std::max (lastAttempt, lastAttempt_);
+  auto const count = attemptCount (params);
+  if (params.nagain || lastAttempt > std::numeric_limits<qint32>::max () - count)
+    {
+      analysis = ++nextAnalysisId_;
+      lastAttempt = 0;
+    }
+  auto const firstAttempt = lastAttempt + 1;
+  if (input == inputId_)
+    {
+      analysisId_ = analysis;
+      lastAttempt_ = lastAttempt + count;
+    }
+  auto const validSamples = reused ? reused->metadata.valid_samples
+    : std::max (0, std::min (params.kin, NTMAX * RX_SAMPLE_RATE));
+  return {input, analysis, firstAttempt, validSamples};
+}
+
 DecoderIpc::Request::Request (Kind kind, dec_data_t const * source,
-                              Ft8MtdPayload const * compact, SampleIdentity samples)
+                              Ft8MtdPayload const * compact, SampleIdentity samples,
+                              decoder_input_metadata_t metadata)
   : kind_ {kind}, source_ {source}, compact_ {compact}, samples_ {samples}
+  , options_ {compact ? compact->params : source->params}
+  , metadata_ {compact ? compact->metadata : metadata}
 {
 }
 
-DecoderIpc::Request DecoderIpc::Request::snapshot (dec_data_t const& source)
+DecoderIpc::Request DecoderIpc::Request::snapshot (dec_data_t const& source,
+                                                decoder_input_metadata_t metadata)
 {
-  return {Kind::Snapshot, &source, nullptr};
+  return {Kind::Snapshot, &source, nullptr, {}, metadata};
 }
 
 DecoderIpc::Request DecoderIpc::Request::reuse (dec_data_t const& source,
-                                             SampleIdentity samples)
+                                             SampleIdentity samples,
+                                             decoder_input_metadata_t metadata)
 {
-  return {Kind::Reuse, &source, nullptr, samples};
+  return {Kind::Reuse, &source, nullptr, samples, metadata};
 }
 
 DecoderIpc::Request DecoderIpc::Request::ft8 (Ft8MtdPayload const& source)
@@ -78,7 +126,7 @@ DecoderIpc::Request DecoderIpc::Request::ft8 (Ft8MtdPayload const& source)
 
 decoder_params_t const& DecoderIpc::Request::options () const
 {
-  return compact_ ? compact_->params : source_->params;
+  return options_;
 }
 
 DecoderIpc::Status DecoderIpc::Session::open (QString const& key)
@@ -171,6 +219,26 @@ void DecoderIpc::Session::detach ()
   if (memory_.isAttached ()) memory_.detach ();
 }
 
+DecoderIpc::Request DecoderIpc::Session::prepareRequest (
+    dec_data_t const& source, bool copySamples, InputState& inputs) const
+{
+  auto const reuse = !copySamples && completedSnapshot_
+    && completedSnapshot_.mode == source.params.nmode
+    && completedSnapshot_.trPeriod == source.params.ntrperiod;
+  auto request = reuse ? Request::reuse (source, completedSnapshot_.samples)
+                       : Request::snapshot (source);
+  if (!reuse && !copySamples)
+    {
+      request.options_.newdat = true;
+      request.options_.nagain = false;
+    }
+  request.metadata_ = inputs.nextMetadata (
+    request.options_, reuse ? &completedSnapshot_ : nullptr);
+  // The producer's kin remains its live append cursor, independent of retained audio.
+  if (reuse) request.options_.kin = request.metadata_.valid_samples;
+  return request;
+}
+
 DecoderIpc::Submission DecoderIpc::Session::submit (Request const& request)
 {
   if (!ready_) return {Status::Unavailable, {}, {}};
@@ -181,21 +249,34 @@ DecoderIpc::Submission DecoderIpc::Session::submit (Request const& request)
   if (request.sampleCount () < 0 || request.sampleCount () > NTMAX * RX_SAMPLE_RATE)
     return {Status::InvalidRequest, {}, {}};
   if (Request::Kind::Reuse == request.kind_
-      && (!completedSamples_ || request.samples_ != completedSamples_))
+      && (!completedSnapshot_ || request.samples_ != completedSnapshot_.samples))
     return {Status::StaleSamples, {}, {}};
   auto const generation = nextGeneration (lastGeneration_);
   bool const refreshSamples = Request::Kind::Reuse != request.kind_
     || shared->payload.params.nmode != request.mode ()
-    || shared->payload.params.ntrperiod != request.options ().ntrperiod;
+    || shared->payload.params.ntrperiod != request.options ().ntrperiod
+    || shared->metadata.input_id != request.metadata_.input_id;
+  auto options = request.options ();
+  if (Request::Kind::Reuse == request.kind_ && refreshSamples)
+    {
+      options.newdat = true;
+      options.nagain = false;
+    }
+  auto const count = attemptCount (options);
+  if (request.metadata_.attempt_no > std::numeric_limits<qint32>::max () - count + 1)
+    return {Status::InvalidRequest, {}, {}};
   bool const published = Request::Kind::Ft8 == request.kind_
     ? publishFt8Mtd (*shared, *request.compact_, generation)
-    : publish (*shared, *request.source_, Request::Kind::Snapshot == request.kind_, generation);
+    : publishRequest (*shared, *request.source_, options,
+                      Request::Kind::Snapshot == request.kind_, generation, request.metadata_);
   if (!published) return {Status::InvalidRequest, {}, {}};
   lastGeneration_ = generation;
   activeGeneration_ = Generation {generation};
-  activeSamples_ = refreshSamples ? SampleIdentity {this, ++lastSamples_}
-                                 : completedSamples_;
-  return {Status::Ok, activeGeneration_, activeSamples_};
+  activeSnapshot_ = {
+    refreshSamples ? SampleIdentity {this, ++lastSamples_} : completedSnapshot_.samples,
+    shared->metadata, shared->metadata.attempt_no + (count - 1),
+    shared->payload.params.nmode, shared->payload.params.ntrperiod};
+  return {Status::Ok, activeGeneration_, activeSnapshot_.samples};
 }
 
 bool DecoderIpc::Session::accepts (qint32 generation) const
@@ -209,9 +290,9 @@ DecoderIpc::Status DecoderIpc::Session::complete (Completion const& completion)
   auto * shared = storage ();
   if (!shared) return Status::Unavailable;
   if (!consume (*shared, completion.generation)) return Status::Busy;
-  completedSamples_ = activeSamples_;
+  completedSnapshot_ = activeSnapshot_;
   activeGeneration_ = {};
-  activeSamples_ = {};
+  activeSnapshot_ = {};
   return Status::Ok;
 }
 
@@ -225,8 +306,8 @@ DecoderIpc::Diagnostics DecoderIpc::Session::diagnostics () const
 void DecoderIpc::Session::abort ()
 {
   activeGeneration_ = {};
-  activeSamples_ = {};
-  completedSamples_ = {};
+  activeSnapshot_ = {};
+  completedSnapshot_ = {};
 }
 
 qint32 DecoderIpc::nextGeneration (qint32 current)
@@ -274,9 +355,13 @@ void DecoderIpc::shutdown (shared_dec_data_t& shared)
     decoder_ipc_control_shutdown (&shared.control.state, &shared.control.version);
 }
 
-bool DecoderIpc::publish (shared_dec_data_t& shared, dec_data_t const& payload,
-                          bool copySamples, qint32 generation)
+namespace
 {
+bool publishRequest (shared_dec_data_t& shared, dec_data_t const& payload,
+                     decoder_params_t const& params, bool copySamples,
+                     qint32 generation, decoder_input_metadata_t const& metadata)
+{
+  using namespace DecoderIpc;
   if (!hasCurrentProtocol (shared)
       || DECODER_IPC_IDLE != state (shared)
       || generation <= 0)
@@ -286,8 +371,9 @@ bool DecoderIpc::publish (shared_dec_data_t& shared, dec_data_t const& payload,
 
   // A different mode or period must not reuse an incomplete sample snapshot.
   bool const contextChanged = !copySamples
-    && (shared.payload.params.nmode != payload.params.nmode
-        || shared.payload.params.ntrperiod != payload.params.ntrperiod);
+    && (shared.payload.params.nmode != params.nmode
+        || shared.payload.params.ntrperiod != params.ntrperiod
+        || shared.metadata.input_id != metadata.input_id);
   copySamples = copySamples || contextChanged;
   if (copySamples)
     {
@@ -295,22 +381,27 @@ bool DecoderIpc::publish (shared_dec_data_t& shared, dec_data_t const& payload,
       std::memcpy (shared.payload.savg, payload.savg, sizeof payload.savg);
       std::memcpy (shared.payload.sred, payload.sred, sizeof payload.sred);
       std::memcpy (shared.payload.d2, payload.d2,
-                   sampleCountToCopy (payload.params.ntrperiod) * sizeof payload.d2[0]);
-      shared.payload.params = payload.params;
+                   sampleCountToCopy (params.ntrperiod) * sizeof payload.d2[0]);
     }
-  else
-    {
-      shared.payload.params = payload.params;
-    }
+  shared.payload.params = params;
   if (contextChanged)
     {
       shared.payload.params.newdat = true;
       shared.payload.params.nagain = false;
     }
+  shared.metadata = metadata;
   return decoder_ipc_control_publish (&shared.control.generation,
                                       &shared.control.state,
                                       &shared.control.version,
                                       &shared.control.progress, generation);
+}
+}
+
+bool DecoderIpc::publish (shared_dec_data_t& shared, dec_data_t const& payload,
+                          bool copySamples, qint32 generation,
+                          decoder_input_metadata_t const& metadata)
+{
+  return publishRequest (shared, payload, payload.params, copySamples, generation, metadata);
 }
 
 bool DecoderIpc::publishFt8Mtd (shared_dec_data_t& shared,
@@ -329,6 +420,7 @@ bool DecoderIpc::publishFt8Mtd (shared_dec_data_t& shared,
   shared.payload.params = payload.params;
   std::memcpy (shared.payload.d2, payload.samples.data (),
                sizeof payload.samples);
+  shared.metadata = payload.metadata;
   return decoder_ipc_control_publish (&shared.control.generation,
                                       &shared.control.state,
                                       &shared.control.version,

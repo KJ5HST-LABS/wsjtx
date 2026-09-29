@@ -14,6 +14,8 @@ struct DecodeOperatingContext
   Radio::Frequency periodFrequency {0};
   QString band;
   QDateTime sequenceStart;
+  qint64 inputId {0};
+  qint64 analysisId {0};
   double trPeriod {0.0};
   int submode {0};
   bool diskData {false};
@@ -49,6 +51,7 @@ struct DecodeOperatingContext
 
   bool hasSameFt8PendingIdentity (DecodeOperatingContext const& other) const
   {
+    // A captured final remains usable when reception advances to the next period.
     return "FT8" == mode
       && "FT8" == other.mode
       && hasSameDecodeIdentity (other)

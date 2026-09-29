@@ -14,7 +14,7 @@
 
 extern "C"
 {
-  void decoder_ipc_fortran_probe (void *, int[10]);
+  void decoder_ipc_fortran_probe (void *, int[11]);
 }
 
 class TestDecoderIpcProtocol final : public QObject
@@ -27,6 +27,7 @@ private Q_SLOTS:
   void publicationAndClaimValidateControl ();
   void compactFt8MtdPublicationCopiesRequiredPayload ();
   void compactFt8MtdPublicationRejectsInvalidRequests ();
+  void newInputForcesSamplePublication ();
   void transitionsRequireMatchingGeneration ();
   void sharedProgressTracksActiveGeneration ();
   void delayedCompletionCannotClobberNextRequest ();
@@ -51,13 +52,16 @@ void TestDecoderIpcProtocol::layoutMatchesFortran ()
     int ipc[4];
     decoder_ipc_layout_t layout;
     dec_data_t payload;
+    decoder_input_metadata_t metadata;
   };
 
   QCOMPARE (sizeof (decoder_ipc_control_t), size_t {16});
   QCOMPARE (offsetof (decoder_ipc_control_t, state), size_t {4});
-  QCOMPARE (offsetof (shared_dec_data_t, payload), size_t {800});
-  QCOMPARE (sizeof (shared_dec_data_t),
-            sizeof (decoder_ipc_control_t) + sizeof (decoder_ipc_layout_t) + sizeof (dec_data_t));
+  QCOMPARE (offsetof (shared_dec_data_t, payload),
+            sizeof (decoder_ipc_control_t) + sizeof (decoder_ipc_layout_t));
+  QCOMPARE (sizeof (decoder_input_metadata_t), size_t {24});
+  QCOMPARE (offsetof (shared_dec_data_t, metadata),
+            offsetof (CompatibleSharedData, metadata));
   QCOMPARE (sizeof (shared_dec_data_t), sizeof (CompatibleSharedData));
   QCOMPARE (offsetof (CompatibleSharedData, ipc) + sizeof (int),
             offsetof (decoder_ipc_control_t, state));
@@ -66,7 +70,7 @@ void TestDecoderIpcProtocol::layoutMatchesFortran ()
 
   std::unique_ptr<shared_dec_data_t> shared {new shared_dec_data_t};
   shared->control.generation = 41;
-  int values[10] {};
+  int values[11] {};
   decoder_ipc_fortran_probe (shared.get (), values);
 
   QCOMPARE (values[0], static_cast<int> (sizeof (decoder_ipc_control_t)));
@@ -79,8 +83,13 @@ void TestDecoderIpcProtocol::layoutMatchesFortran ()
   QCOMPARE (values[7], int {DECODER_IPC_DECODING});
   QCOMPARE (values[8], int {DECODER_IPC_COMPLETE});
   QCOMPARE (values[9], int {DECODER_IPC_SHUTDOWN});
+  QCOMPARE (values[10], static_cast<int> (sizeof (decoder_input_metadata_t)));
   QCOMPARE (shared->control.generation, 42);
   QCOMPARE (shared->payload.d2[0], short {1234});
+  QCOMPARE (shared->metadata.input_id, int64_t {12345678901});
+  QCOMPARE (shared->metadata.analysis_id, int64_t {12345678902});
+  QCOMPARE (shared->metadata.attempt_no, int32_t {3});
+  QCOMPARE (shared->metadata.valid_samples, int32_t {180000});
 }
 
 void TestDecoderIpcProtocol::sharedMemorySizeAllowsPlatformRounding ()
@@ -126,6 +135,7 @@ void TestDecoderIpcProtocol::compactFt8MtdPublicationCopiesRequiredPayload ()
   payload->params.nmode = 8;
   payload->params.lmultift8 = true;
   payload->params.nutc = 123456;
+  payload->metadata = {11, 12, 2, 162432};
   payload->samples.front () = 17;
   payload->samples.back () = 29;
 
@@ -134,6 +144,10 @@ void TestDecoderIpcProtocol::compactFt8MtdPublicationCopiesRequiredPayload ()
   QCOMPARE (shared->control.state, int {DECODER_IPC_READY});
   QCOMPARE (shared->control.generation, 7);
   QCOMPARE (shared->payload.params.nutc, 123456);
+  QCOMPARE (shared->metadata.input_id, int64_t {11});
+  QCOMPARE (shared->metadata.analysis_id, int64_t {12});
+  QCOMPARE (shared->metadata.attempt_no, int32_t {2});
+  QCOMPARE (shared->metadata.valid_samples, int32_t {162432});
   QCOMPARE (shared->payload.d2[0], short {17});
   QCOMPARE (shared->payload.d2[DecoderIpc::Ft8SampleCount - 1], short {29});
   QCOMPARE (shared->payload.d2[DecoderIpc::Ft8SampleCount], short {61});
@@ -184,6 +198,36 @@ void TestDecoderIpcProtocol::compactFt8MtdPublicationRejectsInvalidRequests ()
   QVERIFY (!DecoderIpc::publishFt8Mtd (*shared, *payload, 2));
   QCOMPARE (shared->payload.params.nutc, 222222);
   QCOMPARE (shared->payload.d2[0], short {22});
+}
+
+void TestDecoderIpcProtocol::newInputForcesSamplePublication ()
+{
+  std::unique_ptr<shared_dec_data_t> shared {new shared_dec_data_t};
+  std::unique_ptr<dec_data_t> payload {new dec_data_t {}};
+  DecoderIpc::initialize (*shared);
+  payload->params.nmode = 8;
+  payload->params.ntrperiod = 15;
+  payload->d2[0] = 17;
+
+  QVERIFY (DecoderIpc::publish (*shared, *payload, true, 1, {11, 12, 1, 141696}));
+  qint32 generation {0};
+  QVERIFY (DecoderIpc::claim (*shared, generation));
+  QVERIFY (DecoderIpc::finish (*shared, 1));
+  QVERIFY (DecoderIpc::consume (*shared, 1));
+
+  payload->d2[0] = 29;
+  QVERIFY (DecoderIpc::publish (*shared, *payload, false, 2, {11, 12, 2, 169344}));
+  QCOMPARE (shared->payload.d2[0], short {17});
+  QCOMPARE (shared->metadata.attempt_no, int32_t {2});
+  QVERIFY (DecoderIpc::claim (*shared, generation));
+  QVERIFY (DecoderIpc::finish (*shared, 2));
+  QVERIFY (DecoderIpc::consume (*shared, 2));
+
+  QVERIFY (DecoderIpc::publish (*shared, *payload, false, 3, {13, 14, 1, 141696}));
+  QCOMPARE (shared->payload.d2[0], short {29});
+  QCOMPARE (shared->metadata.input_id, int64_t {13});
+  QCOMPARE (shared->metadata.analysis_id, int64_t {14});
+  QCOMPARE (shared->metadata.attempt_no, int32_t {1});
 }
 
 void TestDecoderIpcProtocol::transitionsRequireMatchingGeneration ()

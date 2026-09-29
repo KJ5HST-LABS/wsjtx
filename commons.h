@@ -117,6 +117,7 @@ typedef struct shared_dec_data {
   decoder_ipc_control_t control;
   decoder_ipc_layout_t layout;
   dec_data_t payload;
+  decoder_input_metadata_t metadata;
 } shared_dec_data_t;
 
 #ifdef __cplusplus
@@ -130,8 +131,13 @@ static_assert (offsetof (shared_dec_data_t, layout) == sizeof (decoder_ipc_contr
 static_assert (offsetof (shared_dec_data_t, payload) ==
                sizeof (decoder_ipc_control_t) + sizeof (decoder_ipc_layout_t),
                "decoder payload must immediately follow the layout descriptor");
+static_assert (sizeof (decoder_input_metadata_t) == 24,
+               "decoder input metadata layout must remain stable");
+static_assert (offsetof (shared_dec_data_t, metadata) >=
+               offsetof (shared_dec_data_t, payload) + sizeof (dec_data_t),
+               "decoder input metadata must follow the payload");
 static_assert (sizeof (shared_dec_data_t) ==
-               sizeof (decoder_ipc_control_t) + sizeof (decoder_ipc_layout_t) + sizeof (dec_data_t),
+               offsetof (shared_dec_data_t, metadata) + sizeof (decoder_input_metadata_t),
                "decoder shared-memory layout must not contain trailing padding");
 #endif
 

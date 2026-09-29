@@ -20,6 +20,7 @@ namespace
     pending->payload.params.nmode = 8;
     pending->payload.params.lmultift8 = true;
     pending->payload.params.nutc = nutc;
+    pending->payload.metadata = {period, period + 1000, 2, 170000};
     pending->payload.samples[0] = firstSample;
     pending->context.mode = "FT8";
     pending->context.periodFrequency = 14074000;
@@ -27,6 +28,8 @@ namespace
     pending->context.multithreadFt8 = true;
     pending->context.ft8ThreadCount = 4;
     pending->context.decodeDepth = 3;
+    pending->context.inputId = pending->payload.metadata.input_id;
+    pending->context.analysisId = pending->payload.metadata.analysis_id;
     return pending;
   }
 
@@ -62,8 +65,9 @@ namespace
           return decision.action;
         }
 
-      return coordinator.deferFinal (
-        pendingDecode (period, nutc, firstSample));
+      auto pending = pendingDecode (period, nutc, firstSample);
+      currentContext = pending->context;
+      return coordinator.deferFinal (std::move (pending));
     }
 
     void completeAndDrain ()
@@ -76,7 +80,9 @@ namespace
       if (!coordinator.hasPending ()) return;
 
       auto const outcome = coordinator.drainPending (
-        [] (Ft8MtdDecodeCoordinator::PendingMtdDecode const&) {return true;},
+        [this] (Ft8MtdDecodeCoordinator::PendingMtdDecode const& pending) {
+          return pending.context.hasSameFt8PendingIdentity (currentContext);
+        },
         [this] (Ft8MtdDecodeCoordinator::PendingMtdDecode const& pending) {
           active = true;
           activeStage = Stage::Final;
@@ -85,6 +91,7 @@ namespace
           publishedNutcs.push_back (pending.payload.params.nutc);
           publishedFirstSamples.push_back (pending.payload.samples[0]);
           publishedContext = pending.context;
+          publishedMetadata = pending.payload.metadata;
           return PendingPublishResult::Published;
         });
       QCOMPARE (outcome.result, DrainResult::Published);
@@ -103,6 +110,8 @@ namespace
     std::vector<int> publishedNutcs;
     std::vector<short> publishedFirstSamples;
     DecodeOperatingContext publishedContext;
+    DecodeOperatingContext currentContext;
+    decoder_input_metadata_t publishedMetadata {};
   };
 }
 
@@ -112,6 +121,7 @@ class TestFt8MtdDecodeCoordinator final : public QObject
 
 private Q_SLOTS:
   void slowEarlyDecodeRetainsAndPublishesFinalOnce ();
+  void receiveRolloverRetainsPendingFinal ();
   void unrelatedCompletionDoesNotPublishPendingFinal ();
   void multiPeriodOverrunPublishesOnlyNewestFinal ();
   void pendingSnapshotIsImmutable ();
@@ -138,6 +148,27 @@ void TestFt8MtdDecodeCoordinator::slowEarlyDecodeRetainsAndPublishesFinalOnce ()
   QCOMPARE (backend.activeStage, Stage::Final);
   QCOMPARE (backend.activePeriod, qint64 {100});
   QVERIFY (backend.active);
+  QVERIFY (!backend.coordinator.hasPending ());
+}
+
+void TestFt8MtdDecodeCoordinator::receiveRolloverRetainsPendingFinal ()
+{
+  FakeBackend backend;
+  backend.startEarly (Stage::EarlyOne, 100, 1);
+  QCOMPARE (backend.submitFinal (100, 120000, 17), Action::DeferFinal);
+  ++backend.currentContext.inputId;
+  ++backend.currentContext.analysisId;
+  backend.currentContext.sequenceStart = QDateTime::fromMSecsSinceEpoch (1515000);
+
+  backend.completeAndDrain ();
+
+  QVERIFY (backend.publishedPeriods == std::vector<qint64> ({100, 100}));
+  QCOMPARE (backend.publishedNutcs.back (), 120000);
+  QCOMPARE (backend.publishedFirstSamples.back (), short {17});
+  QCOMPARE (backend.publishedMetadata.input_id, int64_t {100});
+  QCOMPARE (backend.publishedMetadata.analysis_id, int64_t {1100});
+  QCOMPARE (backend.publishedMetadata.attempt_no, int32_t {2});
+  QCOMPARE (backend.publishedMetadata.valid_samples, int32_t {170000});
   QVERIFY (!backend.coordinator.hasPending ());
 }
 
@@ -292,11 +323,16 @@ void TestFt8MtdDecodeCoordinator::changedContextDropsPendingWithoutPublishing ()
 {
   Ft8MtdDecodeCoordinator coordinator;
   coordinator.request (Stage::Final, 520, 1, true);
-  coordinator.deferFinal (pendingDecode (520, 160030, 53));
+  auto pending = pendingDecode (520, 160030, 53);
+  auto current = pending->context;
+  ++current.ft8ThreadCount;
+  coordinator.deferFinal (std::move (pending));
   int publishCalls {0};
 
   auto const outcome = coordinator.drainPending (
-    [] (Ft8MtdDecodeCoordinator::PendingMtdDecode const&) {return false;},
+    [&current] (Ft8MtdDecodeCoordinator::PendingMtdDecode const& pending) {
+      return pending.context.hasSameFt8PendingIdentity (current);
+    },
     [&] (Ft8MtdDecodeCoordinator::PendingMtdDecode const&) {
       ++publishCalls;
       return PendingPublishResult::Published;

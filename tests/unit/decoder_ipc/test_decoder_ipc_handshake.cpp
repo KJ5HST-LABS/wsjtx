@@ -69,8 +69,9 @@ void TestDecoderIpcHandshake::readyBeforePublication ()
       output += child.readAllStandardOutput ();
       if (child.state () == QProcess::NotRunning) break;
     }
-  QVERIFY2 (output.startsWith ("<DecoderReady> version=3\r\n")
-            || output.startsWith ("<DecoderReady> version=3\n"), output.constData ());
+  auto const ready = QByteArray {"<DecoderReady> version="} + QByteArray::number (DECODER_IPC_VERSION);
+  QVERIFY2 (output.startsWith (ready + "\r\n")
+            || output.startsWith (ready + "\n"), output.constData ());
   QVERIFY (!output.contains ("<DecodeStarted>"));
   QCOMPARE (session.acceptReady (DECODER_IPC_VERSION), Status::Ok);
   QVERIFY (session.ready ());
@@ -88,7 +89,9 @@ void TestDecoderIpcHandshake::rejectsSegment_data ()
   QTest::addColumn<QByteArray> ("status");
   QTest::newRow ("v1") << QString {"v1"} << QByteArray {"unsupported-version"};
   QTest::newRow ("v2") << QString {"v2"} << QByteArray {"unsupported-version"};
-  QTest::newRow ("future-version") << QString {"v4"} << QByteArray {"unsupported-version"};
+  QTest::newRow ("v3") << QString {"v3"} << QByteArray {"unsupported-version"};
+  QTest::newRow ("future-version") << QString {"v%1"}.arg (DECODER_IPC_VERSION + 1)
+                                  << QByteArray {"unsupported-version"};
   QTest::newRow ("header-size") << QString {"header"} << QByteArray {"wrong-header-size"};
   QTest::newRow ("payload-size") << QString {"payload"} << QByteArray {"wrong-payload-size"};
   QTest::newRow ("field-offset") << QString {"offset"} << QByteArray {"incompatible-layout"};

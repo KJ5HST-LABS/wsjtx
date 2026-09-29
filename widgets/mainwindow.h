@@ -1091,6 +1091,7 @@ private:
   qint32  m_position;
   qint64  m_decoderDiagSequence=0;
   qint64  m_decoderDiagActiveSequence=0;
+  DecoderIpc::InputState m_decoderInput;
   qint32  m_decoderDiagStartIhsym=0;
   qint32  m_decoderDiagStartHsymStop=0;
   qint32  m_decoderDiagStartNzhsym=0;
@@ -1686,10 +1687,11 @@ private:
   DecodePublishResult publishPendingFt8Decode ();
   void decode (Ft8MtdDecodeCoordinator::Stage stage, qint64 ft8Period = -1);
   qint64 currentFt8DecodePeriod () const;
+  void beginDecoderInput ();
   bool usesFt8MtdFinal () const;
   int configuredFt8MtdEarlyStageCount () const;
   std::unique_ptr<Ft8MtdDecodeCoordinator::PendingMtdDecode>
-    capturePendingFt8MtdDecode (qint64 period) const;
+    capturePendingFt8MtdDecode (qint64 period);
   void cancelPendingFt8Decode (QString const& reason);
   void reportFt8BackpressureDecision (
       Ft8MtdDecodeCoordinator::Decision const& decision, qint64 period);

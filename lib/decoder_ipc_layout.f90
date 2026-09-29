@@ -48,7 +48,7 @@ contains
     layout%bool_bytes=int(c_sizeof(local%payload%params%ndiskdat),c_int)
     layout%char_bytes=int(c_sizeof(local%payload%params%datetime(1)),c_int)
     layout%endian_marker=int(z'01020304',c_int)
-    layout%field_count=91
+    layout%field_count=size(layout%fields)
     index=0
     call field(c_loc(local%control%generation), c_sizeof(local%control%generation))
     call field(c_loc(local%control%state), c_sizeof(local%control%state))
@@ -141,6 +141,12 @@ contains
     call field(c_loc(local%payload%params%lmultinst), c_sizeof(local%payload%params%lmultinst))
     call field(c_loc(local%payload%params%lskiptx1), c_sizeof(local%payload%params%lskiptx1))
     call field(c_loc(local%payload%params%ndecoderstart), c_sizeof(local%payload%params%ndecoderstart))
+
+    call field(c_loc(local%metadata), c_sizeof(local%metadata))
+    call field(c_loc(local%metadata%input_id), c_sizeof(local%metadata%input_id))
+    call field(c_loc(local%metadata%analysis_id), c_sizeof(local%metadata%analysis_id))
+    call field(c_loc(local%metadata%attempt_no), c_sizeof(local%metadata%attempt_no))
+    call field(c_loc(local%metadata%valid_samples), c_sizeof(local%metadata%valid_samples))
 
   contains
 

@@ -114,6 +114,8 @@ contains
     params%nzhsym          = 50               ! caller may overwrite per-period
     params%nsubmode        = args%nsubmode
     params%nagain          = .false.
+    params%b_even_seq      = .false.
+    params%b_superfox      = .false.
     params%ndepth          = args%ndepth
     params%lft8apon        = .true.
     params%lapcqonly       = .false.
@@ -186,8 +188,6 @@ contains
     params%minsync         = 0
     params%nlist           = 0
     params%max_drift       = 0
-    params%b_even_seq      = .false.
-    params%b_superfox      = .false.
     params%lft8lowth       = args%lft8lowth
     params%lft8subpass     = args%lft8subpass
     params%lwidedxcsearch  = args%lwidedxcsearch

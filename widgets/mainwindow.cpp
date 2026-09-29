@@ -907,7 +907,11 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
 #endif
             continue;
           }
-        if (previousEpoch != m_receiveConsumer.epoch ()) m_referenceInput.reset ();
+        if (previousEpoch != m_receiveConsumer.epoch ())
+          {
+            m_referenceInput.reset ();
+            beginDecoderInput ();
+          }
         auto const frames = block->end ();
 #if defined (WSJT_ENABLE_LIVE_AUDIO_TEST)
         if (m_automated_test)
@@ -4967,6 +4971,7 @@ void MainWindow::wav_file_loaded ()
       dec_data.params.newdat=0;
     }
   }
+  if (result->valid) beginDecoderInput ();
   m_fileDateTime=result->fileDateTime;
   if (m_mode == "JTTY") {
     if (result->firstSampleUtc.isValid()) m_UTCdiskDateTime = result->firstSampleUtc;
@@ -5760,6 +5765,8 @@ DecodeOperatingContext MainWindow::currentDecodeOperatingContext () const
   context.periodFrequency = periodFrequency;
   context.band = periodBand;
   context.sequenceStart = m_dateTimeSeqStart;
+  context.inputId = m_decoderInput.inputId ();
+  context.analysisId = m_decoderInput.analysisId ();
   context.trPeriod = m_TRperiod;
   context.submode = m_nSubMode;
   context.diskData = m_diskData;
@@ -5809,6 +5816,11 @@ qint64 MainWindow::currentFt8DecodePeriod () const
   return QDateTime::currentMSecsSinceEpoch () / periodMs;
 }
 
+void MainWindow::beginDecoderInput ()
+{
+  m_decoderInput.beginInput ();
+}
+
 bool MainWindow::usesFt8MtdFinal () const
 {
   auto const standardFinalRequired =
@@ -5827,19 +5839,23 @@ int MainWindow::configuredFt8MtdEarlyStageCount () const
 }
 
 std::unique_ptr<Ft8MtdDecodeCoordinator::PendingMtdDecode>
-MainWindow::capturePendingFt8MtdDecode (qint64 period) const
+MainWindow::capturePendingFt8MtdDecode (qint64 period)
 {
   auto pending = std::make_unique<Ft8MtdDecodeCoordinator::PendingMtdDecode> ();
   pending->period = period;
-  pending->context = currentDecodeOperatingContext ();
   {
     QMutexLocker payloadLock {&dec_data_mutex ()};
     pending->payload.params = dec_data.params;
+    pending->payload.metadata = m_decoderInput.nextMetadata (dec_data.params);
+    pending->payload.metadata.valid_samples = std::min (
+      pending->payload.metadata.valid_samples,
+      static_cast<qint32> (DecoderIpc::Ft8SampleCount));
     Q_ASSERT (8 == pending->payload.params.nmode);
     Q_ASSERT (pending->payload.params.lmultift8);
     std::copy_n (dec_data.d2, DecoderIpc::Ft8SampleCount,
                  pending->payload.samples.begin ());
   }
+  pending->context = currentDecodeOperatingContext ();
   return pending;
 }
 
@@ -5916,9 +5932,12 @@ MainWindow::DecodePublishResult MainWindow::publishDecodeRequest (
   DecoderIpc::Submission submitted;
   {
     QMutexLocker payloadLock {&dec_data_mutex ()};
-    submitted = m_decoderSession.submit (copySamples
-      ? DecoderIpc::Request::snapshot (dec_data)
-      : DecoderIpc::Request::reuse (dec_data, m_decoderSession.samples ()));
+    auto inputs = m_decoderInput;
+    auto const request = m_decoderSession.prepareRequest (dec_data, copySamples, inputs);
+    submitted = m_decoderSession.submit (request);
+    if (submitted) m_decoderInput = inputs;
+    m_activeJt9Decode.context.inputId = request.metadata ().input_id;
+    m_activeJt9Decode.context.analysisId = request.metadata ().analysis_id;
   }
   if (!submitted)
     {
