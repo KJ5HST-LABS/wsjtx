@@ -1,4 +1,8 @@
-subroutine cwfilter(first)
+subroutine cwfilter(first,knowledge,render_legacy)
+
+  use packjt77, only: pack77_state
+  use ft8_codec_context, only: get_ft8_codec_state
+  use ft8var_codec_context, only: genft8sdvar_for_state
 
   use ft8_mod1, only : cw,windowc1,windowx,pivalue,facx,mcq,m73,mrr73,mrrr,one,twopi,facc1,dt,csync,idtone25,csynccq, &
                        idtone25_valid, &
@@ -13,12 +17,23 @@ subroutine cwfilter(first)
   integer itone(79)
   integer*1 msgbits(77)
   logical, intent(in) :: first
+  type(pack77_state), target, optional, intent(inout) :: knowledge
+  logical, optional, intent(in) :: render_legacy
+  logical :: emit_line
+  logical, save :: process_initialized=.false.
+  type(pack77_state), pointer :: codec
+
+  codec => get_ft8_codec_state()
+  if(present(knowledge)) codec => knowledge
+  emit_line=.true.
+  if(present(render_legacy)) emit_line=render_legacy
 
 !pushing callsigns from ALLCALL to memory
 !note that with new, larger ALLCALL7.TXT files, dimensions of various ncall arrays may need to be increased in jt65_mod9.f90
 !on 20250709 callj dim was increased from 9000 to 10000 when updated ALLCALL7.TXT file was added
   if(first) then
     allocate(csig0(151680))
+    if(.not.process_initialized) then
     ! Open the shipped read-only ALLCALL7.TXT for reading only. status='old' with
     ! action='read' makes a missing/unreadable file degrade cleanly to an empty
     ! callsign DB (handled by the count check below) instead of status='unknown'
@@ -60,9 +75,10 @@ subroutine cwfilter(first)
        ncallk.lt.1 .or. ncalllm.lt.1 .or. ncalln.lt.1 .or. ncallo.lt.1 .or. ncallpq.lt.1 .or. ncallr.lt.1 .or.  &
        ncallst.lt.1 .or. ncalluv.lt.1 .or. ncallw.lt.1 .or. ncallxz.lt.1) then
       ldbvalid=.false.
-      write(*,4) 'ALLCALL7.TXT is too short or broken?','d' ! 50th position for "d"
+      if(emit_line) write(*,4) 'ALLCALL7.TXT is too short or broken?','d'
 4     format(a36,13x,a1)
-      call flush(6)
+      if(emit_line) call flush(6)
+    endif
     endif
 
     pivalue=4.d0*atan(1.d0)
@@ -77,10 +93,12 @@ subroutine cwfilter(first)
     windowx=facx*windowx
     facc1=0.01/sqrt(61440.) ! 1.0/sqrt(192000.*3200.) NFFT1*NFFT2
 
-    mcq=2*mcq-1
-    mrrr=2*mrrr-1
-    m73=2*m73-1
-    mrr73=2*mrr73-1
+    if(.not.process_initialized) then
+      mcq=2*mcq-1
+      mrrr=2*mrrr-1
+      m73=2*m73-1
+      mrr73=2*mrr73-1
+    endif
 
     one=.false.
     do i=0,511
@@ -118,7 +136,7 @@ subroutine cwfilter(first)
     idtone25_valid(2:25)=.false.
     do i=2,25
       i3=-1; n3=-1
-      call genft8sdvar(msgcq25(i),i3,n3,msgsent37,msgbits,itone)
+      call genft8sdvar_for_state(codec,msgcq25(i),i3,n3,msgsent37,msgbits,itone)
       if(i3.lt.0) cycle
       if(i.eq.2) then
         call gen_ft8wave(itone,79,1920,2.0,12000.0,0.0,csig0,xjunk,1,151680)
@@ -165,6 +183,7 @@ subroutine cwfilter(first)
       ctwk256(i)=cmplx(cos(phi),sin(phi))
       phi=mod(phi+dphi,twopi)
     enddo
+    process_initialized=.true.
   endif
 
 ! this filter is being used for signal subtraction

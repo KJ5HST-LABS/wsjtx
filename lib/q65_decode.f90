@@ -1,6 +1,7 @@
 module q65_decode
 
   use q65_workspace, only: q65_workspace_type
+  use ft8_decode, only: ft8apset
 
   integer nsnr0,nfreq0
   real xdt0

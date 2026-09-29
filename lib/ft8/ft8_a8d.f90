@@ -1,10 +1,12 @@
 subroutine ft8_a8d(dd,mycall,dxcall,dxgrid,f1a,xdt,fbest,xsnr,plog,msgbest, &
-     progress_generation)
+     progress_generation,knowledge,evidence)
 
 ! List decoding for FT8, activated only at nfqso (Rx Freq) +/- 10 Hz and when
 ! DxCall and DxGrid are populated. Returns xdt, fbest, and msgbest.
 
   use packjt77
+  use ft8_codec_context, only: get_ft8_codec_state,genft8_for_state
+  use decoder_engine_types, only: ft8_signal_evidence,engine_payload_hypothesis
   use ft8_a7
   use timer_module, only: timer
   use decode_completion_module, only: write_decode_progress
@@ -18,6 +20,7 @@ subroutine ft8_a8d(dd,mycall,dxcall,dxgrid,f1a,xdt,fbest,xsnr,plog,msgbest, &
   character*37 msg,msgsent,msgbest
   character*77 c77
   integer*1 msgbits(77)
+  integer*1 msgbits_best(77)
   real xjunk(NZZ)
   real s(-NH:NH)                     !Power spectrum of cd0
 !  real s00(-NH:NH)                   !Raw spectrum of downsampled data
@@ -33,9 +36,15 @@ subroutine ft8_a8d(dd,mycall,dxcall,dxgrid,f1a,xdt,fbest,xsnr,plog,msgbest, &
   integer itone(NN)
   integer itone_best(NN)
   integer, intent(in) :: progress_generation
+  type(pack77_state), target, optional, intent(inout) :: knowledge
+  type(pack77_state), pointer :: codec
+  type(ft8_signal_evidence), optional, intent(out) :: evidence
   integer ipk(1)
   logical newdat
 
+  codec => get_ft8_codec_state()
+  if(present(knowledge)) codec => knowledge
+  if(present(evidence)) evidence=ft8_signal_evidence()
   f1=f1a
   newdat=.true.
 ! Mix from f1 to baseband and downsample from dd into cd (complex, 200 Hz sampling)
@@ -56,6 +65,7 @@ subroutine ft8_a8d(dd,mycall,dxcall,dxgrid,f1a,xdt,fbest,xsnr,plog,msgbest, &
   fbest=0.
   msgbest=''
   itone_best=0
+  msgbits_best=0
   do imsg=1,NMSGS
      call write_decode_progress(progress_generation)
      call getmsg(imsg,mycall,dxcall,dxgrid,msg)
@@ -63,8 +73,8 @@ subroutine ft8_a8d(dd,mycall,dxcall,dxgrid,f1a,xdt,fbest,xsnr,plog,msgbest, &
 ! Source-encode the message, get itone(), and generate complex FT8 waveform.
      i3=-1
      n3=-1
-     call pack77(msg,i3,n3,c77)
-     call genft8(msg,i3,n3,msgsent,msgbits,itone)
+     call pack77_for_state(codec,msg,i3,n3,c77)
+     call genft8_for_state(codec,msg,i3,n3,msgsent,msgbits,itone)
      call gen_ft8wave(itone,NN,32,bt,fsd,0.0,cwave,xjunk,1,NWAVE)
      cwave(NWAVE:)=0.
 
@@ -120,6 +130,7 @@ subroutine ft8_a8d(dd,mycall,dxcall,dxgrid,f1a,xdt,fbest,xsnr,plog,msgbest, &
         tbest=tpk
         msgbest=msg
         itone_best=itone
+        msgbits_best=msgbits
         s1=s0                                !Save overall best-fit spectrum
      endif
   enddo  ! imsg
@@ -186,6 +197,15 @@ subroutine ft8_a8d(dd,mycall,dxcall,dxgrid,f1a,xdt,fbest,xsnr,plog,msgbest, &
 !     write(60,3060) nsum,xdt,fbest,xsnr,plog,nhard,sigosync,sigobig,trim(msgbest)
 !3060 format(i2,f8.3,3f8.1,i5,2f7.2,1x,a)
      if(nhard.gt.54 .or. plog.lt.-159.0 .or. sigobig.lt.0.71) msgbest=''
+  endif
+  if(present(evidence) .and. msgbest.ne.'') then
+     evidence%payload77=msgbits_best
+     evidence%tones=int(itone_best,kind=1)
+     evidence%payload_origin=engine_payload_hypothesis
+     evidence%has_tones=1
+     evidence%has_start=1
+     evidence%start_seconds=xdt+0.5
+     evidence%method=8
   endif
   
   return

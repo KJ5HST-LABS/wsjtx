@@ -2,15 +2,14 @@ program test_packjt77sdvar_invariants
 
   use packjt77
   use packjt77_test_helpers
+  use ft8var_codec_context, only: ft8sdvar,ft8svar,tonesdvar
   use ft8_mod1, only : idtone56_valid,idtone56,itone56,msg,lastrxmsg,mycall, &
        hiscall,nlasttx,csyncsd_valid,csyncsdcq_valid
   implicit none
 
   integer :: ntests
+  logical(kind=1), parameter :: flag_false=.false.,flag_true=.true.
   external :: genft8sdvar
-  external :: ft8sdvar
-  external :: ft8svar
-  external :: tonesdvar
 
   ntests=0
 
@@ -134,7 +133,7 @@ contains
     decoded=''
     lft8s=.false.
 
-    call ft8svar(s8,0.0,itone,decoded,lft8s,1,.false.)
+    call ft8svar(s8,0.0,itone,decoded,lft8s,1,flag_false)
 
     call assert_true('ft8svar last grid row valid',logical(idtone56_valid(53)))
     call assert_text_equal('ft8svar last grid message', &
@@ -150,7 +149,7 @@ contains
     csyncsd_valid=.true.
     msgd='<PJ4/K1ABC> W9XYZ -01'
 
-    call tonesdvar(msgd,.false.)
+    call tonesdvar(msgd,flag_false)
 
     call assert_true('failed QSO template invalidates sync', &
          .not.logical(csyncsd_valid))
@@ -164,7 +163,7 @@ contains
     csyncsdcq_valid=.true.
     msgd='CQ PJ4/K1ABC'
 
-    call tonesdvar(msgd,.true.)
+    call tonesdvar(msgd,flag_true)
 
     call assert_true('failed CQ template invalidates sync', &
          .not.logical(csyncsdcq_valid))

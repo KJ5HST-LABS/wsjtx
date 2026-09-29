@@ -209,4 +209,54 @@ module ft8_mod1
   end type oddqso_struct
   type(oddqso_struct) oddqso(1,nmaxthreads)
 
+contains
+
+  subroutine reset_ft8_mod1()
+    dd8=0.
+    allmessages=''
+    allfreq=0.
+    allsnrs=0
+    ndecodes=0
+    nmsg=0
+    nintcount=0
+    nft8cycles=0
+    nlasttx=0
+    sumxdtt=0.
+    avexdt=0.
+    lastrxmsg%lstate=.false.
+    lastrxmsg%lastmsg=''
+    lastrxmsg%xdt=0.
+    odd%lstate=.false.
+    even%lstate=.false.
+    oddcopy%lstate=.false.
+    evencopy%lstate=.false.
+    odd%msg=''
+    even%msg=''
+    oddcopy%msg=''
+    evencopy%msg=''
+    calldteven%call2=''
+    calldtodd%call2=''
+    calldteven%dt=0.
+    calldtodd%dt=0.
+    incall%msg=''
+    incall%xdt=0.
+    msgroot=''
+    msgincall=''
+    xdtincall=0.
+    nincallthr=0
+    ncandallthr=0
+    idtone25_valid=.false.
+    idtone56_valid=.false.
+    idtone76_valid=.false.
+    csyncsd_valid=.false.
+    csyncsdcq_valid=.false.
+    first_osd=.true.
+    lqsomsgdcd=.false.
+    lapmyc=.false.
+    lasthcall=''
+    mycall12_0='dummy'
+    mycall12_00='dummy'
+    hiscall12_0='dummy'
+  end subroutine reset_ft8_mod1
+
 end module ft8_mod1

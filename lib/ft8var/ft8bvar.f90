@@ -5,9 +5,14 @@ subroutine ft8bvar(residual,spectrum,newdat1,nQSOProgress,nfqso,nftx,napwid, &
      nmycsignal,npass,i3bit,lft8s,lmycallstd,lhiscallstd,levenint,loddint,lft8sd, &
      i3,n3,nft8rxfsens,ncount,msgsrcvd,lrepliedother,lhashmsg,lqsothread,         &
      lft8lowth,lhighsens,tmpcqsig,tmpmycsig,tmpqsosig,lnohiscall,               &
-     lnomycall,lnohisgrid,qual,iaptype2,progress_generation)
+     lnomycall,lnohisgrid,qual,iaptype2,progress_generation,knowledge,evidence)
 
-  use packjt77, only : unpack77, unpack77_configured, unpack77_options
+  use packjt77, only : pack77_state,unpack77_configured_for_state,unpack77_options
+  use ft8_codec_context, only: get_ft8_codec_state
+  use ft8var_codec_context, only: ft8sd1var,ft8sdvar,ft8svar,ft8mfcqvar,tonesdvar, &
+       ft8var_tones_from_77bits
+  use ft8var_work_types
+  use decoder_engine_types, only: ft8_signal_evidence,engine_payload_decoded
   use ft8_mtd_residual, only : mtd_commit_subtraction,mtd_mark_spectrum_current, &
        mtd_refresh_candidate
   use decode_completion_module, only : write_decode_progress
@@ -56,40 +61,24 @@ subroutine ft8bvar(residual,spectrum,newdat1,nQSOProgress,nfqso,nftx,napwid, &
        lcqdxcsig,lcqdxcnssig,lqsocandave,lcall1hash,lqsosigtype3,lqso73,lqsorr73, &
        lqsorrr,lfoxspecrpt,lfoxstdr73,lapcqonly,lcall2hash,lskipnotap
   integer iaptype2
+  type(pack77_state), target, optional, intent(inout) :: knowledge
+  type(pack77_state), pointer :: codec
+  type(ft8_signal_evidence), optional, intent(out) :: evidence
+  character(len=37) :: decoded_payload_message
+  logical :: has_decoded_payload
 
-  type tmpcqdec_struct
-     real freq
-     real xdt
-  end type tmpcqdec_struct
   type(tmpcqdec_struct) tmpcqdec(numdeccq)
-
-  type tmpcqsig_struct
-     real freq
-     real xdt
-     complex cs(0:7,79)
-  end type tmpcqsig_struct
   type(tmpcqsig_struct) tmpcqsig(numcqsig) ! 20 sigs 24 threads
-
-  type tmpmyc_struct
-     real freq
-     real xdt
-  end type tmpmyc_struct
   type(tmpmyc_struct) tmpmyc(numdecmyc)
-
-  type tmpmycsig_struct
-     real freq
-     real xdt
-     complex cs(0:7,79)
-  end type tmpmycsig_struct
   type(tmpmycsig_struct) tmpmycsig(nummycsig) ! 5 sigs
-
-  type tmpqsosig_struct
-     real freq
-     real xdt
-     complex cs(0:7,79)
-  end type tmpqsosig_struct
   type(tmpqsosig_struct) tmpqsosig(1)
 
+  codec => get_ft8_codec_state()
+  if(present(knowledge)) codec => knowledge
+  if(present(evidence)) evidence=ft8_signal_evidence()
+  has_decoded_payload=.false.
+  decoded_payload_message=''
+  itone=0
   iaptype2 = 99  !ft8md
   
   max_iterations=30
@@ -256,7 +245,7 @@ subroutine ft8bvar(residual,spectrum,newdat1,nQSOProgress,nfqso,nftx,napwid, &
         cd0=cd3
      endif
      if(iqso.eq.4) then
-        call tonesdvar(msgd,lcq)
+        call tonesdvar(msgd,lcq,codec)
         if(.not.ldeepsync) go to 32
         cd0=cd1
      endif
@@ -732,7 +721,7 @@ subroutine ft8bvar(residual,spectrum,newdat1,nQSOProgress,nfqso,nftx,napwid, &
 
 32   if(lsd) then
         if(iqso.eq.4 .and. .not.ldeepsync) go to 64
-        call ft8sd1var(s8,itone,msgd,msg37,lft8sd,lcq)
+        call ft8sd1var(s8,itone,msgd,msg37,lft8sd,lcq,codec)
         if(lft8sd) then
            if(levenint) then
               evencopy(isd)%lstate=.false.
@@ -766,7 +755,7 @@ subroutine ft8bvar(residual,spectrum,newdat1,nQSOProgress,nfqso,nftx,napwid, &
                  go to 2
               endif
            else
-              call ft8mfcqvar(s8,itone,msgd,msg37,lft8sd)
+              call ft8mfcqvar(s8,itone,msgd,msg37,lft8sd,codec)
               if(lft8sd) then
                  if(levenint) then
                     evencopy(isd)%lstate=.false.
@@ -812,7 +801,7 @@ subroutine ft8bvar(residual,spectrum,newdat1,nQSOProgress,nfqso,nftx,napwid, &
         if(.not.lqsomsgdcd .and. .not.(.not.lmycallstd .and. .not.lhiscallstd)) then
            if(.not.lft8sdec .and. dfqso.lt.2.0) then
               if(lvirtual2 .or. lvirtual3) srr=0.0
-              call ft8svar(s82,srr,itone,msg37,lft8s,nft8rxfsens,stophint)
+              call ft8svar(s82,srr,itone,msg37,lft8s,nft8rxfsens,stophint,codec)
               if(lft8s) then
                  if(index(msg37,'<').gt.0) then
                     lhashmsg=.true.
@@ -2176,7 +2165,7 @@ subroutine ft8bvar(residual,spectrum,newdat1,nQSOProgress,nfqso,nftx,napwid, &
                  if(.not.lqsomsgdcd .and. .not.(.not.lmycallstd .and.             &
                       .not.lhiscallstd)) then
                     if(.not.lft8sdec .and. .not.stophint .and. dfqso.lt.2.0) then
-                       call ft8svar(s8,srr,itone,msg37,lft8s,nft8rxfsens,stophint)
+                       call ft8svar(s8,srr,itone,msg37,lft8s,nft8rxfsens,stophint,codec)
                        if(lft8s) then
                           if(index(msg37,'<').gt.0) then
                              lhashmsg=.true.
@@ -2195,7 +2184,7 @@ subroutine ft8bvar(residual,spectrum,newdat1,nQSOProgress,nfqso,nftx,napwid, &
               endif
 
               if(lsd .and. isubp2.eq.3 .and. nbadcrc.eq.1 .and. srr.lt.7.0) then ! low DR setups shall not try FT8SDvar for strong signals
-                 call ft8sdvar(s8,srr,itone,msgd,msg37,lft8sd,lcq)
+                 call ft8sdvar(s8,srr,itone,msgd,msg37,lft8sd,lcq,codec)
                  if(lft8sd) then
                     if(levenint) then
                        evencopy(isd)%lstate=.false.
@@ -2275,7 +2264,7 @@ subroutine ft8bvar(residual,spectrum,newdat1,nQSOProgress,nfqso,nftx,napwid, &
                 ! and n3.eq.5 for USA calls with EU VHF 
                 ! added .or. n3.eq.2 .or. n3.eq.8 .or. n3.eq.9 as test for EU VHF
            !print*,'did not cycle at line 2248'
-           call unpack77_configured(c77,1,msg37,unpk77_successvar, &
+           call unpack77_configured_for_state(codec,c77,1,msg37,unpk77_successvar, &
                 unpack77_options(thread_index=nthr))
            if(.not.unpk77_successvar) then
               if(lqsothread .and. (.not.lhound .and. iaptype.ge.3 .or. lhound .and. &
@@ -2283,7 +2272,7 @@ subroutine ft8bvar(residual,spectrum,newdat1,nQSOProgress,nfqso,nftx,napwid, &
                  if(.not.lqsomsgdcd .and. .not.(.not.lmycallstd .and.             &
                       .not.lhiscallstd)) then
                     if(.not.lft8sdec .and. .not.stophint .and. dfqso.lt.2.0) then
-                       call ft8svar(s8,srr,itone,msg37,lft8s,nft8rxfsens,stophint)
+                       call ft8svar(s8,srr,itone,msg37,lft8s,nft8rxfsens,stophint,codec)
                        if(lft8s) then
                           if(index(msg37,'<').gt.0) then
                              lhashmsg=.true.
@@ -2310,7 +2299,10 @@ subroutine ft8bvar(residual,spectrum,newdat1,nQSOProgress,nfqso,nftx,napwid, &
            lcall1hash=.false.
            if(msg37(1:1).eq.'<') lcall1hash=.true.
            nbadcrc=0  ! If we get this far: valid codeword, valid (i3,n3), nonquirky message.
-           call get_tones_from_77bits(message77,itone)
+           call ft8var_tones_from_77bits(message77,itone)
+           has_decoded_payload=.true.
+           decoded_payload_message=msg37
+           if(present(evidence)) evidence%payload77=message77
 ! 0.1  K1ABC RR73; W9XYZ <KH1/KH7Z> -11   28 28 10 5       71   DXpedition Mode
            i3bit=0
            if(i3.eq.0 .and. n3.eq.1) i3bit=1
@@ -2956,6 +2948,17 @@ subroutine ft8bvar(residual,spectrum,newdat1,nQSOProgress,nfqso,nftx,napwid, &
      endif
   endif
 
+  if(present(evidence) .and. nbadcrc.eq.0) then
+     if(all(itone(1:7).eq.icos7)) then
+        evidence%tones=int(itone,kind=1)
+        evidence%has_tones=1
+     endif
+     evidence%has_start=1
+     evidence%start_seconds=xdt
+     evidence%method=iaptype2
+     if(has_decoded_payload .and. msg37.eq.decoded_payload_message) &
+          evidence%payload_origin=engine_payload_decoded
+  endif
   return
 end subroutine ft8bvar
 

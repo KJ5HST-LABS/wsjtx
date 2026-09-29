@@ -1,22 +1,58 @@
 module ft8_decodevar
+  use packjt77, only: pack77_state
+  use decoder_engine_types, only: ft8_signal_evidence
+  use ft8var_work_types
 
   logical ltry_a8
   type :: ft8_decodervar
      procedure(ft8_decodevar_callback), pointer :: callback
+     type(pack77_state), pointer :: knowledge => null()
    contains
      procedure :: decodevar
   end type ft8_decodervar
 
   abstract interface
-     subroutine ft8_decodevar_callback (this,snr,dt,freq,decodedvar,nap,qual)
-       import ft8_decodervar
+     subroutine ft8_decodevar_callback (this,snr,dt,freq,decodedvar,nap,qual,evidence)
+       import ft8_decodervar,ft8_signal_evidence
        implicit none
        class(ft8_decodervar), intent(inout) :: this
        integer, intent(in) :: snr
        integer, intent(in) :: nap 
        real, intent(in) :: dt,freq,qual
        character(len=37), intent(in) :: decodedvar !ft8md was 26
+       type(ft8_signal_evidence), intent(in), optional :: evidence
      end subroutine ft8_decodevar_callback
+  end interface
+
+  interface
+    subroutine ft8bvar(residual,spectrum,newdat1,nQSOProgress,nfqso,nftx,napwid, &
+         lsubtract,tmpcqdec,tmpmyc,nagainfil,iaptype,f1,xdt,nbadcrc,lft8sdec, &
+         msg37,msg37_2,xsnr,stophint,nthr,lFreeText,ipass,lft8subpass,lspecial, &
+         lcqcand,ncqsignal,nmycsignal,npass,i3bit,lft8s,lmycallstd,lhiscallstd, &
+         levenint,loddint,lft8sd,i3,n3,nft8rxfsens,ncount,msgsrcvd,lrepliedother, &
+         lhashmsg,lqsothread,lft8lowth,lhighsens,tmpcqsig,tmpmycsig,tmpqsosig, &
+         lnohiscall,lnomycall,lnohisgrid,qual,iaptype2,progress_generation,knowledge,evidence)
+      import pack77_state,ft8_signal_evidence,tmpcqdec_struct,tmpmyc_struct, &
+           tmpcqsig_struct,tmpmycsig_struct,tmpqsosig_struct
+      real :: residual(180000),f1,xdt,xsnr,qual
+      complex :: spectrum(0:96000)
+      integer :: nQSOProgress,nfqso,nftx,napwid,iaptype,nbadcrc,nthr,ipass
+      integer :: ncqsignal,nmycsignal,npass,i3bit,i3,n3,nft8rxfsens,ncount
+      integer :: iaptype2,progress_generation
+      logical :: newdat1,lsubtract,nagainfil,lFreeText,lspecial
+      logical(kind=1) :: lft8sdec,stophint,lft8subpass,lcqcand,lft8s
+      logical(kind=1) :: lmycallstd,lhiscallstd,levenint,loddint,lft8sd
+      logical(kind=1) :: lrepliedother,lhashmsg,lqsothread,lft8lowth,lhighsens
+      logical(kind=1) :: lnohiscall,lnomycall,lnohisgrid
+      character(len=37) :: msg37,msg37_2,msgsrcvd(130)
+      type(tmpcqdec_struct) :: tmpcqdec(*)
+      type(tmpmyc_struct) :: tmpmyc(*)
+      type(tmpcqsig_struct) :: tmpcqsig(*)
+      type(tmpmycsig_struct) :: tmpmycsig(*)
+      type(tmpqsosig_struct) :: tmpqsosig(*)
+      type(pack77_state), target, optional, intent(inout) :: knowledge
+      type(ft8_signal_evidence), optional, intent(out) :: evidence
+    end subroutine ft8bvar
   end interface
 
 contains
@@ -27,6 +63,7 @@ contains
        progress_generation,residual,spectrum)
 
     use omp_lib
+    use ft8_codec_context, only: get_ft8_codec_state
     use ft8_mtd_residual, only : mtd_publish_worker,mtd_transform_phase
     use decode_completion_module, only : write_decode_progress
 
@@ -66,6 +103,8 @@ contains
     character msg37*37,msg37_2*37,msg26*37,call2*12 !ft8md msg26 was *26
     character*37 msgsrcvd(130)
     integer nsnr
+    type(pack77_state), pointer :: codec
+    type(ft8_signal_evidence) :: evidence
 
     type oddtmp_struct
        real freq
@@ -83,39 +122,14 @@ contains
     end type eventmp_struct
     type(eventmp_struct) eventmp(130)
 
-    type tmpcqdec_struct
-       real freq
-       real xdt
-    end type tmpcqdec_struct
     type(tmpcqdec_struct) tmpcqdec(numdeccq) ! 40 sigs
-
-    type tmpcqsig_struct
-       real freq
-       real xdt
-      complex cs(0:7,79)
-    end type tmpcqsig_struct
     type(tmpcqsig_struct), allocatable :: tmpcqsig(:) ! 20 sigs
-
-    type tmpmyc_struct
-       real freq
-       real xdt
-    end type tmpmyc_struct
     type(tmpmyc_struct) tmpmyc(numdecmyc) ! 25 sigs
-
-    type tmpmycsig_struct
-       real freq
-       real xdt
-       complex cs(0:7,79)
-    end type tmpmycsig_struct
     type(tmpmycsig_struct) tmpmycsig(nummycsig) ! 5 sigs
-
-    type tmpqsosig_struct
-       real freq
-       real xdt
-       complex cs(0:7,79)
-    end type tmpqsosig_struct
     type(tmpqsosig_struct) tmpqsosig(1)
 
+    codec => this%knowledge
+    if(.not.associated(codec)) codec => get_ft8_codec_state()
     allocate(tmpcqsig(numcqsig))
     oddtmp%lstate=.false.
     eventmp%lstate=.false.
@@ -262,7 +276,7 @@ contains
                nft8rxfsens,ncount,msgsrcvd,lrepliedother,lhashmsg,lqsothread,   &
                lft8lowth,lhighsens,tmpcqsig,tmpmycsig,tmpqsosig,                &
                lnohiscall,lnomycall,lnohisgrid,qual,iaptype2,                   &
-               progress_generation)
+               progress_generation,codec,evidence)
           nsnr=nint(xsnr)
           xdt=xdt-0.5
           if(nbadcrc.eq.0) then
@@ -328,7 +342,7 @@ contains
                    if(.not.lhidemsg) then
                       msg26=msg37(1:37) !ft8md was 1:26
                       if(associated(this%callback)) then
-                         call this%callback(nsnr,xdt,f1,msg26,iaptype2,qual)
+                         call this%callback(nsnr,xdt,f1,msg26,iaptype2,qual,evidence)
                       endif
                    endif
 

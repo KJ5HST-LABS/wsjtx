@@ -357,6 +357,9 @@ set (wsjt_FSRCS
   lib/decode_echo.f90
   lib/ft8/decode174_91.f90
   lib/decoder_callbacks.f90
+  lib/decoder_engine_types.f90
+  lib/ft8_engine_kernel.f90
+  lib/decoder_engine.f90
   lib/decoder.f90
   lib/env_module.f90
   lib/deep4.f90

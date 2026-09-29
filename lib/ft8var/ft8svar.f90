@@ -1,5 +1,9 @@
 
-subroutine ft8svar(s8,srr,itone,msg37,lft8s,nft8rxfsens,stophint)
+subroutine ft8svar(s8,srr,itone,msg37,lft8s,nft8rxfsens,stophint,knowledge)
+
+  use packjt77, only: pack77_state
+  use ft8_codec_context, only: get_ft8_codec_state
+  use ft8var_codec_context, only: genft8sdvar_for_state
 
   use ft8_mod1, only : itone56,idtone56,msg,nlasttx,lastrxmsg,mycall,hiscall, &
        idtone56_valid
@@ -14,6 +18,11 @@ subroutine ft8svar(s8,srr,itone,msg37,lft8s,nft8rxfsens,stophint)
   logical(1), intent(in) :: stophint
   logical(1), intent(out) :: lft8s
   logical(1) lmatched(58),lmycall,lhiscall,lrrr,lr73,lcallingrprt,lastrrprt,lastreport,lgrid
+  type(pack77_state), target, optional, intent(inout) :: knowledge
+  type(pack77_state), pointer :: codec
+
+  codec => get_ft8_codec_state()
+  if(present(knowledge)) codec => knowledge
 
 ! taken from ft8_mod1
 !    integer itone56(56,79),idtone56(56,58)
@@ -59,7 +68,7 @@ subroutine ft8svar(s8,srr,itone,msg37,lft8s,nft8rxfsens,stophint)
     itone56(53,1:79)=0
     idtone56_valid(53)=.false.
     i3=-1; n3=-1
-    call genft8sdvar(lastrxmsg(1)%lastmsg,i3,n3,msgsent37,msgbits,itone)
+    call genft8sdvar_for_state(codec,lastrxmsg(1)%lastmsg,i3,n3,msgsent37,msgbits,itone)
     if(i3.ge.0) then
       msg(53)=lastrxmsg(1)%lastmsg
       idtone56(53,1:29)=itone(8:36)

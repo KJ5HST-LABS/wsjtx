@@ -6,9 +6,21 @@ program test_packjt77_hash_state
   implicit none
 
   integer :: ntests
-  external :: fillhashvar
-  external :: ft8apsetvar
   external :: genft8
+  interface
+     subroutine fillhashvar(numthreads,lfill,knowledge)
+       import :: pack77_state
+       integer, intent(in) :: numthreads
+       logical, intent(in) :: lfill
+       type(pack77_state), target, optional, intent(inout) :: knowledge
+     end subroutine
+     subroutine ft8apsetvar(lmycallstd,lhiscallstd,numthreads,knowledge)
+       import :: pack77_state
+       logical(1), intent(in) :: lmycallstd,lhiscallstd
+       integer :: numthreads
+       type(pack77_state), target, optional, intent(inout) :: knowledge
+     end subroutine
+  end interface
 
   ntests=0
 
@@ -881,8 +893,11 @@ contains
 
   subroutine expect_ft8apsetvar_does_not_record_template_hashes()
     logical(1) :: lmycallstd, lhiscallstd
+    type(pack77_state), target :: knowledge
 
     call clear_all_state('N0AAA','PJ2/W1AW')
+    knowledge%mycall13='N0AAA'
+    knowledge%dxcall13='PJ2/W1AW'
     mycall='N0AAA       '
     hiscall='PJ2/W1AW    '
     mybcall='N0AAA       '
@@ -892,8 +907,13 @@ contains
     lmycallstd=.true.
     lhiscallstd=.false.
 
-    call ft8apsetvar(lmycallstd,lhiscallstd,1)
-    call assert_shared_hash_tables_empty('ft8apsetvar template hashes')
+    call ft8apsetvar(lmycallstd,lhiscallstd,1,knowledge)
+    call assert_int('ft8apsetvar owned nzhash',0,knowledge%nzhash)
+    call assert_true('ft8apsetvar owned calls10',all(knowledge%calls10.eq.''))
+    call assert_true('ft8apsetvar owned calls12',all(knowledge%calls12.eq.''))
+    call assert_true('ft8apsetvar owned calls22',all(knowledge%calls22.eq.''))
+    call assert_true('ft8apsetvar owned recent calls',all(knowledge%recent_calls.eq.''))
+    call assert_shared_hash_tables_empty('ft8apsetvar legacy isolation')
 
     ntests=ntests+1
   end subroutine expect_ft8apsetvar_does_not_record_template_hashes

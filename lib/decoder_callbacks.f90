@@ -9,6 +9,8 @@ module decoder_callbacks
   use fst4_decode
   use q65_decode
   use streaming_emit, only: streaming_emit_enabled, streaming_emit_decode
+  use decoder_engine_types
+  use, intrinsic :: iso_c_binding, only: c_ptr,c_null_ptr,c_char,c_null_char
 
   implicit none
 
@@ -21,6 +23,10 @@ module decoder_callbacks
      logical :: bVHF = .false.
      logical :: b_superfox = .false.
      character(len=12) :: mycall = '            '
+     procedure(engine_observation_sink), pointer, nopass :: sink => null()
+     procedure(engine_superfox_sink), pointer, nopass :: superfox_sink => null()
+     type(c_ptr) :: sink_user = c_null_ptr
+     logical :: render_legacy = .true.
   end type decoder_callback_context
 
   type, extends(jt4_decoder) :: counting_jt4_decoder
@@ -41,12 +47,16 @@ module decoder_callbacks
   type, extends(ft8_decoder) :: counting_ft8_decoder
      type(decoder_callback_context) :: context
      integer :: decoded = 0
+     logical :: first_result = .true.
+     integer :: day_wrap = 0
   end type counting_ft8_decoder
 
   type, extends(ft8_decodervar) :: counting_ft8_decodervar
      type(decoder_callback_context) :: context
      integer :: decodedvar = 0
      real :: xdtt(200)
+     logical :: first_result = .true.
+     integer :: day_wrap = 0
   end type counting_ft8_decodervar
 
   type, extends(ft4_decoder) :: counting_ft4_decoder
@@ -288,8 +298,12 @@ contains
     end select
   end subroutine jt9_decoded
 
-  subroutine ft8_decodedvar  (this,snr,dt,freq,decodedvar,nap,qual)
+  subroutine ft8_decodedvar  (this,snr,dt,freq,decodedvar,nap,qual,evidence)
     implicit none
+    type(ft8_signal_evidence), optional, intent(in) :: evidence
+    type(engine_observation) :: observation
+    type(decoder_callback_context) :: context
+    integer :: message_index
 
     class(ft8_decodervar), intent(inout) :: this
     integer, intent(in) :: snr
@@ -307,8 +321,6 @@ contains
     integer context_nutc, context_nfqso, context_ncontest, context_ios13
     logical context_b_superfox
     character(len=12) context_mycall
-    data first/.true./
-    save :: first,nwrap
 
     isgrid4(w)=(len_trim(w).eq.4 .and.                                        &
          ichar(w(1:1)).ge.ichar('A') .and. ichar(w(1:1)).le.ichar('R') .and.  &
@@ -318,6 +330,9 @@ contains
 
     select type (typed_this => this)
     type is (counting_ft8_decodervar)
+       context=typed_this%context
+       first=typed_this%first_result
+       nwrap=typed_this%day_wrap
        context_nutc = typed_this%context%nutc
        context_nfqso = typed_this%context%nfqso
        context_ncontest = typed_this%context%ncontest
@@ -354,12 +369,15 @@ contains
        if(qual.lt.0.17) decoded0(37:37)='?'
     endif
 
+    if(context%render_legacy) then
     if (streaming_emit_enabled()) then
        call streaming_emit_decode("FT8", context_nutc, snr, dt, nint(freq), decoded0)
     else
        write(*,1000) context_nutc,snr,dt,nint(freq),decoded0,annot
     end if
 1000 format(i6.6,i4,f5.1,i5,' ~ ',1x,a37,1x,a2)
+
+    endif
 
     if(context_ncontest.eq.6) then
        i1=index(decoded0,' ')
@@ -394,18 +412,46 @@ contains
           endif
        endif
     endif
-    call flush(6)
-    if(context_ios13.eq.0) call flush(13)
+    if(context%render_legacy) then
+       call flush(6)
+       if(context_ios13.eq.0) call flush(13)
+    endif
+
+    observation%variant=1
+    observation%snr_db=snr
+    observation%frequency_hz=freq
+    observation%dt_seconds=dt
+    observation%ap_type=nap
+    observation%quality=qual
+    do message_index=1,min(len_trim(decodedvar),37)
+       observation%message(message_index)=decodedvar(message_index:message_index)
+    enddo
+    if(present(evidence)) then
+       observation%payload77=evidence%payload77
+       observation%tones=evidence%tones
+       observation%payload_origin=evidence%payload_origin
+       observation%has_tones=evidence%has_tones
+       observation%has_start=evidence%has_start
+       observation%start_seconds=evidence%start_seconds
+       observation%method=evidence%method
+    endif
+    if(associated(context%sink)) call context%sink(context%sink_user,observation)
 
     select type (typed_this => this)
     type is (counting_ft8_decodervar)
+       typed_this%first_result=first
+       typed_this%day_wrap=nwrap
        typed_this%decodedvar = typed_this%decodedvar + 1
-       typed_this%xdtt(typed_this%decodedvar)=dt
+       if(typed_this%decodedvar.le.size(typed_this%xdtt)) typed_this%xdtt(typed_this%decodedvar)=dt
     end select
   end subroutine ft8_decodedvar
 
-  subroutine ft8_decoded (this,sync,snr,dt,freq,decoded,nap,qual)
+  subroutine ft8_decoded (this,sync,snr,dt,freq,decoded,nap,qual,evidence)
     implicit none
+    type(ft8_signal_evidence), optional, intent(in) :: evidence
+    type(engine_observation) :: observation
+    type(decoder_callback_context) :: context
+    integer :: message_index
 
     class(ft8_decoder), intent(inout) :: this
     real, intent(in) :: sync
@@ -424,8 +470,6 @@ contains
     integer context_nutc, context_nfqso, context_ncontest, context_ios13
     logical context_b_superfox
     character(len=12) context_mycall
-    data first/.true./
-    save :: first,nwrap
 
     isgrid4(w)=(len_trim(w).eq.4 .and.                                        &
          ichar(w(1:1)).ge.ichar('A') .and. ichar(w(1:1)).le.ichar('R') .and.  &
@@ -435,6 +479,9 @@ contains
 
     select type (typed_this => this)
     type is (counting_ft8_decoder)
+       context=typed_this%context
+       first=typed_this%first_result
+       nwrap=typed_this%day_wrap
        context_nutc = typed_this%context%nutc
        context_nfqso = typed_this%context%nfqso
        context_ncontest = typed_this%context%ncontest
@@ -467,6 +514,7 @@ contains
     endif
 
     i0=1
+    if(context%render_legacy) then
     if (streaming_emit_enabled()) then
        if (i0.le.0) call streaming_emit_decode("FT8", context_nutc, snr, dt, nint(freq), decoded0(1:22))
        if (i0.gt.0) call streaming_emit_decode("FT8", context_nutc, snr, dt, nint(freq), decoded0)
@@ -478,6 +526,8 @@ contains
 1001 format(i6.6,i4,f5.1,i5,' ~ ',1x,a37,1x,a2)
     if(context_ios13.eq.0) write(13,1002) context_nutc,nint(sync),snr,dt,freq,0,decoded0
 1002 format(i6.6,i4,i5,f6.1,f8.0,i4,3x,a37,' FT8')
+
+    endif
 
     if(context_ncontest.eq.6) then
        i1=index(decoded0,' ')
@@ -513,11 +563,36 @@ contains
        endif
     endif
 
-    call flush(6)
-    if(context_ios13.eq.0) call flush(13)
+    if(context%render_legacy) then
+       call flush(6)
+       if(context_ios13.eq.0) call flush(13)
+    endif
+
+    observation%variant=0
+    observation%snr_db=snr
+    observation%frequency_hz=freq
+    observation%dt_seconds=dt
+    observation%ap_type=nap
+    observation%quality=qual
+    observation%sync=sync
+    do message_index=1,min(len_trim(decoded),37)
+       observation%message(message_index)=decoded(message_index:message_index)
+    enddo
+    if(present(evidence)) then
+       observation%payload77=evidence%payload77
+       observation%tones=evidence%tones
+       observation%payload_origin=evidence%payload_origin
+       observation%has_tones=evidence%has_tones
+       observation%has_start=evidence%has_start
+       observation%start_seconds=evidence%start_seconds
+       observation%method=evidence%method
+    endif
+    if(associated(context%sink)) call context%sink(context%sink_user,observation)
 
     select type (typed_this => this)
     type is (counting_ft8_decoder)
+       typed_this%first_result=first
+       typed_this%day_wrap=nwrap
        typed_this%decoded = typed_this%decoded + 1
     end select
   end subroutine ft8_decoded
