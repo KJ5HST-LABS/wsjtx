@@ -22,6 +22,7 @@ program test_map65_messages_retention
   call test_bandmap_capacity()
   call test_midnight_expiry()
   call test_bandmap_newest_across_groups()
+  call test_bandmap_modes()
   call clear_messages()
   shown = 0
   begins_before = display_begins
@@ -94,10 +95,31 @@ contains
     call append_message(rec, 1200, 144.200_real64, 0)
     write(rec, 1014) 144.100_real64, 0, 0, 0, 0, 0.0, 0, 5, -20, 1201, msg, '#', ' ', '#B'
     call append_message(rec, 1201, 144.100_real64, 0)
-    bandmap_entries = 0; first_bandmap_frequency = ' '
+    bandmap_entries = 0; first_bandmap_frequency = ' '; first_bandmap_utc = ' '
     call display(10, 0.010, 1201)
     call require(bandmap_entries == 1 .and. first_bandmap_frequency == '100', &
                  'Band Map uses the newest decode across frequency groups')
+    ! The waterfall label ages from this UTC, so it must be the newest decode's.
+    call require(first_bandmap_utc == '1201', 'Band Map entry carries the newest decode''s UTC')
+1014 format(f8.3, i5, 3i3, f5.1, i4, i3, i4, i5.4, 4x, a22, 7x, 2a1, 2x, a2)
+  end subroutine
+
+  ! Band Map entries carry the decode's mode, for the waterfall label color.
+  subroutine test_bandmap_modes()
+    character(len=22) :: msg
+    character(len=83) :: rec
+
+    call clear_messages()
+    msg = 'CQ K001X FN42'
+    write(rec, 1014) 144.100_real64, 0, 0, 0, 0, 0.0, 0, 5, -20, 1200, msg, '#', ' ', '#B'
+    call append_message(rec, 1200, 144.100_real64, 0)
+    msg = 'CQ K002X FN42'
+    write(rec, 1014) 144.200_real64, 0, 0, 0, 0, 0.0, 0, 5, -20, 1200, msg, ':', ' ', ':A'
+    call append_message(rec, 1200, 144.200_real64, 0)
+    bandmap_entries = 0; bandmap_modes = ' '
+    call display(10, 0.010, 1200)
+    call require(bandmap_entries == 2 .and. bandmap_modes(1:2) == '#:', &
+                 'Band Map entries carry each decode''s mode')
 1014 format(f8.3, i5, 3i3, f5.1, i4, i3, i4, i5.4, 4x, a22, 7x, 2a1, 2x, a2)
   end subroutine
 
