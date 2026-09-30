@@ -145,6 +145,41 @@ struct MainWindow::JttyReceiveState {
       if (source != DecodeSource::Review && update.terminal != Jtty::ReceiveTerminal::Growing) {
         window.write_all("Rx", Jtty::formatJttyDecodeLine(
           qRound(update.frequency), update.snr, update.text), &line.context);
+
+        // JTTY terminal decodes use this receive path rather than
+        // fast_decode_done(). Report only completed, live messages whose
+        // leading fields identify the transmitting station.
+        if (source == DecodeSource::Live
+            && update.terminal == Jtty::ReceiveTerminal::Complete
+            && window.m_config.spot_to_psk_reporter()) {
+          auto const fields = update.text.simplified().split(QChar{' '}, Qt::SkipEmptyParts);
+          if (fields.size() >= 2) {
+            auto const& first = fields.at(0);
+            auto const& sender = fields.at(1);
+            bool const structured = (first.compare(QStringLiteral("CQ"), Qt::CaseInsensitive) == 0
+                                     || first.compare(QStringLiteral("DE"), Qt::CaseInsensitive) == 0
+                                     || window.stdCall(first))
+                                    && window.stdCall(sender);
+            bool const selfSpot =
+              sender.compare(line.context.myCall, Qt::CaseInsensitive) == 0;
+
+            if (structured && !selfSpot) {
+              QString grid;
+              if (fields.size() >= 3 && fields.at(2).contains(MainWindow::grid_regexp))
+                grid = fields.at(2);
+
+              auto const frequency = line.context.periodFrequency + qRound(update.frequency);
+              auto const spotTime = line.context.sequenceStart.toUTC();
+              if (spotTime.isValid()
+                  && !window.m_psk_Reporter.addRemoteStation(
+                       sender, grid, frequency, QStringLiteral("JTTY"),
+                       update.snr, spotTime)) {
+                window.showStatusMessage(
+                  MainWindow::tr("PSK Reporter spot queue full; oldest spot dropped"));
+              }
+            }
+          }
+        }
       }
       snrHistory.push_back({update.text, update.snr, line.admitted});
       if (snrHistory.size() > 500) snrHistory.pop_front();
