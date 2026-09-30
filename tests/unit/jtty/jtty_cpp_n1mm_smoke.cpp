@@ -6,7 +6,7 @@
 
 extern "C" void genjtty_atoms_c (Jtty::NativeAtomDescriptor const atoms[], int natoms,
                                  int tones[], int* nsym, int* status);
-extern "C" void genjtty_profile_ (char*, int const*, int*, int*, int*, fortran_charlen_t);
+extern "C" void genjtty_profile_ (char*, int const*, int*, int*, int*, int const*, fortran_charlen_t);
 
 extern "C" int jtty_cpp_n1mm_smoke (int tones[], int* nsym)
 {
@@ -63,9 +63,10 @@ extern "C" int jtty_cpp_rtty_smoke (int tones[], int* nsym)
     auto text = Jtty::transmitFrame (example.raw).toLatin1 ();
     int packedSymbols {};
     std::array<int, 16> frameStarts {};
+    int const isFinal = 1;
     auto profile = static_cast<int> (context.exchangeProfile);
     genjtty_profile_ (text.data (), &profile, packedTones.data (), &packedSymbols,
-                      frameStarts.data (), text.size ());
+                      frameStarts.data (), &isFinal, text.size ());
     if (packedSymbols != *nsym || !std::equal (tones, tones + *nsym, packedTones.cbegin ()) ||
         text != Jtty::transmitFrame (example.canonical).toLatin1 ()) {
       return static_cast<int> (Jtty::NativeEncodeStatus::InvalidDescriptor);
@@ -73,7 +74,7 @@ extern "C" int jtty_cpp_rtty_smoke (int tones[], int* nsym)
     text = Jtty::transmitFrame (example.raw).toLatin1 ();
     profile = static_cast<int> (Jtty::NativeExchangeProfile::None);
     genjtty_profile_ (text.data (), &profile, packedTones.data (), &packedSymbols,
-                      frameStarts.data (), text.size ());
+                      frameStarts.data (), &isFinal, text.size ());
     if (packedSymbols != 2 * *nsym || text != Jtty::transmitFrame (example.raw).toLatin1 ()) {
       return static_cast<int> (Jtty::NativeEncodeStatus::InvalidDescriptor);
     }

@@ -818,9 +818,15 @@ private:
   void displayFoxTxMsgs();
   void jtty_tx(QString message);
   void commitJttyLiveEntry();
+  void startJttyLiveStream();
   void autoAdvanceJttyLiveEntry();
-  void commitJttyLiveEntryPlan(bool forceFlush, int holdbackWords);
+  void idleFlushJttyLiveEntry();
+  bool commitJttyLiveEntryPlan(bool forceFlush, int holdbackWords, bool isFinal);
+  void sendJttyFillerPadding();
   void clearJttyLiveEntry();
+  void insertJttyLiveEntryText(QString const& text);
+  void insertJttyChatOpener();
+  void insertJttyChatSignoff();
   void applyJttyLiveEntryFormatting();
   void guardJttyLiveEntryLock();
   void updateJttyLiveEntryFrameLabel();
@@ -845,7 +851,7 @@ private:
   bool mmttyNeedsHandoff() const;
   QString jttyRejectReasonText(JttyTxRejectReason reason) const;
 #endif
-  void execute_jtty_tx(qint64 requestId, QString message);
+  void execute_jtty_tx(qint64 requestId, QString message, bool isFinal = true);
   void execute_jtty_tones(qint64 requestId, QString const& message,
                           int const itone[], int nsym, int frequency = -1);
   void enqueueJttySegments(qint64 requestId, QVector<Jtty::TransmitSegment> segments);
@@ -1485,6 +1491,8 @@ private:
   QVector<PendingLiveEntryCommit> m_jttyLiveEntryPending;
   // Frames from commits that have fully drained since the box was last cleared; the frame-count label adds this to still-pending progress.
   int m_jttyLiveEntryFramesSent {0};
+  // Fires a batch flush of whatever's safely committable after a short typing pause, so auto-advance doesn't wait indefinitely for kJttyAutoAdvanceBatchWords to pile up on a short message.
+  QTimer m_jttyAutoAdvanceIdleTimer;
   qint64 m_jttyTxRequestId;
   qint64 m_jttyEnqueueId;
 #ifdef WIN32

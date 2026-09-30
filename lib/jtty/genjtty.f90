@@ -10,12 +10,13 @@ subroutine genjtty(umsg,itone,nsym)
   integer itone(MAX_TONES)          !Array of tone frequencies for this message
 
   interface
-     subroutine genjtty_profile(umsg,exchange_profile,itone,nsym,frame_starts)
+     subroutine genjtty_profile(umsg,exchange_profile,itone,nsym,frame_starts,is_final)
        use jtty_mod, only: MAX_FRAMES
        character(len=80), intent(inout) :: umsg
        integer, intent(in) :: exchange_profile
        integer, intent(out) :: itone(59*MAX_FRAMES),nsym
        integer, intent(out), optional :: frame_starts(MAX_FRAMES)
+       integer, intent(in), optional :: is_final
      end subroutine genjtty_profile
   end interface
 
@@ -24,7 +25,7 @@ subroutine genjtty(umsg,itone,nsym)
  return
 end subroutine genjtty
 
-subroutine genjtty_profile(umsg,exchange_profile,itone,nsym,frame_starts)
+subroutine genjtty_profile(umsg,exchange_profile,itone,nsym,frame_starts,is_final)
 
   use jtty_mod, only: pack_jtty,MAX_FRAMES
   implicit none
@@ -32,11 +33,12 @@ subroutine genjtty_profile(umsg,exchange_profile,itone,nsym,frame_starts)
   integer, intent(in) :: exchange_profile
   integer, intent(out) :: itone(59*MAX_FRAMES),nsym
   integer, intent(out), optional :: frame_starts(MAX_FRAMES)
+  integer, intent(in), optional :: is_final
   character(len=34) :: frames(MAX_FRAMES)
   integer :: nframes
 
   nsym=0
-  call pack_jtty(umsg,frames,nframes,exchange_profile,frame_starts)
+  call pack_jtty(umsg,frames,nframes,exchange_profile,frame_starts,is_final)
   if(nframes.le.0) return
   call genjtty_frames(frames,nframes,itone,nsym)
 end subroutine genjtty_profile

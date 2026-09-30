@@ -700,7 +700,7 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
   qApp->setFont (m_config.text_font ());
   ui->setupUi(this);
   updateJttySendButton ();
-  ui->Tx_Message->setToolTip (tr ("Ctrl+K sends. Ctrl+Shift+K clears the box. Long messages are split automatically; new text follows pending text."));
+  ui->Tx_Message->setToolTip (tr ("Ctrl+K sends now (one-shot). Alt+J starts a live session that keeps sending as you type, until Alt+K signs off. Ctrl+Shift+K clears the box. Ctrl+H inserts a chat opener."));
   ui->Tx_Message->installEventFilter (this);
   configureModeControlsLayout ();
   // A non-editable QComboBox always left-aligns its closed-box text, so fake a
@@ -719,6 +719,9 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
            &MainWindow::autoAdvanceJttyLiveEntry);
   connect (ui->Tx_Message, &QPlainTextEdit::textChanged, this,
            &MainWindow::updateJttyLiveEntryFrameLabel);
+  m_jttyAutoAdvanceIdleTimer.setSingleShot (true);
+  connect (&m_jttyAutoAdvanceIdleTimer, &QTimer::timeout, this,
+           &MainWindow::idleFlushJttyLiveEntry);
   // Acceptance leaves the span in m_jttyLiveEntryPending; only jttyTextCompleted (below) removes it.
   connect (this, &MainWindow::jttyTextCompleted, this, [this] (qint64 requestId) {
     for (int i = 0; i < m_jttyLiveEntryPending.size (); ++i) {
@@ -4195,6 +4198,28 @@ bool MainWindow::eventFilter (QObject * object, QEvent * event)
             && key_event->modifiers () == Qt::ControlModifier)
           {
             commitJttyLiveEntry ();
+            return true;
+          }
+        // Alt+J: start/continue the live session (pairs with Alt+K to end it, Alt+H/Esc to stop immediately).
+        if (object == ui->Tx_Message && !key_event->isAutoRepeat ()
+            && key_event->key () == Qt::Key_J
+            && key_event->modifiers () == Qt::AltModifier)
+          {
+            startJttyLiveStream ();
+            return true;
+          }
+        if (object == ui->Tx_Message && !key_event->isAutoRepeat ()
+            && key_event->key () == Qt::Key_K
+            && key_event->modifiers () == Qt::AltModifier)
+          {
+            insertJttyChatSignoff ();
+            return true;
+          }
+        if (object == ui->Tx_Message && !key_event->isAutoRepeat ()
+            && key_event->key () == Qt::Key_H
+            && key_event->modifiers () == Qt::ControlModifier)
+          {
+            insertJttyChatOpener ();
             return true;
           }
         // An undo reaching into locked text can't be fixed by guardJttyLiveEntryLock's own undo() (wrong direction), so block the shortcuts outright while anything is locked.

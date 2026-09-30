@@ -4127,7 +4127,7 @@ Double-click to reset to the standard 73 message</string>
                   <bool>true</bool>
                  </property>
                  <property name="toolTip">
-                  <string>Ctrl+K sends. Ctrl+Shift+K clears the box. Long messages are split automatically; new text follows pending text.</string>
+                  <string>Ctrl+K sends now (one-shot). Alt+J starts a live session that keeps sending as you type, until Alt+K signs off. Ctrl+Shift+K clears the box. Ctrl+H inserts a chat opener.</string>
                  </property>
                 </widget>
                </item>
