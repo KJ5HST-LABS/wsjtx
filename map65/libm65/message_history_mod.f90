@@ -13,7 +13,7 @@ module message_history_mod
   type(message_record), allocatable :: history(:)
   integer :: history_count = 0
 
-  public :: append_message, clear_messages, expire_messages, recent_messages, has_message
+  public :: append_message, clear_messages, expire_messages, recent_messages, has_message, message_expired
 
 contains
 
@@ -47,22 +47,32 @@ contains
   subroutine expire_messages(nutc, nkeep)
     integer, intent(in) :: nutc, nkeep
     integer :: i, kept, now
-    integer(int64) :: now_tick, tick_rate
+    integer(int64) :: now_tick, tick_rate, stored_s
 
     now = 60*(nutc/100) + mod(nutc, 100)
     call system_clock(count=now_tick, count_rate=tick_rate)
     kept = 0
     do i = 1, history_count
-      if (modulo(now - history(i)%utc, 1440) > nkeep) cycle
-      ! The same UTC minute on a later day must not revive old decodes.
-      if (tick_rate > 0 .and. now_tick >= history(i)%inserted_tick) then
-        if ((now_tick - history(i)%inserted_tick)/tick_rate > 60_int64*nkeep) cycle
-      endif
+      stored_s = -1
+      if (tick_rate > 0 .and. now_tick >= history(i)%inserted_tick) &
+        stored_s = (now_tick - history(i)%inserted_tick)/tick_rate
+      if (message_expired(modulo(now - history(i)%utc, 1440), stored_s, nkeep)) cycle
       kept = kept + 1
       if (kept /= i) history(kept) = history(i)
     enddo
     history_count = kept
   end subroutine expire_messages
+
+  ! utc_age_min decides expiry. stored_s (seconds since the record was
+  ! stored, -1 if unknown) only guards against the same UTC minute on a
+  ! later day, so it allows a margin: a record can be stored up to a pass
+  ! length before the display that ages it, so at the nkeep edge its
+  ! wall-clock age exceeds 60*nkeep.
+  logical function message_expired(utc_age_min, stored_s, nkeep)
+    integer, intent(in) :: utc_age_min, nkeep
+    integer(int64), intent(in) :: stored_s
+    message_expired = utc_age_min > nkeep .or. stored_s > 60_int64*(nkeep + 2)
+  end function message_expired
 
   subroutine recent_messages(max_records, records)
     integer, intent(in) :: max_records

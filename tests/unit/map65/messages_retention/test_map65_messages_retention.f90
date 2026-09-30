@@ -1,8 +1,9 @@
 program test_map65_messages_retention
-  use iso_fortran_env, only: real64
+  use iso_fortran_env, only: int64, real64
   use stdout_channel_mod
   use display_mod, only: display
-  use message_history_mod, only: message_record, append_message, clear_messages, recent_messages
+  use message_history_mod, only: message_record, append_message, clear_messages, recent_messages, &
+                                 message_expired
   implicit none
   integer :: missed, retained, begins_before
 
@@ -22,6 +23,7 @@ program test_map65_messages_retention
   call test_bandmap_capacity()
   call test_midnight_expiry()
   call test_bandmap_newest_across_groups()
+  call test_expiry_edge()
   call test_bandmap_modes()
   call clear_messages()
   shown = 0
@@ -58,6 +60,17 @@ contains
     call recent_messages(2000, records)
     retained = size(records)
 1014 format(f8.3, i5, 3i3, f5.1, i4, i3, i4, i5.4, 4x, a22, 7x, 2a1, 2x, a2)
+  end subroutine
+
+  ! Records exactly Timeout minutes old by UTC are kept whatever mode stored
+  ! them. A Q65 record is stored during the pass, up to about 20 s before a
+  ! JT65 record stored at its end, so it is older by the wall clock.
+  subroutine test_expiry_edge()
+    call require(.not. message_expired(10, 600_int64, 10), 'edge: record stored at the end of the pass is kept')
+    call require(.not. message_expired(10, 620_int64, 10), 'edge: record stored earlier in the pass is kept')
+    call require(message_expired(11, 660_int64, 10), 'edge: record older than the Timeout by UTC expires')
+    call require(message_expired(10, 86400_int64, 10), 'edge: same UTC minute a day later expires')
+    call require(.not. message_expired(10, -1_int64, 10), 'edge: unknown storage time falls back to UTC age')
   end subroutine
 
   subroutine test_midnight_expiry()
