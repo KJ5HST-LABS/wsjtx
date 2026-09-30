@@ -23,6 +23,7 @@ program test_map65_messages_retention
   call test_midnight_expiry()
   call test_bandmap_newest_across_groups()
   call test_bandmap_modes()
+  call test_bandmap_compound_call()
   call clear_messages()
   shown = 0
   begins_before = display_begins
@@ -120,6 +121,25 @@ contains
     call display(10, 0.010, 1200)
     call require(bandmap_entries == 2 .and. bandmap_modes(1:2) == '#:', &
                  'Band Map entries carry each decode''s mode')
+1014 format(f8.3, i5, 3i3, f5.1, i4, i3, i4, i5.4, 4x, a22, 7x, 2a1, 2x, a2)
+  end subroutine
+
+  ! A compound call (prefix/call) reaches the Band Map whole, with the mode
+  ! and UTC after it, for the Band Map window and the waterfall label.
+  subroutine test_bandmap_compound_call()
+    character(len=22) :: msg
+    character(len=83) :: rec
+
+    call clear_messages()
+    msg = 'CQ ER/EA8DBM'
+    write(rec, 1014) 144.124_real64, -500, 0, 0, 0, 0.0, 0, 5, -20, 1200, msg, ':', ' ', ':A'
+    call append_message(rec, 1200, 144.124_real64, -500)
+    bandmap_entries = 0; bandmap_modes = ' '; first_bandmap_call = ' '; first_bandmap_utc = ' '
+    call display(10, 0.010, 1200)
+    call require(bandmap_entries == 1 .and. first_bandmap_call == 'ER/EA8DBM', &
+                 'compound call reaches the Band Map whole')
+    call require(bandmap_modes(1:1) == ':' .and. first_bandmap_utc == '1200', &
+                 'compound call entry keeps its mode and UTC')
 1014 format(f8.3, i5, 3i3, f5.1, i4, i3, i4, i5.4, 4x, a22, 7x, 2a1, 2x, a2)
   end subroutine
 
