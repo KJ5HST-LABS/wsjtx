@@ -136,9 +136,21 @@ qint64 MainWindow::submitJttyText(QString message)
 void MainWindow::commitJttyLiveEntry()
 {
   if (m_mode != "JTTY") return;
-  QString const uncommitted = ui->Tx_Message->toPlainText ().mid (m_jttyLiveEntryCommitted);
   m_jttyLiveEntryArmed = true;
-  auto const plan = Jtty::planIncrementalCommit (uncommitted, /*forceFlush=*/true);
+  commitJttyLiveEntryPlan (/*forceFlush=*/true, Jtty::maxCompactAtomWords);
+}
+
+// Once armed, each keystroke also commits with no holdback, so typing keeps feeding an ongoing transmission instead of stalling for a compact-atom lookahead free text will rarely fill; Ctrl+K still flushes everything at once for that.
+void MainWindow::autoAdvanceJttyLiveEntry()
+{
+  if (m_mode != "JTTY" || !m_jttyLiveEntryArmed || m_guardingJttyLiveEntryLock) return;
+  commitJttyLiveEntryPlan (/*forceFlush=*/false, /*holdbackWords=*/0);
+}
+
+void MainWindow::commitJttyLiveEntryPlan(bool forceFlush, int holdbackWords)
+{
+  QString const uncommitted = ui->Tx_Message->toPlainText ().mid (m_jttyLiveEntryCommitted);
+  auto const plan = Jtty::planIncrementalCommit (uncommitted, forceFlush, holdbackWords);
   if (plan.text.trimmed ().isEmpty ()) return;
 
   QString expanded = jtty_msg_expand (plan.text);
@@ -158,6 +170,19 @@ void MainWindow::commitJttyLiveEntry()
   m_guardingJttyLiveEntryLock = false;
 
   execute_jtty_tx (requestId, expanded);
+
+  for (auto& pending : m_jttyLiveEntryPending) {
+    if (pending.requestId != requestId) continue;
+    for (auto const& request : m_jttyTransmitQueue.requests ()) {
+      if (request.id != requestId) continue;
+      for (auto const& segment : request.segments) {
+        pending.totalFrames += segment.tones.size () / 59;
+      }
+      break;
+    }
+    break;
+  }
+  updateJttyLiveEntryFrameLabel ();
 }
 
 // Ctrl+Shift+K: clears the whole box, including locked/sent text, cancelling anything of it still queued/in flight.
@@ -169,12 +194,15 @@ void MainWindow::clearJttyLiveEntry()
   }
   m_jttyLiveEntryPending.clear ();
   m_jttyLiveEntryCommitted = 0;
+  m_jttyLiveEntryFramesSent = 0;
+  m_jttyLiveEntryArmed = false;
   m_jttyLiveEntryLockedText.clear ();
   m_guardingJttyLiveEntryLock = true;
   ui->Tx_Message->clear ();
   ui->Tx_Message->setCurrentCharFormat (QTextCharFormat {});
   m_guardingJttyLiveEntryLock = false;
   updateJttySendButton ();
+  updateJttyLiveEntryFrameLabel ();
 }
 
 // Fraction (0..1) of a pending commit that should show as sent, stepping one JTTY frame at a time using pack_jtty's own frame_starts boundaries (segment.frameCharStarts) rather than an even split, which put the boundary mid-atom; falls back to an even split if a segment's boundaries weren't captured. Each frame is a fixed 59*1536 samples (genjtty_frames, lib/jtty/genjtty.f90). Returns 0 for a requestId not yet enqueued (not started, never "finished").
@@ -209,6 +237,98 @@ double MainWindow::jttyRequestSentFraction(qint64 requestId) const
     return totalChars > 0 ? doneChars / totalChars : 0.0;
   }
   return 0.0;
+}
+
+// Same elapsed-sample accounting as jttyRequestSentFraction, as a frame count for the label rather than a char fraction for the highlight.
+int MainWindow::jttyRequestFramesDone(qint64 requestId) const
+{
+  qint64 const samplesPerFrame = 59LL * 1536;
+  for (auto const& request : m_jttyTransmitQueue.requests ()) {
+    if (request.id != requestId) continue;
+    int doneFrames = 0;
+    for (auto const& segment : request.segments) {
+      int const nframes = segment.tones.size () / 59;
+      if (nframes <= 0 || !segment.endSample) continue;
+      if (m_jttyQueueProgress.served_samples >= segment.endSample) {
+        doneFrames += nframes;
+        continue;
+      }
+      qint64 const startSample = segment.endSample - segment.sampleCount ();
+      qint64 const elapsed = m_jttyQueueProgress.served_samples - startSample;
+      if (elapsed <= 0) continue;
+      doneFrames += int (qMin (qint64 (nframes), elapsed / samplesPerFrame));
+    }
+    return doneFrames;
+  }
+  return 0;
+}
+
+// Dry-run of execute_jtty_tx's segmentation/encoding, without enqueuing, to preview an uncommitted message's frame count.
+int MainWindow::countJttyTransmitFrames(QString const& preparedMessage) const
+{
+  if (preparedMessage.trimmed ().isEmpty ()) return 0;
+  int const exchangeProfile = static_cast<int>(jttyExchangeProfile (m_config));
+  int totalFrames = 0;
+  auto const lines = preparedMessage.split (QLatin1Char ('\n'));
+  for (auto const& line : lines) {
+    for (int offset = 0; offset < line.size ();) {
+      auto source = Jtty::nextTransmitTextSegment (line, offset);
+      if (source.text.trimmed ().isEmpty ()) {
+        offset += source.length;
+        continue;
+      }
+      for (;;) {
+        auto frame = Jtty::transmitFrame (source.text).toLatin1 ();
+        QVector<int> tones (944);
+        int nsym = 0;
+        int frameStarts[kMaxJttyFrames] = {};
+        genjtty_profile_ (frame.data (), &exchangeProfile, tones.data (),
+                          &nsym, frameStarts, (FCL)80);
+        if (nsym > 0) {
+          totalFrames += nsym / 59;
+          break;
+        }
+        if (source.length <= 1) return totalFrames;
+        source = Jtty::nextTransmitTextSegment (line, offset, source.length - 1);
+      }
+      offset += source.length;
+    }
+  }
+  return totalFrames;
+}
+
+// Updates the "Frames: sent/total" label: drained history plus pending commits' exact/live-progress totals, plus a dry-run estimate for the uncommitted tail.
+void MainWindow::updateJttyLiveEntryFrameLabel()
+{
+  if (m_mode != "JTTY") {
+    ui->labelJttyFrameCount->clear ();
+    return;
+  }
+
+  int sentFrames = m_jttyLiveEntryFramesSent;
+  int committedFrames = m_jttyLiveEntryFramesSent;
+  for (auto const& pending : m_jttyLiveEntryPending) {
+    committedFrames += pending.totalFrames;
+    sentFrames += jttyRequestFramesDone (pending.requestId);
+  }
+
+  QString const uncommitted =
+    ui->Tx_Message->toPlainText ().mid (m_jttyLiveEntryCommitted);
+  int uncommittedFrames = 0;
+  if (!uncommitted.trimmed ().isEmpty ()) {
+    QString probe = jtty_msg_expand (uncommitted);
+    if (ui->cbLowerCase->isChecked ()) probe = probe.toLower ();
+    probe = Jtty::prepareTransmitText (probe).text;
+    uncommittedFrames = countJttyTransmitFrames (probe);
+  }
+
+  int const totalFrames = committedFrames + uncommittedFrames;
+  if (totalFrames <= 0) {
+    ui->labelJttyFrameCount->clear ();
+  } else {
+    ui->labelJttyFrameCount->setText (
+      tr ("Frames: %1/%2").arg (sentFrames).arg (totalFrames));
+  }
 }
 
 // Repaints committed text sent/queued by pending-span progress and resets everything past it to plain formatting, including the about-to-be-typed char format (so new text never inherits the preceding run). Caller must already hold m_guardingJttyLiveEntryLock.
@@ -284,9 +404,7 @@ void MainWindow::execute_jtty_tx(qint64 requestId, QString message)
 
   QVector<Jtty::TransmitSegment> segments;
   int const exchangeProfile = static_cast<int>(jttyExchangeProfile(m_config));
-  // A newline forces a new segment rather than being packed as a character:
-  // split it out here so nextTransmitTextSegment (which only breaks on
-  // spaces) never sees one, and it never reaches the Fortran encoder.
+  // Newlines force a new segment; split them out before nextTransmitTextSegment (space-only breaks).
   auto const lines = message.split(QLatin1Char('\n'));
   for (auto const& line : lines) {
     for (int offset = 0; offset < line.size();) {
@@ -559,6 +677,7 @@ void MainWindow::onJttyBackendProgress(TxAudioQueueProgress progress)
     m_guardingJttyLiveEntryLock = true;
     applyJttyLiveEntryFormatting ();
     m_guardingJttyLiveEntryLock = false;
+    updateJttyLiveEntryFrameLabel ();
   }
 }
 

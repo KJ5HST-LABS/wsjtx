@@ -715,14 +715,20 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
   }
   connect (ui->Tx_Message, &QPlainTextEdit::textChanged, this,
            &MainWindow::guardJttyLiveEntryLock);
+  connect (ui->Tx_Message, &QPlainTextEdit::textChanged, this,
+           &MainWindow::autoAdvanceJttyLiveEntry);
+  connect (ui->Tx_Message, &QPlainTextEdit::textChanged, this,
+           &MainWindow::updateJttyLiveEntryFrameLabel);
   // Acceptance leaves the span in m_jttyLiveEntryPending; only jttyTextCompleted (below) removes it.
   connect (this, &MainWindow::jttyTextCompleted, this, [this] (qint64 requestId) {
     for (int i = 0; i < m_jttyLiveEntryPending.size (); ++i) {
       if (m_jttyLiveEntryPending[i].requestId == requestId) {
+        m_jttyLiveEntryFramesSent += m_jttyLiveEntryPending[i].totalFrames;
         m_jttyLiveEntryPending.remove (i);
         m_guardingJttyLiveEntryLock = true;
         applyJttyLiveEntryFormatting ();
         m_guardingJttyLiveEntryLock = false;
+        updateJttyLiveEntryFrameLabel ();
         break;
       }
     }
@@ -4187,11 +4193,7 @@ bool MainWindow::eventFilter (QObject * object, QEvent * event)
             commitJttyLiveEntry ();
             return true;
           }
-        // Qt's built-in undo/redo don't know about the locked/committed
-        // prefix; once any text is locked, an undo reaching back into it
-        // can't be fixed by guardJttyLiveEntryLock's own undo() (that would
-        // undo the undo's *previous* step, not restore what was just
-        // removed), so block the shortcuts outright while anything is locked.
+        // An undo reaching into locked text can't be fixed by guardJttyLiveEntryLock's own undo() (wrong direction), so block the shortcuts outright while anything is locked.
         if (object == ui->Tx_Message && !key_event->isAutoRepeat ()
             && m_jttyLiveEntryCommitted > 0
             && (key_event->matches (QKeySequence::Undo)

@@ -192,10 +192,9 @@ namespace Jtty
       if (c == QChar::Null || c == QLatin1Char {'~'}) {
         result.text.append (QLatin1Char {' '});
         result.substituted = true;
-      } else if (c == QLatin1Char {'\n'}) {
-        // Preserved as a forced segment boundary; execute_jtty_tx splits on
-        // it before packing and it never reaches the encoder as a character.
-        result.text.append (c);
+      } else if (c == QLatin1Char {'\n'} || c == QLatin1Char {'\r'}) {
+        // A forced segment boundary, not a character; execute_jtty_tx splits on it.
+        result.text.append (QLatin1Char {'\n'});
       } else if (isSourceCharacter (c)) {
         result.text.append (c);
       } else {

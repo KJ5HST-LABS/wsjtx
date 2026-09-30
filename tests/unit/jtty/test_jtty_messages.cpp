@@ -555,8 +555,9 @@ private slots:
                                           << false;
     QTest::newRow ("tab") << QString {"HELLO\tWORLD"} << QString {"HELLO#WORLD"}
                           << true;
-    QTest::newRow ("cr-lf") << QString {"HELLO\r\nWORLD"} << QString {"HELLO##WORLD"}
-                            << true;
+    // '\n'/'\r' are now forced segment boundaries, not unsupported characters.
+    QTest::newRow ("cr-lf") << QString {"HELLO\r\nWORLD"} << QString {"HELLO\n\nWORLD"}
+                            << false;
     QTest::newRow ("nul") << (QString {"A"} + QChar::Null + QString {"B"}) << QString {"A B"}
                           << true;
     QTest::newRow ("display-space-marker") << QString {"A~B"} << QString {"A B"}

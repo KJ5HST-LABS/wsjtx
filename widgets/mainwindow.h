@@ -816,10 +816,15 @@ private:
   void displayFoxTxMsgs();
   void jtty_tx(QString message);
   void commitJttyLiveEntry();
+  void autoAdvanceJttyLiveEntry();
+  void commitJttyLiveEntryPlan(bool forceFlush, int holdbackWords);
   void clearJttyLiveEntry();
   void applyJttyLiveEntryFormatting();
   void guardJttyLiveEntryLock();
+  void updateJttyLiveEntryFrameLabel();
   double jttyRequestSentFraction(qint64 requestId) const;
+  int jttyRequestFramesDone(qint64 requestId) const;
+  int countJttyTransmitFrames(QString const& preparedMessage) const;
 #ifdef WIN32
   void handleMmttyTxString(QString message);
   void handleMmttyStartTx();
@@ -1469,9 +1474,11 @@ private:
   bool m_guardingJttyLiveEntryLock {false};
   int m_jttyLiveEntryCommitted {0};   // Tx_Message chars already sent/queued; locked against edits.
   QString m_jttyLiveEntryLockedText;  // cached committed prefix, to detect edits that touch it
-  struct PendingLiveEntryCommit { qint64 requestId; int start, end; };
+  struct PendingLiveEntryCommit { qint64 requestId; int start, end; int totalFrames {0}; };
   // Committed spans not yet confirmed fully transmitted; drives progressive sent/queued coloring and reject-triggered unlocking.
   QVector<PendingLiveEntryCommit> m_jttyLiveEntryPending;
+  // Frames from commits that have fully drained since the box was last cleared; the frame-count label adds this to still-pending progress.
+  int m_jttyLiveEntryFramesSent {0};
   qint64 m_jttyTxRequestId;
   qint64 m_jttyEnqueueId;
 #ifdef WIN32
