@@ -4187,6 +4187,18 @@ bool MainWindow::eventFilter (QObject * object, QEvent * event)
             commitJttyLiveEntry ();
             return true;
           }
+        // Qt's built-in undo/redo don't know about the locked/committed
+        // prefix; once any text is locked, an undo reaching back into it
+        // can't be fixed by guardJttyLiveEntryLock's own undo() (that would
+        // undo the undo's *previous* step, not restore what was just
+        // removed), so block the shortcuts outright while anything is locked.
+        if (object == ui->Tx_Message && !key_event->isAutoRepeat ()
+            && m_jttyLiveEntryCommitted > 0
+            && (key_event->matches (QKeySequence::Undo)
+                || key_event->matches (QKeySequence::Redo)))
+          {
+            return true;
+          }
         auto const handled = switchMainWindowTab (key_event) || switchTxNextMessage (key_event);
         tx_watchdog (false);
         if (handled) return true;

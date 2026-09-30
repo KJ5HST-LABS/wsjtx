@@ -284,40 +284,46 @@ void MainWindow::execute_jtty_tx(qint64 requestId, QString message)
 
   QVector<Jtty::TransmitSegment> segments;
   int const exchangeProfile = static_cast<int>(jttyExchangeProfile(m_config));
-  for (int offset = 0; offset < message.size();) {
-    auto source = Jtty::nextTransmitTextSegment(message, offset);
-    if (source.text.trimmed().isEmpty()) {
-      offset += source.length;
-      continue;
-    }
-    Jtty::TransmitSegment segment;
-    for (;;) {
-      auto frame = Jtty::transmitFrame(source.text).toLatin1();
-      segment.tones.resize(944);
-      int nsym = 0;
-      int frameStarts[kMaxJttyFrames] = {};
-      genjtty_profile_(frame.data(), &exchangeProfile, segment.tones.data(),
-                       &nsym, frameStarts, (FCL)80);
-      if (nsym > 0) {
-        segment.tones.resize(nsym);
-        segment.text = QString::fromLatin1(frame).trimmed();
-        int const nframes = nsym / 59;
-        segment.frameCharStarts.reserve(nframes);
-        for (int i = 0; i < nframes; ++i) {
-          // Fortran gives 1-indexed columns; store 0-indexed offsets.
-          segment.frameCharStarts.append(frameStarts[i] - 1);
+  // A newline forces a new segment rather than being packed as a character:
+  // split it out here so nextTransmitTextSegment (which only breaks on
+  // spaces) never sees one, and it never reaches the Fortran encoder.
+  auto const lines = message.split(QLatin1Char('\n'));
+  for (auto const& line : lines) {
+    for (int offset = 0; offset < line.size();) {
+      auto source = Jtty::nextTransmitTextSegment(line, offset);
+      if (source.text.trimmed().isEmpty()) {
+        offset += source.length;
+        continue;
+      }
+      Jtty::TransmitSegment segment;
+      for (;;) {
+        auto frame = Jtty::transmitFrame(source.text).toLatin1();
+        segment.tones.resize(944);
+        int nsym = 0;
+        int frameStarts[kMaxJttyFrames] = {};
+        genjtty_profile_(frame.data(), &exchangeProfile, segment.tones.data(),
+                         &nsym, frameStarts, (FCL)80);
+        if (nsym > 0) {
+          segment.tones.resize(nsym);
+          segment.text = QString::fromLatin1(frame).trimmed();
+          int const nframes = nsym / 59;
+          segment.frameCharStarts.reserve(nframes);
+          for (int i = 0; i < nframes; ++i) {
+            // Fortran gives 1-indexed columns; store 0-indexed offsets.
+            segment.frameCharStarts.append(frameStarts[i] - 1);
+          }
+          break;
         }
-        break;
+        if (source.length <= 1) {
+          Q_EMIT jttyTextRejected(requestId, JttyTxRejectReason::EncodingFailed);
+          return;
+        }
+        source = Jtty::nextTransmitTextSegment(line, offset, source.length - 1);
       }
-      if (source.length <= 1) {
-        Q_EMIT jttyTextRejected(requestId, JttyTxRejectReason::EncodingFailed);
-        return;
-      }
-      source = Jtty::nextTransmitTextSegment(message, offset, source.length - 1);
+      segment.frequency = ui->TxFreqSpinBox_2->value();
+      segments.append(std::move(segment));
+      offset += source.length;
     }
-    segment.frequency = ui->TxFreqSpinBox_2->value();
-    segments.append(std::move(segment));
-    offset += source.length;
   }
 
   m_jttyQueueNotice = prepared.substituted
