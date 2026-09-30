@@ -186,6 +186,7 @@ class LinuxCcachePolicyTests(unittest.TestCase):
             "Test and package under ARMv7 QEMU", "Publish armhf test summary",
             "Upload armhf AppImage startup diagnostics", "Upload .deb", "Upload RPM",
             "Upload AppImage", "Upload build artifacts", "Upload test results",
+            "Package command-line tools archive", "Upload command-line tools archive",
         ):
             with self.subTest(step=name):
                 self.assertIn("!inputs.armhf_build_only", self.armhf_step(name))

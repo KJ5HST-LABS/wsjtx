@@ -450,6 +450,11 @@ Change the tracked state from `RC n` to `GA` in a metadata-only commit, wait for
 | `wsjtx-3.2.0-rc1-linux-aarch64.AppImage` | Linux aarch64 | No | Published with matching `.deb` and `.rpm` packages |
 | `wsjtx-3.2.0-rc1-linux-armhf.AppImage` | Linux armhf | No | Published with matching `.deb` and `.rpm` packages |
 | `wsjtx-3.2.0-rc1-win64.exe` | Windows x86_64 | Yes | SignPath Foundation Authenticode for RC and GA |
+| `wsjtx-3.2.0-rc1-arm64-macOS-tools.tar.gz` | macOS ARM64 | No (ad-hoc) | Command-line programs with their dylibs; remove the quarantine attribute before extracting (`xattr -d com.apple.quarantine`) |
+| `wsjtx-3.2.0-rc1-linux-x86_64-tools.tar.gz` | Linux x86_64 | No | Command-line programs that link the distribution's libraries |
+| `wsjtx-3.2.0-rc1-linux-aarch64-tools.tar.gz` | Linux aarch64 | No | Command-line programs that link the distribution's libraries |
+| `wsjtx-3.2.0-rc1-linux-armhf-tools.tar.gz` | Linux armhf | No | Command-line programs that link the distribution's libraries |
+| `wsjtx-3.2.0-rc1-windows-x86_64-tools.tar.gz` | Windows x86_64 | No | Command-line programs with the DLLs they import |
 | `wsjtx-3.2.0-rc1-src.tar.gz` | Source | N/A | Project-created archive of the public tagged commit |
 | `SHA256SUMS` and release manifest | CI-managed assets | N/A | Bind immutable uploaded bytes to their public tag, commit, and build provenance |
 

@@ -3,7 +3,7 @@
 
 The release workflow attaches every build artifact to the Release, which makes
 the assets list long and hard for an end user to navigate (installers sit among
-standalone command-line utilities, raw binaries, and source). This emits a
+the command-line tools archives, checksums, the manifest, and source). This emits a
 short, curated per-platform installer picker to prepend to the auto-generated
 release notes.
 
@@ -19,9 +19,8 @@ Usage:
     generate-quick-downloads.py <owner/repo> <tag> <asset-path-or-name>...
 
 Only installer-grade assets are listed (.pkg / win64.exe / .deb / .rpm /
-.AppImage) plus the source tarball. Per-mode utility tarballs and raw
-command-line binaries are intentionally omitted; they remain in the full
-assets list below the notes.
+.AppImage) plus the source tarball. The command-line tools archives are
+intentionally omitted; they remain in the full assets list below the notes.
 """
 import os
 import re
@@ -64,8 +63,8 @@ def main(argv):
             appimage[m.group(1)] = n
         elif (m := re.search(r"\.([A-Za-z0-9_]+)\.rpm$", n)):
             rpm[m.group(1)] = n
-        # Anything else (utility tarballs, raw binaries) is intentionally
-        # excluded; it stays in the full assets list.
+        # Anything else (tools archives, checksums, the manifest) is
+        # intentionally excluded; it stays in the full assets list.
 
     def arches(d):
         known = [a for a in ARCH_ORDER if a in d]
@@ -81,7 +80,7 @@ def main(argv):
         "## Quick Downloads",
         "",
         "Choose the installer for your platform. The full assets list below also",
-        "includes standalone command-line utilities and source code for developers.",
+        "includes the command-line tools archives and source code for developers.",
     ]
 
     if macos:

@@ -150,7 +150,7 @@ Candidate and public builds consume the committed selection and build WSJT-X afr
 
 ### What the Release Produces
 
-Each approved public `v*` tag yields one installer per target plus a source tarball on the public GitHub Release:
+Each approved public `v*` tag yields one installer and one command-line tools archive per target plus a source tarball on the public GitHub Release:
 
 | Artifact | Produced by | Format |
 |----------|-------------|--------|
@@ -162,15 +162,20 @@ Each approved public `v*` tag yields one installer per target plus a source tarb
 | Linux aarch64 `.deb` and `.rpm` | `build-linux.yml` (aarch64 leg) | Distribution packages |
 | Linux armhf `.deb` and `.rpm` | `build-linux.yml` (armhf leg) | Distribution packages |
 | `wsjtx-<ver>-win64.exe` | `build-windows.yml` | SignPath Foundation Authenticode for both public RC and GA |
+| `wsjtx-<ver>-arm64-macOS-tools.tar.gz` | `build-macos.yml` | Command-line programs with their dylibs in `lib/`; ad-hoc signed, not notarized |
+| `wsjtx-<ver>-linux-<arch>-tools.tar.gz` | `build-linux.yml` (x86_64, aarch64 and armhf legs) | Command-line programs that link the distribution's libraries; unsigned |
+| `wsjtx-<ver>-windows-x86_64-tools.tar.gz` | `build-windows.yml` | Command-line programs with the DLLs they import; not Authenticode-signed |
 | `wsjtx-<ver>-src.tar.gz` | Public release workflow | Source tarball from the public tag |
+
+`CMake/Install.cmake` defines the command-line programs in two lists. Every installer carries `wsjt_installed_cli_tools`: the install rules cover it, and the macOS package stages `/usr/local/wsjtx` from the build's `installed-cli-tools.txt`; unless `/usr/local/wsjtx` is a symbolic link, its postinstall removes programs there that the package does not ship, with their `/usr/local/bin` links, and leaves `lib/` alone. Each tools archive carries both lists, read from the build's `cli-tools.txt`. Staging and packaging fail if a listed program is missing; packaging also fails if a Linux program has an RPATH or RUNPATH entry inside the build tree, or if a Windows program imports a DLL found neither in the staged installation nor in the Windows system directory, or `objdump` cannot read it.
 
 The project-created source tarball is assembled from the public tag. GitHub also generates its own zip and tar.gz source archives for that tag; they contain the tagged tree but may have different compressed hashes. `SHA256SUMS` covers immutable payload assets uploaded by the workflow. In manual macOS signing mode it excludes the replaceable `.pkg` file, which the release manifest identifies separately. The manifest also records the tag, source commit, workflow run, and builder provenance. Checksums detect changed bytes; platform signatures establish signer identity and must be verified separately.
 
 ### All-Platforms-Ready Gate
 
-Before publishing, the release workflow requires each platform build to produce its expected installer artifact. This prevents a structurally successful build job from creating a partial release.
+Before publishing, the release workflow requires each platform build to produce its expected installer and tools archive artifacts. This prevents a structurally successful build job from creating a partial release.
 
-The gate checks for one installer per platform:
+The gate checks for one installer and one tools archive per platform:
 
 | Platform | Expected artifact pattern |
 |----------|---------------------------|
@@ -180,6 +185,7 @@ The gate checks for one installer per platform:
 | Linux armhf | `artifacts/wsjtx-<ver>-linux-armhf-AppImage/*.AppImage` |
 | Linux packages | One non-empty `.deb` and `.rpm` under each architecture's artifact directory |
 | Windows x86_64 | `artifacts/wsjtx-<ver>-windows-x86_64-installer-signed/*.exe` |
+| Tools archives | One non-empty `.tar.gz` in `artifacts/wsjtx-<ver>-<target>-tools/` for each target: `arm64-macOS`, `linux-x86_64`, `linux-aarch64`, `linux-armhf`, `windows-x86_64` |
 
 If any pattern matches zero files, the release job stops before publishing.
 
@@ -330,10 +336,12 @@ The Apple Developer account holder exports the signing identities. A repository 
 
 The workflow uses two identities with different responsibilities:
 
-- **Developer ID Application** signs application executables, frameworks, plug-ins, and command-line tools.
+- **Developer ID Application** signs application executables, frameworks, plug-ins, and the command-line tools the package installs.
 - **Developer ID Installer** signs the outer `.pkg` installer.
 
 Notarization uses the App Store Connect API key in §5.3 rather than either certificate password. Rotate a certificate's `.p12` and password together. Rotate the notarization key on the team's schedule, when access changes, or after suspected exposure.
+
+The command-line tools archives are not Developer ID-signed or notarized in either signing mode: their programs and `lib/` dylibs carry the build's ad-hoc signatures, and `SHA256SUMS` and the release manifest bind the archive bytes to the tag and source commit. Browsers mark downloads with the `com.apple.quarantine` attribute, and macOS blocks quarantined programs that are not notarized, so remove the attribute from the archive before extracting it: `xattr -d com.apple.quarantine wsjtx-<ver>-arm64-macOS-tools.tar.gz`.
 
 #### Preparing the .p12 files
 
@@ -429,6 +437,8 @@ Set repository variable `MACOS_DISTRIBUTION_SIGNING_ENABLED=false` until the ful
 ### 5.4 Windows Authenticode Signing via SignPath Foundation
 
 > **How it works.** SignPath Foundation signs OSS artifacts built from the public repository, so the signature attests public-source provenance as well as identity. A promoted `vX.Y.Z` or `vX.Y.Z-rcN` tag triggers the public build, submits the unsigned installer under the `release-signing` policy, verifies the returned Authenticode signature and timestamp, and makes that verified installer eligible for publication. A failed or rejected request blocks the release. The certificate's private key lives in SignPath's HSM; there is no `.pfx` to export or store in GitHub.
+
+SignPath signs only the installer. The Windows command-line tools archive is not submitted: its programs and DLLs carry no Authenticode signature, and `SHA256SUMS` and the release manifest bind the archive bytes to the tag and source commit.
 
 #### The one secret
 

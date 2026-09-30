@@ -35,17 +35,30 @@ install (TARGETS udp_daemon message_aggregator wsjtx_app_version
   BUNDLE DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT runtime
   )
 
-install (TARGETS jt9 wsprd fmtave fcal fmeasure
+# cli-tools.txt (both lists) feeds the release tools archives; the macOS
+# package stages /usr/local/wsjtx from installed-cli-tools.txt
+# (.github/scripts/package-cli-tools.sh, .github/workflows/build-macos.yml).
+set (wsjt_installed_cli_tools jt9 wsprd fmtave fcal fmeasure)
+if (WSJT_BUILD_JT9STREAM)
+  list (APPEND wsjt_installed_cli_tools jt9stream)
+endif ()
+if (WSJT_BUILD_UTILS)
+  list (APPEND wsjt_installed_cli_tools
+    ft8code jt65code jt9code jt4code msk144code q65code fst4sim ft8sim q65sim
+    EchoCallSim testEchoCall echosim hash22calc cablog sjtty rjtty)
+  set (wsjt_archive_only_cli_tools
+    wsprcode encode77 ft4sim jt4sim jt65sim cwsim sfoxsim)
+endif ()
+install (TARGETS ${wsjt_installed_cli_tools}
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT runtime
   BUNDLE DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT runtime
   )
-
-if (WSJT_BUILD_JT9STREAM)
-  install (TARGETS jt9stream
-    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT runtime
-    BUNDLE DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT runtime
-    )
-endif (WSJT_BUILD_JT9STREAM)
+string (JOIN "\n" _wsjt_installed_cli_tools_lines ${wsjt_installed_cli_tools})
+file (WRITE "${CMAKE_BINARY_DIR}/installed-cli-tools.txt"
+  "${_wsjt_installed_cli_tools_lines}\n")
+string (JOIN "\n" _wsjt_cli_tools_lines
+  ${wsjt_installed_cli_tools} ${wsjt_archive_only_cli_tools})
+file (WRITE "${CMAKE_BINARY_DIR}/cli-tools.txt" "${_wsjt_cli_tools_lines}\n")
 
 if (NOT WSJT_SKIP_QMAP)
   install (TARGETS qmap
@@ -58,16 +71,6 @@ install (TARGETS map65
   RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT runtime
   BUNDLE DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT runtime
   )
-
-if(WSJT_BUILD_UTILS)
-install (TARGETS ft8code jt65code jt9code jt4code msk144code 
-  q65code fst4sim ft8sim q65sim EchoCallSim testEchoCall echosim
-  hash22calc cablog sjtty rjtty
-  RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT runtime
-  BUNDLE DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT runtime
-  )
-  
-endif(WSJT_BUILD_UTILS)  
 
 install (PROGRAMS
   ${RIGCTL_EXE}
