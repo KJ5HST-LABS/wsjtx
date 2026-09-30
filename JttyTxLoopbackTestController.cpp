@@ -16,11 +16,12 @@
 #include <QAudioFormat>
 #include <QByteArray>
 #include <QFileInfo>
-#include <QLineEdit>
+#include <QPlainTextEdit>
 #include <QKeyEvent>
 #include <QMessageBox>
 #include <QMetaObject>
 #include <QSysInfo>
+#include <QTextCursor>
 #include <QTextEdit>
 #include <QWidget>
 
@@ -400,7 +401,7 @@ void JttyTxLoopbackTestController::submitSecondMessage ()
       return;
     }
 
-  auto * input = m_window->findChild<QLineEdit *> ("Tx_Message");
+  auto * input = m_window->findChild<QPlainTextEdit *> ("Tx_Message");
   auto * send = m_window->findChild<QAbstractButton *> ("pbSendMessage");
   auto * display = m_window->findChild<QTextEdit *> ("decodedTextBrowser2");
   if (!input || !send || !display)
@@ -408,15 +409,12 @@ void JttyTxLoopbackTestController::submitSecondMessage ()
       fail (tr ("A required JTTY input, send button, or transmit display was not found."));
       return;
     }
-  input->setText (longMessageSegments ().join (' '));
-  if (!QMetaObject::invokeMethod (input, "returnPressed", Qt::DirectConnection))
+  input->setPlainText (longMessageSegments ().join (' '));
+  send->click ();
+  // Committed text stays visible (locked, not editable) rather than clearing.
+  if (input->toPlainText () != longMessageSegments ().join (' '))
     {
-      fail (tr ("Unable to submit the long JTTY draft through Enter."));
-      return;
-    }
-  if (!input->text ().isEmpty ())
-    {
-      fail (tr ("The validated long JTTY draft was not cleared after submission."));
+      fail (tr ("The validated long JTTY draft was altered by submission."));
       return;
     }
   if (!send->text ().contains ("left")
@@ -431,7 +429,8 @@ void JttyTxLoopbackTestController::submitSecondMessage ()
       fail (tr ("Queued long-message text appeared as transmitted before its audio began."));
       return;
     }
-  input->setText (unsentDraft ());
+  input->moveCursor (QTextCursor::End);
+  input->insertPlainText (unsentDraft ());
   if (m_output->restartCount () != 1 || m_output->stopCount () != 0)
     {
       fail (tr ("Appending the second JTTY message restarted or stopped playback."));
@@ -475,9 +474,9 @@ void JttyTxLoopbackTestController::observeTransmittedDisplay ()
 
 bool JttyTxLoopbackTestController::verifyCancellationPaths ()
 {
-  auto * input = m_window->findChild<QLineEdit *> ("Tx_Message");
+  auto * input = m_window->findChild<QPlainTextEdit *> ("Tx_Message");
   auto * send = m_window->findChild<QAbstractButton *> ("pbSendMessage");
-  if (!input || !send || input->text () != unsentDraft ())
+  if (!input || !send || !input->toPlainText ().endsWith (unsentDraft ()))
     {
       fail (tr ("The newer unsent draft was lost before cancellation checks."));
       return false;
@@ -485,15 +484,18 @@ bool JttyTxLoopbackTestController::verifyCancellationPaths ()
 
   for (bool const useEscape : {false, true})
     {
-      input->setText (longMessageSegments ().join (' '));
-      if (!QMetaObject::invokeMethod (input, "returnPressed", Qt::DirectConnection)
-          || m_finished || !input->text ().isEmpty ()
+      input->moveCursor (QTextCursor::End);
+      input->insertPlainText (QStringLiteral (" ") + longMessageSegments ().join (' '));
+      send->click ();
+      if (m_finished
+          || !input->toPlainText ().endsWith (longMessageSegments ().join (' '))
           || !send->text ().contains ("left"))
         {
           fail (tr ("A new long draft was not retained while PTT release was pending."));
           return false;
         }
-      input->setText (unsentDraft ());
+      input->moveCursor (QTextCursor::End);
+      input->insertPlainText (unsentDraft ());
       auto const cancelledBefore = m_cancelledRequests.size ();
       m_checkingCancellation = true;
       if (useEscape)
@@ -510,7 +512,7 @@ bool JttyTxLoopbackTestController::verifyCancellationPaths ()
       if (m_finished) return false;
       if (m_cancelledRequests.size () != cancelledBefore + 1
           || m_completedRequests.size () != 2 || m_acceptedRequests.size () != 2
-          || input->text () != unsentDraft ()
+          || !input->toPlainText ().endsWith (unsentDraft ())
           || send->text () != QStringLiteral ("Send message")
           || !send->toolTip ().contains ("cancelled"))
         {
@@ -577,10 +579,10 @@ void JttyTxLoopbackTestController::maybeFinish ()
       return;
     }
 
-  auto const * input = m_window->findChild<QLineEdit *> ("Tx_Message");
+  auto const * input = m_window->findChild<QPlainTextEdit *> ("Tx_Message");
   auto const * send = m_window->findChild<QAbstractButton *> ("pbSendMessage");
   auto const * display = m_window->findChild<QTextEdit *> ("decodedTextBrowser2");
-  if (!input || input->text () != unsentDraft ())
+  if (!input || !input->toPlainText ().endsWith (unsentDraft ()))
     {
       fail (tr ("Finishing queued transmission changed the newer unsent draft."));
       return;

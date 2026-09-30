@@ -4102,9 +4102,18 @@ Double-click to reset to the standard 73 message</string>
                 </widget>
                </item>
                <item row="1" column="1" colspan="4">
-                <widget class="QLineEdit" name="Tx_Message">
+                <widget class="QPlainTextEdit" name="Tx_Message">
+                 <property name="maximumSize">
+                  <size>
+                   <width>16777215</width>
+                   <height>60</height>
+                  </size>
+                 </property>
+                 <property name="tabChangesFocus">
+                  <bool>true</bool>
+                 </property>
                  <property name="toolTip">
-                  <string>Press Enter to send and clear the message.</string>
+                  <string>Ctrl+K sends. Ctrl+Shift+K clears the box. Long messages are split automatically; new text follows pending text.</string>
                  </property>
                 </widget>
                </item>

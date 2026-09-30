@@ -15,6 +15,8 @@ namespace Jtty
     QVector<int> tones;
     qint64 endSample {0};
     int frequency {1500};
+    // 0-indexed start offset into text of each encoded frame; empty if the caller didn't ask the encoder for boundaries.
+    QVector<int> frameCharStarts {};
 
     qint64 sampleCount () const
     {

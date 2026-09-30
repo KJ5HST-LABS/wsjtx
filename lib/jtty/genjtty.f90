@@ -8,23 +8,35 @@ subroutine genjtty(umsg,itone,nsym)
   parameter (MAX_TONES=59*16)       !Max number of channel symbols
   character*80 umsg                 !User-formatted message
   integer itone(MAX_TONES)          !Array of tone frequencies for this message
+
+  interface
+     subroutine genjtty_profile(umsg,exchange_profile,itone,nsym,frame_starts)
+       use jtty_mod, only: MAX_FRAMES
+       character(len=80), intent(inout) :: umsg
+       integer, intent(in) :: exchange_profile
+       integer, intent(out) :: itone(59*MAX_FRAMES),nsym
+       integer, intent(out), optional :: frame_starts(MAX_FRAMES)
+     end subroutine genjtty_profile
+  end interface
+
   call genjtty_profile(umsg,JTTY_EXCHANGE_UNKNOWN,itone,nsym)
 
  return
 end subroutine genjtty
 
-subroutine genjtty_profile(umsg,exchange_profile,itone,nsym)
+subroutine genjtty_profile(umsg,exchange_profile,itone,nsym,frame_starts)
 
   use jtty_mod, only: pack_jtty,MAX_FRAMES
   implicit none
   character(len=80), intent(inout) :: umsg
   integer, intent(in) :: exchange_profile
   integer, intent(out) :: itone(59*MAX_FRAMES),nsym
+  integer, intent(out), optional :: frame_starts(MAX_FRAMES)
   character(len=34) :: frames(MAX_FRAMES)
   integer :: nframes
 
   nsym=0
-  call pack_jtty(umsg,frames,nframes,exchange_profile)
+  call pack_jtty(umsg,frames,nframes,exchange_profile,frame_starts)
   if(nframes.le.0) return
   call genjtty_frames(frames,nframes,itone,nsym)
 end subroutine genjtty_profile
