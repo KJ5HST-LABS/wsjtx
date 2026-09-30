@@ -222,7 +222,8 @@ QStringList JttyTxLoopbackTestController::longMessageSegments ()
 
 QString JttyTxLoopbackTestController::unsentDraft ()
 {
-  return QStringLiteral ("THIS NEW DRAFT MUST SURVIVE THE QUEUED TRANSMISSION");
+  // No embedded space, so auto-advance's zero holdback never releases it early.
+  return QStringLiteral ("UNSENTDRAFTMUSTSURVIVE");
 }
 
 qint64 JttyTxLoopbackTestController::encodedSampleFrames (QString const& message)
@@ -485,10 +486,12 @@ bool JttyTxLoopbackTestController::verifyCancellationPaths ()
   for (bool const useEscape : {false, true})
     {
       input->moveCursor (QTextCursor::End);
-      input->insertPlainText (QStringLiteral (" ") + longMessageSegments ().join (' '));
-      send->click ();
-      if (m_finished
-          || !input->toPlainText ().endsWith (longMessageSegments ().join (' '))
+      // Trailing space: auto-advance (already armed) commits the whole chunk
+      // itself, so no explicit Send click is needed (or safe to race against it).
+      QString const chunk = QStringLiteral (" ") + longMessageSegments ().join (' ')
+        + QStringLiteral (" ");
+      input->insertPlainText (chunk);
+      if (m_finished || !input->toPlainText ().endsWith (chunk)
           || !send->text ().contains ("left"))
         {
           fail (tr ("A new long draft was not retained while PTT release was pending."));
