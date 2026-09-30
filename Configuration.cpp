@@ -3721,7 +3721,7 @@ void Configuration::impl::read_settings ()
     if (rig_params_.ptt_type == TransceiverFactory::PTT_method_CAT) rig_params_.ptt_type = TransceiverFactory::PTT_method_VOX;
   }
 #ifdef WIN32
-  QTimer::singleShot (2500, [=] {display_file_information ();});
+  QTimer::singleShot (2500, this, &Configuration::impl::display_file_information);
 #else
   ui_->hamlib_groupBox->setTitle("Hamlib Version");
   ui_->rbHamlib64->setVisible(false);
@@ -3730,7 +3730,7 @@ void Configuration::impl::read_settings ()
   ui_->revert_update_button->setVisible(false);
   ui_->backed_up_text->setVisible(false);
   ui_->backed_up->setVisible(false);
-  QTimer::singleShot (2500, [=] {display_file_information ();});
+  QTimer::singleShot (2500, this, &Configuration::impl::display_file_information);
 #endif
 }
 
@@ -5020,11 +5020,11 @@ void Configuration::impl::after_hamlib_downloaded ()
 {
   QDir dataPath = QCoreApplication::applicationDirPath();
   QFile::rename(dataPath.absolutePath() + "/" + "libhamlib-4.dll", dataPath.absolutePath() + "/" + "libhamlib-4_old.dll");
-  QTimer::singleShot (1000, [=] {
+  QTimer::singleShot (1000, this, [=] {
     QFile::rename(dataPath.absolutePath() + "/" + "libhamlib-4_new.dll", dataPath.absolutePath() + "/" + "libhamlib-4.dll");
     ui_->in_use->setText("Download completed. Restart the program.");
   });
-  QTimer::singleShot (1500, [=] {
+  QTimer::singleShot (1500, this, [=] {
     MessageBox::information_message (this, tr ("Hamlib Update successful \n\nNew Hamlib will be used after restart"));
     ui_->revert_update_button->setEnabled (true);
     ui_->hamlib_download_button->setEnabled (true);
@@ -5040,10 +5040,10 @@ void Configuration::impl::on_revert_update_button_clicked (bool /*clicked*/)
     ui_->revert_update_button->setEnabled (false);
     ui_->hamlib_download_button->setEnabled (false);
     QFile::rename(dataPath.absolutePath() + "/" + "libhamlib-4.dll", dataPath.absolutePath() + "/" + "libhamlib-4_new.dll");
-    QTimer::singleShot (1000, [=] {
+    QTimer::singleShot (1000, this, [=] {
       QFile::copy(dataPath.absolutePath() + "/" + "libhamlib-4_old.dll", dataPath.absolutePath() + "/" + "libhamlib-4.dll");
     });
-    QTimer::singleShot (2000, [=] {
+    QTimer::singleShot (2000, this, [=] {
       MessageBox::information_message (this, tr ("Hamlib successfully reverted \n\nReverted Hamlib will be used after restart"));
       ui_->revert_update_button->setEnabled (true);
       ui_->hamlib_download_button->setEnabled (true);

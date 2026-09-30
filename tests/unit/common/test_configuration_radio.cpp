@@ -225,6 +225,12 @@ private slots:
     u.rig_combo_box->setCurrentText (serial_rig_);
     QCOMPARE (u.CAT_port_combo_box->currentText (), QString {"/dev/edited-cat"});
   }
+
+  void destructionCancelsDeferredFileInformation ()
+  {
+    configuration_.reset ();
+    QTest::qWait (3000);
+  }
 };
 
 QTEST_MAIN (TestConfigurationRadio)
