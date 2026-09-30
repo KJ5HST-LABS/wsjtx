@@ -1,18 +1,12 @@
 module ft8_codec_context
+  use decoder_codec_context, only: get_ft8_codec_state => get_decoder_codec_state
   use packjt77, only: pack77_state,pack77_legacy_truncating_fallback_for_state, &
        unpack77_for_state
   implicit none
   private
   public :: get_ft8_codec_state,genft8_for_state,ft8_tones_from_77bits
 
-  type(pack77_state), save, target :: gui_codec_state
-
 contains
-
-  function get_ft8_codec_state() result(state)
-    type(pack77_state), pointer :: state
-    state => gui_codec_state
-  end function get_ft8_codec_state
 
   subroutine genft8_for_state(state,msg,i3,n3,msgsent,msgbits,itone)
     type(pack77_state), target, intent(inout) :: state

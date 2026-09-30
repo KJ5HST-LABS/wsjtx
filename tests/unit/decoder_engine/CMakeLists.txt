@@ -8,6 +8,13 @@ target_link_libraries (test_decoder_engine PRIVATE test_decoder_engine_signal)
 add_test (NAME test_decoder_engine COMMAND test_decoder_engine)
 set_tests_properties (test_decoder_engine PROPERTIES TIMEOUT 90)
 
+add_executable (test_decoder_engine_ft4 test_decoder_engine_ft4.c)
+set_target_properties (test_decoder_engine_ft4 PROPERTIES LINKER_LANGUAGE CXX)
+target_include_directories (test_decoder_engine_ft4 PRIVATE ${CMAKE_SOURCE_DIR})
+target_link_libraries (test_decoder_engine_ft4 PRIVATE test_decoder_engine_signal)
+add_test (NAME test_decoder_engine_ft4 COMMAND test_decoder_engine_ft4)
+set_tests_properties (test_decoder_engine_ft4 PROPERTIES TIMEOUT 90)
+
 if (TARGET wsjt_fort_omp)
   add_library (test_decoder_engine_signal_omp STATIC decoder_engine_signal.f90)
   target_include_directories (test_decoder_engine_signal_omp PRIVATE
@@ -21,6 +28,16 @@ if (TARGET wsjt_fort_omp)
   target_link_libraries (test_decoder_engine_omp PRIVATE test_decoder_engine_signal_omp)
   add_test (NAME test_decoder_engine_omp COMMAND test_decoder_engine_omp)
   set_tests_properties (test_decoder_engine_omp PROPERTIES
+    ENVIRONMENT "OMP_DYNAMIC=FALSE;OMP_NUM_THREADS=2;OMP_THREAD_LIMIT=2"
+    PROCESSORS 2
+    TIMEOUT 90)
+
+  add_executable (test_decoder_engine_ft4_omp test_decoder_engine_ft4.c)
+  set_target_properties (test_decoder_engine_ft4_omp PROPERTIES LINKER_LANGUAGE CXX)
+  target_include_directories (test_decoder_engine_ft4_omp PRIVATE ${CMAKE_SOURCE_DIR})
+  target_link_libraries (test_decoder_engine_ft4_omp PRIVATE test_decoder_engine_signal_omp)
+  add_test (NAME test_decoder_engine_ft4_omp COMMAND test_decoder_engine_ft4_omp)
+  set_tests_properties (test_decoder_engine_ft4_omp PROPERTIES
     ENVIRONMENT "OMP_DYNAMIC=FALSE;OMP_NUM_THREADS=2;OMP_THREAD_LIMIT=2"
     PROCESSORS 2
     TIMEOUT 90)

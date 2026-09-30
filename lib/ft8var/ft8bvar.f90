@@ -2953,8 +2953,8 @@ subroutine ft8bvar(residual,spectrum,newdat1,nQSOProgress,nfqso,nftx,napwid, &
         evidence%tones=int(itone,kind=1)
         evidence%has_tones=1
      endif
-     evidence%has_start=1
-     evidence%start_seconds=xdt
+     evidence%has_waveform_start=1
+     evidence%waveform_start_seconds=xdt
      evidence%method=iaptype2
      if(has_decoded_payload .and. msg37.eq.decoded_payload_message) &
           evidence%payload_origin=engine_payload_decoded

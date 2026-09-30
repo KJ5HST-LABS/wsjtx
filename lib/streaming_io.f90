@@ -380,6 +380,7 @@ contains
        shared_data%params%nzhsym = 181
     end if
     shared_data%params%kin    = 64800
+    if (mode .eq. 5) shared_data%params%kin = period%k
     if (mode .eq. 240) shared_data%params%kin = 720000
     if (mode .eq. 241) shared_data%params%kin = 720000
     if (mode .eq. 242) shared_data%params%kin = 720000

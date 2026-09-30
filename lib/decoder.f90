@@ -6,13 +6,12 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   use jt4_decode
   use jt65_decode
   use jt9_decode
-  use ft4_decode
   use fst4_decode
   use q65_decode
   use decoder_callbacks, only: decoder_callback_context,                     &
        counting_jt4_decoder, counting_jt65_decoder, counting_jt9_decoder,    &
-       counting_ft4_decoder,counting_fst4_decoder,counting_q65_decoder,       &
-       ft4_decoded, fst4_decoded, q65_decoded, jt4_decoded,                    &
+       counting_fst4_decoder,counting_q65_decoder,                           &
+       fst4_decoded, q65_decoded, jt4_decoded,                                &
        jt4_average, jt65_decoded, jt9_decoded
   use streaming_emit, only: streaming_emit_enabled,                       &
        streaming_emit_decode
@@ -37,7 +36,7 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   integer :: active_progress_generation
   type(params_block) :: params
   type(decode_completion_result), intent(out) :: completion
-  external :: run_engine_ft8
+  external :: run_decoder_engine
   type(decoder_callback_context) :: callback_context
   real ss(184,NSMAX)
   logical baddata,newdat65,newdat9,single_decode,bVHF,q65_pileup,bad0,ex
@@ -54,13 +53,12 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   type(counting_jt4_decoder) :: my_jt4
   type(counting_jt65_decoder) :: my_jt65
   type(counting_jt9_decoder) :: my_jt9
-  type(counting_ft4_decoder) :: my_ft4
   type(counting_fst4_decoder) :: my_fst4
   type(counting_q65_decoder) :: my_q65  
 
-  if(params%nmode.eq.8) then
-     call run_engine_ft8(ss,id2,params,nfsample,completion,progress_generation, &
-          0_c_int64_t,0_c_int64_t,0_c_int,0_c_int)
+  if(params%nmode.eq.8.or.params%nmode.eq.5) then
+     call run_decoder_engine(ss,id2,params,nfsample,completion,progress_generation, &
+          0_c_int64_t,0_c_int64_t,0_c_int,merge(params%kin,0_c_int,params%nmode==5))
      return
   endif
 
@@ -70,7 +68,6 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   my_jt4%decoded = 0
   my_jt65%decoded = 0
   my_jt9%decoded = 0
-  my_ft4%decoded = 0
   my_fst4%decoded = 0
   my_q65%decoded = 0
   nsynced=0
@@ -136,19 +133,8 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   my_jt4%context = callback_context
   my_jt65%context = callback_context
   my_jt9%context = callback_context
-  my_ft4%context = callback_context
   my_fst4%context = callback_context
   my_q65%context = callback_context
-
-
-  if(params%nmode.eq.5) then
-     call timer('decft4  ',0)
-     call my_ft4%decode(ft4_decoded,id2,params%nQSOProgress,params%nfqso,    &
-          params%nfa,params%nfb,params%ndepth,                               &
-          logical(params%lapcqonly),ncontest,mycall,hiscall)
-     call timer('decft4  ',1)
-     go to 800
-  endif
 
   if(params%nmode.eq.66) then        !NB: JT65 = 65, Q65 = 66.
      ! We're in Q65 mode
@@ -341,7 +327,6 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
 
 ! JT65 is not yet producing info for nsynced, ndecoded.
 800 ndecoded = my_jt4%decoded + my_jt65%decoded + my_jt9%decoded +       &
-         my_ft4%decoded +                                             &
          my_fst4%decoded + my_q65%decoded
   call set_decode_completion(completion,nsynced,ndecoded,navg0)
   call write_decode_progress(active_progress_generation)

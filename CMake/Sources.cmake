@@ -358,6 +358,7 @@ set (wsjt_FSRCS
   lib/ft8/decode174_91.f90
   lib/decoder_callbacks.f90
   lib/decoder_engine_types.f90
+  lib/77bit/decoder_codec_context.f90
   lib/ft8_engine_kernel.f90
   lib/decoder_engine.f90
   lib/decoder.f90

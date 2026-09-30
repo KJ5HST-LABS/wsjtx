@@ -23,6 +23,7 @@ module decoder_callbacks
      logical :: bVHF = .false.
      logical :: b_superfox = .false.
      character(len=12) :: mycall = '            '
+     real :: waveform_input_offset_seconds = 0.0
      procedure(engine_observation_sink), pointer, nopass :: sink => null()
      procedure(engine_superfox_sink), pointer, nopass :: superfox_sink => null()
      type(c_ptr) :: sink_user = c_null_ptr
@@ -427,13 +428,9 @@ contains
        observation%message(message_index)=decodedvar(message_index:message_index)
     enddo
     if(present(evidence)) then
-       observation%payload77=evidence%payload77
-       observation%tones=evidence%tones
-       observation%payload_origin=evidence%payload_origin
-       observation%has_tones=evidence%has_tones
-       observation%has_start=evidence%has_start
-       observation%start_seconds=evidence%start_seconds
-       observation%method=evidence%method
+       observation%ft8=evidence
+       if(evidence%has_waveform_start/=0) observation%ft8%waveform_start_seconds= &
+            evidence%waveform_start_seconds+context%waveform_input_offset_seconds
     endif
     if(associated(context%sink)) call context%sink(context%sink_user,observation)
 
@@ -579,13 +576,9 @@ contains
        observation%message(message_index)=decoded(message_index:message_index)
     enddo
     if(present(evidence)) then
-       observation%payload77=evidence%payload77
-       observation%tones=evidence%tones
-       observation%payload_origin=evidence%payload_origin
-       observation%has_tones=evidence%has_tones
-       observation%has_start=evidence%has_start
-       observation%start_seconds=evidence%start_seconds
-       observation%method=evidence%method
+       observation%ft8=evidence
+       if(evidence%has_waveform_start/=0) observation%ft8%waveform_start_seconds= &
+            evidence%waveform_start_seconds+context%waveform_input_offset_seconds
     endif
     if(associated(context%sink)) call context%sink(context%sink_user,observation)
 
@@ -597,24 +590,43 @@ contains
     end select
   end subroutine ft8_decoded
 
-  subroutine ft4_decoded (this,sync,snr,dt,freq,decoded,nap,qual)
+  subroutine ft4_decoded (this,sync,snr,dt,freq,decoded,nap,qual,evidence)
     implicit none
 
     class(ft4_decoder), intent(inout) :: this
+    type(ft4_signal_evidence), intent(in) :: evidence
+    type(engine_observation) :: observation
+    type(decoder_callback_context) :: context
     real, intent(in) :: sync,dt,freq,qual
     integer, intent(in) :: snr,nap
     character(len=37), intent(in) :: decoded
     character*2 annot
     character*37 decoded0
-    integer context_nutc, context_ios13
+    integer context_nutc, context_ios13,i
 
     select type (typed_this => this)
     type is (counting_ft4_decoder)
+       context=typed_this%context
        context_nutc = typed_this%context%nutc
        context_ios13 = typed_this%context%ios13
     class default
        return
     end select
+
+    observation=engine_observation()
+    observation%mode=engine_mode_ft4
+    observation%snr_db=snr
+    observation%ap_type=nap
+    observation%dt_seconds=dt
+    observation%frequency_hz=freq
+    observation%sync=sync
+    observation%quality=qual
+    observation%ft4=evidence
+    do i=1,len_trim(decoded)
+       observation%message(i)=decoded(i:i)
+    enddo
+    if(associated(context%sink)) call context%sink(context%sink_user,observation)
+    if(.not.context%render_legacy) go to 20
 
     decoded0=decoded
 
@@ -639,6 +651,7 @@ contains
 
 10  call flush(6)
 
+20  continue
     select type (typed_this => this)
     type is (counting_ft4_decoder)
        typed_this%decoded = typed_this%decoded + 1

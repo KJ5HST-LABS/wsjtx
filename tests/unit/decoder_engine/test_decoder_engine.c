@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 
 #define CHECK(condition) do { \
   if (!(condition)) { \
@@ -11,9 +12,33 @@
   } \
 } while (0)
 
-extern void decoder_engine_test_signal(int16_t samples[180000], int8_t payload[77]);
+extern void decoder_engine_test_signal(int16_t samples[180000], int8_t payload[77],
+                                       int8_t tones[79], int32_t start_sample);
+extern void decoder_engine_test_records(decoder_observation records[2], size_t *record_size);
 extern void decoder_engine_test_residual(float samples[180000]);
 extern void decoder_engine_test_host_windows(void);
+
+static void check_evidence_layout(void)
+{
+  decoder_observation records[2];
+  size_t record_size = 0;
+  decoder_engine_test_records(records, &record_size);
+  CHECK(record_size == sizeof records[0]);
+  CHECK(records[0].mode == DECODER_MODE_FT4);
+  CHECK(records[0].dt_seconds == 0.25f);
+  CHECK(records[0].ft4.payload77[76] == 1 && records[0].ft4.tones[102] == 3);
+  CHECK(records[0].ft4.payload_origin == DECODER_PAYLOAD_DECODED);
+  CHECK(records[0].ft4.has_tones == 1 && records[0].ft4.has_waveform_start == 1);
+  CHECK(records[0].ft4.waveform_start_seconds == -0.125f);
+  CHECK(records[0].ft8.payload_origin == DECODER_PAYLOAD_NONE);
+  CHECK(records[1].mode == DECODER_MODE_FT8);
+  CHECK(records[1].variant == DECODER_FT8_SUPERFOX);
+  CHECK(records[1].superfox.symbols[49] == 127);
+  CHECK(records[1].superfox.kind == DECODER_SUPERFOX_VERIFICATION);
+  CHECK(records[1].superfox.child_index == 4);
+  CHECK(records[1].ft8.payload_origin == DECODER_PAYLOAD_NONE);
+  CHECK(records[1].ft4.payload_origin == DECODER_PAYLOAD_NONE);
+}
 
 typedef struct {
   decoder_engine_handle engine;
@@ -22,6 +47,8 @@ typedef struct {
   int count;
   int found_expected;
   int8_t expected_payload[77];
+  int8_t expected_tones[79];
+  float expected_start_seconds;
   decoder_observation retained;
   decoder_observation expected_record;
 } callback_context;
@@ -38,10 +65,16 @@ static void observe(const decoder_observation *record, void *opaque)
   context->retained = *record;
 
   if (strcmp(record->message, "CQ K1JT FN20") == 0) {
-    CHECK(record->payload_origin == DECODER_PAYLOAD_DECODED);
-    CHECK(memcmp(record->payload77, context->expected_payload, 77) == 0);
-    CHECK(record->has_tones != 0);
-    CHECK(record->has_start != 0);
+    CHECK(record->ft8.payload_origin == DECODER_PAYLOAD_DECODED);
+    CHECK(memcmp(record->ft8.payload77, context->expected_payload, 77) == 0);
+    CHECK(memcmp(record->ft8.tones, context->expected_tones, 79) == 0);
+    CHECK(record->ft8.has_tones != 0);
+    CHECK(record->ft8.has_waveform_start != 0);
+    CHECK(fabsf(record->ft8.waveform_start_seconds - context->expected_start_seconds) < 0.035f);
+    CHECK(fabsf(record->dt_seconds - (context->expected_start_seconds - 0.5f)) < 0.035f);
+    CHECK(record->ft4.payload_origin == DECODER_PAYLOAD_NONE);
+    CHECK(record->ft4.has_tones == 0 && record->ft4.has_waveform_start == 0);
+    CHECK(record->superfox.kind == 0 && record->superfox.child_index == 0);
     context->expected_record = *record;
     ++context->found_expected;
   }
@@ -104,9 +137,9 @@ static void check_same_result(const callback_context *context,
   CHECK(context->count == count);
   CHECK(strcmp(context->expected_record.message, reference->message) == 0);
   CHECK(context->expected_record.variant == reference->variant);
-  CHECK(context->expected_record.payload_origin == reference->payload_origin);
-  CHECK(memcmp(context->expected_record.payload77, reference->payload77, 77) == 0);
-  CHECK(memcmp(context->expected_record.tones, reference->tones, 79) == 0);
+  CHECK(context->expected_record.ft8.payload_origin == reference->ft8.payload_origin);
+  CHECK(memcmp(context->expected_record.ft8.payload77, reference->ft8.payload77, 77) == 0);
+  CHECK(memcmp(context->expected_record.ft8.tones, reference->ft8.tones, 79) == 0);
 }
 
 static void check_reset_and_recreate(callback_context *context,
@@ -233,13 +266,18 @@ int main(void)
   decoder_audio_view audio = {samples, 180000, 12000};
   callback_context context = {0};
   CHECK(samples != NULL && before != NULL);
+  check_evidence_layout();
 
+  options.abi_version = DECODER_ENGINE_ABI - 1;
+  CHECK(decoder_engine_create(&options, &engine) == DECODER_UNSUPPORTED);
+  CHECK(engine == NULL);
+  options.abi_version = DECODER_ENGINE_ABI;
   CHECK(decoder_engine_create(&options, &engine) == DECODER_OK);
   CHECK(engine != NULL);
   CHECK(decoder_engine_create(&options, &second) == DECODER_BUSY);
   CHECK(decoder_engine_get_capabilities(engine, &capabilities) == DECODER_OK);
   CHECK(capabilities.abi_version == DECODER_ENGINE_ABI);
-  CHECK(capabilities.ft8 != 0);
+  CHECK(capabilities.supported_modes == (DECODER_SUPPORT_FT8 | DECODER_SUPPORT_FT4));
   CHECK(capabilities.cancellation == 0);
   CHECK(capabilities.concurrent_sessions == 0);
   CHECK(capabilities.evidence_capacity == 1024);
@@ -249,6 +287,8 @@ int main(void)
   context.audio = &audio;
   request.mode = 65;
   CHECK(decoder_engine_decode(engine, &request, &audio, observe, &context, &outcome) == DECODER_UNSUPPORTED);
+  request.mode = DECODER_MODE_FT4;
+  CHECK(decoder_engine_decode(engine, &request, &audio, observe, &context, &outcome) == DECODER_INVALID);
   request.mode = DECODER_MODE_FT8;
   audio.sample_rate_hz = 48000;
   CHECK(decoder_engine_decode(engine, &request, &audio, observe, &context, &outcome) == DECODER_UNSUPPORTED);
@@ -272,7 +312,8 @@ int main(void)
   CHECK(memcmp(samples, before, 180000 * sizeof *samples) == 0);
   CHECK(decoder_engine_release_input(engine, request.input_id) == DECODER_OK);
 
-  decoder_engine_test_signal(samples, context.expected_payload);
+  context.expected_start_seconds = 0.5f;
+  decoder_engine_test_signal(samples, context.expected_payload, context.expected_tones, 6000);
   memcpy(before, samples, 180000 * sizeof *samples);
   request = request_for(102, 202);
   decode_signal(&context, before, &outcome);
@@ -317,6 +358,19 @@ int main(void)
   request.ft8.receive_frequency_hz = 1500;
   request.ft8.search_low_hz = 200;
   request.ft8.search_high_hz = 4000;
+  /* Classic crops EME input; MTD analyzes the original sample coordinates. */
+  context.expected_start_seconds = 2.15f;
+  decoder_engine_test_signal(samples, context.expected_payload, context.expected_tones, 25800);
+  memcpy(before, samples, 180000 * sizeof *samples);
+  for (int mtd = 0; mtd <= 1; ++mtd) {
+    CHECK(decoder_engine_reset_session(context.engine) == DECODER_OK);
+    request.input_id = 501 + mtd;
+    request.analysis_id = 601 + mtd;
+    request.attempt_no = 1;
+    request.ft8.mtd = mtd;
+    request.ft8.eme_delay_seconds = 2.0f;
+    decode_signal(&context, before, &outcome);
+  }
   CHECK(decoder_engine_destroy(context.engine) == DECODER_OK);
   decoder_engine_test_host_windows();
   free(before);

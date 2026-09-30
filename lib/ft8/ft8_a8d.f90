@@ -203,8 +203,8 @@ subroutine ft8_a8d(dd,mycall,dxcall,dxgrid,f1a,xdt,fbest,xsnr,plog,msgbest, &
      evidence%tones=int(itone_best,kind=1)
      evidence%payload_origin=engine_payload_hypothesis
      evidence%has_tones=1
-     evidence%has_start=1
-     evidence%start_seconds=xdt+0.5
+     evidence%has_waveform_start=1
+     evidence%waveform_start_seconds=xdt+0.5
      evidence%method=8
   endif
   

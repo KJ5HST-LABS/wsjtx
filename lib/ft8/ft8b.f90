@@ -505,8 +505,8 @@ subroutine ft8b(dd0,newdat,nQSOProgress,nfqso,nftx,ndepth,nzhsym,lapon,     &
        evidence%tones=int(itone,kind(evidence%tones))
        evidence%payload_origin=engine_payload_decoded
        evidence%has_tones=1
-       evidence%has_start=1
-       evidence%start_seconds=xdt
+       evidence%has_waveform_start=1
+       evidence%waveform_start_seconds=xdt
        evidence%method=iaptype
     endif
     return

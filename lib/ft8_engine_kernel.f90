@@ -238,6 +238,7 @@ contains
         if(params%emedelay.ne.0.0.and..not.params%lmultift8) then
            id2(1:156000)=id2(24001:180000)  ! Drop the first 2 seconds of data
            id2(156001:180000)=0
+           my_ft8%context%waveform_input_offset_seconds=2.0
         endif
 
 ! ft8md below

@@ -107,7 +107,7 @@ subroutine jt9a()
      local_params%nzhsym=nearly
      id2a(1:nearly*3456)=shared_memory%payload%id2(1:nearly*3456)
      id2a(nearly*3456+1:)=0
-     call run_engine_ft8(shared_memory%payload%ss,id2a,local_params, &
+     call run_decoder_engine(shared_memory%payload%ss,id2a,local_params, &
           12000,completion,active_generation,shared_memory%metadata%input_id, &
           shared_memory%metadata%analysis_id,pass_attempt_no, &
           min(shared_memory%metadata%valid_samples,nearly*3456))
@@ -116,7 +116,7 @@ subroutine jt9a()
      local_params%nzhsym=nearly
      id2a(1:nearly*3456)=shared_memory%payload%id2(1:nearly*3456)
      id2a(nearly*3456+1:)=0
-     call run_engine_ft8(shared_memory%payload%ss,id2a,local_params, &
+     call run_decoder_engine(shared_memory%payload%ss,id2a,local_params, &
           12000,completion,active_generation,shared_memory%metadata%input_id, &
           shared_memory%metadata%analysis_id,pass_attempt_no, &
           min(shared_memory%metadata%valid_samples,nearly*3456))
@@ -133,7 +133,7 @@ subroutine jt9a()
         local_params%nzhsym=nearly
         id2a(1:nearly*3456)=shared_memory%payload%id2(1:nearly*3456)
         id2a(nearly*3456+1:)=0
-        call run_engine_ft8(shared_memory%payload%ss,id2a,local_params, &
+        call run_decoder_engine(shared_memory%payload%ss,id2a,local_params, &
              12000,completion,active_generation,shared_memory%metadata%input_id, &
              shared_memory%metadata%analysis_id,pass_attempt_no, &
              min(shared_memory%metadata%valid_samples,nearly*3456))
@@ -144,7 +144,7 @@ subroutine jt9a()
            local_params%nzhsym=nearly
            id2a(1:nearly*3456)=shared_memory%payload%id2(1:nearly*3456)
            id2a(nearly*3456+1:)=0
-           call run_engine_ft8(shared_memory%payload%ss,id2a,local_params, &
+           call run_decoder_engine(shared_memory%payload%ss,id2a,local_params, &
                 12000,completion,active_generation,shared_memory%metadata%input_id, &
                 shared_memory%metadata%analysis_id,pass_attempt_no, &
                 min(shared_memory%metadata%valid_samples,nearly*3456))
@@ -174,9 +174,9 @@ subroutine jt9a()
     ! MSK144
      call decode_msk144_core(shared_memory%payload%id2, local_params, data_dir, &
           completion)
-  elseif(local_params%nmode.eq.8) then
+  elseif(local_params%nmode.eq.8.or.local_params%nmode.eq.5) then
      pass_valid_samples=min(shared_memory%metadata%valid_samples,180000)
-     call run_engine_ft8(shared_memory%payload%ss,shared_memory%payload%id2, &
+     call run_decoder_engine(shared_memory%payload%ss,shared_memory%payload%id2, &
           local_params,12000,completion,active_generation, &
           shared_memory%metadata%input_id,shared_memory%metadata%analysis_id, &
           pass_attempt_no,pass_valid_samples)

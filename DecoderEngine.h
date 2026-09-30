@@ -6,7 +6,8 @@ extern "C" {
 #endif
 
 typedef void *decoder_engine_handle;
-enum { DECODER_ENGINE_ABI = 1, DECODER_MODE_FT8 = 8 };
+enum { DECODER_ENGINE_ABI = 3, DECODER_MODE_FT4 = 5, DECODER_MODE_FT8 = 8 };
+enum { DECODER_SUPPORT_FT8 = 1, DECODER_SUPPORT_FT4 = 2 };
 enum { DECODER_OK = 0, DECODER_INVALID = 1, DECODER_BUSY = 2,
        DECODER_UNSUPPORTED = 3, DECODER_CAPACITY = 4 };
 enum { DECODER_PHASE_EARLY = 1, DECODER_PHASE_NORMAL = 2, DECODER_PHASE_REPEAT = 3 };
@@ -21,7 +22,8 @@ typedef struct {
 } decoder_engine_options;
 
 typedef struct {
-  int32_t abi_version, ft8, cancellation, concurrent_sessions, evidence_capacity;
+  /* supported_modes is a bitmask of DECODER_SUPPORT_* values. */
+  int32_t abi_version, supported_modes, cancellation, concurrent_sessions, evidence_capacity;
 } decoder_engine_capabilities;
 
 /* Option records use fixed-width, space-padded calls and grids. Booleans are 0 or 1.
@@ -81,25 +83,79 @@ typedef struct {
 } decoder_ft8_options;
 
 typedef struct {
+  int32_t utc;
+  int32_t qso_progress;
+  int32_t receive_frequency_hz;
+  int32_t search_low_hz;
+  int32_t search_high_hz;
+  int32_t depth;
+  int32_t cq_only;
+  int32_t contest;
+  char mycall[12];
+  char hiscall[12];
+} decoder_ft4_options;
+
+/* Only the options for mode are read. EARLY is an FT8 phase; FT4 uses
+   NORMAL or REPEAT. Mode support is reported by supported_modes. */
+typedef struct {
   int64_t input_id, analysis_id;
   int32_t attempt_no, mode, phase, source;
   decoder_ft8_options ft8;
+  decoder_ft4_options ft4;
 } decoder_attempt_request;
 
 /* Borrowed read-only mono signed PCM. Only sample_count samples are read.
-   FT8 currently accepts 12000 Hz and 1..180000 samples. */
+   Both modes accept 12000 Hz. FT8 accepts 1..180000 samples;
+   FT4 accepts 1..72576 samples (its analysis window within a 7.5-second period).
+   Short inputs are zero-padded. Release input before changing its identity or mode. */
 typedef struct {
   const int16_t *samples;
   int32_t sample_count, sample_rate_hz;
 } decoder_audio_view;
 
+/* waveform_start_seconds places sample zero of the reference waveform in
+   the identified input, before any engine cropping, and may be negative.
+   It is an estimate, not a record of a subsequent subtraction refinement.
+   frequency_hz is the reference waveform's tone-zero frequency.
+
+   FT8: 79 GFSK symbols, 1920 samples/symbol at 12 kHz, BT=2; the
+   gen_ft8wave template includes its edge ramps within those 79 symbols.
+   FT4: 103 GFSK tones, 576 samples/symbol at 12 kHz, BT=1; the
+   gen_ft4wave template includes an additional leading and trailing ramp
+   interval, totaling 105 symbol intervals. Its start precedes the first
+   synchronization-symbol reference by one symbol (0.048 seconds).
+   Both origins are template sample zero, independent of initial amplitude.
+   Payload bits are canonical message bits, before mode-specific scrambling. */
+typedef struct {
+  int8_t payload77[77], tones[79];
+  int32_t payload_origin, has_tones, has_waveform_start, method;
+  float waveform_start_seconds;
+} decoder_ft8_evidence;
+
+typedef struct {
+  int8_t payload77[77], tones[103];
+  int32_t payload_origin, has_tones, has_waveform_start, method;
+  float waveform_start_seconds;
+} decoder_ft4_evidence;
+
+typedef struct {
+  int8_t symbols[50];
+  int32_t kind, child_index;
+} decoder_superfox_evidence;
+
+/* dt_seconds retains the mode's operator-facing DT convention. Use the
+   evidence's waveform_start_seconds for reconstruction when available.
+   mode and variant select ft8, ft4, or superfox; inactive records are zero.
+   Availability flags and payload_origin govern fields in the active record. */
 typedef struct {
   int64_t input_id, analysis_id;
-  int32_t attempt_no, mode, variant, kind, child_index;
-  int32_t snr_db, ap_type, payload_origin, has_tones, has_start, method;
-  float frequency_hz, dt_seconds, start_seconds, sync, quality;
-  int8_t payload77[77], tones[79], symbols[50];
+  int32_t attempt_no, mode, variant;
+  int32_t snr_db, ap_type;
+  float frequency_hz, dt_seconds, sync, quality;
   char message[38];
+  decoder_ft8_evidence ft8;
+  decoder_ft4_evidence ft4;
+  decoder_superfox_evidence superfox;
 } decoder_observation;
 
 typedef struct {
