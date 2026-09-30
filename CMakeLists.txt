@@ -156,8 +156,7 @@ set (PROJECT_COPYRIGHT "Copyright (C) 2001-2026 by Joe Taylor, K1JT")
 set (PROJECT_HOMEPAGE https://wsjtx.github.io/wsjtx/)
 set (PROJECT_MANUAL wsjtx-main)
 set (PROJECT_ONLINE_MANUAL_URL https://wsjtx.github.io/wsjtx/guide-full.html)
-set (PROJECT_SAMPLES_URL http://downloads.sourceforge.net/project/wsjt/)
-set (PROJECT_SAMPLES_UPLOAD_DEST frs.sourceforge.net:/home/frs/project/wsjt/)
+set (PROJECT_SAMPLES_URL https://wsjtx.github.io/wsjtx/)
 
 # make sure that the default configuration is a RELEASE
 if (NOT CMAKE_BUILD_TYPE)
