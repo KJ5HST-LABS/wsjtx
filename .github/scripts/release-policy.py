@@ -21,6 +21,7 @@ OBJECT_ID_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 MACOS_MODES = ("validation", "distribution")
 WINDOWS_MODES = ("signpath", "unsigned")
 CHANNEL_RANK = {"BETA": 0, "RC": 1, "GA": 2}
+BETA_TAG_PATTERN = "v*-beta*"
 
 
 def classify(version: str) -> dict[str, str]:
@@ -323,16 +324,39 @@ def inspect_public_release_line(
     }
 
 
-def validate_publication_environment(environment: object) -> None:
-    if not isinstance(environment, dict) or environment.get("name") != "public-release":
-        raise ValueError("public-release environment response is malformed")
+def publication_environment(channel: str) -> str:
+    return "beta-release" if channel == "BETA" else "public-release"
+
+
+def validate_publication_environment(
+    environment: object, channel: str = "GA", deployment_policies: object = None
+) -> None:
+    name = publication_environment(channel)
+    if not isinstance(environment, dict) or environment.get("name") != name:
+        raise ValueError(f"{name} environment response is malformed")
     rules = environment.get("protection_rules")
     if not isinstance(rules, list):
-        raise ValueError("public-release environment has no protection_rules list")
+        raise ValueError(f"{name} environment has no protection_rules list")
     reviewer_rules = [
         rule for rule in rules
         if isinstance(rule, dict) and rule.get("type") == "required_reviewers"
     ]
+    if channel == "BETA":
+        if reviewer_rules:
+            raise ValueError("beta-release environment must not require reviewers")
+        if environment.get("deployment_branch_policy") != {
+            "protected_branches": False, "custom_branch_policies": True
+        }:
+            raise ValueError("beta-release environment must restrict deployments to custom deployment patterns")
+        policies = deployment_policies.get("branch_policies") if isinstance(deployment_policies, dict) else None
+        if (
+            not isinstance(policies, list)
+            or len(policies) != 1
+            or not isinstance(policies[0], dict)
+            or (policies[0].get("name"), policies[0].get("type")) != (BETA_TAG_PATTERN, "tag")
+        ):
+            raise ValueError(f"beta-release environment must admit exactly the {BETA_TAG_PATTERN} tag pattern")
+        return
     if len(reviewer_rules) != 1:
         raise ValueError("public-release environment must have one required-reviewers rule")
     rule = reviewer_rules[0]
@@ -629,10 +653,13 @@ def write_manifest(args: argparse.Namespace) -> None:
     for arch, digest in digests.items():
         if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
             raise ValueError(f"Linux {arch} builder digest is not an immutable sha256 digest")
+    beta = classify(args.version)["channel"] == "BETA"
+    if beta and args.macos_mode != "validation":
+        raise ValueError("BETA releases publish the validated unsigned macOS packages")
     files = release_files(root, args.version, args.macos_mode, args.windows_mode)
     replaceable_macos = (
         {f"wsjtx-{args.version}-arm64-macOS.pkg"}
-        if args.macos_mode == "validation"
+        if args.macos_mode == "validation" and not beta
         else set()
     )
     entries = [
@@ -648,7 +675,7 @@ def write_manifest(args: argparse.Namespace) -> None:
         "workflow_run": args.run_id,
         "linux_builders": digests,
         "macos_signing": {
-            "mode": "manual" if args.macos_mode == "validation" else "distribution",
+            "mode": "unsigned" if beta else "manual" if args.macos_mode == "validation" else "distribution",
             "replaceable_assets": sorted(replaceable_macos),
         },
         "windows_signing": {"mode": args.windows_mode},
@@ -682,6 +709,8 @@ def main() -> int:
     promote_parser.add_argument("--expected-refs-digest", required=True)
     environment_parser = subparsers.add_parser("validate-publication-environment")
     environment_parser.add_argument("environment_json")
+    environment_parser.add_argument("--channel", choices=sorted(CHANNEL_RANK), required=True)
+    environment_parser.add_argument("--deployment-policies")
     state_parser = subparsers.add_parser("read-state")
     state_parser.add_argument("--root", default=".")
     validate_parser = subparsers.add_parser("validate-source")
@@ -734,8 +763,18 @@ def main() -> int:
                 args.version, args.sha, args.remote, args.expected_refs_digest
             )))
         elif args.command == "validate-publication-environment":
-            validate_publication_environment(json.loads(Path(args.environment_json).read_text(encoding="utf-8")))
-            print("Validated public-release required-reviewer protection")
+            policies = (
+                json.loads(Path(args.deployment_policies).read_text(encoding="utf-8"))
+                if args.deployment_policies
+                else None
+            )
+            validate_publication_environment(
+                json.loads(Path(args.environment_json).read_text(encoding="utf-8")), args.channel, policies
+            )
+            if args.channel == "BETA":
+                print(f"Validated beta-release: no reviewer, deployments only from {BETA_TAG_PATTERN} tags")
+            else:
+                print("Validated public-release required-reviewer protection")
         elif args.command == "read-state":
             print(json.dumps(read_state(Path(args.root))))
         elif args.command == "validate-source":

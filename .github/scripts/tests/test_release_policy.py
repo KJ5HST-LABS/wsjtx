@@ -679,6 +679,65 @@ class ReleasePolicyTest(unittest.TestCase):
                     "protection_rules": [rule],
                 })
 
+    def test_beta_publication_requires_beta_release_without_reviewers_for_beta_tags_only(self):
+        environment = {
+            "name": "beta-release",
+            "protection_rules": [{"type": "branch_policy"}],
+            "deployment_branch_policy": {"protected_branches": False, "custom_branch_policies": True},
+        }
+        policies = {"total_count": 1, "branch_policies": [{"id": 3, "name": "v*-beta*", "type": "tag"}]}
+        release_policy.validate_publication_environment(environment, "BETA", policies)
+        reviewers = {
+            "type": "required_reviewers",
+            "prevent_self_review": False,
+            "reviewers": [{"type": "Team", "reviewer": {"id": 7}}],
+        }
+        protected_only = {"protected_branches": True, "custom_branch_policies": False}
+        only_beta_tags = "exactly the v\\*-beta\\* tag pattern"
+        for broken, broken_policies, message in (
+            ({**environment, "name": "public-release"}, policies, "beta-release environment response"),
+            ({**environment, "protection_rules": [reviewers]}, policies, "must not require reviewers"),
+            ({**environment, "deployment_branch_policy": None}, policies, "custom deployment patterns"),
+            ({**environment, "deployment_branch_policy": protected_only}, policies, "custom deployment patterns"),
+            (environment, None, only_beta_tags),
+            (environment, {"branch_policies": []}, only_beta_tags),
+            (environment, {"branch_policies": [{"name": "v*", "type": "tag"}]}, only_beta_tags),
+            (environment, {"branch_policies": [{"name": "v*-beta*", "type": "branch"}]}, only_beta_tags),
+            (
+                environment,
+                {"branch_policies": [{"name": "v*-beta*", "type": "tag"}, {"name": "v*-rc*", "type": "tag"}]},
+                only_beta_tags,
+            ),
+        ):
+            with self.subTest(message=message, environment=broken, policies=broken_policies):
+                with self.assertRaisesRegex(ValueError, message):
+                    release_policy.validate_publication_environment(broken, "BETA", broken_policies)
+
+    def test_rc_and_ga_publication_keep_the_public_release_reviewer_rule(self):
+        public = {
+            "name": "public-release",
+            "protection_rules": [{
+                "type": "required_reviewers",
+                "prevent_self_review": False,
+                "reviewers": [{"type": "Team", "reviewer": {"id": 7}}],
+            }],
+        }
+        beta = {
+            "name": "beta-release",
+            "protection_rules": [],
+            "deployment_branch_policy": {"protected_branches": False, "custom_branch_policies": True},
+        }
+        policies = {"branch_policies": [{"name": "v*-beta*", "type": "tag"}]}
+        for channel in ("RC", "GA"):
+            with self.subTest(channel=channel):
+                release_policy.validate_publication_environment(public, channel)
+                with self.assertRaisesRegex(ValueError, "public-release environment response"):
+                    release_policy.validate_publication_environment(beta, channel, policies)
+                with self.assertRaisesRegex(ValueError, "one required-reviewers rule"):
+                    release_policy.validate_publication_environment(
+                        {"name": "public-release", "protection_rules": []}, channel
+                    )
+
     def test_classifies_ga_beta_and_rc(self):
         ga = release_policy.classify("3.2.0")
         self.assertEqual((ga["channel"], ga["prerelease_number"]), ("GA", ""))
@@ -1046,6 +1105,56 @@ class ReleasePolicyTest(unittest.TestCase):
             (armhf / f"{armhf.name}.tar.gz").unlink()
             with self.assertRaisesRegex(ValueError, "linux-armhf-tools must contain exactly one .tar.gz"):
                 release_policy.find_asset_files(root, version, False)
+
+    def test_beta_manifest_hashes_unsigned_macos_packages_as_immutable_assets(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            version = "3.3.0-beta2"
+            for name in release_policy.public_expected_assets(version, "validation", "unsigned"):
+                target = root / name
+                target.mkdir()
+                if name.endswith("-tools"):
+                    filename = f"{name}.tar.gz"
+                elif "macOS" in name:
+                    filename = name.replace("-unsigned", "")
+                elif "linux" in name:
+                    filename = f"{name}.AppImage"
+                else:
+                    filename = f"wsjtx-{version}-win64.exe"
+                (target / filename).write_bytes(name.encode())
+            for arch in ("x86_64", "aarch64", "armhf"):
+                for package_type in ("deb", "rpm"):
+                    target = root / f"wsjtx-{version}-linux-{arch}-{package_type}"
+                    target.mkdir()
+                    (target / f"wsjtx-{arch}.{package_type}").write_bytes(arch.encode())
+            (root / f"wsjtx-{version}-src.tar.gz").write_bytes(b"source")
+            args = type("Args", (), {
+                "artifacts": str(root), "version": version, "repository": "WSJTX/wsjtx",
+                "commit": "a" * 40, "run_id": "123",
+                "linux_x86_64_digest": "sha256:" + "1" * 64,
+                "linux_aarch64_digest": "sha256:" + "2" * 64,
+                "linux_armhf_cross_digest": "sha256:" + "3" * 64,
+                "linux_armhf_digest": "sha256:" + "4" * 64,
+                "macos_mode": "validation", "windows_mode": "unsigned",
+            })()
+
+            release_policy.write_manifest(args)
+
+            manifest = json.loads((root / "release-manifest.json").read_text())
+            beta_assets = {f"wsjtx-{version}-arm64-macOS.pkg"}
+            beta_assets |= {f"{name}.tar.gz" for name in release_policy.tools_archives(version)}
+            immutable_names = {entry["name"] for entry in manifest["assets"]}
+            checksum_names = {
+                line.split("  ", 1)[1]
+                for line in (root / "SHA256SUMS").read_text().splitlines()
+            }
+            self.assertEqual(manifest["macos_signing"], {"mode": "unsigned", "replaceable_assets": []})
+            self.assertTrue(beta_assets <= immutable_names)
+            self.assertTrue(beta_assets <= checksum_names)
+
+            args.macos_mode = "distribution"
+            with self.assertRaisesRegex(ValueError, "BETA releases publish the validated unsigned macOS packages"):
+                release_policy.write_manifest(args)
 
     def test_signing_reports_bind_hashes_and_source(self):
         with tempfile.TemporaryDirectory() as directory:

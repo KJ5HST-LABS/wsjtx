@@ -388,7 +388,10 @@ git() {
             self.assertNotIn("resolve-linux-ci-image-tag.py", workflow)
         self.assertNotIn("publish-linux-ci-images.yml", public)
         self.assertNotIn("packages: write", public)
-        self.assertIn("environment: public-release", public)
+        self.assertIn(
+            "environment: ${{ needs.prepare.outputs.release_channel == 'BETA' && 'beta-release' || 'public-release' }}",
+            public,
+        )
         self.assertIn("linux_images: $linux_images", candidate)
         self.assertIn("release-linux-images.py provenance release-linux-images.json", candidate)
         self.assertIn("release-linux-images.py verify-provenance", promotion)

@@ -1,4 +1,5 @@
 name: Prepare Release Dependencies
+run-name: Prepare Release Dependencies ${{ inputs.source_branch }} ${{ inputs.generation }}
 
 on:
   workflow_dispatch:
