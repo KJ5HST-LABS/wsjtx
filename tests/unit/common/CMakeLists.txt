@@ -127,6 +127,17 @@ target_link_libraries (test_round_robin_selection Qt5::Test Qt5::Widgets)
 add_test (NAME test_round_robin_selection COMMAND test_round_robin_selection)
 set_tests_properties (test_round_robin_selection PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+add_executable (test_log_window_deletion
+  test_log_window_deletion.cpp
+  ${CMAKE_SOURCE_DIR}/Logger.cpp
+)
+target_link_libraries (test_log_window_deletion wsjt_qt wsjt_cxx wsjt_fort_common
+  Boost::log_setup Qt5::Test Qt5::Widgets Qt5::Sql)
+add_test (NAME test_log_window_deletion COMMAND test_log_window_deletion)
+set_tests_properties (test_log_window_deletion PROPERTIES
+  ENVIRONMENT "QT_QPA_PLATFORM=offscreen"
+  TIMEOUT 60)
+
 add_executable (test_rig_frequency_change_policy
   test_rig_frequency_change_policy.cpp
 )
