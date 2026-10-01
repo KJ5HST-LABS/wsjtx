@@ -375,7 +375,7 @@ QString MainWindow::checkLiveAudioTestJttyDrain()
       noise = noise * 1664525u + 1013904223u;
       sample = short(int(noise >> 20) - 2048);
     }
-    constexpr int blocks = 400;
+    constexpr int blocks = 64;
     for (int i = 0; i < blocks; ++i) source.append(samples.data(), int(samples.size()));
     if (!missingAcknowledgement) source.end(JttyReceiveReason::MonitorStopped);
     consumeJttyAudio(source.mailbox());

@@ -915,6 +915,7 @@ void LiveAudioTestController::maybeFinishJtty ()
     return;
   }
   m_jttyCheckStage = JttyCheckStage::Review;
+  std::cerr << "WSJT-X JTTY live audio test: stage=Review remaining_ms=" << m_timeout.remainingTime () << std::endl;
   m_jttyCheckElapsed.start ();
   m_jttyStageTimer.start ();
   decode->click ();
@@ -922,6 +923,7 @@ void LiveAudioTestController::maybeFinishJtty ()
 
 void LiveAudioTestController::checkJttyReviewAndStatus ()
 {
+  if (m_jttyCheckStage == JttyCheckStage::Drain) return;
   auto const progress = m_window->statusBar ()->findChildren<QProgressBar *> ();
   if (progress.size () != 1) {
     fail (tr ("The status progress control was not found."));
@@ -960,6 +962,7 @@ void LiveAudioTestController::checkJttyReviewAndStatus ()
       return;
     }
     m_jttyCheckStage = JttyCheckStage::Stopped;
+    std::cerr << "WSJT-X JTTY live audio test: stage=Stopped remaining_ms=" << m_timeout.remainingTime () << std::endl;
     m_jttyCheckElapsed.restart ();
     m_jttyStageTimer.start ();
     if (monitor->isChecked ()) monitor->click ();
@@ -986,6 +989,7 @@ void LiveAudioTestController::checkJttyReviewAndStatus ()
     }
     if (saved.isEmpty ()) return;
     m_jttyCheckStage = JttyCheckStage::Wav;
+    std::cerr << "WSJT-X JTTY live audio test: stage=Wav remaining_ms=" << m_timeout.remainingTime () << std::endl;
     m_jttyStageTimer.start ();
     if (!m_window->startLiveAudioTestJttyWav (saved))
       fail (tr ("Unable to decode the isolated JTTY recording."));
@@ -1044,7 +1048,10 @@ void LiveAudioTestController::checkJttyReviewAndStatus ()
       fail (tr ("Cannot prepare the isolated fixture for the timed-mode UI check."));
       return;
     }
+    m_jttyCheckStage = JttyCheckStage::Drain;
+    std::cerr << "WSJT-X JTTY live audio test: stage=Drain remaining_ms=" << m_timeout.remainingTime () << std::endl;
     auto const drainError = m_window->checkLiveAudioTestJttyDrain ();
+    if (m_finished) return;
     if (!drainError.isEmpty ()) { fail (drainError); return; }
     auto * decode = m_window->findChild<QAbstractButton *> ("DecodeButton");
     if (!decode || !decode->isEnabled ()) {
@@ -1057,6 +1064,7 @@ void LiveAudioTestController::checkJttyReviewAndStatus ()
       return;
     }
     m_jttyCheckStage = JttyCheckStage::TimedMode;
+    std::cerr << "WSJT-X JTTY live audio test: stage=TimedMode remaining_ms=" << m_timeout.remainingTime () << std::endl;
     m_jttyCheckElapsed.restart ();
     m_jttyStageTimer.start ();
     ft8->trigger ();
@@ -1104,9 +1112,9 @@ void LiveAudioTestController::fail (QString const& reason)
   m_jttyPollTimer.stop ();
   m_jttyStageTimer.stop ();
   std::cerr << "WSJT-X live audio test failed: " << reason.toStdString ()
-            << " expected=" << m_expected.size ()
-            << " observed=" << m_observed.size ()
-            << " displayed=" << m_displayed.size ()
+            << " expected=" << (Mode::Jtty == m_mode ? m_expectedJtty.size () : m_expected.size ())
+            << " observed=" << (Mode::Jtty == m_mode ? m_jttyAllFinals.size () : m_observed.size ())
+            << " displayed=" << (Mode::Jtty == m_mode ? m_jttyQsoFinals.size () : m_displayed.size ())
             << " frames=" << m_emittedFrames
             << " decode_cycles=" << m_completedCycles << std::endl;
   if (Mode::Ft8 == m_mode)
@@ -1140,6 +1148,18 @@ void LiveAudioTestController::fail (QString const& reason)
             << multithreadedRaw.join (" | ").toStdString () << std::endl;
   if (Mode::Jtty == m_mode && m_jttyAllDecodes && m_jttyQsoFrequency)
     {
+      char const* stage = "Live";
+      switch (m_jttyCheckStage) {
+      case JttyCheckStage::Live: break;
+      case JttyCheckStage::Review: stage = "Review"; break;
+      case JttyCheckStage::Stopped: stage = "Stopped"; break;
+      case JttyCheckStage::Wav: stage = "Wav"; break;
+      case JttyCheckStage::Drain: stage = "Drain"; break;
+      case JttyCheckStage::TimedMode: stage = "TimedMode"; break;
+      }
+      std::cerr << "WSJT-X JTTY live audio test: stage=" << stage
+                << " busy=" << m_window->decoderBusy ()
+                << " fixture_finished=" << m_fixtureFinished << std::endl;
       std::cerr << "WSJT-X JTTY live audio test: All Decodes text: "
                 << m_jttyAllDecodes->toPlainText ().simplified ().toStdString ()
                 << std::endl;
