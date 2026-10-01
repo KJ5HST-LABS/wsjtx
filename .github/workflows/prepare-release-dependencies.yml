@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       source_branch:
-        description: Protected develop or release/X.Y branch whose recipes to validate
+        description: Develop or release/X.Y branch whose recipes to validate
         required: true
         type: string
       generation:
@@ -21,7 +21,7 @@ concurrency:
 
 jobs:
   prepare:
-    if: github.repository == 'WSJTX/wsjtx-internal' && github.ref == 'refs/heads/develop' && github.ref_protected
+    if: github.repository == 'WSJTX/wsjtx-internal' && github.ref == 'refs/heads/develop'
     runs-on: ubuntu-24.04
     timeout-minutes: 60
     permissions:
@@ -31,7 +31,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Resolve protected source branch
+      - name: Resolve source branch to an exact commit
         id: source
         env:
           GH_TOKEN: ${{ github.token }}
@@ -43,10 +43,6 @@ jobs:
             exit 1
           fi
           branch="$(gh api "repos/${GITHUB_REPOSITORY}/branches/${SOURCE_BRANCH//\//%2F}")"
-          if [ "$(jq -r '.protected' <<< "$branch")" != true ]; then
-            echo "::error::The source branch must be protected"
-            exit 1
-          fi
           sha="$(jq -r '.commit.sha' <<< "$branch")"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
