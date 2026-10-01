@@ -172,21 +172,19 @@ contains
        endif
     enddo
 
-    ! Upper half of filter, with wrap-around and bounds check
+    ! Upper half of filter, wrapping negative-frequency bins
     do i = nh + 1, nfft2
        j = i0 + i - 1 - nfft2
        if (j .lt. 1) j = j + nfft1
 
-       if (j < 1 .or. j > size(ca)) then
-          write (dbg_unit, *) 'FILBIG OOB: i=', i, ' j=', j, ' nh=', nh, &
-             ' nfft1=', nfft1, ' nfft2=', nfft2, ' i0=', i0
-          flush(dbg_unit)
-          stop 'FILBIG index OOB'
-       end if
-
-       filtval = real(cfilt_buf(i)) - base
-       c4a_buf(i) = filtval*ca(j)
-       if (xpol) c4b_buf(i) = filtval*cb(j)
+       if (j .ge. 1 .and. j .le. nfft1) then
+          filtval = real(cfilt_buf(i)) - base
+          c4a_buf(i) = filtval*ca(j)
+          if (xpol) c4b_buf(i) = filtval*cb(j)
+       else
+          c4a_buf(i) = 0.0
+          if (xpol) c4b_buf(i) = 0.0
+       endif
     enddo
 
   ! Do the short reverse transform, to go back to time domain.

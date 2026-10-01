@@ -243,6 +243,16 @@ if (WSJT_ENABLE_TESTS)
   add_test (NAME test_map65_jt65_handoff COMMAND test_map65_jt65_handoff)
   set_tests_properties (test_map65_jt65_handoff PROPERTIES TIMEOUT 180)
 
+  add_executable (test_map65_filbig_boundary
+    ${CMAKE_SOURCE_DIR}/tests/unit/map65/test_map65_filbig_boundary.f90)
+  target_include_directories (test_map65_filbig_boundary PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+  target_link_libraries (test_map65_filbig_boundary PRIVATE m65impl)
+  foreach (rate IN ITEMS 96000 192000)
+    add_test (NAME test_map65_filbig_boundary_${rate} COMMAND test_map65_filbig_boundary ${rate})
+    set_tests_properties (test_map65_filbig_boundary_${rate} PROPERTIES
+      PASS_REGULAR_EXPRESSION "MAP65 filter boundary tests passed" TIMEOUT 30)
+  endforeach ()
+
   add_executable (test_q65_waveform_generator
     ${CMAKE_SOURCE_DIR}/tests/unit/q65/test_q65_waveform_generator.f90)
   target_include_directories (test_q65_waveform_generator PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
