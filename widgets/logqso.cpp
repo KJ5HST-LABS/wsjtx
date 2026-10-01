@@ -83,7 +83,7 @@ namespace
 
 LogQSO::LogQSO(QString const& programTitle, QSettings * settings
                , Configuration const * config, LogBook * log, QWidget *parent)
-  : QDialog {parent, Qt::WindowStaysOnTopHint | Qt::WindowTitleHint | Qt::WindowSystemMenuHint}
+  : QDialog {parent, Qt::WindowTitleHint | Qt::WindowSystemMenuHint}
   , ui(new Ui::LogQSO)
   , m_settings (settings)
   , m_config {config}
