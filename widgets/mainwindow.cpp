@@ -12635,8 +12635,8 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
         if (s.swr()>150) band_hopping_label.setStyleSheet ("QLabel{color: #000000; background-color: #ffff00}");
         if (s.swr()>200) band_hopping_label.setStyleSheet ("QLabel{color: #ffffff; background-color: #ff0000}");
         if (s.swr()>250 && m_config.check_SWR()) {
+          on_stopTxButton_clicked();
           if (!s_alreadyShowingSWRAlert) {     // avoid recursion
-            on_stopTxButton_clicked();
             s_alreadyShowingSWRAlert = true;
             MessageBox::warning_message (this, tr ("SWR > 2.5 !!!\n\n"
                                                    "Transmission was stopped\n\n"
