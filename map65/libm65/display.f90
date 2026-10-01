@@ -20,11 +20,13 @@ subroutine display(nkeep, ftol, nutc)
   integer, save   :: indx(MAXLINES), group_order(MAXLINES), call_order(MAXLINES)
   character(len=83), save :: line(MAXLINES)
   character(len=63)  :: out, out0
-  character(len=6)   :: callsign, seen_calls(MAXLINES)
+  ! 12 characters hold the longest compound calls (e.g. ER/EA8DBM, up to 11)
+  ! plus a trailing space.
+  character(len=12)  :: callsign, seen_calls(MAXLINES)
   ! Then the record's mode (# JT65, : Q65) and UTC (hhmm), so the GUI can
   ! color the waterfall callsign label and age it from the call's latest
   ! decode rather than from each redisplay.
-  character(len=22)  :: freqcall(MAXLINES)
+  character(len=28)  :: freqcall(MAXLINES)
 
   real, save      :: freqkHz(MAXLINES), call_freqkHz(MAXLINES)
   type(message_record), allocatable :: records(:)

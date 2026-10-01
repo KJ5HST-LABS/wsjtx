@@ -815,7 +815,7 @@ if (t.indexOf("<QuickDecodeDone>") >= 0) {
                 }
             }
             static const QRegularExpression call_re(
-                "^[A-Z0-9]{1,3}[0-9][A-Z0-9]{0,3}[A-Z](/[A-Z0-9]+)?$");
+                "^([A-Z0-9]{1,4}/)?[A-Z0-9]{1,3}[0-9][A-Z0-9]{0,3}[A-Z](/[A-Z0-9]+)?$");
             if (freq_khz > 0 && !sender.isEmpty()
                 && call_re.match(sender.toUpper()).hasMatch()) {
                 m_wide_graph_window->addDecodeLabel(freq_khz, sender, is_jt65);
@@ -833,7 +833,7 @@ if (t.indexOf("<QuickDecodeDone>") >= 0) {
     // --- "&" bandmap lines ---
     // N6NU 2026-05-24: format widened to include the 5-char ndf from
     // line3(k)(9:13). New layout:
-    //   "&" + I3 kHz + I5 ndf + " " + A6 call + A2 age + A1 mode + A4 UTC
+    //   "&" + I3 kHz + I5 ndf + " " + A12 call + A2 age + A1 mode + A4 UTC
     // where mode is '#' (JT65) or ':' (Q65) and UTC (hhmm) is the call's
     // latest decode; older builds omit both.
     // Old layout (pre-260524, used by stock map65):
@@ -866,17 +866,17 @@ if (t.indexOf("<QuickDecodeDone>") >= 0) {
             // freq_reliable=true. Old format callers still pass
             // freq_reliable=false (integer kHz only).
             if (m_wide_graph_window) {
-                const QString mode = ndf_ok ? t.mid(call_start + 8, 1) : QString();
+                const QString mode = ndf_ok ? t.mid(call_start + 14, 1) : QString();
                 const bool mode_known = (mode == "#" || mode == ":");
                 bool utc_ok = false;
-                const int utc = mode_known ? t.mid(call_start + 9, 4).toInt(&utc_ok) : -1;
+                const int utc = mode_known ? t.mid(call_start + 15, 4).toInt(&utc_ok) : -1;
                 bool ok_khz = false;
                 const int nkHz = t.mid(1, 3).trimmed().toInt(&ok_khz);
                 const double freq_khz = ndf_ok
                     ? (nkHz + ndf_hz / 1000.0)
                     : double(nkHz);
                 static const QRegularExpression call_re(
-                    "^[A-Z0-9]{1,3}[0-9][A-Z0-9]{0,3}[A-Z](/[A-Z0-9]+)?$");
+                    "^([A-Z0-9]{1,4}/)?[A-Z0-9]{1,3}[0-9][A-Z0-9]{0,3}[A-Z](/[A-Z0-9]+)?$");
                 if (ok_khz && freq_khz > 0
                     && call_re.match(callsign.toUpper()).hasMatch()) {
                     m_wide_graph_window->addDecodeLabel(
