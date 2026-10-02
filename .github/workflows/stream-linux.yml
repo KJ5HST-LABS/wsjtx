@@ -6,12 +6,14 @@
 # build's layout). The smoke test runs the bundle with no LD_LIBRARY_PATH and requires `--stream` in its help.
 name: Stream bundles (Linux x86_64)
 
+# Runs on a push to this branch (a workflow_dispatch would have to live on the default branch, which is the
+# sandbox's mirror); SOURCE_REF names what to build.
 on:
-  workflow_dispatch:
-    inputs:
-      source_ref:
-        description: the source branch or tag to build
-        default: stream/v3.2.0-rc1-517
+  push:
+    branches: [ci/stream-bundles]
+
+env:
+  SOURCE_REF: stream/v3.2.0-rc1-517
 
 jobs:
   linux:
@@ -20,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.source_ref }}
+          ref: ${{ env.SOURCE_REF }}
           path: src
 
       - name: Packages
