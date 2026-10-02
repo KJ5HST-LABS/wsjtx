@@ -224,7 +224,7 @@ jobs:
               echo "package_root=ghcr.io/wsjtx/wsjtx"
               echo "normal_cache_from=type=gha,scope=public-release-linux-noble"
               echo "arm64_cache_from=type=gha,scope=public-release-linux-arm64-bookworm"
-              echo "armhf_cross_cache_from=type=gha,scope=public-release-linux-armhf-cross-bookworm"
+              echo "armhf_cross_cache_from=type=registry,ref=ghcr.io/wsjtx/wsjtx/linux-armhf-cross-bookworm:buildcache"
               echo "armhf_cache_from=type=gha,scope=public-release-linux-armv7-bookworm"
             else
               echo "build_tag=build-${date_tag}-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
@@ -232,7 +232,7 @@ jobs:
               echo "package_root=ghcr.io/wsjtx/wsjtx-internal"
               echo "normal_cache_from=type=registry,ref=ghcr.io/wsjtx/wsjtx-internal/linux-noble:stable"
               echo "arm64_cache_from=type=registry,ref=ghcr.io/wsjtx/wsjtx-internal/linux-arm64-bookworm:stable"
-              echo "armhf_cross_cache_from=type=registry,ref=ghcr.io/wsjtx/wsjtx-internal/linux-armhf-cross-bookworm:stable"
+              echo "armhf_cross_cache_from=type=registry,ref=ghcr.io/wsjtx/wsjtx-internal/linux-armhf-cross-bookworm:buildcache"
               echo "armhf_cache_from=type=registry,ref=ghcr.io/wsjtx/wsjtx-internal/linux-armv7-bookworm:stable"
             fi
             echo "created=$created"
@@ -411,7 +411,7 @@ jobs:
             IMAGE_RECIPE_SHA256=${{ needs.metadata.outputs.armhf_cross_recipe }}
             IMAGE_REFRESH_EPOCH=${{ needs.metadata.outputs.refresh_epoch }}
           cache-from: ${{ needs.metadata.outputs.armhf_cross_cache_from }}
-          cache-to: type=inline
+          cache-to: type=registry,ref=${{ needs.metadata.outputs.package_root }}/linux-armhf-cross-bookworm:buildcache,mode=max,oci-mediatypes=true,image-manifest=true
 
   build-armhf-runtime:
     if: >-

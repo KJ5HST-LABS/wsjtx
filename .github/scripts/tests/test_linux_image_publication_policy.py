@@ -27,6 +27,20 @@ def job(name: str, workflow: str = PUBLISH) -> str:
 
 
 class LinuxImagePublicationPolicyTests(unittest.TestCase):
+    def test_armhf_cross_cache_import_and_export_share_registry_destination(self):
+        metadata = job("metadata")
+        for package_root in ("ghcr.io/wsjtx/wsjtx", "ghcr.io/wsjtx/wsjtx-internal"):
+            self.assertIn(
+                f"armhf_cross_cache_from=type=registry,ref={package_root}/linux-armhf-cross-bookworm:buildcache",
+                metadata,
+            )
+        cross = job("build-armhf-cross")
+        self.assertIn("cache-from: ${{ needs.metadata.outputs.armhf_cross_cache_from }}", cross)
+        self.assertIn(
+            "cache-to: type=registry,ref=${{ needs.metadata.outputs.package_root }}/linux-armhf-cross-bookworm:buildcache,mode=max",
+            cross,
+        )
+
     def select_warmers(self, event, *, target="", schedule="", paths=()):
         selector = re.search(
             r"        run: \|\n(?P<body>.*?)(?=^  refresh-linux-images:)",

@@ -33,6 +33,7 @@ linux_ci_image_inputs() {
       printf '%s\n' \
         .github/images/linux-ci/Dockerfile.armhf-cross \
         .github/images/linux-ci/armhf-cross-toolchain.config \
+        .github/scripts/armhf-toolchain-config.sh \
         .github/scripts/armhf-ci-image-config.sh \
         .github/scripts/build-armhf-toolchain-smoke.sh \
         .github/scripts/build-hamlib-armhf-cross.sh \
@@ -49,6 +50,7 @@ linux_ci_image_inputs() {
       printf '%s\n' \
         .github/images/linux-ci/Dockerfile.armhf-runtime \
         .github/images/linux-ci/install-armhf-runtime-packages.sh \
+        .github/scripts/armhf-toolchain-config.sh \
         .github/scripts/armhf-ci-image-config.sh \
         .github/scripts/linux-ci-image-config.sh \
         .github/scripts/linux-ci-image-fingerprint.sh \

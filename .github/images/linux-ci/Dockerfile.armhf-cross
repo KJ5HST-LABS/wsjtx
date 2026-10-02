@@ -1,4 +1,60 @@
-FROM debian:bookworm
+FROM debian:bookworm@sha256:704583dbf243593da87cf949fc0543ffeca24a28d36c2760dc9545410cb8ed02 AS toolchain
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive
+
+COPY .github/scripts/run-apt-get.sh /usr/local/bin/run-apt-get
+COPY .github/scripts/armhf-toolchain-config.sh /usr/local/share/wsjtx-ci/
+RUN set -eux; \
+    . /usr/local/share/wsjtx-ci/armhf-toolchain-config.sh; \
+    test -n "$ARMHF_TOOLCHAIN_REBUILD_REVISION"; \
+    chmod +x /usr/local/bin/run-apt-get; \
+    run-apt-get update; \
+    run-apt-get install -y --no-install-recommends \
+      autoconf automake bison build-essential ca-certificates curl file flex \
+      gawk gperf help2man libncurses-dev libtool libtool-bin patch pkg-config python3 \
+      rsync texinfo unzip wget xz-utils; \
+    run-apt-get clean; \
+    rm -rf /var/lib/apt/lists/*
+
+COPY .github/images/linux-ci/armhf-cross-toolchain.config \
+     /usr/local/share/wsjtx-ci/armhf-cross-toolchain.config
+
+RUN set -eux; \
+    . /usr/local/share/wsjtx-ci/armhf-toolchain-config.sh; \
+    curl --fail --show-error --silent --location --retry 5 \
+      -o /tmp/crosstool-ng.tar.xz "$ARMHF_CROSSTOOL_NG_URL"; \
+    echo "$ARMHF_CROSSTOOL_NG_SHA256  /tmp/crosstool-ng.tar.xz" | sha256sum -c -; \
+    mkdir /tmp/crosstool-ng; \
+    tar -xf /tmp/crosstool-ng.tar.xz -C /tmp/crosstool-ng --strip-components=1; \
+    cd /tmp/crosstool-ng; \
+    ./configure --prefix=/usr/local; \
+    make -j"$(nproc)"; \
+    make install; \
+    cd /; \
+    rm -rf /tmp/crosstool-ng /tmp/crosstool-ng.tar.xz; \
+    useradd --create-home --shell /bin/bash wsjtx; \
+    mkdir -p /var/cache/wsjtx-ctng /opt/wsjtx; \
+    chown -R wsjtx:wsjtx /var/cache/wsjtx-ctng /opt/wsjtx
+
+USER wsjtx
+RUN --mount=type=cache,id=wsjtx-armhf-ctng-downloads,target=/var/cache/wsjtx-ctng,uid=1000,gid=1000 \
+    set -eux; \
+    build_dir=/tmp/wsjtx-ctng-build; \
+    mkdir "$build_dir"; \
+    cd "$build_dir"; \
+    cp /usr/local/share/wsjtx-ci/armhf-cross-toolchain.config .config; \
+    ct-ng olddefconfig; \
+    # crosstool-NG prints only a summary on failure; expose the detailed compiler \
+    # tail so hosted image failures can be diagnosed without reproducing locally. \
+    if ! ct-ng build; then \
+      tail -n 300 build.log >&2; \
+      exit 1; \
+    fi; \
+    cd /; \
+    rm -rf "$build_dir"
+
+FROM debian:bookworm AS cross_builder
 
 ARG IMAGE_REFRESH_EPOCH
 
@@ -18,45 +74,12 @@ RUN chmod +x /usr/local/bin/run-apt-get \
     && run-apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
+COPY --from=toolchain /opt/wsjtx/armhf-toolchain /opt/wsjtx/armhf-toolchain
+
 COPY .github/scripts/linux-ci-image-config.sh \
+     .github/scripts/armhf-toolchain-config.sh \
      .github/scripts/armhf-ci-image-config.sh \
      /usr/local/share/wsjtx-ci/
-COPY .github/images/linux-ci/armhf-cross-toolchain.config \
-     /usr/local/share/wsjtx-ci/armhf-cross-toolchain.config
-
-RUN set -eux; \
-    . /usr/local/share/wsjtx-ci/armhf-ci-image-config.sh; \
-    curl --fail --show-error --silent --location --retry 5 \
-      -o /tmp/crosstool-ng.tar.xz "$ARMHF_CROSSTOOL_NG_URL"; \
-    echo "$ARMHF_CROSSTOOL_NG_SHA256  /tmp/crosstool-ng.tar.xz" | sha256sum -c -; \
-    mkdir /tmp/crosstool-ng; \
-    tar -xf /tmp/crosstool-ng.tar.xz -C /tmp/crosstool-ng --strip-components=1; \
-    cd /tmp/crosstool-ng; \
-    ./configure --prefix=/usr/local; \
-    make -j"$(nproc)"; \
-    make install; \
-    cd /; \
-    rm -rf /tmp/crosstool-ng /tmp/crosstool-ng.tar.xz; \
-    useradd --create-home --shell /bin/bash wsjtx; \
-    mkdir -p /tmp/wsjtx-ctng-build /var/cache/wsjtx-ctng /opt/wsjtx; \
-    chown -R wsjtx:wsjtx /tmp/wsjtx-ctng-build /var/cache/wsjtx-ctng /opt/wsjtx
-
-ARG IMAGE_RECIPE_SHA256
-USER wsjtx
-RUN --mount=type=cache,id=wsjtx-armhf-ctng-downloads,target=/var/cache/wsjtx-ctng,uid=1000,gid=1000 \
-    --mount=type=cache,id=wsjtx-armhf-ctng-build-${IMAGE_RECIPE_SHA256},target=/tmp/wsjtx-ctng-build,uid=1000,gid=1000 \
-    set -eux; \
-    cd /tmp/wsjtx-ctng-build; \
-    cp /usr/local/share/wsjtx-ci/armhf-cross-toolchain.config .config; \
-    ct-ng olddefconfig; \
-    # crosstool-NG prints only a summary on failure; expose the detailed compiler \
-    # tail so hosted image failures can be diagnosed without reproducing locally. \
-    if ! ct-ng build; then \
-      tail -n 300 build.log >&2; \
-      exit 1; \
-    fi
-
-USER root
 COPY .github/scripts/linux-ccache-compiler-signature.sh \
      .github/scripts/build-hamlib-armhf-cross.sh \
      .github/scripts/build-armhf-toolchain-smoke.sh \
@@ -99,11 +122,12 @@ RUN set -eux; \
     test "$("$ARMHF_TOOLCHAIN_PREFIX/bin/$ARMHF_TARGET_TRIPLET-gcc" -print-file-name=libquadmath.so.0)" = libquadmath.so.0; \
     /usr/local/share/wsjtx-ci/build-armhf-toolchain-smoke.sh \
       "$ARMHF_TOOLCHAIN_PREFIX" "$ARMHF_SYSROOT" /opt/wsjtx-ci/toolchain-smoke; \
-    rm -rf /tmp/wsjtx-hamlib-build /home/wsjtx
+    rm -rf /tmp/wsjtx-hamlib-build
 
 ARG IMAGE_CREATED
 ARG IMAGE_GENERATION=local
 ARG IMAGE_REVISION
+ARG IMAGE_RECIPE_SHA256
 LABEL org.opencontainers.image.created="${IMAGE_CREATED}" \
       org.opencontainers.image.revision="${IMAGE_REVISION}" \
       org.opencontainers.image.source="https://github.com/WSJTX/wsjtx-internal" \
