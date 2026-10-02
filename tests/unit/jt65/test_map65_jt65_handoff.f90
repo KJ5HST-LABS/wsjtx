@@ -12,18 +12,26 @@ program test_map65_jt65_handoff
   use npar_ptrs_mod, only: nsmax_active
   implicit none
 
-  real(real32), allocatable :: dd(:,:)
+  real(real32), allocatable :: dd(:,:), mode_b_wave(:,:)
   real(real64), parameter :: map65_base_frequency = 118.0_real64 * 11025.0_real64 / 1024.0_real64
 
   allocate(dd(4, nsmax_active))
+  allocate(mode_b_wave(2, nsmax_active))
+  call make_map65_wave(mode_b_wave, standard_tones, 2, map65_base_frequency)
+  dd(1:2,:) = mode_b_wave
   call test_mono_filter_output(dd)
   call test_afc_zero_signal()
   call test_demodulation_bins()
-  call test_mode(dd, standard_tones, 1, 1, 'JT65A MAP65 handoff')
-  call test_mode(dd, standard_tones, 2, 1, 'JT65B MAP65 handoff')
-  call test_mode(dd, standard_tones, 4, 1, 'JT65C MAP65 handoff')
-  call test_mode(dd, ooo_tones, 1, -1, 'JT65A OOO MAP65 handoff')
-  call test_mode(dd, standard_tones, 2, 1, 'JT65B xpol MAP65 handoff', .true.)
+  call make_map65_wave(dd, standard_tones, 1, map65_base_frequency)
+  call test_mode(dd, 1, 1, 'JT65A MAP65 handoff')
+  dd(1:2,:) = mode_b_wave
+  call test_mode(dd, 2, 1, 'JT65B MAP65 handoff')
+  call make_map65_wave(dd, standard_tones, 4, map65_base_frequency)
+  call test_mode(dd, 4, 1, 'JT65C MAP65 handoff')
+  call make_map65_wave(dd, ooo_tones, 1, map65_base_frequency)
+  call test_mode(dd, 1, -1, 'JT65A OOO MAP65 handoff')
+  dd(1:2,:) = mode_b_wave
+  call test_mode(dd, 2, 1, 'JT65B xpol MAP65 handoff', .true.)
   print '(a)', 'MAP65 JT65 handoff tests passed'
 
 contains
@@ -71,7 +79,6 @@ contains
     logical :: invalid_raised
 
     allocate(cx(nsmax_active/64), cy(nsmax_active/64))
-    call make_map65_wave(waveform, standard_tones, 2, map65_base_frequency)
     waveform(3:4,:) = ieee_value(0.0_real32, ieee_quiet_nan)
     newdat = 1
     call ieee_set_flag(ieee_invalid, .false.)
@@ -110,9 +117,8 @@ contains
          'flat AFC objective has explicit detection defaults')
   end subroutine test_afc_zero_signal
 
-  subroutine test_mode(waveform, tones, mode65, polarity, description, cross_polarized)
+  subroutine test_mode(waveform, mode65, polarity, description, cross_polarized)
     real(real32), intent(inout) :: waveform(:,:)
-    integer, intent(in) :: tones(:)
     integer, intent(in) :: mode65
     integer, intent(in) :: polarity
     character(len=*), intent(in) :: description
@@ -125,7 +131,6 @@ contains
     character(len=22) :: decoded
     real :: dphi, sync2, a(5), dt, pol, qual
 
-    call make_map65_wave(waveform, tones, mode65, map65_base_frequency)
     xpol = .false.
     if (present(cross_polarized)) xpol = cross_polarized
     if (xpol) then
