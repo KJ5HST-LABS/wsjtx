@@ -506,7 +506,7 @@ namespace
 }
 
 QRegExp const MainWindow::message_alphabet {"[- @A-Za-z0-9+./?#<>;$]*"};
-QRegularExpression const MainWindow::grid_regexp {"\\A(?![Rr]{2}73)[A-Ra-r]{2}[0-9]{2}([A-Xa-x]{2}){0,1}\\z"};
+QRegularExpression const MainWindow::grid_regexp {Radio::decoded_grid_pattern()};
 QRegularExpression const MainWindow::non_r_db_regexp {"\\A[-+]{1}[0-9]{1,2}\\z"};
 constexpr int MainWindow::MaxActiveStationRows;
 constexpr int MainWindow::MaxQ65PileupCallers;
@@ -9388,15 +9388,7 @@ void MainWindow::abortQSO()
 
 bool MainWindow::stdCall(QString const& w)
 {
-  static QRegularExpression standard_call_re {
-    R"(
-        ^\s*                                      # optional leading spaces
-        ( [A-Z]{0,2} | [A-Z][0-9] | [0-9][A-Z] )  # part 1
-        ( [0-9][A-Z]{0,3} )                       # part 2
-        (/R | /P)?                                # optional suffix
-        \s*$                                      # optional trailing spaces
-    )", QRegularExpression::CaseInsensitiveOption | QRegularExpression::ExtendedPatternSyntaxOption};
-  return standard_call_re.match (w).hasMatch ();
+  return Radio::is_standard_callsign(w);
 }
 
 bool MainWindow::is77BitMode () const

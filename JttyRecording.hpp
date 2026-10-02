@@ -1,6 +1,8 @@
 #ifndef JTTY_RECORDING_HPP
 #define JTTY_RECORDING_HPP
 
+#include "JttyReceiveTiming.hpp"
+
 #include <functional>
 #include <memory>
 #include <vector>
@@ -15,7 +17,7 @@ class JttyRecording final : public QObject
   Q_DECLARE_TR_FUNCTIONS (JttyRecording)
 public:
   static constexpr qint64 sampleRate = 12000;
-  static constexpr qint64 searchStepSamples = 59 * 384 / 4;
+  static constexpr qint64 searchStepSamples = Jtty::receiveFrameSamples / 4;
   static constexpr qint64 segmentSamples = 381 * searchStepSamples;
   static constexpr qint64 hopSamples = 296 * searchStepSamples;
   static constexpr int maximumSnapshots = 2;

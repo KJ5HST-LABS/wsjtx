@@ -194,6 +194,14 @@ target_link_libraries (test_jtty_receive_line Qt5::Test Qt5::Gui)
 add_test (NAME test_jtty_receive_line COMMAND test_jtty_receive_line)
 set_tests_properties (test_jtty_receive_line PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+add_executable (test_jtty_receive_results
+  test_jtty_receive_results.cpp
+  ${CMAKE_SOURCE_DIR}/JttyReceiveResultController.cpp
+  ${CMAKE_SOURCE_DIR}/Radio.cpp)
+target_link_libraries (test_jtty_receive_results Qt5::Test Qt5::Gui)
+add_test (NAME test_jtty_receive_results COMMAND test_jtty_receive_results)
+set_tests_properties (test_jtty_receive_results PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 add_executable (test_jtty_tx_lifecycle test_jtty_tx_lifecycle.cpp)
 target_link_libraries (test_jtty_tx_lifecycle Qt5::Test)
 add_test (NAME test_jtty_tx_lifecycle COMMAND test_jtty_tx_lifecycle)

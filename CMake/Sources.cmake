@@ -196,6 +196,7 @@ set (wsjtx_CXXSRCS
   widgets/mainwindow.cpp
   widgets/mainwindow_jtty.cpp
   widgets/mainwindow_jtty_receive.cpp
+  JttyReceiveResultController.cpp
   JttyRecording.cpp
   Modulator/JttyTxStream.cpp
   widgets/mainwindow_settings.cpp

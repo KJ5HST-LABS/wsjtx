@@ -141,6 +141,25 @@ namespace Radio
     return d_string.insert (d_string.size () - 3, QChar::Nbsp);
   }
 
+  bool is_standard_callsign (QString const& w)
+  {
+    static QRegularExpression standard_call_re {
+      R"(
+        ^\s*                                      # optional leading spaces
+        ( [A-Z]{0,2} | [A-Z][0-9] | [0-9][A-Z] )  # part 1
+        ( [0-9][A-Z]{0,3} )                       # part 2
+        (/R | /P)?                                # optional suffix
+        \s*$                                      # optional trailing spaces
+      )", QRegularExpression::CaseInsensitiveOption | QRegularExpression::ExtendedPatternSyntaxOption};
+    return standard_call_re.match (w).hasMatch ();
+  }
+
+  QRegularExpression const& decoded_grid_pattern ()
+  {
+    static QRegularExpression const pattern {"\\A(?![Rr]{2}73)[A-Ra-r]{2}[0-9]{2}([A-Xa-x]{2}){0,1}\\z"};
+    return pattern;
+  }
+
   bool is_callsign (QString const& callsign)
   {
     return callsign.contains (valid_callsign_regexp);
