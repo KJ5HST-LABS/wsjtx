@@ -40,10 +40,11 @@ and `linux-noble:stable` moves last within that cohort. Consumers resolve that
 pointer to its immutable `build-*` tag and use the same generation for every
 normal Linux leg.
 
-The armhf image pair is published explicitly with `include_armhf: true`. It is
-excluded from routine weekly/monthly image refreshes; toolchain construction
-remains an explicit maintenance operation. The pair is built, promoted, and
-rolled back as one generation.
+The ARMHF image pair is included when the cache-refresh workflow refreshes the
+normal Linux image cohort. The pair is built, promoted, and rolled back as one
+generation. Its toolchain stage is reused unless a toolchain input or the explicit
+rebuild revision changes.
+
 Opt-in full-ci, release, and standalone armhf builds resolve the last promoted
 runtime generation once and require the matching cross-builder tag; a missing
 member fails explicitly. Manual full-ci can instead name an immutable candidate
