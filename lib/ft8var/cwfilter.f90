@@ -196,8 +196,9 @@ subroutine cwfilter(first,knowledge,render_legacy)
        sumw=sumw+window1(j)
     enddo
     cw=0.
-    cw(1:NFILT1+1)=window1/sumw
-    cw=cshift(cw,NFILT1/2+1)
+    do j=-NFILT1/2,NFILT1/2
+      cw(modulo(j-1,NFFT)+1)=window1(j)/sumw
+    enddo
     do j=1,NFILT1/2+1
       endcorr(j)=1.0/(1.0-sum(window1(j-1:NFILT1/2))/sumw)
     enddo

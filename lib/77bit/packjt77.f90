@@ -67,16 +67,14 @@ module packjt77
   public :: queue_hash_call_for_thread_for_state,fold_queued_recent_calls_for_state
   public :: sync_configured_calls_for_decode_start_for_state
   public :: prepare_configured_decode_for_state,fold_queued_calls_for_state
+  public :: initialize_pack77_state,reset_pack77_state
 
   type pack77_state
-     character(len=13) :: calls10(0:1023)=''
-     character(len=13) :: calls12(0:4095)=''
-     character(len=13) :: calls22(MAXHASH)=''
-     character(len=13) :: recent_calls(MAXRECENT)=''
+     character(len=13), allocatable :: calls10(:),calls12(:),calls22(:),recent_calls(:)
      character(len=13) :: mycall13='',dxcall13=''
-     integer :: ihash22(MAXHASH)=-1,nzhash=0
-     character(len=13) :: queued_calls_by_thread(840)=''
-     character(len=13) :: queued_recent_calls_by_thread(840)=''
+     integer, allocatable :: ihash22(:)
+     integer :: nzhash=0
+     character(len=13), allocatable :: queued_calls_by_thread(:),queued_recent_calls_by_thread(:)
      integer :: nqueued_calls_by_thread(24)=0
      integer :: nqueued_recent_calls_by_thread(24)=0
      integer :: thread_call_index(25)=(/0,200,300,370,420,460,500,530,560,590,610,630,650,670,690,710, &
@@ -210,6 +208,60 @@ module packjt77
 
   contains
 
+subroutine initialize_pack77_state(state)
+  type(pack77_state), intent(inout) :: state
+
+  if(.not.allocated(state%calls10)) allocate(state%calls10(0:1023),source=repeat(' ',13))
+  if(.not.allocated(state%calls12)) allocate(state%calls12(0:4095),source=repeat(' ',13))
+  if(.not.allocated(state%calls22)) allocate(state%calls22(MAXHASH),source=repeat(' ',13))
+  if(.not.allocated(state%recent_calls)) allocate(state%recent_calls(MAXRECENT),source=repeat(' ',13))
+  if(.not.allocated(state%ihash22)) allocate(state%ihash22(MAXHASH),source=-1)
+  if(.not.allocated(state%queued_calls_by_thread)) &
+       allocate(state%queued_calls_by_thread(840),source=repeat(' ',13))
+  if(.not.allocated(state%queued_recent_calls_by_thread)) &
+       allocate(state%queued_recent_calls_by_thread(840),source=repeat(' ',13))
+end subroutine initialize_pack77_state
+
+subroutine reset_pack77_state(state)
+  type(pack77_state), intent(inout) :: state
+
+  call initialize_pack77_state(state)
+  state%calls10(:)=''
+  state%calls12(:)=''
+  state%calls22(:)=''
+  state%recent_calls(:)=''
+  state%ihash22(:)=-1
+  state%queued_calls_by_thread(:)=''
+  state%queued_recent_calls_by_thread(:)=''
+  state%nzhash=0
+  state%mycall13=''
+  state%dxcall13=''
+  state%nqueued_calls_by_thread=0
+  state%nqueued_recent_calls_by_thread=0
+  state%thread_call_index=(/0,200,300,370,420,460,500,530,560,590,610,630,650,670,690,710, &
+       730,750,770,790,800,810,820,830,840/)
+  state%mycall13_configured=''
+  state%dxcall13_configured=''
+  state%mycall13_configured_prev=''
+  state%dxcall13_configured_prev=''
+  state%hashmy10_configured=-1
+  state%hashmy12_configured=-1
+  state%hashmy22_configured=-1
+  state%hashdx10_configured=-1
+  state%mycall13_configured_set=.false.
+  state%dxcall13_configured_set=.false.
+  state%mycall13_0=''
+  state%dxcall13_0=' '
+  state%hashmy10=-1
+  state%hashmy12=-1
+  state%hashmy22=-1
+  state%hashdx10=-1
+  state%hashdx12=-1
+  state%hashdx22=-1
+  state%mycall13_set=.false.
+  state%dxcall13_set=.false.
+end subroutine reset_pack77_state
+
 type(pack77_state_view) function legacy_state_view() result(view)
   view%calls10=>calls10
   view%calls12=>calls12
@@ -238,6 +290,7 @@ end function legacy_state_view
 
 type(pack77_state_view) function owned_state_view(state) result(view)
   type(pack77_state), target, intent(inout) :: state
+  call initialize_pack77_state(state)
   view%calls10=>state%calls10
   view%calls12=>state%calls12
   view%calls22=>state%calls22

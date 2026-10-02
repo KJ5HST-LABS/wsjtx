@@ -2,11 +2,12 @@ program test_packjt77_context_state
   use packjt77
   implicit none
 
-  type(pack77_state) :: first, second
+  type(pack77_state), target :: first, second
+  character(len=13), pointer :: saved_calls(:)
   character(len=77) :: bits
   character(len=37) :: message
   character(len=37) :: input
-  character(len=13) :: call
+  character(len=13) :: call,resolved_call
   integer :: i3,n3,status,n10,n12,n22
   logical :: ok
 
@@ -23,6 +24,7 @@ program test_packjt77_context_state
   n12=-99
   n22=-99
   call save_hash_call_for_state(first,call,n10,n12,n22)
+  call initialize_pack77_state(second)
   call require(first%calls12(n12).eq.call,'first state records the call')
   call require(second%calls12(n12).eq.'','second state is independent')
   call require(calls12(n12).eq.'','legacy store is independent')
@@ -72,6 +74,33 @@ program test_packjt77_context_state
   call require(status.eq.PACK77_STATUS_ENCODED.and.i3.eq.1, &
        'explicit encode accepts an assumed-length message')
   call require(nzhash.eq.0,'explicit encode leaves the legacy store untouched')
+
+  call prepare_configured_decode_for_state(first,'N0AAA','N0BBB')
+  call queue_hash_call_for_thread_for_state(first,call,2)
+  saved_calls=>first%calls12
+  call initialize_pack77_state(first)
+  call hash12_for_state(first,ihashcall(call,12),resolved_call)
+  call require(trim(resolved_call).eq.'<'//trim(call)//'>','initialization preserves learned calls')
+  call require(first%mycall13.eq.'N0AAA'.and.first%mycall13_configured_set, &
+       'initialization preserves configured calls')
+  call require(first%nqueued_calls_by_thread(2).gt.0,'initialization preserves queued calls')
+
+  call reset_pack77_state(first)
+  call require(associated(saved_calls,first%calls12),'reset retains table storage and views')
+  call require(all(saved_calls.eq.''),'existing view observes the reset')
+  call require(lbound(first%calls10,1).eq.0.and.lbound(first%calls12,1).eq.0, &
+       'reset preserves zero-based hash tables')
+  call hash12_for_state(first,ihashcall(call,12),resolved_call)
+  call require(trim(resolved_call).eq.'<...>','reset forgets learned calls')
+  call require(first%nzhash.eq.0.and.all(first%ihash22.eq.-1),'reset clears hash entries')
+  call require(first%mycall13.eq.''.and..not.first%mycall13_configured_set, &
+       'reset clears configured calls')
+  call fold_queued_calls_for_state(first,2)
+  call require(all(first%calls12.eq.''),'reset discards queued calls before folding')
+  call hash12_for_state(second,ihashcall(call,12),resolved_call)
+  call require(trim(resolved_call).eq.'<'//trim(call)//'>','reset leaves other states unchanged')
+  call save_hash_call_for_state(first,call,n10,n12,n22)
+  call require(saved_calls(n12).eq.call,'reset storage remains usable through existing views')
 
   print *, 'packjt77 explicit state isolation passed'
 

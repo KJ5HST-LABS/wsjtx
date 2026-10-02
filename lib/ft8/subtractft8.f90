@@ -9,7 +9,8 @@ subroutine subtractft8(dd0,itone,f0,dt,lrefinedt)
 
   parameter (NMAX=15*12000,NFRAME=1920*79)
   parameter (NFFT=NMAX,NFILT=4000)
-  real dd(NMAX),dd0(NMAX)
+  real dd0(NMAX)
+  real, allocatable, save :: dd(:)
   real window(-NFILT/2:NFILT/2)
   real x(NFFT+2)
   real endcorrection(NFILT/2+1)
@@ -22,6 +23,8 @@ subroutine subtractft8(dd0,itone,f0,dt,lrefinedt)
   equivalence (x,cx)
   save first,/heap8/,endcorrection
 
+  if(.not.allocated(dd)) allocate(dd(NMAX))
+
   if(first) then                         ! Create and normalize the filter
      pi=4.0*atan(1.0)
      fac=1.0/float(nfft)
@@ -31,8 +34,9 @@ subroutine subtractft8(dd0,itone,f0,dt,lrefinedt)
         sumw=sumw+window(j)
      enddo
      cw=0.
-     cw(1:NFILT+1)=window/sumw
-     cw=cshift(cw,NFILT/2+1)
+     do j=-NFILT/2,NFILT/2
+        cw(modulo(j-1,NFFT)+1)=window(j)/sumw
+     enddo
      call four2a(cw,nfft,1,-1,1)
      cw=cw*fac
      first=.false.

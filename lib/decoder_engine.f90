@@ -1,7 +1,7 @@
 module decoder_engine
   use, intrinsic :: iso_c_binding
   use decoder_engine_types
-  use packjt77, only: pack77_state
+  use packjt77, only: pack77_state,initialize_pack77_state,reset_pack77_state
   use ft8_engine_kernel, only: ft8_kernel_state,params_block,run_ft8_kernel,reset_ft8_kernel,release_ft8_input
   use decoder_callbacks, only: decoder_callback_context,counting_ft4_decoder,ft4_decoded
   use decode_completion_module, only: decode_completion_result,set_decode_completion,write_decode_progress
@@ -108,8 +108,8 @@ module decoder_engine
      type(ft8_kernel_state) :: kernel
      type(counting_ft4_decoder) :: ft4
      type(attempt_request) :: request
-     type(engine_observation) :: evidence(evidence_capacity)
-     integer(c_short) :: audio(180000)=0
+     type(engine_observation), allocatable :: evidence(:)
+     integer(c_short), allocatable :: audio(:)
      integer(c_int64_t) :: input_id=0,analysis_id=0
      integer :: input_mode=0
      integer :: last_attempt=0,retained=0,dropped=0,emitted=0
@@ -126,6 +126,14 @@ module decoder_engine
 
 contains
 
+  subroutine initialize_session(state)
+    type(engine_session), intent(inout) :: state
+    allocate(state%audio(180000),state%evidence(evidence_capacity))
+    state%audio=0
+    call initialize_pack77_state(state%knowledge)
+    call reset_ft8_kernel(state%kernel)
+  end subroutine initialize_session
+
   logical function valid_handle(handle)
     type(c_ptr), value :: handle
     valid_handle=allocated(session).and.c_associated(handle,c_loc(token))
@@ -140,7 +148,7 @@ contains
     status=busy
     if(allocated(session)) return
     allocate(session)
-    call reset_ft8_kernel(session%kernel)
+    call initialize_session(session)
     handle=c_loc(token)
     status=ok
   end function
@@ -354,7 +362,7 @@ contains
     if(session%running) return
     call reset_ft8_kernel(session%kernel)
     call session%ft4%reset()
-    session%knowledge=pack77_state()
+    call reset_pack77_state(session%knowledge)
     session%audio=0
     session%input_id=0
     session%input_mode=0

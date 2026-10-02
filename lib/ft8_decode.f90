@@ -2,6 +2,8 @@ module ft8_decode
   use packjt77, only: pack77_state
   use decoder_engine_types, only: ft8_signal_evidence
 
+  integer, parameter, private :: MAX_EARLY=200,NPTS=15*12000,NSAVED_TONES=79
+
   parameter (MAXFOX=1000)
   character*12 c2fox(MAXFOX)
   character*4  g2fox(MAXFOX)
@@ -14,19 +16,22 @@ module ft8_decode
   type :: ft8_decoder
      procedure(ft8_decode_callback), pointer :: callback
      type(pack77_state), pointer :: knowledge => null()
-     real :: dd(15*12000)=0.,dd1(15*12000)=0.
+     real, allocatable :: dd(:),dd1(:)
      integer :: nutc0=-1,ndec_early=0
      logical :: audio_ready=.false.
-     integer :: itone_save(79,200)=0
-     real :: f1_save(200)=0.,xdt_save(200)=0.
-     logical :: lsubtracted(200)=.false.
-     character(len=37) :: allmessages(200)=''
-     integer :: allsnrs(200)=0
+     integer, allocatable :: itone_save(:,:)
+     real, allocatable :: f1_save(:),xdt_save(:)
+     logical, allocatable :: lsubtracted(:)
+     character(len=37), allocatable :: allmessages(:)
+     integer, allocatable :: allsnrs(:)
    contains
+     procedure :: initialize => initialize_ft8_decoder
      procedure :: decode
      procedure :: reset => reset_ft8_decoder
      procedure :: release_input => release_ft8_input
   end type ft8_decoder
+
+  private :: initialize_ft8_decoder
 
   abstract interface
      subroutine ft8_decode_callback (this,sync,snr,dt,freq,decoded,nap,qual,evidence)
@@ -80,6 +85,18 @@ module ft8_decode
 
 contains
 
+  subroutine initialize_ft8_decoder(this)
+    class(ft8_decoder), intent(inout) :: this
+    if(.not.allocated(this%dd)) allocate(this%dd(NPTS),source=0.)
+    if(.not.allocated(this%dd1)) allocate(this%dd1(NPTS),source=0.)
+    if(.not.allocated(this%itone_save)) allocate(this%itone_save(NSAVED_TONES,MAX_EARLY),source=0)
+    if(.not.allocated(this%f1_save)) allocate(this%f1_save(MAX_EARLY),source=0.)
+    if(.not.allocated(this%xdt_save)) allocate(this%xdt_save(MAX_EARLY),source=0.)
+    if(.not.allocated(this%lsubtracted)) allocate(this%lsubtracted(MAX_EARLY),source=.false.)
+    if(.not.allocated(this%allmessages)) allocate(this%allmessages(MAX_EARLY),source=repeat(' ',37))
+    if(.not.allocated(this%allsnrs)) allocate(this%allsnrs(MAX_EARLY),source=0)
+  end subroutine initialize_ft8_decoder
+
   subroutine reset_ft8_decoder(this)
     class(ft8_decoder), intent(inout) :: this
     call this%release_input()
@@ -88,6 +105,7 @@ contains
 
   subroutine release_ft8_input(this)
     class(ft8_decoder), intent(inout) :: this
+    call this%initialize()
     this%dd=0.
     this%dd1=0.
     this%ndec_early=0
@@ -112,7 +130,7 @@ contains
 
     class(ft8_decoder), intent(inout) :: this
     procedure(ft8_decode_callback) :: callback
-    parameter (MAXCAND=1000,MAX_EARLY=200,NPTS=15*12000)
+    parameter (MAXCAND=1000)
     real*8 tsec,tseq
     real sbase(NH1)
     real candidate(3,MAXCAND)
@@ -130,6 +148,7 @@ contains
     integer itone(NN)
     type(ft8_signal_evidence) :: evidence
     type(pack77_state), pointer :: codec
+    call this%initialize()
     associate(dd=>this%dd,dd1=>this%dd1,nutc0=>this%nutc0, &
          ndec_early=>this%ndec_early,itone_save=>this%itone_save, &
          f1_save=>this%f1_save,xdt_save=>this%xdt_save, &
