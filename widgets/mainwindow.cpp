@@ -4239,10 +4239,17 @@ void MainWindow::createStatusBar()                           //createStatusBar
   last_tx_label.setFrameStyle (QFrame::Panel | QFrame::Sunken);
   statusBar()->addWidget (&last_tx_label);
 
-  if (m_config.PWR_and_SWR()) statusBar ()->addPermanentWidget (&band_hopping_label);
   band_hopping_label.setAlignment (Qt::AlignHCenter);
   band_hopping_label.setMinimumSize (QSize {80, 18});
   band_hopping_label.setFrameStyle (QFrame::Panel | QFrame::Sunken);
+  statusBar ()->addWidget (&band_hopping_label);
+  band_hopping_label.setVisible (m_mode == "WSPR");
+
+  swr_label.setAlignment (Qt::AlignHCenter);
+  swr_label.setMinimumSize (QSize {80, 18});
+  swr_label.setFrameStyle (QFrame::Panel | QFrame::Sunken);
+  statusBar ()->addPermanentWidget (&swr_label);
+  swr_label.setVisible (m_config.PWR_and_SWR () && m_mode != "Echo");
 
   statusBar()->addPermanentWidget(&progressBar);
   progressBar.setMinimumSize (QSize {150, 18});
@@ -4258,7 +4265,8 @@ void MainWindow::createStatusBar()                           //createStatusBar
   mode_label.setAccessibleName (tr ("Mode"));
   ndecodes_label.setAccessibleName (tr ("Decode count"));
   last_tx_label.setAccessibleName (tr ("Last transmitted message"));
-  band_hopping_label.setAccessibleName (tr ("Power and SWR status"));
+  band_hopping_label.setAccessibleName (tr ("WSPR band-hopping period"));
+  swr_label.setAccessibleName (tr ("SWR status"));
   progressBar.setAccessibleName (tr ("Decode progress"));
   progressBar.setAccessibleDescription (tr ("Progress for the current decode operation."));
   watchdog_label.setAccessibleName (tr ("Transmit watchdog"));
@@ -4371,18 +4379,11 @@ void MainWindow::setup_status_bar (bool vhf)
   }
   keep_last_tx_label = true;
   last_tx_label.setText (QString {});
-  if (m_mode.contains (QRegularExpression {R"(^(Echo))"})) {
-    if (band_hopping_label.isVisible ()) statusBar ()->removeWidget (&band_hopping_label);
-  } else if (m_mode=="WSPR") {
+  if (m_mode == "WSPR") {
     mode_label.setStyleSheet ("QLabel{color: #000000; background-color: #ff66ff}");
-    if (!band_hopping_label.isVisible ()) {
-      statusBar ()->addWidget (&band_hopping_label);
-      band_hopping_label.show ();
-      band_hopping_label.setMinimumSize (QSize  {80, 18});
-    }
-  } else {
-    if (!m_config.PWR_and_SWR () && band_hopping_label.isVisible ()) statusBar ()->removeWidget (&band_hopping_label);
   }
+  band_hopping_label.setVisible (m_mode == "WSPR");
+  updateRigMeters (m_rigState);
 }
 
 
@@ -12620,6 +12621,75 @@ void MainWindow::applyOperatingFrequencyTransition (OperatingFrequency::Transiti
   displayDialFrequency ();
 }
 
+void MainWindow::updateRigMeters (Transceiver::TransceiverState const& s)
+{
+  bool const enabled = m_config.PWR_and_SWR ();
+  swr_label.setVisible (enabled && m_mode != "Echo");
+
+  if (enabled && s.online () && (s.ptt () || m_transmitting || m_tune))
+    {
+      auto const power = round (s.power () / 1000.);
+      ui->label->setText (tr ("%1 W").arg (power));
+      if (power >= 100)
+        {
+          auto const point_size = m_config.text_font ().pointSizeF ();
+          ui->label->setMinimumWidth (2.8 * point_size + 16);
+          ui->outAttenuation->setMinimumWidth (2.8 * point_size + 16);
+        }
+    }
+  else
+    {
+      ui->label->setText (tr ("Pwr"));
+    }
+
+  auto const swr = enabled && s.online () ? s.swr () : 0;
+  QString style;
+  if (swr > 200)
+    {
+      style = "QLabel{color: #ffffff; background-color: #ff0000}";
+    }
+  else if (swr > 150)
+    {
+      style = "QLabel{color: #000000; background-color: #ffff00}";
+    }
+  if (swr_label.styleSheet () != style) swr_label.setStyleSheet (style);
+  swr_label.setText (swr ? tr ("SWR: %1").arg (swr / 100., 0, 'f', swr < 1000 ? 2 : 1)
+                        : QString {});
+}
+
+bool MainWindow::stopForHighSWR (Transceiver::TransceiverState const& s)
+{
+  if (!m_config.PWR_and_SWR () || !m_config.check_SWR () || !s.online ()
+      || s.swr () <= 250
+      || !(s.ptt () || g_iptt == 1 || m_transmitting || m_tune
+           || m_tx_when_ready || ptt1Timer.isActive ()))
+    {
+      return false;
+    }
+
+  requestTxStop (TxEvidence::TxStopReason::Error);
+  return true;
+}
+
+void MainWindow::showHighSWRWarning (unsigned swr)
+{
+  if (m_swrWarning) return;
+
+  auto * warning = new MessageBox {MessageBox::Warning,
+    tr ("SWR > 2.5 !!!\n\n"
+        "Transmission was stopped\n\n"
+        "Check your antenna"), MessageBox::Ok, this};
+  warning->setInformativeText (tr ("SWR: %1").arg (swr / 100., 0, 'f', 2));
+  m_swrWarning = warning;
+  warning->setDefaultButton (MessageBox::Ok);
+  warning->setWindowModality (Qt::ApplicationModal);
+  connect (warning, &QDialog::finished, this, [this, warning] {
+      m_swrWarning.clear ();
+      warning->deleteLater ();
+    });
+  warning->show ();
+}
+
 void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const& s)
 {
   if (!m_startup_rig_reported)
@@ -12630,59 +12700,11 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
         QString {"online=%1"}.arg (s.online () ? "true" : "false"));
     }
   Transceiver::TransceiverState old_state {m_rigState};
-  //transmitDisplay (s.ptt ());
-  if (s.ptt () // && !m_rigState.ptt ()
-      ) { // safe to start audio
-                                        // (caveat - DX Lab Suite Commander)
-    startTxAudioAfterPttDelay ();
-  }
-
-  // Display PWR and SWR
-  if(m_config.PWR_and_SWR()) {
-    if (!band_hopping_label.isVisible ()) {
-      statusBar ()->addPermanentWidget (&band_hopping_label);
-      band_hopping_label.setMinimumSize (QSize  {80, 18});
-      band_hopping_label.show();
+  bool const high_swr = stopForHighSWR (s);
+  if (s.ptt () && !high_swr)
+    {
+      startTxAudioAfterPttDelay ();
     }
-    if (m_rigState.power() != s.power() && m_transmitting) {
-      ui->label->setText(QString {tr("%1 W")}.arg (round(s.power()/1000.)));
-      if (round(s.power()/1000.) >= 100) {
-        qreal pointSize = m_config.text_font().pointSizeF();
-
-        ui->label->setMinimumWidth (2.8*pointSize + 16);
-        ui->outAttenuation->setMinimumWidth (2.8*pointSize + 16);
-      }
-    } else {
-      ui->label->setText(tr ("Pwr"));
-    }
-    if (m_rigState.swr() != s.swr()) {
-      static bool s_alreadyShowingSWRAlert = false;
-      if (s.swr() > 0) {
-        if (s.swr()>150) band_hopping_label.setStyleSheet ("QLabel{color: #000000; background-color: #ffff00}");
-        if (s.swr()>200) band_hopping_label.setStyleSheet ("QLabel{color: #ffffff; background-color: #ff0000}");
-        if (s.swr()>250 && m_config.check_SWR()) {
-          on_stopTxButton_clicked();
-          if (!s_alreadyShowingSWRAlert) {     // avoid recursion
-            s_alreadyShowingSWRAlert = true;
-            MessageBox::warning_message (this, tr ("SWR > 2.5 !!!\n\n"
-                                                   "Transmission was stopped\n\n"
-                                                   "Check your antenna"));
-            s_alreadyShowingSWRAlert = false;
-          }
-        }
-        if (s.swr()<1000) {
-          band_hopping_label.setText(QString {"SWR: %1"}.arg (s.swr()/100.,0,'f',2));
-        } else {
-          band_hopping_label.setText(QString {"SWR: %1"}.arg (s.swr()/100.,0,'f',1));
-        }
-      } else {
-        if (!s_alreadyShowingSWRAlert) {      // retain value and color if SWR was > 2.5
-          band_hopping_label.setText("");
-          band_hopping_label.setStyleSheet("");
-        }
-      }
-    }
-  }
 
   m_rigState = s;
   auto const transition = m_operatingFrequency.reconcile (
@@ -12715,6 +12737,8 @@ void MainWindow::handle_transceiver_update (Transceiver::TransceiverState const&
   update_dynamic_property (ui->readFreq, "state", "ok");
   ui->readFreq->setEnabled (false);
   ui->readFreq->setText (s.split () ? "S" : "");
+  updateRigMeters (s);
+  if (high_swr) showHighSWRWarning (s.swr ());
 }
 
 void MainWindow::handle_transceiver_closing (bool failed)

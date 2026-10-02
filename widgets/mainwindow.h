@@ -791,6 +791,7 @@ private:
   void recordTxSourceCommit (TxEvidence::TxStartSnapshot const& snapshot);
   void recordRawTxPlayout (TxEvidence::TxRawPlayoutSnapshot const& snapshot);
   void noteTxStopReason (TxEvidence::TxStopReason reason);
+  void requestTxStop (TxEvidence::TxStopReason reason);
   void noteTxModeChange (QString const& mode);
   void updateModeControlLock ();
   int txStopTailMs (bool tciAudio) const;
@@ -960,6 +961,7 @@ private:
   QScopedPointer<CabrilloLogWindow> m_contestLogWindow;
   QScopedPointer<ColorHighlighting> m_colorHighlighting;
   Transceiver::TransceiverState m_rigState;
+  QPointer<MessageBox> m_swrWarning;
   Frequency  m_lastDialFreq;
   QString m_lastBand;
   QString m_lastCallsign;
@@ -1236,6 +1238,7 @@ private:
   QLabel last_tx_label;
   QLabel auto_tx_label;
   QLabel band_hopping_label;
+  QLabel swr_label;
   QLabel ndecodes_label;
   QProgressBar progressBar;
   QLabel watchdog_label;
@@ -1511,6 +1514,9 @@ private:
                               quint32 hold_rx, quint32 release_rx,
                               quint32 expiries, quint32 invalid);
   void startTxAudioAfterPttDelay ();
+  void updateRigMeters (Transceiver::TransceiverState const&);
+  bool stopForHighSWR (Transceiver::TransceiverState const&);
+  void showHighSWRWarning (unsigned swr);
   void updateStatusBar();
   void updateMainWindowAccessibility();
   void registerMainWindowFocusControls();

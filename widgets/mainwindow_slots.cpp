@@ -657,19 +657,20 @@ void MainWindow::reset_transmit_controls_after_stop ()
 
 void MainWindow::on_stopTxButton_clicked()                    // Stop Tx
 {
-  noteTxStopReason (TxEvidence::TxStopReason::UserHalt);
-  if (m_jttyTxLifecycle.active () || !m_jttyTransmitQueue.empty ()) stopTx ();
-#ifdef WIN32
-  finalizeMmttyExternalAbort ();
-#endif
+  requestTxStop (TxEvidence::TxStopReason::UserHalt);
+}
+
+void MainWindow::requestTxStop (TxEvidence::TxStopReason reason)
+{
+  noteTxStopReason (reason);
+  bool const pending_start = m_tx_when_ready || ptt1Timer.isActive ();
+  m_tx_when_ready = false;
+  ptt1Timer.stop ();
+  m_restart = false;
   if (m_beaconTxController.txLifecycle () == BeaconTx::TxLifecycle::Decided
       || m_beaconTxController.txLifecycle () == BeaconTx::TxLifecycle::StartRequested)
     {
-      m_tx_when_ready = false;
-      ptt1Timer.stop ();
       processBeaconActions (m_beaconTxController.transmitWindowEnded ());
-      if (g_iptt == 1 || m_transmitting) stopTx ();
-      else g_iptt = 0;
     }
   if (m_beaconTxController.active ())
     {
@@ -678,6 +679,15 @@ void MainWindow::on_stopTxButton_clicked()                    // Stop Tx
   if (m_tune) stop_tuning ();
   if (m_auto) auto_tx_mode (false);
   reset_transmit_controls_after_stop ();
+  // Reported PTT may remain high while the delayed PTT-off is already pending.
+  if (pending_start || g_iptt == 1 || m_transmitting
+      || m_jttyTxLifecycle.active () || !m_jttyTransmitQueue.empty ())
+    {
+      stopTx ();
+    }
+#ifdef WIN32
+  finalizeMmttyExternalAbort ();
+#endif
 }
 
 void MainWindow::on_pbR2T_clicked()
