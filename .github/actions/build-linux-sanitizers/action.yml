@@ -18,6 +18,10 @@ inputs:
     description: "Save compiled objects for trusted builds"
     required: false
     default: "false"
+  run_tests:
+    description: "Run sanitizer tests after compiling production and test targets"
+    required: false
+    default: "true"
   allow_stale_image:
     description: "Allow a previously promoted image when a dependency refresh changed the recipe"
     required: false
@@ -121,6 +125,7 @@ runs:
           ccache-linux-x86_64-${{ steps.sanitizer.outputs.cache_key }}-${{ steps.image.outputs.ccache_compatibility_id }}-
 
     - name: Configure ccache
+      id: ccache-config
       shell: bash
       run: |
         export CCACHE_DIR="${GITHUB_WORKSPACE}/${{ steps.sanitizer.outputs.ccache_dir }}"
@@ -187,15 +192,20 @@ runs:
         "${{ steps.sanitizer.outputs.build_dir }}/CMakeCache.txt"
 
     - name: Build sanitizer targets
+      id: compile
       shell: bash
-      run: cmake --build "${{ steps.sanitizer.outputs.build_dir }}" -j"$(nproc)"
+      run: |
+        SECONDS=0
+        trap 'echo "duration_seconds=$SECONDS" >> "$GITHUB_OUTPUT"' EXIT
+        cmake --build "${{ steps.sanitizer.outputs.build_dir }}" -j"$(nproc)"
 
     - name: Show ccache stats
-      if: always()
+      if: always() && steps.ccache-config.outcome == 'success'
       shell: bash
-      run: ccache --show-stats
+      run: ccache --show-stats | tee "$RUNNER_TEMP/sanitizer-ccache-stats.txt"
 
     - name: Verify sanitizer instrumentation
+      id: instrumentation
       shell: bash
       run: >-
         python3 .github/scripts/verify-sanitizer-instrumentation.py
@@ -214,11 +224,13 @@ runs:
         "${{ steps.sanitizer.outputs.build_dir }}/wsjtx"
 
     - name: Prepare test scratch directory
+      if: inputs.run_tests == 'true'
       shell: bash
       run: mkdir -p "${GITHUB_WORKSPACE}/${{ steps.sanitizer.outputs.build_dir }}/tmp"
 
     - name: Run tests
       id: ctest
+      if: inputs.run_tests == 'true'
       continue-on-error: true
       shell: bash
       working-directory: ${{ steps.sanitizer.outputs.build_dir }}
@@ -233,7 +245,7 @@ runs:
         ctest --parallel 1 --output-on-failure --output-junit ctest-results.xml
 
     - name: Publish test summary
-      if: always() && steps.ctest.outcome != 'skipped'
+      if: always() && inputs.run_tests == 'true' && steps.ctest.outcome != 'skipped'
       shell: bash
       working-directory: ${{ steps.sanitizer.outputs.build_dir }}
       run: >-
@@ -241,7 +253,7 @@ runs:
         "${{ steps.sanitizer.outputs.summary_name }}" >> "$GITHUB_STEP_SUMMARY"
 
     - name: Upload test results
-      if: always() && steps.ctest.outcome != 'skipped'
+      if: always() && inputs.run_tests == 'true' && steps.ctest.outcome != 'skipped'
       uses: actions/upload-artifact@v7
       with:
         name: ${{ steps.sanitizer.outputs.artifact_name }}
@@ -252,7 +264,7 @@ runs:
         if-no-files-found: ignore
 
     - name: Require sanitizer tests to pass
-      if: always()
+      if: always() && inputs.run_tests == 'true'
       shell: bash
       run: |
         failed=false
@@ -264,14 +276,77 @@ runs:
           exit 1
         fi
 
-    - name: Report suppressed sanitizer ccache save
-      if: inputs.save_ccache == 'true' && steps.image.outputs.recipe_match != 'true'
-      shell: bash
-      run: echo "::notice::Not saving sanitizer ccache because this build used a stale Linux CI image recipe"
-
     - name: Save sanitizer objects
-      if: inputs.save_ccache == 'true' && steps.image.outputs.recipe_match == 'true' && steps.ccache.outputs.cache-hit != 'true'
+      id: save-ccache
+      if: inputs.save_ccache == 'true' && github.ref == 'refs/heads/develop' && steps.image.outputs.recipe_match == 'true' && steps.ccache.outputs.cache-hit != 'true'
       uses: actions/cache/save@v5
       with:
         path: ${{ steps.sanitizer.outputs.ccache_dir }}
         key: ${{ steps.ccache.outputs.cache-primary-key }}
+
+    - name: Summarize sanitizer cache
+      if: always()
+      shell: bash
+      env:
+        CACHE_STEPS: ${{ toJSON(steps) }}
+        SAVE_CCACHE: ${{ inputs.save_ccache }}
+        RUN_TESTS: ${{ inputs.run_tests }}
+      run: |
+        python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+        import json
+        import os
+        from pathlib import Path
+
+        steps = json.loads(os.environ["CACHE_STEPS"])
+        cache = steps.get("ccache", {})
+        outputs = cache.get("outputs", {})
+        image = steps.get("image", {}).get("outputs", {})
+        compile_step = steps.get("compile", {})
+        save = steps.get("save-ccache", {}).get("outcome", "skipped")
+        exact = outputs.get("cache-hit") == "true"
+        matched = outputs.get("cache-matched-key", "")
+        restore = "exact hit" if exact else "fallback restore" if matched else "miss"
+        if cache.get("outcome") != "success":
+            restore = cache.get("outcome", "not run")
+
+        if os.environ["SAVE_CCACHE"] != "true":
+            publication = "disabled"
+        elif os.environ["GITHUB_REF"] != "refs/heads/develop":
+            publication = "skipped: cache writes require develop"
+        elif image.get("recipe_match") == "false":
+            publication = "skipped: image recipe mismatch"
+        elif save != "skipped":
+            publication = f"attempted (step: {save}); see cache action log for upload confirmation"
+        elif any(step.get("outcome") in ("failure", "cancelled") for step in steps.values()):
+            publication = "skipped: preceding failure or cancellation"
+        elif exact:
+            publication = "skipped: exact cache already exists"
+        else:
+            publication = "not attempted"
+
+        tests = steps.get("ctest", {}).get("outcome", "not run")
+        if os.environ["RUN_TESTS"] != "true":
+            tests = "disabled (build-only warmer)"
+        duration = compile_step.get("outputs", {}).get("duration_seconds", "unavailable")
+        print("### Sanitizer compiler cache\n")
+        rows = {
+            "Source SHA": os.environ["GITHUB_SHA"],
+            "Image generation": image.get("generation", "unavailable"),
+            "Requested/save key": outputs.get("cache-primary-key", "unavailable"),
+            "Matched key": matched or "none",
+            "Restore": restore,
+            "Compilation": compile_step.get("outcome", "not run"),
+            "Compilation duration (seconds)": duration,
+            "Instrumentation": steps.get("instrumentation", {}).get("outcome", "not run"),
+            "Tests": tests,
+            "Cache publication": publication,
+        }
+        print("| Item | Result |\n| --- | --- |")
+        for label, value in rows.items():
+            print(f"| {label} | {value} |")
+        stats = Path(os.environ["RUNNER_TEMP"]) / "sanitizer-ccache-stats.txt"
+        if stats.is_file():
+            print("\n```text\n" + stats.read_text().rstrip() + "\n```")
+        print("\nCompiler caching covers C/C++; Fortran compilation and linking still run.")
+        print("Build-only warming does not establish that sanitizer tests pass.")
+        PY

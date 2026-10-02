@@ -1,5 +1,10 @@
+import fnmatch
+import os
 import pathlib
 import re
+import subprocess
+import tempfile
+import textwrap
 import unittest
 
 
@@ -10,10 +15,10 @@ WARM = (ROOT / ".github/workflows/warm-dependency-caches.yml").read_text()
 CLASSIFIER = (ROOT / ".github/scripts/is-linux-ci-image-input.sh").read_text()
 
 
-def job(name: str) -> str:
+def job(name: str, workflow: str = PUBLISH) -> str:
     match = re.search(
         rf"^  {re.escape(name)}:\n(?P<body>.*?)(?=^  [a-z][a-z0-9-]*:\n|\Z)",
-        PUBLISH,
+        workflow,
         re.MULTILINE | re.DOTALL,
     )
     if not match:
@@ -22,6 +27,120 @@ def job(name: str) -> str:
 
 
 class LinuxImagePublicationPolicyTests(unittest.TestCase):
+    def select_warmers(self, event, *, target="", schedule="", paths=()):
+        selector = re.search(
+            r"        run: \|\n(?P<body>.*?)(?=^  refresh-linux-images:)",
+            WARM,
+            re.MULTILINE | re.DOTALL,
+        ).group("body")
+        git_stub = """
+git() {
+  case "$1" in
+    cat-file) return 0 ;;
+    diff) printf '%s\\n' "$CHANGED_PATHS" ;;
+    *) return 2 ;;
+  esac
+}
+"""
+        with tempfile.TemporaryDirectory() as directory:
+            output = pathlib.Path(directory) / "output"
+            result = subprocess.run(
+                ["bash", "-c", git_stub + textwrap.dedent(selector)],
+                cwd=ROOT,
+                env={
+                    **os.environ,
+                    "EVENT_NAME": event,
+                    "TARGETS": target,
+                    "SCHEDULE": schedule,
+                    "BEFORE_SHA": "previous",
+                    "CURRENT_SHA": "current",
+                    "CHANGED_PATHS": "\n".join(paths),
+                    "HAMLIB_BRANCH": "4.7.2",
+                    "GITHUB_OUTPUT": str(output),
+                    "GITHUB_STEP_SUMMARY": str(pathlib.Path(directory) / "summary"),
+                },
+                capture_output=True,
+                text=True,
+                timeout=10,
+            )
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            return dict(line.split("=", 1) for line in output.read_text().splitlines())
+
+    def test_asan_warmer_selection(self):
+        cases = [
+            ({"event": "schedule", "schedule": "23 10 * * 1"}, "true", "none"),
+            ({"event": "workflow_dispatch", "target": "linux-asan-ubsan"}, "true", "none"),
+            ({"event": "workflow_dispatch", "target": "all"}, "true", "normal"),
+            ({"event": "workflow_dispatch", "target": "linux-tsan"}, "false", "tsan"),
+            ({"event": "push", "paths": [".github/scripts/build-hamlib-linux.sh"]}, "false", "normal"),
+            ({"event": "push", "paths": [".github/scripts/build-qt-tsan-linux.sh"]}, "false", "tsan"),
+            ({"event": "push", "paths": ["CMakeLists.txt", ".github/scripts/verify-linux-ci-image.sh"]}, "true", "normal-and-tsan"),
+            ({"event": "push", "paths": ["mainwindow.cpp"]}, "false", "none"),
+        ]
+        for arguments, selected, image_set in cases:
+            with self.subTest(arguments=arguments):
+                outputs = self.select_warmers(**arguments)
+                self.assertEqual(outputs["linux_asan_ubsan"], selected)
+                self.assertEqual(outputs["image_set"], image_set)
+
+    def test_sanitizer_build_inputs_select_warming(self):
+        push_filters = re.findall(
+            r'^      - "([^"]+)"$',
+            WARM.split("  schedule:", 1)[0],
+            re.MULTILINE,
+        )
+        for path in (
+            ".github/workflows/build-linux-sanitizers.yml",
+            ".github/actions/build-linux-sanitizers/action.yml",
+            ".github/scripts/verify-sanitizer-instrumentation.py",
+            "CMakeLists.txt",
+            "CMake/Sources.cmake",
+            "tests/CMakeLists.txt",
+            "tests/unit/CMakeLists.txt",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(any(fnmatch.fnmatchcase(path, pattern) for pattern in push_filters))
+                outputs = self.select_warmers("push", paths=[path])
+                self.assertEqual(outputs["linux_asan_ubsan"], "true")
+                self.assertEqual(outputs["image_set"], "none")
+
+    def test_asan_warmers_share_configuration_and_serialize(self):
+        standalone = job("warm-linux-asan-ubsan-ccache", WARM)
+        published = job("warm-asan-ubsan-ccache")
+        for warmer in (standalone, published):
+            with self.subTest(warmer=warmer):
+                for required in (
+                    "github.ref == 'refs/heads/develop'",
+                    "uses: ./.github/workflows/build-linux-sanitizers.yml",
+                    "sanitizer: asan-ubsan",
+                    "run_tests: false",
+                    "recache: false",
+                    "save_ccache: true",
+                    "allow_stale_image: false",
+                    "group: asan-ubsan-ccache-develop",
+                    "cancel-in-progress: false",
+                    "contents: read",
+                    "packages: read",
+                ):
+                    self.assertIn(required, warmer)
+                self.assertNotIn("packages: write", warmer)
+        self.assertIn("needs.detect.outputs.linux_asan_ubsan == 'true'", standalone)
+        self.assertIn("needs.detect.outputs.image_set != 'normal'", standalone)
+        self.assertIn("needs.detect.outputs.image_set != 'normal-and-tsan'", standalone)
+        self.assertIn("- warm-linux-asan-ubsan-ccache", job("summary", WARM))
+
+    def test_asan_warming_follows_internal_promotion_without_gating_it(self):
+        warm = job("warm-asan-ubsan-ccache")
+        self.assertIn("metadata", warm)
+        self.assertIn("promote", warm)
+        self.assertIn("needs.promote.result == 'success'", warm)
+        self.assertIn("inputs.publication_target == 'internal'", warm)
+        self.assertIn("inputs.mode == 'refresh'", warm)
+        self.assertIn("inputs.promote", warm)
+        self.assertIn("(inputs.image_set == 'normal' || inputs.image_set == 'normal-and-tsan')", warm)
+        self.assertIn("image_tag: ${{ needs.metadata.outputs.build_tag }}", warm)
+        self.assertNotIn("warm-asan-ubsan-ccache", job("promote"))
+
     def test_public_release_publication_is_tag_scoped_and_complete(self):
         validate = job("validate-inputs")
         self.assertIn('[ "$REQUEST_REPOSITORY" != WSJTX/wsjtx ]', validate)

@@ -7,8 +7,15 @@ on:
       - ".github/workflows/ci.yml"
       - ".github/workflows/release.yml"
       - ".github/workflows/build-linux.yml"
+      - ".github/workflows/build-linux-sanitizers.yml"
       - ".github/workflows/warm-dependency-caches.yml"
       - ".github/actions/build-linux-payload/**"
+      - ".github/actions/build-linux-sanitizers/**"
+      - ".github/scripts/verify-sanitizer-instrumentation.py"
+      - "CMakeLists.txt"
+      - "CMake/**"
+      - "tests/CMakeLists.txt"
+      - "tests/**/CMakeLists.txt"
       - ".github/images/linux-ci/**"
       - ".github/scripts/linux-ci-image-config.sh"
       - ".github/scripts/linux-ci-image-fingerprint.sh"
@@ -51,6 +58,7 @@ on:
           - windows
           - linux
           - linux-arm64
+          - linux-asan-ubsan
           - linux-tsan
           - linux-images
           - linux-retention
@@ -79,6 +87,7 @@ jobs:
     outputs:
       linux_images: ${{ steps.detect.outputs.linux_images }}
       linux_arm64: ${{ steps.detect.outputs.linux_arm64 }}
+      linux_asan_ubsan: ${{ steps.detect.outputs.linux_asan_ubsan }}
       retention: ${{ steps.detect.outputs.retention }}
       windows: ${{ steps.detect.outputs.windows }}
       macos_arm64: ${{ steps.detect.outputs.macos_arm64 }}
@@ -109,12 +118,14 @@ jobs:
           tsan_images=false
           retention=false
           linux_arm64=false
+          linux_asan_ubsan=false
           windows=false
           macos_arm64=false
           macos_x86_64=false
 
           enable_cache_all() {
             linux_arm64=true
+            linux_asan_ubsan=true
             windows=true
             macos_arm64=true
             macos_x86_64=true
@@ -149,6 +160,9 @@ jobs:
                   ;;
                 linux-arm64)
                   linux_arm64=true
+                  ;;
+                linux-asan-ubsan)
+                  linux_asan_ubsan=true
                   ;;
                 linux-tsan)
                   tsan_images=true
@@ -204,6 +218,9 @@ jobs:
                   .github/workflows/build-linux.yml|.github/actions/build-linux-payload/*|.github/scripts/select-linux-ccache-save.sh)
                     linux_arm64=true
                     ;;
+                  .github/workflows/build-linux-sanitizers.yml|.github/actions/build-linux-sanitizers/*|.github/scripts/verify-sanitizer-instrumentation.py|CMakeLists.txt|CMake/*|tests/CMakeLists.txt|tests/*/CMakeLists.txt)
+                    linux_asan_ubsan=true
+                    ;;
                   .github/workflows/build-windows.yml|.github/actions/build-windows-deps/*|.github/scripts/build-boost-windows.sh|.github/scripts/build-pfunit-windows.sh|.github/scripts/build-hamlib-windows.sh)
                     windows=true
                     ;;
@@ -257,6 +274,7 @@ jobs:
           {
             echo "linux_images=$linux_images"
             echo "linux_arm64=$linux_arm64"
+            echo "linux_asan_ubsan=$linux_asan_ubsan"
             echo "retention=$retention"
             echo "windows=$windows"
             echo "macos_arm64=$macos_arm64"
@@ -273,11 +291,14 @@ jobs:
             echo "| --- | --- |"
             echo "| Linux GHCR image set | $image_set |"
             echo "| Linux arm64 ccache | $linux_arm64 |"
+            echo "| Linux ASan/UBSan ccache (standalone) | $linux_asan_ubsan |"
             echo "| Linux GHCR retention | $retention |"
             echo "| Windows x86_64 | $windows |"
             echo "| macOS arm64 | $macos_arm64 |"
             echo "| macOS x86_64 | $macos_x86_64 |"
           } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "Normal image refreshes warm ASan/UBSan after promotion instead of running the standalone warmer." >> "$GITHUB_STEP_SUMMARY"
 
   refresh-linux-images:
     needs: detect
@@ -346,6 +367,28 @@ jobs:
       version: ${{ needs.detect.outputs.version }}
       hamlib_branch: ${{ needs.detect.outputs.hamlib_branch }}
       arch: aarch64
+      save_ccache: true
+
+  warm-linux-asan-ubsan-ccache:
+    needs: detect
+    if: >-
+      github.ref == 'refs/heads/develop' &&
+      needs.detect.outputs.linux_asan_ubsan == 'true' &&
+      needs.detect.outputs.image_set != 'normal' &&
+      needs.detect.outputs.image_set != 'normal-and-tsan'
+    uses: ./.github/workflows/build-linux-sanitizers.yml
+    permissions:
+      contents: read
+      packages: read
+    concurrency:
+      group: asan-ubsan-ccache-develop
+      cancel-in-progress: false
+    with:
+      hamlib_branch: ${{ needs.detect.outputs.hamlib_branch }}
+      sanitizer: asan-ubsan
+      run_tests: false
+      allow_stale_image: false
+      recache: false
       save_ccache: true
 
   warm-windows-x86_64-deps:
@@ -449,6 +492,7 @@ jobs:
       - refresh-linux-images
       - retain-linux-images
       - warm-linux-arm64-ccache
+      - warm-linux-asan-ubsan-ccache
       - warm-windows-x86_64-deps
       - warm-windows-ccache
       - warm-macos-arm64-deps

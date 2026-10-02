@@ -27,6 +27,11 @@ on:
         required: false
         type: boolean
         default: false
+      run_tests:
+        description: "Run sanitizer tests after compiling production and test targets"
+        required: false
+        type: boolean
+        default: true
       advisory:
         description: "Allow sanitizer failures without failing the caller"
         required: false
@@ -70,7 +75,7 @@ jobs:
     needs: resolve-image
     name: ${{ inputs.sanitizer == 'tsan' && 'Linux x86_64 TSan' || 'Linux x86_64 ASan + UBSan' }}
     runs-on: ubuntu-24.04
-    timeout-minutes: ${{ inputs.sanitizer == 'tsan' && 180 || 40 }}
+    timeout-minutes: ${{ inputs.sanitizer == 'tsan' && 180 || 60 }}
     continue-on-error: ${{ inputs.advisory }}
     container:
       image: ${{ inputs.sanitizer == 'tsan' && format('ghcr.io/wsjtx/wsjtx-internal/linux-tsan-noble:{0}', needs.resolve-image.outputs.image_tag) || format('ghcr.io/wsjtx/wsjtx-internal/linux-noble:{0}', needs.resolve-image.outputs.image_tag) }}
@@ -90,4 +95,5 @@ jobs:
           sanitizer: ${{ inputs.sanitizer }}
           recache: ${{ inputs.recache }}
           save_ccache: ${{ inputs.save_ccache }}
+          run_tests: ${{ inputs.run_tests }}
           allow_stale_image: ${{ inputs.allow_stale_image }}

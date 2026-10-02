@@ -580,6 +580,32 @@ jobs:
               ghcr.io/wsjtx/wsjtx-internal/linux-noble@${{ needs.build-normal.outputs.digest }}
           fi
 
+  warm-asan-ubsan-ccache:
+    if: >-
+      !cancelled() && needs.promote.result == 'success' &&
+      github.ref == 'refs/heads/develop' &&
+      inputs.publication_target == 'internal' &&
+      inputs.mode == 'refresh' && inputs.promote &&
+      (inputs.image_set == 'normal' || inputs.image_set == 'normal-and-tsan')
+    needs:
+      - metadata
+      - promote
+    uses: ./.github/workflows/build-linux-sanitizers.yml
+    permissions:
+      contents: read
+      packages: read
+    concurrency:
+      group: asan-ubsan-ccache-develop
+      cancel-in-progress: false
+    with:
+      hamlib_branch: ${{ needs.metadata.outputs.normal_hamlib_ref }}
+      sanitizer: asan-ubsan
+      image_tag: ${{ needs.metadata.outputs.build_tag }}
+      run_tests: false
+      allow_stale_image: false
+      recache: false
+      save_ccache: true
+
   rollback:
     if: inputs.mode == 'rollback'
     needs: validate-inputs
