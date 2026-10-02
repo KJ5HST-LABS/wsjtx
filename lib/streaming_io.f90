@@ -18,19 +18,16 @@
 ! See lib/streaming_control.f90 for the parser + schema.
 !
 ! Apply policy:
-!   configure : applied immediately at receive. If mode changes, the
-!               in-flight sample accumulator is discarded (k=0) — the
-!               buffered audio is wrong-format for the new mode anyway.
-!               Producers should send `configure` FIRST, before any
-!               audio frames; subsequent audio is interpreted under the
-!               most recent configure.
-!   halt      : drain current period (call decoder if k>0), exit clean.
+!   configure : applied at receive. A change of mode or period starts a
+!               new period; what was in flight is discarded. Producers
+!               send `configure` first; audio is interpreted under the
+!               most recent one.
+!   halt      : drain the current period (decode if it has samples), exit.
 !
-! Period boundary: when k accumulates to `npts` samples (mode-dependent),
-! we run the decoder. Audio frames that overflow `npts` have the excess
-! discarded — producers should chunk audio so that any single frame fits
-! within one period, OR send exactly `npts` samples per period. An
-! external producer should honor this.
+! A period is TRperiod * 12 kHz samples (lib/streaming_period.f90). Keep a
+! frame remainder for the next period; retain only the first npts samples
+! for decoding. The reader's phase is that of the first audio after
+! `configure`; send every sample.
 !
 ! Format support: fmt=0x00 (int16 PCM) only. Other formats may be
 ! added later.
@@ -55,10 +52,12 @@ subroutine jt9_stream(shared_data, mode, TRperiod)
   use streaming_emit, only: streaming_emit_ready,                          &
        streaming_emit_decode_finished, streaming_emit_error,               &
        streaming_emit_error_code, streaming_emit_error_version,            &
-       streaming_emit_error_type, streaming_emit_warning_samples
+       streaming_emit_error_type
   use streaming_control, only: parse_control_frame, configure_fields,      &
        control_type_error, CTRL_CONFIGURE, CTRL_HALT, CTRL_PARSE_ERR
   use streaming_apply, only: apply_configure_fields
+  use streaming_period, only: period_state, period_begin, period_room,   &
+       period_take, period_full, period_ready
 
   include 'jt9com.f90'
 
@@ -81,12 +80,16 @@ subroutine jt9_stream(shared_data, mode, TRperiod)
   integer(int64) :: frame_len_wide, max_audio_frame_bytes
   integer        :: frame_len
 
-  integer :: nsps, kstep, npts, k, nhsym, nhsym0
+  integer :: nsps, kstep, nhsym, nhsym0
+  ! The period's sample accounting; `body_left` carries a straddling
+  ! frame's remainder into the next period.
+  type(period_state) :: period
+  ! This period's decode has run.
+  logical :: decoded
   integer :: ingain, nminw, ihsym, npts8
   real    :: pxdb, df3, pxdbmax, s(NSMAX)
   integer :: npct_unused
   integer :: body_left, take_bytes, take_samples
-  integer(int64) :: discarded_samples
   integer(int16) :: chunk(4096)
   integer(int8)  :: byte_sink(4096)
   ! FT8 progressive-decode working buffer (mirrors jt9.f90:19's id2a) — the
@@ -97,6 +100,7 @@ subroutine jt9_stream(shared_data, mode, TRperiod)
   character(len=CTL_BUF_LEN) :: ctl_buf
   integer(int8)  :: ctl_bytes(CTL_BUF_LEN)
   integer :: i_ctl, prev_mode
+  real(8) :: prev_TRperiod
   ! Session-baseline nfa/nfb stashed after jt9.f90's init_streaming_extra_fields
   ! returned. apply_configure_fields restores these on mode change with no
   ! explicit consumer override; passed in as dummy args.
@@ -195,25 +199,27 @@ subroutine jt9_stream(shared_data, mode, TRperiod)
 
   call streaming_emit_ready()
   max_audio_frame_bytes = 2_int64 * int(size(shared_data%id2), int64)
+  body_left = 0
 
   ! ===== Outer period loop ===========================================
   do
-     ! Compute per-period sample target. (Same multi-mode logic.)
-     npts = int(TRperiod * NFSAMPLE)
-     if (mode .eq. 5)  npts = 21 * 3456
-     if (npts > size(shared_data%id2)) npts = size(shared_data%id2)
-     if (npts < 1) npts = NFSAMPLE
-     if (mode .eq. 8 .and. npts .gt. 50 * 3456) npts = 50 * 3456
-
+     call period_begin(period, TRperiod, mode, size(shared_data%id2))
      shared_data%id2 = 0
-     k          = 0
      nhsym      = 0
      nhsym0     = 0       ! seed at 0 so the symspec catch-up loop is O(nhsym)
      eof_period = .false.
      halt_req   = .false.
+     decoded    = .false.
 
-     ! Inner frame loop: read frames until period full, halt, or EOF.
-     do while (k .lt. npts .and. .not. halt_req .and. .not. eof_period)
+     ! The previous period ended inside an audio frame: its remainder is
+     ! this period's first audio.
+     if (body_left .gt. 0) then
+        call consume_audio_body()
+        if (.not. decoded .and. period_ready(period)) call run_period_decode()
+     end if
+
+     ! Inner frame loop: read frames until the period is full, halt, or EOF.
+     do while (.not. period_full(period) .and. .not. halt_req .and. .not. eof_period)
         call stdin_read(type_byte, 1, ios)
         if (ios /= 0) then
            eof_period = .true.; exit
@@ -250,51 +256,9 @@ subroutine jt9_stream(shared_data, mode, TRperiod)
               end do
               cycle
            end if
-           discarded_samples = max(0_int64, frame_len_wide / 2_int64           &
-                - int(npts - k, int64))
-           if (discarded_samples .gt. 0_int64) then
-              call streaming_emit_warning_samples('period_boundary_discard',   &
-                   discarded_samples)
-           end if
            body_left = frame_len
-           do while (body_left .gt. 0)
-              if (k .lt. npts) then
-                 take_bytes   = min(body_left, 2 * size(chunk))
-                 take_samples = take_bytes / 2
-                 call stdin_read(chunk, 2*take_samples, ios)
-                 if (ios /= 0) then
-                    eof_period = .true.; exit
-                 end if
-                 if (k + take_samples .gt. npts) take_samples = npts - k
-                 shared_data%id2(k+1 : k+take_samples) =                   &
-                      chunk(1:take_samples)
-                 k = k + take_samples
-                 body_left = body_left - take_bytes
-                 ! Incremental symspec for JT9-family at kstep boundaries.
-                 ! Cap at nhsym=181 to match the WAV-path exit condition
-                 ! (jt9.f90:442-443) — exceeding it overruns ss(184,*).
-                 do while ((k - 2048) / kstep .gt. nhsym0 .and. nhsym0 .lt. 181)
-                    nhsym0 = nhsym0 + 1
-                    if (nhsym0 .lt. 1) cycle
-                    nhsym = nhsym0
-                    if (mode .eq. 9 .or. mode .eq. 74) then
-                       call timer('symspec ', 0)
-                       call symspec(shared_data, nhsym*kstep + 2048, nsps, &
-                            ingain, bLowSidelobes, nminw, pxdb, s, df3,   &
-                            ihsym, npts8, pxdbmax, npct_unused)
-                       call timer('symspec ', 1)
-                    end if
-                 end do
-              else
-                 ! Period full: drain the rest of this audio frame.
-                 take_bytes = min(body_left, size(byte_sink))
-                 call stdin_read(byte_sink, take_bytes, ios)
-                 if (ios /= 0) then
-                    eof_period = .true.; exit
-                 end if
-                 body_left = body_left - take_bytes
-              end if
-           end do
+           call consume_audio_body()
+           if (.not. decoded .and. period_ready(period)) call run_period_decode()
 
         else if (iand(int(type_byte(1)), 255) .eq. FRAME_CONTROL) then
            ! Read JSON body into char buffer (cap at CTL_BUF_LEN)
@@ -359,28 +323,19 @@ subroutine jt9_stream(shared_data, mode, TRperiod)
                       'trperiod must be finite and between 0 and 1800 seconds')
                  cycle
               end if
-              prev_mode = mode
+              prev_mode     = mode
+              prev_TRperiod = TRperiod
               call apply_configure_fields(cfg, mode, TRperiod,             &
                    shared_data%params, baseline_nfa, baseline_nfb)
-              ! Mode changed: in-flight samples are wrong format. Discard
-              ! and recompute npts. Producer should configure FIRST so
-              ! this branch is rare/diagnostic.
-              if (cfg%mode_set .and. mode .ne. prev_mode) then
-                 npts = int(TRperiod * NFSAMPLE)
-                 if (mode .eq. 5) npts = 21 * 3456
-                 if (npts .gt. size(shared_data%id2)) npts = size(shared_data%id2)
-                 if (npts .lt. 1) npts = NFSAMPLE
-                 if (mode .eq. 8 .and. npts .gt. 50 * 3456) npts = 50 * 3456
+              ! A configure that changes the applied mode or period starts a
+              ! new period; what was in flight is discarded. Repeating the
+              ! current configuration leaves the period alone.
+              if (mode .ne. prev_mode .or. TRperiod .ne. prev_TRperiod) then
+                 call period_begin(period, TRperiod, mode, size(shared_data%id2))
                  shared_data%id2 = 0
-                 k       = 0
                  nhsym   = 0
                  nhsym0  = 0
-              else if (cfg%trperiod_set) then
-                 ! TRperiod-only change: recompute npts but keep accumulated samples.
-                 npts = int(TRperiod * NFSAMPLE)
-                 if (mode .eq. 5) npts = 21 * 3456
-                 if (mode .eq. 8 .and. npts .gt. 50 * 3456) npts = 50 * 3456
-                 if (npts .gt. size(shared_data%id2)) npts = size(shared_data%id2)
+                 decoded = .false.
               end if
            case (CTRL_PARSE_ERR)
               call streaming_emit_error_code('configure_parse_error',          &
@@ -401,54 +356,96 @@ subroutine jt9_stream(shared_data, mode, TRperiod)
         end if
      end do
 
-     ! Run decoder if we accumulated any samples this period.
-     if (k .gt. 0) then
-        shared_data%params%newdat = .true.
-        shared_data%params%nzhsym = nhsym
-        ! FT8 override: decoder is tuned for nzhsym=50 (cf. jt9.f90:552).
-        if (mode .eq. 8) shared_data%params%nzhsym = 50
-        ! Non-FT8/FST4/Q65: cap at 181 to match WAV-path exit (ss array bound).
-        if (mode .ne. 8   .and. mode .ne. 240 .and. mode .ne. 241 .and.    &
-            mode .ne. 242 .and. mode .ne. 66  .and. shared_data%params%nzhsym .gt. 181) then
-           shared_data%params%nzhsym = 181
-        end if
-        shared_data%params%kin    = 64800
-        if (mode .eq. 240) shared_data%params%kin = 720000
-        if (mode .eq. 241) shared_data%params%kin = 720000
-        if (mode .eq. 242) shared_data%params%kin = 720000
-
-        if (mode .eq. 144) then
-           call decode_msk144(shared_data%id2, shared_data%params, data_dir)
-        else if (mode .eq. 8 .and. .not. shared_data%params%lmultift8) then
-           ! FT8 progressive 41/47/50 sequence (mirrors jt9.f90:562-581).
-           ! Without the early calls, ft8_decode.f90's saved `dd` array stays
-           ! unset and the final nzhsym=50 call decodes silence. With the
-           ! sequence, dd is populated on the nzhsym=41/47 passes and the
-           ! nzhsym=50 final pass produces real decodes.
-           shared_data%params%nzhsym = 41
-           id2a(1:41*3456) = shared_data%id2(1:41*3456)
-           id2a(41*3456+1:) = 0
-           call multimode_decoder(shared_data%ss, id2a, shared_data%params, NFSAMPLE)
-
-           shared_data%params%nzhsym = 47
-           id2a(1:47*3456) = shared_data%id2(1:47*3456)
-           id2a(47*3456+1:) = 0
-           call multimode_decoder(shared_data%ss, id2a, shared_data%params, NFSAMPLE)
-
-           shared_data%params%nzhsym = 50
-           id2a(1:50*3456) = shared_data%id2(1:50*3456)
-           id2a(50*3456+1:) = 0
-           call multimode_decoder(shared_data%ss, id2a, shared_data%params, NFSAMPLE)
-        else
-           call multimode_decoder(shared_data%ss, shared_data%id2,         &
-                shared_data%params, NFSAMPLE)
-        end if
-     end if
+     ! A period cut short (halt, or the producer closed the pipe) still
+     ! decodes what it has — once.
+     if (.not. decoded .and. period%k .gt. 0) call run_period_decode()
 
      if (halt_req .or. eof_period) return
   end do
 
 contains
+
+  ! This period's decode, on the `npts` samples in `id2`. Runs once per
+  ! period: when the decoder's share is in, or from the drain when the
+  ! period ends short of it.
+  subroutine run_period_decode()
+    decoded = .true.
+    shared_data%params%newdat = .true.
+    shared_data%params%nzhsym = nhsym
+    ! FT8 override: decoder is tuned for nzhsym=50 (cf. jt9.f90:552).
+    if (mode .eq. 8) shared_data%params%nzhsym = 50
+    ! Non-FT8/FST4/Q65: cap at 181 to match WAV-path exit (ss array bound).
+    if (mode .ne. 8   .and. mode .ne. 240 .and. mode .ne. 241 .and.    &
+        mode .ne. 242 .and. mode .ne. 66  .and. shared_data%params%nzhsym .gt. 181) then
+       shared_data%params%nzhsym = 181
+    end if
+    shared_data%params%kin    = 64800
+    if (mode .eq. 240) shared_data%params%kin = 720000
+    if (mode .eq. 241) shared_data%params%kin = 720000
+    if (mode .eq. 242) shared_data%params%kin = 720000
+
+    if (mode .eq. 144) then
+       call decode_msk144(shared_data%id2, shared_data%params, data_dir)
+    else if (mode .eq. 8 .and. .not. shared_data%params%lmultift8) then
+       ! FT8 progressive 41/47/50 sequence (mirrors jt9.f90:562-581).
+       ! Without the early calls, ft8_decode.f90's saved `dd` array stays
+       ! unset and the final nzhsym=50 call decodes silence. With the
+       ! sequence, dd is populated on the nzhsym=41/47 passes and the
+       ! nzhsym=50 final pass produces real decodes.
+       shared_data%params%nzhsym = 41
+       id2a(1:41*3456) = shared_data%id2(1:41*3456)
+       id2a(41*3456+1:) = 0
+       call multimode_decoder(shared_data%ss, id2a, shared_data%params, NFSAMPLE)
+
+       shared_data%params%nzhsym = 47
+       id2a(1:47*3456) = shared_data%id2(1:47*3456)
+       id2a(47*3456+1:) = 0
+       call multimode_decoder(shared_data%ss, id2a, shared_data%params, NFSAMPLE)
+
+       shared_data%params%nzhsym = 50
+       id2a(1:50*3456) = shared_data%id2(1:50*3456)
+       id2a(50*3456+1:) = 0
+       call multimode_decoder(shared_data%ss, id2a, shared_data%params, NFSAMPLE)
+    else
+       call multimode_decoder(shared_data%ss, shared_data%id2,         &
+            shared_data%params, NFSAMPLE)
+    end if
+  end subroutine run_period_decode
+
+  ! Stop at the period boundary; body_left carries the remaining frame
+  ! forward.
+  subroutine consume_audio_body()
+    integer :: k0, nacc
+    do while (body_left .gt. 0 .and. .not. period_full(period))
+       take_samples = period_room(period, min(body_left / 2, size(chunk)))
+       take_bytes   = 2 * take_samples
+       call stdin_read(chunk, take_bytes, ios)
+       if (ios /= 0) then
+          eof_period = .true.; return
+       end if
+       body_left = body_left - take_bytes
+       k0 = period%k
+       call period_take(period, take_samples, nacc)
+       if (nacc .gt. 0) then
+          shared_data%id2(k0+1 : k0+nacc) = chunk(1:nacc)
+          ! Incremental symspec for JT9-family at kstep boundaries.
+          ! Cap at nhsym=181 to match the WAV-path exit condition
+          ! (jt9.f90:442-443) — exceeding it overruns ss(184,*).
+          do while ((period%k - 2048) / kstep .gt. nhsym0 .and. nhsym0 .lt. 181)
+             nhsym0 = nhsym0 + 1
+             if (nhsym0 .lt. 1) cycle
+             nhsym = nhsym0
+             if (mode .eq. 9 .or. mode .eq. 74) then
+                call timer('symspec ', 0)
+                call symspec(shared_data, nhsym*kstep + 2048, nsps,        &
+                     ingain, bLowSidelobes, nminw, pxdb, s, df3,           &
+                     ihsym, npts8, pxdbmax, npct_unused)
+                call timer('symspec ', 1)
+             end if
+          end do
+       end if
+    end do
+  end subroutine consume_audio_body
 
   ! Read exactly nbytes from stdin via the C helper; ios=0 on success,
   ! ios=1 on end-of-stream (short delivery — the producer closed the
