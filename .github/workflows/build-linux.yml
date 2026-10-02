@@ -62,6 +62,11 @@ on:
         required: false
         type: boolean
         default: true
+      armhf_build_only:
+        description: "Compile and audit ARMHF production and test targets without runtime tests or packaging"
+        required: false
+        type: boolean
+        default: false
       release_channel:
         description: "Build release channel: DEVEL, RC, or GA"
         required: false
@@ -149,6 +154,11 @@ on:
         required: false
         type: boolean
         default: true
+      armhf_build_only:
+        description: "Compile and audit ARMHF production and test targets without runtime tests or packaging"
+        required: false
+        type: boolean
+        default: false
       release_channel:
         description: "Build release channel"
         required: false
@@ -201,6 +211,7 @@ jobs:
           REQUESTED_TAG: ${{ inputs.image_tag }}
           ARMHF_BUILD: ${{ inputs.arch == 'armhf' }}
           ARCH: ${{ inputs.arch }}
+          ARMHF_BUILD_ONLY: ${{ inputs.armhf_build_only }}
           IMAGE_SOURCE: ${{ inputs.image_source }}
           IMAGE_DIGEST: ${{ inputs.image_digest }}
           ARMHF_CROSS_IMAGE_DIGEST: ${{ inputs.armhf_cross_image_digest }}
@@ -208,6 +219,10 @@ jobs:
           ALLOW_STALE_IMAGE: ${{ inputs.allow_stale_image }}
         shell: bash
         run: |
+          if [ "$ARMHF_BUILD_ONLY" = true ] && [ "$ARCH" != armhf ]; then
+            echo "::error::armhf_build_only is valid only for ARMHF builds"
+            exit 2
+          fi
           case "$ARCH" in
             x86_64) package=linux-noble; cross_package= ;;
             aarch64) package=linux-arm64-bookworm; cross_package= ;;
@@ -482,10 +497,12 @@ jobs:
             ccache-linux-armhf-${{ steps.image.outputs.ccache_compatibility_id }}-
 
       - name: Cross-build ARMHF binaries
+        id: cross-build
         env:
           ARCH: armhf
           CROSS_BUILDER_IMAGE: ${{ needs.resolve-image.outputs.cross_image_reference }}
           RECACHE: ${{ inputs.recache }}
+          ARMHF_BUILD_ONLY: ${{ inputs.armhf_build_only }}
           CCACHE_COMPILERCHECK: ${{ steps.image.outputs.ccache_compiler_check }}
           WSJTX_CI_IMAGE_ALLOW_RECIPE_MISMATCH: ${{ inputs.allow_stale_image }}
         run: |
@@ -503,6 +520,7 @@ jobs:
             -e WSJT_RC_NUMBER \
             -e CCACHE_DIR=/work/.ccache-armhf \
             -e CCACHE_COMPILERCHECK \
+            -e ARMHF_BUILD_ONLY \
             -e WSJTX_CI_IMAGE_ALLOW_RECIPE_MISMATCH \
             "${ccache_args[@]}" \
             "$CROSS_BUILDER_IMAGE" \
@@ -510,6 +528,7 @@ jobs:
 
       - name: Test and package under ARMv7 QEMU
         id: armhf-runtime
+        if: ${{ !inputs.armhf_build_only }}
         env:
           ARCH: armhf
           RUNTIME_IMAGE: ${{ needs.resolve-image.outputs.image_reference }}
@@ -531,14 +550,14 @@ jobs:
             bash .github/scripts/validate-linux-armhf-runtime.sh
 
       - name: Publish armhf test summary
-        if: always()
+        if: always() && !inputs.armhf_build_only
         run: >-
           python3 .github/scripts/publish-ctest-summary.py
           "Linux armhf" wsjtx-build/ctest-results.xml
           >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload armhf AppImage startup diagnostics
-        if: inputs.build_packages && failure() && steps.armhf-runtime.outcome == 'failure'
+        if: inputs.build_packages && !inputs.armhf_build_only && failure() && steps.armhf-runtime.outcome == 'failure'
         uses: actions/upload-artifact@v7
         with:
           name: wsjtx-startup-smoke-linux-armhf
@@ -552,7 +571,7 @@ jobs:
       # action's uploads so release.yml's all-platforms-ready gate
       # pattern works unchanged.
       - name: Upload .deb
-        if: inputs.build_packages
+        if: inputs.build_packages && !inputs.armhf_build_only
         uses: actions/upload-artifact@v7
         with:
           name: wsjtx-${{ inputs.version }}-linux-armhf-deb
@@ -560,7 +579,7 @@ jobs:
           if-no-files-found: error
           compression-level: 0
       - name: Upload RPM
-        if: inputs.build_packages
+        if: inputs.build_packages && !inputs.armhf_build_only
         uses: actions/upload-artifact@v7
         with:
           name: wsjtx-${{ inputs.version }}-linux-armhf-rpm
@@ -568,7 +587,7 @@ jobs:
           if-no-files-found: error
           compression-level: 0
       - name: Upload AppImage
-        if: inputs.build_packages
+        if: inputs.build_packages && !inputs.armhf_build_only
         uses: actions/upload-artifact@v7
         with:
           name: wsjtx-${{ inputs.version }}-linux-armhf-AppImage
@@ -576,7 +595,7 @@ jobs:
           if-no-files-found: error
           compression-level: 0
       - name: Upload build artifacts
-        if: inputs.build_packages
+        if: inputs.build_packages && !inputs.armhf_build_only
         uses: actions/upload-artifact@v7
         with:
           name: wsjtx-${{ inputs.version }}-linux-armhf
@@ -585,7 +604,7 @@ jobs:
             wsjtx-build/wsprd
             wsjtx-build/wsjtx
       - name: Upload test results
-        if: always()
+        if: always() && !inputs.armhf_build_only
         uses: actions/upload-artifact@v7
         with:
           name: ctest-results-linux-armhf
@@ -597,8 +616,65 @@ jobs:
         run: echo "::notice::Not saving armhf ccache because this build used a stale Linux CI image recipe"
 
       - name: Save armhf ccache
-        if: inputs.save_ccache && steps.image.outputs.recipe_match == 'true' && steps.ccache.outputs.cache-hit != 'true'
+        id: save-ccache
+        if: inputs.save_ccache && (!inputs.armhf_build_only || github.ref == 'refs/heads/develop') && steps.image.outputs.recipe_match == 'true' && steps.ccache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v6
         with:
           path: .ccache-armhf
           key: ${{ steps.ccache.outputs.cache-primary-key }}
+
+      - name: Summarize ARMHF compiler cache
+        if: always()
+        env:
+          CACHE_STEPS: ${{ toJSON(steps) }}
+          SAVE_CCACHE: ${{ inputs.save_ccache }}
+          ARMHF_BUILD_ONLY: ${{ inputs.armhf_build_only }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          import os
+          from pathlib import Path
+
+          steps = json.loads(os.environ["CACHE_STEPS"])
+          cache = steps.get("ccache", {})
+          outputs = cache.get("outputs", {})
+          restore = "exact hit" if outputs.get("cache-hit") == "true" else "fallback restore" if outputs.get("cache-matched-key") else "miss"
+          if cache.get("outcome") != "success":
+              restore = cache.get("outcome", "not run")
+          image = steps.get("image", {}).get("outputs", {})
+          build_only = os.environ["ARMHF_BUILD_ONLY"] == "true"
+          save = steps.get("save-ccache", {}).get("outcome", "skipped")
+          timing = Path("wsjtx-build/armhf-cross-build-timing.env")
+          duration = "unavailable"
+          if timing.exists():
+              duration = dict(line.split("=", 1) for line in timing.read_text().splitlines()).get("duration_seconds", duration)
+          if os.environ["SAVE_CCACHE"] != "true":
+              publication = "disabled"
+          elif build_only and os.environ["GITHUB_REF"] != "refs/heads/develop":
+              publication = "skipped: build-only cache writes require develop"
+          elif image.get("recipe_match") == "false":
+              publication = "skipped: image recipe mismatch"
+          elif save != "skipped":
+              publication = f"attempted (step: {save}); see cache action log for upload confirmation"
+          elif any(step.get("outcome") in ("failure", "cancelled") for step in steps.values()):
+              publication = "skipped: preceding failure or cancellation"
+          elif outputs.get("cache-hit") == "true":
+              publication = "skipped: exact cache already exists"
+          else:
+              publication = "not attempted"
+          print("### ARMHF compiler cache\n")
+          print("| Field | Value |\n| --- | --- |")
+          rows = {
+              "Source SHA": os.environ["GITHUB_SHA"],
+              "Image generation": image.get("generation", "unavailable"),
+              "Requested/save key": outputs.get("cache-primary-key", "unavailable"),
+              "Matched key": outputs.get("cache-matched-key") or "none",
+              "Restore": restore,
+              "Compilation and binary audits": steps.get("cross-build", {}).get("outcome", "not run"),
+              "Compilation duration (seconds)": duration,
+              "Runtime tests and packaging": "disabled (build-only warmer)" if build_only else steps.get("armhf-runtime", {}).get("outcome", "not run"),
+              "Cache publication": publication,
+          }
+          for label, value in rows.items():
+              print(f"| {label} | {value} |")
+          PY

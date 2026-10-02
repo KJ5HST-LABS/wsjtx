@@ -39,6 +39,8 @@ on:
       - ".github/scripts/build-*-macos.sh"
       - ".github/scripts/build-*-windows.sh"
       - ".github/scripts/*armhf*"
+      - ".github/cmake/armhf-toolchain.cmake"
+      - ".github/scripts/linux-artifact-validation.sh"
       - ".github/scripts/install-*-macos*.sh"
       - ".github/scripts/macos-qt-cache-key.sh"
       - ".github/scripts/verify-macos-*.sh"
@@ -58,6 +60,7 @@ on:
           - windows
           - linux
           - linux-arm64
+          - linux-armhf
           - linux-asan-ubsan
           - linux-tsan
           - linux-images
@@ -87,6 +90,7 @@ jobs:
     outputs:
       linux_images: ${{ steps.detect.outputs.linux_images }}
       linux_arm64: ${{ steps.detect.outputs.linux_arm64 }}
+      linux_armhf: ${{ steps.detect.outputs.linux_armhf }}
       linux_asan_ubsan: ${{ steps.detect.outputs.linux_asan_ubsan }}
       retention: ${{ steps.detect.outputs.retention }}
       windows: ${{ steps.detect.outputs.windows }}
@@ -118,6 +122,7 @@ jobs:
           tsan_images=false
           retention=false
           linux_arm64=false
+          linux_armhf=false
           linux_asan_ubsan=false
           windows=false
           macos_arm64=false
@@ -125,6 +130,7 @@ jobs:
 
           enable_cache_all() {
             linux_arm64=true
+            linux_armhf=true
             linux_asan_ubsan=true
             windows=true
             macos_arm64=true
@@ -160,6 +166,9 @@ jobs:
                   ;;
                 linux-arm64)
                   linux_arm64=true
+                  ;;
+                linux-armhf)
+                  linux_armhf=true
                   ;;
                 linux-asan-ubsan)
                   linux_asan_ubsan=true
@@ -217,8 +226,16 @@ jobs:
                     ;;
                   .github/workflows/build-linux.yml|.github/actions/build-linux-payload/*|.github/scripts/select-linux-ccache-save.sh)
                     linux_arm64=true
+                    linux_armhf=true
                     ;;
-                  .github/workflows/build-linux-sanitizers.yml|.github/actions/build-linux-sanitizers/*|.github/scripts/verify-sanitizer-instrumentation.py|CMakeLists.txt|CMake/*|tests/CMakeLists.txt|tests/*/CMakeLists.txt)
+                  .github/scripts/build-linux-armhf-cross.sh|.github/scripts/audit-armhf-cross-build.sh|.github/cmake/armhf-toolchain.cmake|.github/scripts/linux-artifact-validation.sh)
+                    linux_armhf=true
+                    ;;
+                  CMakeLists.txt|CMake/*|tests/CMakeLists.txt|tests/*/CMakeLists.txt)
+                    linux_armhf=true
+                    linux_asan_ubsan=true
+                    ;;
+                  .github/workflows/build-linux-sanitizers.yml|.github/actions/build-linux-sanitizers/*|.github/scripts/verify-sanitizer-instrumentation.py)
                     linux_asan_ubsan=true
                     ;;
                   .github/workflows/build-windows.yml|.github/actions/build-windows-deps/*|.github/scripts/build-boost-windows.sh|.github/scripts/build-pfunit-windows.sh|.github/scripts/build-hamlib-windows.sh)
@@ -274,6 +291,7 @@ jobs:
           {
             echo "linux_images=$linux_images"
             echo "linux_arm64=$linux_arm64"
+            echo "linux_armhf=$linux_armhf"
             echo "linux_asan_ubsan=$linux_asan_ubsan"
             echo "retention=$retention"
             echo "windows=$windows"
@@ -291,6 +309,7 @@ jobs:
             echo "| --- | --- |"
             echo "| Linux GHCR image set | $image_set |"
             echo "| Linux arm64 ccache | $linux_arm64 |"
+            echo "| Linux ARMHF ccache (standalone) | $linux_armhf |"
             echo "| Linux ASan/UBSan ccache (standalone) | $linux_asan_ubsan |"
             echo "| Linux GHCR retention | $retention |"
             echo "| Windows x86_64 | $windows |"
@@ -298,7 +317,7 @@ jobs:
             echo "| macOS x86_64 | $macos_x86_64 |"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          echo "Normal image refreshes warm ASan/UBSan after promotion instead of running the standalone warmer." >> "$GITHUB_STEP_SUMMARY"
+          echo "Normal image refreshes warm ARMHF and ASan/UBSan after promotion instead of running the standalone warmers." >> "$GITHUB_STEP_SUMMARY"
 
   refresh-linux-images:
     needs: detect
@@ -367,6 +386,29 @@ jobs:
       version: ${{ needs.detect.outputs.version }}
       hamlib_branch: ${{ needs.detect.outputs.hamlib_branch }}
       arch: aarch64
+      save_ccache: true
+
+  warm-linux-armhf-ccache:
+    needs: detect
+    if: >-
+      github.ref == 'refs/heads/develop' &&
+      needs.detect.outputs.linux_armhf == 'true' &&
+      needs.detect.outputs.image_set != 'normal' &&
+      needs.detect.outputs.image_set != 'normal-and-tsan'
+    uses: ./.github/workflows/build-linux.yml
+    permissions:
+      contents: read
+      packages: read
+    concurrency:
+      group: armhf-ccache-develop
+      cancel-in-progress: false
+    with:
+      version: ${{ needs.detect.outputs.version }}
+      hamlib_branch: ${{ needs.detect.outputs.hamlib_branch }}
+      arch: armhf
+      armhf_build_only: true
+      allow_stale_image: false
+      recache: false
       save_ccache: true
 
   warm-linux-asan-ubsan-ccache:
@@ -492,6 +534,7 @@ jobs:
       - refresh-linux-images
       - retain-linux-images
       - warm-linux-arm64-ccache
+      - warm-linux-armhf-ccache
       - warm-linux-asan-ubsan-ccache
       - warm-windows-x86_64-deps
       - warm-windows-ccache

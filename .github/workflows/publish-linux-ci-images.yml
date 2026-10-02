@@ -606,6 +606,33 @@ jobs:
       recache: false
       save_ccache: true
 
+  warm-armhf-ccache:
+    if: >-
+      !cancelled() && needs.promote.result == 'success' &&
+      github.ref == 'refs/heads/develop' &&
+      inputs.publication_target == 'internal' &&
+      inputs.mode == 'refresh' && inputs.promote && inputs.include_armhf &&
+      (inputs.image_set == 'normal' || inputs.image_set == 'normal-and-tsan')
+    needs:
+      - metadata
+      - promote
+    uses: ./.github/workflows/build-linux.yml
+    permissions:
+      contents: read
+      packages: read
+    concurrency:
+      group: armhf-ccache-develop
+      cancel-in-progress: false
+    with:
+      version: ${{ needs.metadata.outputs.version }}
+      hamlib_branch: ${{ needs.metadata.outputs.normal_hamlib_ref }}
+      arch: armhf
+      image_tag: ${{ needs.metadata.outputs.build_tag }}
+      armhf_build_only: true
+      allow_stale_image: false
+      recache: false
+      save_ccache: true
+
   rollback:
     if: inputs.mode == 'rollback'
     needs: validate-inputs

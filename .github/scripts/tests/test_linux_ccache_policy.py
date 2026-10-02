@@ -20,6 +20,16 @@ class LinuxCcachePolicyTests(unittest.TestCase):
         self.assertIsNotNone(match, name)
         return match.group("body")
 
+    def armhf_step(self, name):
+        workflow = self.read(".github/workflows/build-linux.yml").split("  build-armhf:\n", 1)[1]
+        match = re.search(
+            rf"^      - name: {re.escape(name)}\n(?P<body>.*?)(?=^      - |\Z)",
+            workflow,
+            re.MULTILINE | re.DOTALL,
+        )
+        self.assertIsNotNone(match, name)
+        return match.group("body")
+
     def assert_cache_tiers(self, text, prefix):
         primary = (
             f"{prefix}${{{{ steps.image.outputs.ccache_compatibility_id }}}}-"
@@ -147,9 +157,50 @@ class LinuxCcachePolicyTests(unittest.TestCase):
         self.assertIn("cross_recipe_match", workflow)
         self.assertIn("runtime_recipe_match", workflow)
         self.assertIn(
-            "if: inputs.save_ccache && steps.image.outputs.recipe_match == 'true' && steps.ccache.outputs.cache-hit != 'true'",
+            "if: inputs.save_ccache && (!inputs.armhf_build_only || github.ref == 'refs/heads/develop') && steps.image.outputs.recipe_match == 'true' && steps.ccache.outputs.cache-hit != 'true'",
             workflow,
         )
+
+    def test_armhf_build_only_preserves_compilation_audits_and_pair_verification(self):
+        workflow = self.read(".github/workflows/build-linux.yml")
+        self.assertEqual(len(re.findall(
+            r"      armhf_build_only:\n(?:        .*\n)*?        type: boolean\n        default: false",
+            workflow,
+        )), 2)
+        self.assertIn('if [ "$ARMHF_BUILD_ONLY" = true ] && [ "$ARCH" != armhf ]; then', workflow)
+        for name in ("Inspect ARMHF image pair", "Cross-build ARMHF binaries"):
+            self.assertNotIn("if:", self.armhf_step(name))
+        compile_step = self.armhf_step("Cross-build ARMHF binaries")
+        self.assertIn("ARMHF_BUILD_ONLY: ${{ inputs.armhf_build_only }}", compile_step)
+        self.assertIn("-e ARMHF_BUILD_ONLY", compile_step)
+        script = self.read(".github/scripts/build-linux-armhf-cross.sh")
+        self.assertIn("-DWSJT_ENABLE_TESTS=ON", script)
+        skip_install = script.index('if [ "$ARMHF_BUILD_ONLY" = true ]; then', script.index("cmake --build"))
+        for audit in ("validate_linux_build_executables", ".github/scripts/audit-armhf-cross-build.sh"):
+            self.assertLess(script.index(audit), skip_install)
+        self.assertLess(skip_install, script.index("cmake --install"))
+        self.assertIn("exit 0", script[skip_install:script.index("cmake --install")])
+
+    def test_armhf_build_only_skips_runtime_and_artifact_steps(self):
+        for name in (
+            "Test and package under ARMv7 QEMU", "Publish armhf test summary",
+            "Upload armhf AppImage startup diagnostics", "Upload .deb", "Upload RPM",
+            "Upload AppImage", "Upload build artifacts", "Upload test results",
+        ):
+            with self.subTest(step=name):
+                self.assertIn("!inputs.armhf_build_only", self.armhf_step(name))
+
+    def test_armhf_build_only_save_requires_trusted_successful_audits(self):
+        save = self.armhf_step("Save armhf ccache")
+        self.assertIn("(!inputs.armhf_build_only || github.ref == 'refs/heads/develop')", save)
+        self.assertIn("inputs.save_ccache", save)
+        self.assertIn("steps.image.outputs.recipe_match == 'true'", save)
+        self.assertIn("steps.ccache.outputs.cache-hit != 'true'", save)
+        self.assertIn("key: ${{ steps.ccache.outputs.cache-primary-key }}", save)
+        self.assertNotIn("always()", save)
+        self.assertNotIn("!cancelled()", save)
+        workflow = self.read(".github/workflows/build-linux.yml")
+        self.assertLess(workflow.index("- name: Test and package under ARMv7 QEMU"), workflow.index("- name: Save armhf ccache"))
 
     def test_release_requires_pinned_armhf_pair_without_stale_recipe_fallback(self):
         workflow = self.read(".github/workflows/release.yml")

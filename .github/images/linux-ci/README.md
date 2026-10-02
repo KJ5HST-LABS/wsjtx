@@ -125,10 +125,22 @@ normal per-object invalidation. Changes to unrelated image packages do not
 discard otherwise compatible objects.
 
 A new generation first restores its own snapshot and then falls back to any
-compatible older generation. The candidate build recompiles only genuine
-misses and saves an augmented generation-specific snapshot before promotion.
-Recipe-stale fallback builds may restore caches but are not allowed to save
-them.
+compatible older generation. The build recompiles only genuine misses and
+saves an augmented generation-specific snapshot. Recipe-stale fallback builds
+may restore caches but are not allowed to save them.
+
+ARMHF warming compiles production and test targets and runs the binary audits,
+then saves objects without preparing an AppDir or executing runtime tests and
+packaging. Image-pair verification, including its brief QEMU checks, remains
+required. The `armhf_build_only` workflow input defaults to false, preserving
+full ARMHF CI; build-only cache writes require `develop`.
+
+The cache-refresh workflow selects ARMHF weekly, for relevant build/configuration
+changes on `develop`, and through its `linux-armhf` manual target. Source-only
+pushes do not select it. Successful internal ARMHF image promotion warms the
+exact new generation afterward; a warmer failure does not undo promotion.
+Standalone and post-promotion warmers share a concurrency group, and an image
+refresh suppresses duplicate standalone warming.
 
 ## Retention
 
