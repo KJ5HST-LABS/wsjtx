@@ -17,6 +17,7 @@ public:
     Ready,
     Error,
     Started,
+    Rejected,
     Record,
     Finished,
     Malformed

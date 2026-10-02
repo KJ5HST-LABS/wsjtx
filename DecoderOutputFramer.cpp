@@ -57,6 +57,11 @@ void DecoderOutputFramer::drain (QIODevice& device,
               event.generation = generation;
             }
         }
+      else if (rawLine.startsWith ("<DecodeRejected"))
+        {
+          if (generation_ && rawLine.startsWith ("<DecodeRejected> "))
+            event.type = EventType::Rejected;
+        }
       else if (rawLine.startsWith ("<DecodeFinished>"))
         {
           DecoderIpc::Completion completion {};

@@ -53,6 +53,7 @@ private Q_SLOTS:
   void startupFrames ();
   void fragmentedStartupFrame ();
   void startupFramesDoNotBecomeDecodeRecords ();
+  void requestRejectionPreservesCompletion ();
 };
 
 void TestDecoderOutputFramer::startupFrames_data ()
@@ -133,6 +134,27 @@ void TestDecoderOutputFramer::startupFramesDoNotBecomeDecodeRecords ()
     DecoderOutputFramer::EventType::Started, DecoderOutputFramer::EventType::Ready,
     DecoderOutputFramer::EventType::Error, DecoderOutputFramer::EventType::Malformed,
     DecoderOutputFramer::EventType::Finished}));
+}
+
+void TestDecoderOutputFramer::requestRejectionPreservesCompletion ()
+{
+  QByteArray const rejection {"<DecodeRejected> status=invalid operation=decode mode=8 input=11 analysis=12 attempt=1\r\n"};
+  QByteArray output = rejection + "<DecodeStarted> gen=7\n" + rejection
+    + "<DecodeRejected>\n<DecodeFinished>   0   0        0 gen=7\n";
+  QBuffer buffer {&output};
+  QVERIFY (buffer.open (QIODevice::ReadOnly));
+  DecoderOutputFramer framer;
+  QVector<DecoderOutputFramer::Event> events;
+  framer.drain (buffer, [&] (DecoderOutputFramer::Event const& event) { events.append (event); });
+  QCOMPARE (events.size (), 5);
+  QCOMPARE (events[0].type, DecoderOutputFramer::EventType::Malformed);
+  QCOMPARE (events[1].type, DecoderOutputFramer::EventType::Started);
+  QCOMPARE (events[2].type, DecoderOutputFramer::EventType::Rejected);
+  QCOMPARE (events[2].generation, qint32 {7});
+  QCOMPARE (events[2].rawLine, rejection);
+  QCOMPARE (events[3].type, DecoderOutputFramer::EventType::Malformed);
+  QCOMPARE (events[4].type, DecoderOutputFramer::EventType::Finished);
+  QCOMPARE (framer.currentGeneration (), qint32 {0});
 }
 
 void TestDecoderOutputFramer::rejectedRecordDoesNotStopDrain ()

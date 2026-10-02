@@ -466,14 +466,17 @@ contains
        ! The legacy host's low-signal gate includes its zero-padded 15-second window.
        if(sqrt(sum(real(id2(1:180000))**2)/180000.0)<0.5) return
     endif
-    if(.not.valid_handle(host_handle)) then
-       status=engine_create(options,host_handle)
-       if(status/=ok) return
-    endif
     request%input_id=input_id
     request%mode=params%nmode
     request%analysis_id=analysis_id
     request%attempt_no=attempt_no
+    if(.not.valid_handle(host_handle)) then
+       status=engine_create(options,host_handle)
+       if(status/=ok) then
+          call report_host_rejection(status,request,'create')
+          return
+       endif
+    endif
     if(input_id<=0.or.analysis_id<=0) then
        if(session%input_id==0.or.params%nutc/=fallback_utc.or.session%input_mode/=params%nmode.or. &
             (params%nmode==engine_mode_ft4.and..not.params%nagain).or. &
@@ -488,8 +491,13 @@ contains
        request%attempt_no=session%last_attempt+1
        fallback_utc=params%nutc
     endif
-    if(session%input_id/=0.and.(session%input_id/=request%input_id.or.session%input_mode/=request%mode)) &
-         status=engine_release_input(host_handle,session%input_id)
+    if(session%input_id/=0.and.(session%input_id/=request%input_id.or.session%input_mode/=request%mode)) then
+       status=engine_release_input(host_handle,session%input_id)
+       if(status/=ok) then
+          call report_host_rejection(status,request,'release-input')
+          return
+       endif
+    endif
     request%phase=2
     if(params%nmode==engine_mode_ft8.and.params%nzhsym<50) request%phase=1
     if(params%nagain) request%phase=3
@@ -569,8 +577,33 @@ contains
     endif
     audio%sample_rate_hz=nfsample
     status=decode_attempt(host_handle,request,audio,c_null_funptr,c_null_ptr,outcome,.true.,progress)
-    if(status==ok) completion=session%completion
+    if(status==ok) then
+       completion=session%completion
+    else
+       call report_host_rejection(status,request,'decode')
+    endif
   end subroutine
+
+  subroutine report_host_rejection(status,request,operation)
+    integer(c_int), intent(in) :: status
+    type(attempt_request), intent(in) :: request
+    character(len=*), intent(in) :: operation
+    character(len=12) :: status_name
+    select case(status)
+    case(invalid)
+       status_name='invalid'
+    case(busy)
+       status_name='busy'
+    case(unsupported)
+       status_name='unsupported'
+    case default
+       write(status_name,'(i0)') status
+    end select
+    write(*,'(a,a,a,a,4(a,i0))') '<DecodeRejected> status=',trim(status_name), &
+         ' operation=',operation,' mode=',request%mode,' input=',request%input_id, &
+         ' analysis=',request%analysis_id,' attempt=',request%attempt_no
+    flush(6)
+  end subroutine report_host_rejection
 end module decoder_engine
 
 subroutine run_decoder_engine(ss,id2,params,nfsample,completion,progress_generation, &

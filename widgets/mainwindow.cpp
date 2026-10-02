@@ -6739,6 +6739,13 @@ bool MainWindow::handleDecoderOutputEvent (DecoderOutputFramer::Event const& eve
       failDecoderStartup (tr ("The decoder reported a malformed or out-of-order startup handshake."));
       return true;
     }
+  if (DecoderOutputFramer::EventType::Rejected == event.type)
+    {
+      if (DecodeOwner::Jt9 == m_decodeOwner && m_decoderSession.accepts (event.generation))
+        qCritical () << "Decoder request rejected"
+                     << "generation:" << event.generation << event.rawLine.trimmed ();
+      return true;
+    }
   if (DecoderOutputFramer::EventType::Record == event.type)
     {
       if (DecodeOwner::Jt9 != m_decodeOwner

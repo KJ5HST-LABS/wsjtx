@@ -34,6 +34,7 @@ private Q_SLOTS:
   void compatibleShutdownReleasesWorkers ();
   void sharedMemoryWorkerExitsOnShutdown_data ();
   void sharedMemoryWorkerExitsOnShutdown ();
+  void rejectedEngineRequestCompletes ();
   void shutdownReplacesAnyState_data ();
   void shutdownReplacesAnyState ();
   void generationWrapsWithoutUsingZero ();
@@ -350,6 +351,50 @@ void TestDecoderIpcProtocol::compatibleShutdownReleasesWorkers ()
   QCOMPARE (control.state, int {DECODER_IPC_SHUTDOWN});
   QCOMPARE (control.version, int {DECODER_IPC_VERSION});
   QCOMPARE (control.progress, 4);
+}
+
+void TestDecoderIpcProtocol::rejectedEngineRequestCompletes ()
+{
+  auto const key = QStringLiteral ("jt9-reject-")
+    + QUuid::createUuid ().toString (QUuid::WithoutBraces);
+  QSharedMemory memory {key};
+  QVERIFY2 (memory.create (sizeof (shared_dec_data_t)), qPrintable (memory.errorString ()));
+  auto * shared = static_cast<shared_dec_data_t *> (memory.data ());
+  DecoderIpc::initialize (*shared);
+  auto payload = std::make_unique<dec_data_t> ();
+  payload->params.nmode = 8;
+  payload->params.ntrperiod = 15;
+  payload->params.nzhsym = 50;
+  payload->params.newdat = true;
+  payload->params.nfa = -1;
+  payload->params.nfb = 4000;
+
+  QProcess decoder;
+  QByteArray output;
+  connect (&decoder, &QProcess::readyReadStandardOutput, this, [&] {
+      output += decoder.readAllStandardOutput ();
+    });
+  decoder.start (QString::fromLocal8Bit (JT9_TEST_EXECUTABLE), {"-s", key});
+  QVERIFY (decoder.waitForStarted ());
+  QTRY_VERIFY_WITH_TIMEOUT (output.contains ("<DecoderReady>"), 5000);
+  QVERIFY (DecoderIpc::publish (*shared, *payload, true, 7, {11, 12, 1, 180000}));
+  QTRY_VERIFY_WITH_TIMEOUT (output.contains ("<DecodeFinished>"), 5000);
+  QVERIFY2 (output.contains ("<DecodeRejected> status=invalid operation=decode mode=8 input=11 analysis=12 attempt=1"),
+            output.constData ());
+  QVERIFY (!output.contains ("<DecoderError>"));
+  QVERIFY (output.indexOf ("<DecodeRejected>") < output.indexOf ("<DecodeFinished>"));
+  QVERIFY (DecoderIpc::consume (*shared, 7));
+
+  output.clear ();
+  payload->params.nfa = 200;
+  QVERIFY (DecoderIpc::publish (*shared, *payload, true, 8, {11, 12, 2, 180000}));
+  QTRY_VERIFY_WITH_TIMEOUT (output.contains ("<DecodeFinished>"), 5000);
+  QVERIFY2 (!output.contains ("<DecodeRejected>"), output.constData ());
+  QVERIFY (DecoderIpc::consume (*shared, 8));
+  DecoderIpc::shutdown (*shared);
+  QVERIFY (decoder.waitForFinished (5000));
+  QCOMPARE (decoder.exitStatus (), QProcess::NormalExit);
+  QCOMPARE (decoder.exitCode (), 0);
 }
 
 void TestDecoderIpcProtocol::sharedMemoryWorkerExitsOnShutdown_data ()
