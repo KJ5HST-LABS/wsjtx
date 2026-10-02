@@ -1,0 +1,30 @@
+=== Keyboard Shortcuts
+
+Select *Keyboard shortcuts* from the *Help* menu (or use function key
+*F3*) to display the following list of quick-action shortcuts:
+
+image::keyboard-shortcuts.png[align="left",alt="Keyboard Shortcuts"]
+
+
+Select *Special Mouse Commands* from the *Help* menu (or use function key
+*F5*) to display the following list of mouse commands:
+
+=== Special Mouse Commands
+image::special-mouse-commands.png[align="left",alt="Special Mouse Commands"]
+
+=== GUI Keyboard Navigation
+
+Use *Tab* and *Shift+Tab* to move forward and backward among controls
+in the main window. Use the arrow keys to change the selection within
+grouped controls.
+
+You can control the transmitted-message sequence without leaving the
+keyboard. On the Standard Messages page, the six radio buttons in the
+*Next* column act as a single Tab stop: Tab reaches the currently
+selected message, and the arrow keys choose which of Tx1 through Tx6
+will be sent in the next transmission. Further Tab presses reach the
+*Now* buttons, which select the corresponding message and, during a
+transmission, switch to it immediately, followed by the editable
+message fields. When the vertical *1* / *2* / *3* message-page selector
+has focus, use the arrow keys or the keys *1*, *2*, and *3* to select a
+page.

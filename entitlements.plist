@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!--
+        Allows bundled third-party frameworks whose signatures do not
+        satisfy hardened-runtime library validation, including ad-hoc CI
+        artifacts.
+    -->
+    <key>com.apple.security.cs.disable-library-validation</key>
+    <true/>
+
+    <!--
+        Allows audio capture under hardened runtime.
+        NSMicrophoneUsageDescription in Info.plist supplies the TCC prompt.
+    -->
+    <key>com.apple.security.device.audio-input</key>
+    <true/>
+
+</dict>
+</plist>

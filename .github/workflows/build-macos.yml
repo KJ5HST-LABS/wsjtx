@@ -1,0 +1,1233 @@
+name: Build macOS
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: "WSJT-X version string"
+        required: true
+        type: string
+      hamlib_branch:
+        description: "Hamlib branch to build"
+        required: false
+        type: string
+        default: "4.7.2"
+      arch:
+        description: "Target architecture (arm64 or x86_64)"
+        required: true
+        type: string
+      runner:
+        description: "GitHub Actions runner label"
+        required: true
+        type: string
+      deployment_target:
+        description: "macOS deployment target version"
+        required: true
+        type: string
+      recache:
+        description: "Force ccache to recompile and refresh cached objects"
+        required: false
+        type: boolean
+        default: false
+      save_ccache:
+        description: "Persist compiler objects from a trusted develop build"
+        required: false
+        type: boolean
+        default: false
+      release_channel:
+        description: "Build release channel: DEVEL, RC, or GA"
+        required: false
+        type: string
+        default: "DEVEL"
+      rc_number:
+        description: "Release candidate number when release_channel is RC"
+        required: false
+        type: string
+        default: ""
+      signing_mode:
+        description: "Package signing policy: validation or distribution"
+        required: false
+        type: string
+        default: "validation"
+      apple_team_id:
+        description: "Expected Apple Developer Team ID for distribution signing"
+        required: false
+        type: string
+        default: ""
+      application_certificate_sha1:
+        description: "Expected Developer ID Application certificate SHA-1"
+        required: false
+        type: string
+        default: ""
+      installer_certificate_sha1:
+        description: "Expected Developer ID Installer certificate SHA-1"
+        required: false
+        type: string
+        default: ""
+    secrets:
+      DEVELOPER_ID_CERTIFICATE_P12:
+        description: "Base64-encoded Developer ID Application PKCS#12"
+        required: false
+      DEVELOPER_ID_CERTIFICATE_PASSWORD:
+        description: "Password for the Application PKCS#12"
+        required: false
+      DEVELOPER_ID_INSTALLER_P12:
+        description: "Base64-encoded Developer ID Installer PKCS#12"
+        required: false
+      DEVELOPER_ID_INSTALLER_PASSWORD:
+        description: "Password for the Installer PKCS#12"
+        required: false
+      APP_STORE_CONNECT_KEY_ID:
+        description: "App Store Connect API key ID"
+        required: false
+      APP_STORE_CONNECT_ISSUER_ID:
+        description: "App Store Connect API issuer ID"
+        required: false
+      APP_STORE_CONNECT_PRIVATE_KEY_P8_BASE64:
+        description: "Base64-encoded App Store Connect API private key"
+        required: false
+  # Standalone dispatch builds one architecture. Derive its runner and deployment
+  # target from that architecture so unsupported tuples cannot be selected.
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "WSJT-X version string (artifact + package names)"
+        required: false
+        type: string
+        default: "3.2.0-devel"
+      hamlib_branch:
+        description: "Hamlib branch to build"
+        required: false
+        type: string
+        default: "4.7.2"
+      arch:
+        description: "Target architecture"
+        required: false
+        type: choice
+        options:
+          - arm64
+          - x86_64
+        default: "arm64"
+      recache:
+        description: "Force ccache to recompile and refresh cached objects"
+        required: false
+        type: boolean
+        default: false
+      save_ccache:
+        description: "Persist compiler objects when dispatching on develop"
+        required: false
+        type: boolean
+        default: true
+      release_channel:
+        description: "Build release channel"
+        required: false
+        type: choice
+        options:
+          - DEVEL
+          - RC
+          - GA
+        default: "DEVEL"
+      rc_number:
+        description: "Release candidate number when release_channel is RC"
+        required: false
+        type: string
+        default: ""
+      signing_mode:
+        description: "Package signing policy"
+        required: false
+        type: choice
+        options:
+          - validation
+          - distribution
+        default: validation
+      apple_team_id:
+        description: "Expected Apple Developer Team ID (distribution only)"
+        required: false
+        type: string
+        default: ""
+      application_certificate_sha1:
+        description: "Expected Developer ID Application certificate SHA-1"
+        required: false
+        type: string
+        default: ""
+      installer_certificate_sha1:
+        description: "Expected Developer ID Installer certificate SHA-1"
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  build:
+    # runs-on cannot reference job-level env, so keep this expression and RUNNER
+    # aligned. RUNNER also keeps cache keys consistent across both triggers.
+    runs-on: ${{ inputs.runner || (inputs.arch == 'x86_64' && 'macos-15-intel' || 'macos-15') }}
+    timeout-minutes: 45
+    env:
+      RUNNER: ${{ inputs.runner || (inputs.arch == 'x86_64' && 'macos-15-intel' || 'macos-15') }}
+      DEPLOYMENT_TARGET: ${{ inputs.deployment_target || (inputs.arch == 'x86_64' && '10.13' || '11.0') }}
+      VERSION: ${{ inputs.version }}
+      HAMLIB_BRANCH: ${{ inputs.hamlib_branch }}
+      WSJT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
+      WSJT_RC_NUMBER: ${{ inputs.rc_number }}
+      SIGNING_MODE: ${{ inputs.signing_mode }}
+      ARCH: ${{ inputs.arch }}
+      BOOST_VERSION: 1.85.0
+      BOOST_SOURCE_SHA256: 7009fe1faa1697476bdc7027703a2badb84e849b7b0baad5086b087b971f8617
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Validate workflow inputs
+        env:
+          WSJTX_VERSION: ${{ inputs.version }}
+        run: .github/scripts/validate-ci-inputs.sh
+
+      - name: Verify macOS build tuple
+        run: |
+          case "${ARCH}:${RUNNER}:${DEPLOYMENT_TARGET}" in
+            arm64:macos-15:11.0|x86_64:macos-15-intel:10.13)
+              echo "Using supported macOS build tuple: ${ARCH} on ${RUNNER} targeting ${DEPLOYMENT_TARGET}"
+              ;;
+            *)
+              echo "::error::Unsupported macOS build tuple: arch=${ARCH}, runner=${RUNNER}, deployment_target=${DEPLOYMENT_TARGET}"
+              echo "::error::Use arm64:macos-15:11.0 or x86_64:macos-15-intel:10.13 for deployable macOS artifacts."
+              exit 1
+              ;;
+          esac
+
+      - name: Validate signing policy
+        run: |
+          case "$SIGNING_MODE" in
+            validation)
+              echo "macOS signing mode: validation (ad-hoc app signature and explicitly unsigned package)"
+              ;;
+            distribution)
+              echo "macOS signing mode: distribution (build job remains secretless; a fresh job performs signing)"
+              ;;
+            *)
+              echo "::error::signing_mode must be validation or distribution, got: ${SIGNING_MODE}"
+              exit 1
+              ;;
+          esac
+
+      - name: Set Homebrew prefix
+        run: echo "HOMEBREW_PREFIX=$(brew --prefix)" >> "$GITHUB_ENV"
+
+      - name: Install dependencies
+        run: brew install cmake autoconf automake libtool asciidoctor ccache pkg-config
+
+      - name: Select ccache key
+        id: ccache-key
+        env:
+          RECACHE: ${{ inputs.recache }}
+        run: .github/scripts/select-ccache-key-suffix.sh
+
+      - name: Restore ccache
+        id: ccache
+        uses: actions/cache/restore@v6
+        with:
+          path: .ccache
+          key: ccache-macos-${{ inputs.arch }}-appleclang-${{ github.sha }}${{ steps.ccache-key.outputs.suffix }}
+          restore-keys: |
+            ccache-macos-${{ inputs.arch }}-appleclang-
+
+      - name: Configure ccache
+        run: |
+          echo "CCACHE_DIR=${GITHUB_WORKSPACE}/.ccache" >> "$GITHUB_ENV"
+          echo "ccache recache: ${{ inputs.recache }}"
+          if [ "${{ inputs.recache }}" = "true" ]; then
+            echo "CCACHE_RECACHE=1" >> "$GITHUB_ENV"
+            echo "Forcing ccache recache for this run"
+          fi
+          mkdir -p "${GITHUB_WORKSPACE}/.ccache"
+          ccache --version
+          ccache --zero-stats
+
+      - name: Compute Qt cache key
+        id: qt-key
+        run: |
+          .github/scripts/macos-qt-cache-key.sh \
+            --arch "${{ inputs.arch }}" \
+            --runner "${{ env.RUNNER }}" \
+            --deployment-target "${{ env.DEPLOYMENT_TARGET }}" \
+            --github-output
+
+      - name: Restore Qt cache
+        id: qt-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: qt-prefix
+          key: ${{ steps.qt-key.outputs.key }}
+
+      - name: Build Qt
+        if: steps.qt-cache.outputs.cache-hit != 'true'
+        run: |
+          .github/scripts/build-qt-macos.sh \
+            --arch "${{ inputs.arch }}" \
+            --deployment-target "${{ env.DEPLOYMENT_TARGET }}" \
+            --prefix "${GITHUB_WORKSPACE}/qt-prefix"
+
+      - name: Save Qt cache
+        if: steps.qt-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: qt-prefix
+          key: ${{ steps.qt-cache.outputs.cache-primary-key }}
+
+      - name: Verify Qt prefix
+        run: |
+          .github/scripts/verify-macos-artifacts.sh \
+            --target "${{ env.DEPLOYMENT_TARGET }}" \
+            --arch "${{ inputs.arch }}" \
+            --allow-prefix "${GITHUB_WORKSPACE}/qt-prefix" \
+            "${GITHUB_WORKSPACE}/qt-prefix"
+
+      - name: Install controlled ARM gfortran
+        id: controlled-arm-fc
+        if: inputs.arch == 'arm64'
+        run: |
+          .github/scripts/install-r-macos-gfortran.sh \
+            --target "${{ env.DEPLOYMENT_TARGET }}" \
+            --arch "${{ inputs.arch }}" \
+            --work-dir "${RUNNER_TEMP}/r-macos-gfortran" \
+            --prefix "${GITHUB_WORKSPACE}/gfortran-prefix" \
+            --github-output
+
+      - name: Install controlled Intel gfortran
+        id: controlled-intel-fc
+        if: inputs.arch == 'x86_64'
+        run: |
+          .github/scripts/install-xpack-gfortran-macos.sh \
+            --target "${{ env.DEPLOYMENT_TARGET }}" \
+            --arch "${{ inputs.arch }}" \
+            --work-dir "${RUNNER_TEMP}/xpack-gfortran" \
+            --prefix "${GITHUB_WORKSPACE}/gfortran-prefix" \
+            --github-output
+
+      - name: Select gfortran
+        id: fc
+        run: |
+          if [ "${{ inputs.arch }}" = "x86_64" ]; then
+            echo "Using controlled gfortran: ${{ steps.controlled-intel-fc.outputs.path }}"
+            {
+              echo "path=${{ steps.controlled-intel-fc.outputs.path }}"
+              echo "prefix=${{ steps.controlled-intel-fc.outputs.prefix }}"
+              echo "original_prefix=${{ steps.controlled-intel-fc.outputs.original_prefix }}"
+              echo "runtime_lib_dir=${{ steps.controlled-intel-fc.outputs.runtime_lib_dir }}"
+              echo "libgomp=${{ steps.controlled-intel-fc.outputs.libgomp }}"
+              echo "fortran_runtime_flags=${{ steps.controlled-intel-fc.outputs.fortran_runtime_flags }}"
+              echo "runtime_link_flags=${{ steps.controlled-intel-fc.outputs.runtime_link_flags }}"
+              echo "runtime_archives=${{ steps.controlled-intel-fc.outputs.runtime_archives }}"
+              echo "version=${{ steps.controlled-intel-fc.outputs.version }}"
+              echo "cache_key=${{ steps.controlled-intel-fc.outputs.cache_key }}"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Using controlled gfortran: ${{ steps.controlled-arm-fc.outputs.path }}"
+          {
+            echo "path=${{ steps.controlled-arm-fc.outputs.path }}"
+            echo "prefix=${{ steps.controlled-arm-fc.outputs.prefix }}"
+            echo "original_prefix=${{ steps.controlled-arm-fc.outputs.original_prefix }}"
+            echo "runtime_lib_dir=${{ steps.controlled-arm-fc.outputs.runtime_lib_dir }}"
+            echo "libgomp=${{ steps.controlled-arm-fc.outputs.libgomp }}"
+            echo "fortran_runtime_flags=${{ steps.controlled-arm-fc.outputs.fortran_runtime_flags }}"
+            echo "runtime_link_flags=${{ steps.controlled-arm-fc.outputs.runtime_link_flags }}"
+            echo "runtime_archives=${{ steps.controlled-arm-fc.outputs.runtime_archives }}"
+            echo "version=${{ steps.controlled-arm-fc.outputs.version }}"
+            echo "cache_key=${{ steps.controlled-arm-fc.outputs.cache_key }}"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Verify static Fortran runtime
+        run: |
+          .github/scripts/verify-macos-static-archives.sh \
+            --target "${{ env.DEPLOYMENT_TARGET }}" \
+            --arch "${{ inputs.arch }}" \
+            --mode error \
+            ${{ steps.fc.outputs.runtime_archives }}
+
+      - name: Restore libusb cache
+        id: libusb-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: libusb-prefix
+          key: libusb-macos-${{ inputs.arch }}-${{ env.RUNNER }}-1.0.27-min${{ env.DEPLOYMENT_TARGET }}-epoch1-${{ hashFiles('.github/scripts/build-libusb-macos.sh') }}
+
+      - name: Build libusb
+        if: steps.libusb-cache.outputs.cache-hit != 'true'
+        run: |
+          .github/scripts/build-libusb-macos.sh \
+            1.0.27 \
+            "${{ env.DEPLOYMENT_TARGET }}" \
+            "${GITHUB_WORKSPACE}/libusb-prefix"
+
+      - name: Save libusb cache
+        if: steps.libusb-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: libusb-prefix
+          key: ${{ steps.libusb-cache.outputs.cache-primary-key }}
+
+      - name: Restore PortAudio cache
+        id: portaudio-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: portaudio-prefix
+          key: portaudio-macos-${{ inputs.arch }}-${{ env.RUNNER }}-19.7.0-min${{ env.DEPLOYMENT_TARGET }}-epoch1-${{ hashFiles('.github/scripts/build-portaudio-macos.sh') }}
+
+      - name: Build PortAudio
+        if: steps.portaudio-cache.outputs.cache-hit != 'true'
+        run: |
+          .github/scripts/build-portaudio-macos.sh \
+            19.7.0 \
+            "${{ env.DEPLOYMENT_TARGET }}" \
+            "${GITHUB_WORKSPACE}/portaudio-prefix"
+
+      - name: Save PortAudio cache
+        if: steps.portaudio-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: portaudio-prefix
+          key: ${{ steps.portaudio-cache.outputs.cache-primary-key }}
+
+      - name: Restore FFTW cache
+        id: fftw-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: fftw-prefix
+          key: fftw-macos-${{ inputs.arch }}-${{ env.RUNNER }}-3.3.10-min${{ env.DEPLOYMENT_TARGET }}-epoch1-${{ hashFiles('.github/scripts/build-fftw-macos.sh') }}
+
+      - name: Build FFTW
+        if: steps.fftw-cache.outputs.cache-hit != 'true'
+        run: |
+          .github/scripts/build-fftw-macos.sh \
+            3.3.10 \
+            "${{ env.DEPLOYMENT_TARGET }}" \
+            "${GITHUB_WORKSPACE}/fftw-prefix"
+
+      - name: Save FFTW cache
+        if: steps.fftw-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: fftw-prefix
+          key: ${{ steps.fftw-cache.outputs.cache-primary-key }}
+
+      - name: Restore Boost cache
+        id: boost-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: boost-prefix
+          key: boost-macos-${{ inputs.arch }}-${{ env.RUNNER }}-${{ env.BOOST_VERSION }}-${{ env.BOOST_SOURCE_SHA256 }}-min${{ env.DEPLOYMENT_TARGET }}-epoch1-${{ hashFiles('.github/scripts/build-boost-macos.sh') }}
+
+      - name: Build Boost
+        if: steps.boost-cache.outputs.cache-hit != 'true'
+        run: |
+          .github/scripts/build-boost-macos.sh \
+            "${BOOST_VERSION}" \
+            "${BOOST_SOURCE_SHA256}" \
+            "${{ inputs.arch }}" \
+            "${{ env.DEPLOYMENT_TARGET }}" \
+            "${GITHUB_WORKSPACE}/boost-prefix"
+
+      - name: Save Boost cache
+        if: steps.boost-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: boost-prefix
+          key: ${{ steps.boost-cache.outputs.cache-primary-key }}
+
+      - name: Verify pinned runtime prefixes
+        run: |
+          .github/scripts/verify-macos-artifacts.sh \
+            --target "${{ env.DEPLOYMENT_TARGET }}" \
+            --arch "${{ inputs.arch }}" \
+            --allow-prefix "${GITHUB_WORKSPACE}/libusb-prefix" \
+            --allow-prefix "${GITHUB_WORKSPACE}/portaudio-prefix" \
+            --allow-prefix "${GITHUB_WORKSPACE}/fftw-prefix" \
+            --allow-prefix "${GITHUB_WORKSPACE}/boost-prefix" \
+            "${GITHUB_WORKSPACE}/libusb-prefix" \
+            "${GITHUB_WORKSPACE}/portaudio-prefix" \
+            "${GITHUB_WORKSPACE}/fftw-prefix" \
+            "${GITHUB_WORKSPACE}/boost-prefix"
+
+      - name: Restore Hamlib cache
+        id: hamlib-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: hamlib-prefix
+          key: hamlib-macos-${{ inputs.arch }}-${{ env.RUNNER }}-${{ inputs.hamlib_branch }}-libusb1.0.27-min${{ env.DEPLOYMENT_TARGET }}-epoch1-${{ hashFiles('.github/scripts/build-hamlib-macos.sh', '.github/scripts/build-libusb-macos.sh') }}
+
+      - name: Build Hamlib
+        if: steps.hamlib-cache.outputs.cache-hit != 'true'
+        run: |
+          .github/scripts/build-hamlib-macos.sh \
+            "${HAMLIB_BRANCH}" \
+            "${DEPLOYMENT_TARGET}" \
+            "${GITHUB_WORKSPACE}/hamlib-prefix" \
+            "${GITHUB_WORKSPACE}/libusb-prefix"
+
+      - name: Verify Hamlib prefix
+        run: |
+          test -f "${GITHUB_WORKSPACE}/hamlib-prefix/lib/libhamlib.a"
+          .github/scripts/verify-macos-static-archives.sh \
+            --target "${{ env.DEPLOYMENT_TARGET }}" \
+            --arch "${{ inputs.arch }}" \
+            --mode error \
+            "${GITHUB_WORKSPACE}/hamlib-prefix/lib/libhamlib.a"
+
+      - name: Save Hamlib cache
+        if: steps.hamlib-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: hamlib-prefix
+          key: ${{ steps.hamlib-cache.outputs.cache-primary-key }}
+
+      - name: Restore pFUnit cache
+        id: pfunit-cache
+        uses: actions/cache/restore@v6
+        with:
+          path: pfunit-prefix
+          key: pfunit-macos-${{ inputs.arch }}-${{ env.RUNNER }}-v4.14.0-${{ steps.fc.outputs.cache_key }}-min${{ env.DEPLOYMENT_TARGET }}-epoch3-${{ hashFiles('.github/scripts/build-pfunit-macos.sh') }}
+
+      - name: Build pFUnit
+        if: steps.pfunit-cache.outputs.cache-hit != 'true'
+        env:
+          # pFUnit configure uses try_run probes; expose only the controlled
+          # compiler runtime for those probes, not for the final test binaries.
+          DYLD_LIBRARY_PATH: ${{ steps.fc.outputs.runtime_lib_dir }}
+        run: |
+          .github/scripts/build-pfunit-macos.sh \
+            v4.14.0 \
+            "${{ steps.fc.outputs.path }}" \
+            "${{ env.DEPLOYMENT_TARGET }}" \
+            "${GITHUB_WORKSPACE}/pfunit-prefix"
+
+      - name: Locate pFUnit config
+        id: pfunit
+        run: |
+          CONFIG=$(find "${GITHUB_WORKSPACE}/pfunit-prefix" -name PFUNITConfig.cmake -print -quit)
+          if [ -z "$CONFIG" ]; then
+            echo "ERROR: PFUNITConfig.cmake not found under pfunit-prefix"
+            find "${GITHUB_WORKSPACE}/pfunit-prefix" -maxdepth 3 -type d
+            exit 1
+          fi
+          PFUNIT_DIR="$(dirname "$CONFIG")"
+          echo "Found PFUNITConfig.cmake at: $CONFIG"
+          echo "dir=${PFUNIT_DIR}" >> "$GITHUB_OUTPUT"
+
+      - name: Save pFUnit cache
+        if: steps.pfunit-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: pfunit-prefix
+          key: ${{ steps.pfunit-cache.outputs.cache-primary-key }}
+
+      - name: Configure build and tests
+        env:
+          PKG_CONFIG_PATH: ${{ github.workspace }}/qt-prefix/lib/pkgconfig:${{ github.workspace }}/boost-prefix/lib/pkgconfig:${{ github.workspace }}/fftw-prefix/lib/pkgconfig:${{ github.workspace }}/libusb-prefix/lib/pkgconfig:${{ github.workspace }}/portaudio-prefix/lib/pkgconfig:${{ github.workspace }}/hamlib-prefix/lib/pkgconfig:${{ github.workspace }}/pfunit-prefix/lib/pkgconfig
+        run: |
+          cmake -S . -B wsjtx-build \
+            -DCMAKE_PREFIX_PATH="${GITHUB_WORKSPACE}/qt-prefix;${GITHUB_WORKSPACE}/boost-prefix;${GITHUB_WORKSPACE}/fftw-prefix;${GITHUB_WORKSPACE}/libusb-prefix;${GITHUB_WORKSPACE}/portaudio-prefix;${GITHUB_WORKSPACE}/hamlib-prefix;${GITHUB_WORKSPACE}/pfunit-prefix" \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_Fortran_COMPILER="${{ steps.fc.outputs.path }}" \
+            -DCMAKE_Fortran_FLAGS="${{ steps.fc.outputs.fortran_runtime_flags }}" \
+            -DCMAKE_EXE_LINKER_FLAGS="${{ steps.fc.outputs.runtime_link_flags }}" \
+            -DCMAKE_INSTALL_RPATH="${GITHUB_WORKSPACE}/qt-prefix/lib;${GITHUB_WORKSPACE}/boost-prefix/lib;${GITHUB_WORKSPACE}/fftw-prefix/lib;${GITHUB_WORKSPACE}/libusb-prefix/lib;${GITHUB_WORKSPACE}/portaudio-prefix/lib;${GITHUB_WORKSPACE}/hamlib-prefix/lib" \
+            -DCMAKE_OSX_DEPLOYMENT_TARGET=${{ env.DEPLOYMENT_TARGET }} \
+            -DWSJT_SKIP_MANPAGES=ON \
+            -DWSJT_ENABLE_TESTS=ON \
+            -DWSJT_ENABLE_GUI_SMOKE_TESTS=ON \
+            -DWSJT_MACOS_LIBGOMP_LIBRARY="${{ steps.fc.outputs.libgomp }}" \
+            -DPFUNIT_DIR="${{ steps.pfunit.outputs.dir }}" \
+            -DWSJT_SOURCE_REVISION="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || '' }}" \
+            -DWSJT_RELEASE_CHANNEL="${WSJT_RELEASE_CHANNEL}" \
+            -DWSJT_RC_NUMBER="${WSJT_RC_NUMBER}" \
+            -Wno-dev
+
+      - name: Build and test targets
+        run: cmake --build wsjtx-build -j"$(sysctl -n hw.ncpu)"
+
+      - name: Report suppressed ccache save
+        if: ${{ (inputs.save_ccache || inputs.recache) && github.ref != 'refs/heads/develop' }}
+        run: echo "::notice::Not saving ccache because shared compiler caches are published only from develop"
+
+      - name: Save ccache
+        if: ${{ success() && (inputs.save_ccache || inputs.recache) && github.ref == 'refs/heads/develop' && steps.ccache.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@v6
+        with:
+          path: .ccache
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+
+      - name: Apply WSJT-X shared memory limits
+        run: |
+          python3 - <<'PY'
+          import plistlib
+          import subprocess
+
+          expected_arguments = [
+              "/usr/sbin/sysctl",
+              "kern.sysv.shmmax=52428800",
+              "kern.sysv.shmall=25600",
+          ]
+
+          with open("Darwin/com.wsjtx.sysctl.plist", "rb") as source:
+              configuration = plistlib.load(source)
+
+          if (
+              configuration.get("Program") != expected_arguments[0]
+              or configuration.get("ProgramArguments") != expected_arguments
+          ):
+              raise SystemExit("shared memory plist does not match CI expectations")
+
+          subprocess.run(["/usr/bin/sudo", *expected_arguments], check=True)
+          subprocess.run(
+              [expected_arguments[0], "kern.sysv.shmmax", "kern.sysv.shmall"], check=True
+          )
+          PY
+
+      - name: Raise shared memory total for parallel GUI tests
+        run: |
+          # Three decoder segments require 35,359 pages; leave headroom for other IPC.
+          sudo /usr/sbin/sysctl kern.sysv.shmall=40960
+          /usr/sbin/sysctl kern.sysv.shmmax kern.sysv.shmall
+
+      - name: Run tests
+        id: ctest
+        run: ctest --parallel 3 --output-on-failure --output-junit ctest-results.xml
+        working-directory: wsjtx-build
+
+      - name: Publish test summary
+        if: always() && steps.ctest.conclusion != 'skipped'
+        working-directory: wsjtx-build
+        run: python3 ../.github/scripts/publish-ctest-summary.py "macOS ${{ inputs.arch }}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload test results
+        if: always() && steps.ctest.conclusion != 'skipped'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ctest-results-macos-${{ inputs.arch }}
+          path: wsjtx-build/ctest-results.xml
+          if-no-files-found: ignore
+
+      - name: Upload WSJT-X startup diagnostics
+        if: failure() && steps.ctest.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: wsjtx-startup-smoke-macos-${{ inputs.arch }}
+          path: wsjtx-build/startup-smoke-diagnostics
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Show ccache stats
+        if: always()
+        run: ccache --show-stats
+
+      - name: Verify architecture
+        run: |
+          file wsjtx-build/jt9
+          ARCHS=$(lipo -archs wsjtx-build/jt9)
+          case " ${ARCHS} " in
+            *" ${{ inputs.arch }} "*) ;;
+            *)
+              echo "::error::Expected ${{ inputs.arch }} in jt9 architectures, found: ${ARCHS}"
+              exit 1
+              ;;
+          esac
+
+      - name: Install app bundle and collect CLI assets
+        id: collect
+        run: |
+          BUILD=wsjtx-build
+          STAGE="stage/wsjtx-${VERSION}-${ARCH}"
+          ASSETS=assets
+
+          mkdir -p "${ASSETS}"
+          cmake --install "${BUILD}" --prefix "${STAGE}"
+
+          APP="${STAGE}/wsjtx.app"
+          if [ ! -d "${APP}" ]; then
+            echo "::error::CMake install did not create ${APP}"
+            exit 1
+          fi
+
+          for bin in qmap map65; do
+            if [ ! -x "${APP}/Contents/MacOS/${bin}" ]; then
+              echo "::error::Expected app companion binary is missing after install: ${APP}/Contents/MacOS/${bin}"
+              exit 1
+            fi
+          done
+
+          for bin in jt9 wsprd wsprcode jt65code jt4code ft8code q65code encode77 fcal hash22calc; do
+            [ -f "${BUILD}/${bin}" ] && cp "${BUILD}/${bin}" "${ASSETS}/"
+          done
+
+          for bin in ft4sim jt4sim jt65sim cwsim sfoxsim echosim EchoCallSim; do
+            [ -f "${BUILD}/${bin}" ] && cp "${BUILD}/${bin}" "${ASSETS}/"
+          done
+
+          echo "stage_dir=${STAGE}" >> "$GITHUB_OUTPUT"
+          echo "assets_dir=${ASSETS}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify CMake-installed app resources
+        run: |
+          APP="${{ steps.collect.outputs.stage_dir }}/wsjtx.app"
+          DATADIR="${APP}/Contents/Resources/wsjtx"
+          DOCDIR="${APP}/Contents/Resources/doc/wsjtx"
+          SOUNDDIR="${APP}/Contents/Resources/sounds"
+
+          for file in cty.dat cty.dat_copyright.txt grid.dat sat.dat eclipse.txt ALLCALL7.TXT JPLEPH; do
+            if [ ! -f "${DATADIR}/${file}" ]; then
+              echo "::error::Expected CMake-installed data file is missing: ${DATADIR}/${file}"
+              exit 1
+            fi
+          done
+
+          set -- "${DOCDIR}/wsjtx-main"*.html
+          if [ "$#" -lt 1 ] || [ ! -f "$1" ]; then
+            echo "::error::Expected at least one CMake-installed local user guide in ${DOCDIR}"
+            printf 'Matched paths:\n'
+            printf '  %s\n' "$@"
+            exit 1
+          fi
+
+          if [ ! -f "${SOUNDDIR}/Wanted.wav" ]; then
+            echo "::error::Expected CMake-installed alert sound is missing: ${SOUNDDIR}/Wanted.wav"
+            exit 1
+          fi
+
+          if [ -e "${APP}/Contents/MacOS/sounds" ]; then
+            echo "::error::Alert sounds must not be installed under Contents/MacOS; codesign treats them as unsigned code."
+            exit 1
+          fi
+
+          echo "Verified CMake-installed data files in ${DATADIR}"
+          echo "Verified CMake-installed local user guides:"
+          printf '  %s\n' "$@"
+          echo "Verified CMake-installed alert sounds in ${SOUNDDIR}"
+
+      - name: Deploy macOS app dependencies
+        run: |
+          .github/scripts/deploy-macos-app.sh \
+            --app "${{ steps.collect.outputs.stage_dir }}/wsjtx.app" \
+            --workspace-prefix "${GITHUB_WORKSPACE}" \
+            --qt-prefix "${GITHUB_WORKSPACE}/qt-prefix" \
+            --boost-prefix "${GITHUB_WORKSPACE}/boost-prefix" \
+            --fftw-prefix "${GITHUB_WORKSPACE}/fftw-prefix" \
+            --libusb-prefix "${GITHUB_WORKSPACE}/libusb-prefix" \
+            --portaudio-prefix "${GITHUB_WORKSPACE}/portaudio-prefix" \
+            --fortran-prefix "${{ steps.fc.outputs.prefix }}" \
+            --fortran-original-prefix "${{ steps.fc.outputs.original_prefix }}" \
+            --gcc-lib "${{ steps.fc.outputs.runtime_lib_dir }}" \
+            --homebrew-prefix "${HOMEBREW_PREFIX}"
+
+          APP="${{ steps.collect.outputs.stage_dir }}/wsjtx.app"
+          for file in \
+            "${APP}/Contents/PlugIns/platforms/libqcocoa.dylib" \
+            "${APP}/Contents/Resources/qt.conf"
+          do
+            if [ ! -f "$file" ]; then
+              echo "::error::Expected macOS app deployment file is missing: ${file}"
+              exit 1
+            fi
+          done
+
+      - name: Deploy macOS CLI tool dependencies
+        run: |
+          .github/scripts/deploy-macos-cli-tools.sh \
+            --assets "${{ steps.collect.outputs.assets_dir }}" \
+            --stage "${{ steps.collect.outputs.stage_dir }}" \
+            --workspace-prefix "${GITHUB_WORKSPACE}" \
+            --boost-prefix "${GITHUB_WORKSPACE}/boost-prefix" \
+            --fftw-prefix "${GITHUB_WORKSPACE}/fftw-prefix" \
+            --libusb-prefix "${GITHUB_WORKSPACE}/libusb-prefix" \
+            --portaudio-prefix "${GITHUB_WORKSPACE}/portaudio-prefix" \
+            --fortran-prefix "${{ steps.fc.outputs.prefix }}" \
+            --fortran-original-prefix "${{ steps.fc.outputs.original_prefix }}" \
+            --gcc-lib "${{ steps.fc.outputs.runtime_lib_dir }}" \
+            --homebrew-prefix "${HOMEBREW_PREFIX}"
+
+      - name: Verify bundled macOS deployment targets
+        run: |
+          STAGE="${{ steps.collect.outputs.stage_dir }}"
+          .github/scripts/verify-macos-artifacts.sh \
+            --target "${{ env.DEPLOYMENT_TARGET }}" \
+            --arch "${{ inputs.arch }}" \
+            "$STAGE"
+
+      - name: Ad-hoc sign binaries for build validation
+        run: |
+          STAGE="${{ steps.collect.outputs.stage_dir }}"
+          ASSETS="${{ steps.collect.outputs.assets_dir }}"
+          APP="${STAGE}/wsjtx.app"
+          ENTITLEMENTS="${GITHUB_WORKSPACE}/entitlements.plist"
+
+          IDENTITY="-"
+          echo "Code signing mode: ad-hoc (no Apple trust chain; pkg will be unsigned)"
+
+          # Sign nested code before the containing bundle. Executable
+          # entitlements are defined in the repository-root plist.
+          find "${APP}/Contents/Frameworks" -type f \( -name "*.dylib" -o -perm +111 \) \
+            -exec codesign --force --options runtime --sign "$IDENTITY" {} \;
+          find "${APP}/Contents/Frameworks" -name "*.framework" -type d | while read -r fw; do
+            codesign --force --options runtime --sign "$IDENTITY" "$fw"
+          done
+          find "${APP}/Contents/PlugIns" -type f -name "*.dylib" \
+            -exec codesign --force --options runtime --sign "$IDENTITY" {} \; 2>/dev/null || true
+
+          find "${APP}/Contents/MacOS" -type f -perm +111 \
+            -exec codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" {} \;
+          # Bundle signing re-signs the main executable, so it must receive the
+          # entitlement file again.
+          codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" "${APP}"
+          codesign --verify --deep --strict --verbose=2 "${APP}"
+
+          # codesign --verify validates the signature, not required entitlement
+          # presence.
+          MAIN_BIN="${APP}/Contents/MacOS/wsjtx"
+          ENTITLEMENTS_OUT=$(codesign -d --entitlements - "$MAIN_BIN" 2>/dev/null)
+          if [[ "$ENTITLEMENTS_OUT" != *"disable-library-validation"* ]]; then
+            echo "::error::wsjtx binary is missing com.apple.security.cs.disable-library-validation entitlement."
+            echo "::error::Bundled Qt frameworks will fail to load under hardened runtime."
+            codesign -d --entitlements - "$MAIN_BIN" || true
+            exit 1
+          fi
+          echo "Confirmed disable-library-validation entitlement on $MAIN_BIN"
+          if [[ "$ENTITLEMENTS_OUT" == *"allow-unsigned-executable-memory"* ]]; then
+            echo "::error::${MAIN_BIN} must not grant unsigned executable memory."
+            exit 1
+          fi
+          echo "Confirmed no unsigned executable memory entitlement on $MAIN_BIN"
+
+          for dir in "${STAGE}" "${ASSETS}"; do
+            find "${dir}" -maxdepth 1 -type f -perm +111 \
+              -exec codesign --force --options runtime --entitlements "$ENTITLEMENTS" --sign "$IDENTITY" {} \;
+          done
+
+          for dir in "${STAGE}/lib" "${ASSETS}/lib"; do
+            [ -d "$dir" ] && find "$dir" -type f \
+              -exec codesign --force --options runtime --sign "$IDENTITY" {} \;
+          done
+
+      - name: Prepare installer package
+        run: |
+          STAGE="${{ steps.collect.outputs.stage_dir }}"
+          PKG_ID="org.k1jt.wsjtx.${ARCH}"
+          PKG_VERSION="${VERSION}"
+
+          PAYLOAD="$RUNNER_TEMP/pkg-payload"
+          SCRIPTS="$RUNNER_TEMP/pkg-scripts"
+          mkdir -p "${PAYLOAD}/Applications" "${PAYLOAD}/Library/LaunchDaemons" "${SCRIPTS}"
+
+          cp -R "${STAGE}/wsjtx.app" "${PAYLOAD}/Applications/"
+
+          mkdir -p "${PAYLOAD}/usr/local/wsjtx/lib"
+          for bin in "${STAGE}"/*; do
+            [ -f "$bin" ] && [ -x "$bin" ] && cp "$bin" "${PAYLOAD}/usr/local/wsjtx/"
+          done
+          [ -d "${STAGE}/lib" ] && cp -R "${STAGE}/lib/"* "${PAYLOAD}/usr/local/wsjtx/lib/"
+
+          cp "Darwin/com.wsjtx.sysctl.plist" "${PAYLOAD}/Library/LaunchDaemons/"
+
+          cat > "${SCRIPTS}/postinstall" << 'SCRIPT'
+          #!/bin/bash
+          /bin/launchctl load /Library/LaunchDaemons/com.wsjtx.sysctl.plist 2>/dev/null || true
+          /usr/sbin/sysctl kern.sysv.shmmax=52428800 kern.sysv.shmall=25600 2>/dev/null || true
+          mkdir -p /usr/local/bin
+          for bin in /usr/local/wsjtx/*; do
+            [ -f "$bin" ] && [ -x "$bin" ] && ln -sf "$bin" "/usr/local/bin/$(basename "$bin")"
+          done
+          SCRIPT
+          chmod +x "${SCRIPTS}/postinstall"
+
+          pkgbuild --analyze --root "${PAYLOAD}" "$RUNNER_TEMP/components.plist"
+          /usr/libexec/PlistBuddy -c "Set :0:BundleIsRelocatable false" "$RUNNER_TEMP/components.plist" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Set :0:BundleIsVersionChecked false" "$RUNNER_TEMP/components.plist" 2>/dev/null || true
+          /usr/libexec/PlistBuddy -c "Set :0:BundleOverwriteAction upgrade" "$RUNNER_TEMP/components.plist" 2>/dev/null || true
+
+          pkgbuild \
+            --root "${PAYLOAD}" \
+            --scripts "${SCRIPTS}" \
+            --component-plist "$RUNNER_TEMP/components.plist" \
+            --identifier "${PKG_ID}" \
+            --version "${PKG_VERSION}" \
+            --install-location / \
+            "$RUNNER_TEMP/wsjtx-component.pkg"
+
+      - name: Build unsigned validation package
+        if: inputs.signing_mode == 'validation'
+        id: package
+        run: |
+          PKG_OUT="wsjtx-${VERSION}-${ARCH}-macOS.pkg"
+          productbuild \
+            --package "$RUNNER_TEMP/wsjtx-component.pkg" \
+            "$PKG_OUT"
+          echo "path=$PKG_OUT" >> "$GITHUB_OUTPUT"
+          echo "artifact_name=wsjtx-${VERSION}-${ARCH}-macOS-unsigned.pkg" >> "$GITHUB_OUTPUT"
+
+      - name: Verify unsigned validation package
+        if: inputs.signing_mode == 'validation'
+        run: |
+          PKG_OUT="${{ steps.package.outputs.path }}"
+          CHECK_PAYLOAD="$RUNNER_TEMP/pkg-check"
+          pkgutil --expand-full "$PKG_OUT" "$CHECK_PAYLOAD"
+          [ "$(/usr/libexec/PlistBuddy -c "Print :0:BundleIsRelocatable" "$RUNNER_TEMP/components.plist")" = "false" ]
+          [ "$(/usr/libexec/PlistBuddy -c "Print :0:BundleIsVersionChecked" "$RUNNER_TEMP/components.plist")" = "false" ]
+          [ "$(/usr/libexec/PlistBuddy -c "Print :0:BundleOverwriteAction" "$RUNNER_TEMP/components.plist")" = "upgrade" ]
+          test -x "$CHECK_PAYLOAD/wsjtx-component.pkg/Payload/Applications/wsjtx.app/Contents/MacOS/qmap"
+          test -x "$CHECK_PAYLOAD/wsjtx-component.pkg/Payload/Applications/wsjtx.app/Contents/MacOS/map65"
+          APP_PAYLOAD="$CHECK_PAYLOAD/wsjtx-component.pkg/Payload/Applications/wsjtx.app"
+          SOUNDDIR="${APP_PAYLOAD}/Contents/Resources/sounds"
+          set -- "${APP_PAYLOAD}/Contents/Resources/doc/wsjtx/wsjtx-main"*.html
+          if [ "$#" -lt 1 ] || [ ! -f "$1" ]; then
+            echo "::error::Expected at least one local user guide in the packaged app bundle."
+            printf 'Matched paths:\n'
+            printf '  %s\n' "$@"
+            exit 1
+          fi
+          if [ ! -f "${SOUNDDIR}/Wanted.wav" ]; then
+            echo "::error::Expected packaged alert sound is missing: ${SOUNDDIR}/Wanted.wav"
+            exit 1
+          fi
+          if [ -e "${APP_PAYLOAD}/Contents/MacOS/sounds" ]; then
+            echo "::error::Packaged alert sounds must not be under Contents/MacOS."
+            exit 1
+          fi
+          echo "Verified packaged alert sounds in ${SOUNDDIR}"
+          .github/scripts/verify-macos-artifacts.sh \
+            --target "${{ env.DEPLOYMENT_TARGET }}" \
+            --arch "${{ inputs.arch }}" \
+            "$CHECK_PAYLOAD/wsjtx-component.pkg/Payload"
+
+      - name: Stage distribution signing input
+        if: inputs.signing_mode == 'distribution'
+        run: |
+          mkdir -p distribution-signing-input
+          cp "${{ runner.temp }}/wsjtx-component.pkg" distribution-signing-input/
+          cp "${{ runner.temp }}/components.plist" distribution-signing-input/
+          cp entitlements.plist distribution-signing-input/
+
+      - name: Upload distribution signing input
+        if: inputs.signing_mode == 'distribution'
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-signing-input-${{ inputs.version }}-${{ inputs.arch }}
+          path: distribution-signing-input
+          retention-days: 1
+
+      - name: Write validation signing report
+        if: inputs.signing_mode == 'validation'
+        run: |
+          PKG_OUT="${{ steps.package.outputs.path }}"
+          PKG_SIGNATURE=$(pkgutil --check-signature "$PKG_OUT" 2>&1 || true)
+          printf '%s\n' "$PKG_SIGNATURE"
+          if [[ "$PKG_SIGNATURE" != *"Status: no signature"* ]]; then
+            echo "::error::Validation package did not report the expected unsigned status."
+            exit 1
+          fi
+          SHA256=$(shasum -a 256 "$PKG_OUT" | awk '{print $1}')
+          jq -n \
+            --arg mode validation \
+            --arg artifact "$PKG_OUT" \
+            --arg sha256 "$SHA256" \
+            --arg git_sha "$GITHUB_SHA" \
+            '{schema_version: 1, mode: $mode, artifact: $artifact, sha256: $sha256, git_sha: $git_sha, signed: false, notarized: false, publishable: false}' \
+            > macos-signing-report.json
+
+      - name: Upload pkg
+        if: inputs.signing_mode == 'validation'
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ steps.package.outputs.artifact_name }}
+          path: ${{ steps.package.outputs.path }}
+
+      - name: Upload signing report
+        if: inputs.signing_mode == 'validation'
+        uses: actions/upload-artifact@v7
+        with:
+          name: macos-signing-report-${{ inputs.version }}-${{ inputs.arch }}
+          path: macos-signing-report.json
+
+      - name: Package individual binaries
+        run: |
+          # Architecture-qualified names prevent release-asset collisions.
+          ASSETS="${{ steps.collect.outputs.assets_dir }}"
+          ARCH="${{ inputs.arch }}"
+          PKGS=packages
+          mkdir -p "${PKGS}"
+          for bin in "${ASSETS}"/*; do
+            [ -f "$bin" ] && [ -x "$bin" ] || continue
+            name=$(basename "$bin")
+            arch_name="${name}-${ARCH}"
+            dir="${PKGS}/${arch_name}"
+            mkdir -p "${dir}"
+            cp "$bin" "${dir}/"
+            [ -d "${ASSETS}/lib" ] && cp -R "${ASSETS}/lib" "${dir}/lib"
+            tar -czf "${PKGS}/${arch_name}.tar.gz" -C "${PKGS}" "${arch_name}"
+            rm -rf "${dir}"
+          done
+
+      - name: Upload individual binaries
+        uses: actions/upload-artifact@v7
+        with:
+          name: individual-binaries-macos-${{ inputs.arch }}
+          path: packages/*.tar.gz
+
+      # Keep repository-built code after signing, notarization, cleanup, and
+      # artifact publication so a detached child cannot reach later secrets.
+      - name: Smoke-launch deployed WSJT-X app
+        id: deployed_wsjtx_smoke
+        timeout-minutes: 1
+        run: |
+          APP="${GITHUB_WORKSPACE}/${{ steps.collect.outputs.stage_dir }}/wsjtx.app"
+          DIAGNOSTICS="${GITHUB_WORKSPACE}/wsjtx-build/deployed-startup-smoke-diagnostics"
+
+          unset DYLD_LIBRARY_PATH
+          unset DYLD_FRAMEWORK_PATH
+          unset DYLD_INSERT_LIBRARIES
+          unset DYLD_ROOT_PATH
+          unset DYLD_IMAGE_SUFFIX
+          unset QT_PLUGIN_PATH
+          unset QT_QPA_PLATFORM_PLUGIN_PATH
+          unset QML_IMPORT_PATH
+          unset QML2_IMPORT_PATH
+
+          export DYLD_FALLBACK_LIBRARY_PATH="/usr/lib"
+          export DYLD_FALLBACK_FRAMEWORK_PATH="/System/Library/Frameworks"
+          export QT_QPA_PLATFORM="cocoa"
+          export PATH="/usr/bin:/bin:/usr/sbin:/sbin"
+
+          cd "$RUNNER_TEMP"
+          /bin/bash "${GITHUB_WORKSPACE}/test/run-wsjtx-startup-macos.sh" \
+            "$DIAGNOSTICS" \
+            "${APP}/Contents/MacOS/wsjtx" \
+            --startup-smoke-test \
+            --rig-name CI-DEPLOYED-STARTUP
+
+      - name: Upload deployed WSJT-X startup diagnostics
+        if: failure() && steps.deployed_wsjtx_smoke.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: wsjtx-deployed-startup-smoke-macos-${{ inputs.arch }}
+          path: wsjtx-build/deployed-startup-smoke-diagnostics
+          if-no-files-found: ignore
+          retention-days: 7
+
+  sign_distribution:
+    if: inputs.signing_mode == 'distribution'
+    needs: build
+    runs-on: ${{ inputs.runner || (inputs.arch == 'x86_64' && 'macos-15-intel' || 'macos-15') }}
+    timeout-minutes: 30
+    environment: apple-release-signing
+    env:
+      VERSION: ${{ inputs.version }}
+      ARCH: ${{ inputs.arch }}
+      APPLE_TEAM_ID: ${{ inputs.apple_team_id || vars.APPLE_TEAM_ID }}
+      APP_CERT_SHA1: ${{ inputs.application_certificate_sha1 || vars.APPLE_APPLICATION_CERTIFICATE_SHA1 }}
+      INST_CERT_SHA1: ${{ inputs.installer_certificate_sha1 || vars.APPLE_INSTALLER_CERTIFICATE_SHA1 }}
+    steps:
+      - name: Validate distribution credentials
+        env:
+          APP_P12: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}
+          APP_P12_PW: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          INST_P12: ${{ secrets.DEVELOPER_ID_INSTALLER_P12 }}
+          INST_P12_PW: ${{ secrets.DEVELOPER_ID_INSTALLER_PASSWORD }}
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_PRIVATE_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY_P8_BASE64 }}
+        run: |
+          missing=()
+          for name in APP_P12 APP_P12_PW INST_P12 INST_P12_PW ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY_P8_BASE64 APPLE_TEAM_ID APP_CERT_SHA1 INST_CERT_SHA1; do
+            [ -n "${!name}" ] || missing+=("$name")
+          done
+          if [ "${#missing[@]}" -ne 0 ]; then
+            printf '::error::Distribution signing is missing required credentials or identity configuration: %s\n' "${missing[*]}"
+            exit 1
+          fi
+
+      - name: Download unsigned component package
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: macos-signing-input-${{ inputs.version }}-${{ inputs.arch }}
+          path: signing-input
+
+      - name: Expand signing input without executing it
+        run: |
+          pkgutil --expand-full signing-input/wsjtx-component.pkg "$RUNNER_TEMP/expanded-component"
+          test -d "$RUNNER_TEMP/expanded-component/Payload/Applications/wsjtx.app"
+          test -d "$RUNNER_TEMP/expanded-component/Payload/usr/local/wsjtx"
+
+      - name: Import and verify Developer ID identities
+        id: identities
+        env:
+          APP_P12: ${{ secrets.DEVELOPER_ID_CERTIFICATE_P12 }}
+          APP_P12_PW: ${{ secrets.DEVELOPER_ID_CERTIFICATE_PASSWORD }}
+          INST_P12: ${{ secrets.DEVELOPER_ID_INSTALLER_P12 }}
+          INST_P12_PW: ${{ secrets.DEVELOPER_ID_INSTALLER_PASSWORD }}
+        run: |
+          KEYCHAIN_PATH="$RUNNER_TEMP/release-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 16)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 1800 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          printf '%s' "$APP_P12" | base64 --decode > "$RUNNER_TEMP/app.p12"
+          printf '%s' "$INST_P12" | base64 --decode > "$RUNNER_TEMP/installer.p12"
+          security import "$RUNNER_TEMP/app.p12" -P "$APP_P12_PW" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security import "$RUNNER_TEMP/installer.p12" -P "$INST_P12_PW" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          rm -f "$RUNNER_TEMP/app.p12" "$RUNNER_TEMP/installer.p12"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+
+          APP_IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk -F'"' '/Developer ID Application/ {print $2; exit}')
+          INST_IDENTITY=$(security find-identity -v "$KEYCHAIN_PATH" | awk -F'"' '/Developer ID Installer/ {print $2; exit}')
+          [ -n "$APP_IDENTITY" ] || { echo "::error::No Developer ID Application identity was imported."; exit 1; }
+          [ -n "$INST_IDENTITY" ] || { echo "::error::No Developer ID Installer identity was imported."; exit 1; }
+          [[ "$APP_IDENTITY" == *"(${APPLE_TEAM_ID})"* ]] || { echo "::error::Application identity is not owned by the expected team."; exit 1; }
+          [[ "$INST_IDENTITY" == *"(${APPLE_TEAM_ID})"* ]] || { echo "::error::Installer identity is not owned by the expected team."; exit 1; }
+
+          app_actual=$(security find-certificate -c "$APP_IDENTITY" -Z "$KEYCHAIN_PATH" | awk '/SHA-1 hash:/ {print toupper($3); exit}')
+          inst_actual=$(security find-certificate -c "$INST_IDENTITY" -Z "$KEYCHAIN_PATH" | awk '/SHA-1 hash:/ {print toupper($3); exit}')
+          app_expected=$(printf '%s' "$APP_CERT_SHA1" | tr -d ': ' | tr '[:lower:]' '[:upper:]')
+          inst_expected=$(printf '%s' "$INST_CERT_SHA1" | tr -d ': ' | tr '[:lower:]' '[:upper:]')
+          [ "$app_actual" = "$app_expected" ] || { echo "::error::Application certificate fingerprint mismatch."; exit 1; }
+          [ "$inst_actual" = "$inst_expected" ] || { echo "::error::Installer certificate fingerprint mismatch."; exit 1; }
+          echo "application=$APP_IDENTITY" >> "$GITHUB_OUTPUT"
+          echo "installer=$INST_IDENTITY" >> "$GITHUB_OUTPUT"
+
+      - name: Sign staged application and command-line tools
+        env:
+          APP_IDENTITY: ${{ steps.identities.outputs.application }}
+        run: |
+          PAYLOAD="$RUNNER_TEMP/expanded-component/Payload"
+          APP="$PAYLOAD/Applications/wsjtx.app"
+          ENTITLEMENTS="$GITHUB_WORKSPACE/signing-input/entitlements.plist"
+          test -f "$ENTITLEMENTS"
+
+          find "$APP/Contents/Frameworks" -type f \( -name "*.dylib" -o -perm +111 \) \
+            -exec codesign --force --options runtime --timestamp --sign "$APP_IDENTITY" {} \;
+          find "$APP/Contents/Frameworks" -name "*.framework" -type d | while read -r framework; do
+            codesign --force --options runtime --timestamp --sign "$APP_IDENTITY" "$framework"
+          done
+          find "$APP/Contents/PlugIns" -type f -name "*.dylib" \
+            -exec codesign --force --options runtime --timestamp --sign "$APP_IDENTITY" {} \;
+          find "$APP/Contents/MacOS" -type f -perm +111 \
+            -exec codesign --force --options runtime --entitlements "$ENTITLEMENTS" --timestamp --sign "$APP_IDENTITY" {} \;
+          codesign --force --options runtime --entitlements "$ENTITLEMENTS" --timestamp --sign "$APP_IDENTITY" "$APP"
+
+          find "$PAYLOAD/usr/local/wsjtx" -maxdepth 1 -type f -perm +111 \
+            -exec codesign --force --options runtime --entitlements "$ENTITLEMENTS" --timestamp --sign "$APP_IDENTITY" {} \;
+          [ ! -d "$PAYLOAD/usr/local/wsjtx/lib" ] || find "$PAYLOAD/usr/local/wsjtx/lib" -type f \
+            -exec codesign --force --options runtime --timestamp --sign "$APP_IDENTITY" {} \;
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+      - name: Build signed distribution package
+        id: package
+        env:
+          INST_IDENTITY: ${{ steps.identities.outputs.installer }}
+        run: |
+          COMPONENT="$RUNNER_TEMP/wsjtx-signed-component.pkg"
+          pkgbuild \
+            --root "$RUNNER_TEMP/expanded-component/Payload" \
+            --scripts "$RUNNER_TEMP/expanded-component/Scripts" \
+            --component-plist "$GITHUB_WORKSPACE/signing-input/components.plist" \
+            --identifier "org.k1jt.wsjtx.${ARCH}" \
+            --version "$VERSION" \
+            --install-location / \
+            "$COMPONENT"
+          pkgutil --payload-files "$COMPONENT" >/dev/null
+          PKG_OUT="wsjtx-${VERSION}-${ARCH}-macOS.pkg"
+          productbuild \
+            --package "$COMPONENT" \
+            --sign "$INST_IDENTITY" \
+            "$PKG_OUT"
+          echo "path=$PKG_OUT" >> "$GITHUB_OUTPUT"
+
+      - name: Verify rebuilt distribution package
+        run: |
+          PKG_OUT="${{ steps.package.outputs.path }}"
+          CHECK_PACKAGE="$RUNNER_TEMP/signed-package-check"
+          pkgutil --expand-full "$PKG_OUT" "$CHECK_PACKAGE"
+          COMPONENT="$CHECK_PACKAGE/wsjtx-signed-component.pkg"
+          PAYLOAD="$COMPONENT/Payload"
+          APP="$PAYLOAD/Applications/wsjtx.app"
+          test -x "$APP/Contents/MacOS/qmap"
+          test -x "$APP/Contents/MacOS/map65"
+          test -x "$COMPONENT/Scripts/postinstall"
+          test -d "$PAYLOAD/usr/local/wsjtx"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+
+      - name: Notarize and staple distribution package
+        id: notarize
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_PRIVATE_KEY_P8_BASE64: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY_P8_BASE64 }}
+        run: |
+          KEY_PATH="$RUNNER_TEMP/AuthKey_${ASC_KEY_ID}.p8"
+          printf '%s' "$ASC_PRIVATE_KEY_P8_BASE64" | base64 --decode > "$KEY_PATH"
+          chmod 600 "$KEY_PATH"
+          xcrun notarytool submit "${{ steps.package.outputs.path }}" \
+            --key "$KEY_PATH" \
+            --key-id "$ASC_KEY_ID" \
+            --issuer "$ASC_ISSUER_ID" \
+            --wait --output-format json > notarization.json
+          SUBMISSION_ID=$(jq -r '.id // empty' notarization.json)
+          STATUS=$(jq -r '.status // empty' notarization.json)
+          if [ "$STATUS" != "Accepted" ] || [ -z "$SUBMISSION_ID" ]; then
+            echo "::error::Apple notarization did not return Accepted (status=${STATUS:-missing})."
+            [ -n "$SUBMISSION_ID" ] && xcrun notarytool log "$SUBMISSION_ID" \
+              --key "$KEY_PATH" --key-id "$ASC_KEY_ID" --issuer "$ASC_ISSUER_ID" || true
+            exit 1
+          fi
+          xcrun stapler staple "${{ steps.package.outputs.path }}"
+          xcrun stapler validate "${{ steps.package.outputs.path }}"
+          echo "submission_id=$SUBMISSION_ID" >> "$GITHUB_OUTPUT"
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          rm -f "$KEY_PATH"
+
+      - name: Verify distribution trust and write signing report
+        run: |
+          PKG_OUT="${{ steps.package.outputs.path }}"
+          COMPONENT="$RUNNER_TEMP/signed-package-check/wsjtx-signed-component.pkg"
+          APP="$COMPONENT/Payload/Applications/wsjtx.app"
+          codesign --verify --deep --strict --verbose=2 "$APP"
+          codesign -dv --verbose=4 "$APP" 2> codesign-details.txt
+          grep -F "TeamIdentifier=${APPLE_TEAM_ID}" codesign-details.txt
+          pkgutil --check-signature "$PKG_OUT" | tee pkg-signature.txt
+          grep -F "Developer ID Installer:" pkg-signature.txt
+          grep -F "(${APPLE_TEAM_ID})" pkg-signature.txt
+          xcrun stapler validate "$PKG_OUT"
+          spctl --assess --type install --verbose=4 "$PKG_OUT"
+          SHA256=$(shasum -a 256 "$PKG_OUT" | awk '{print $1}')
+          jq -n \
+            --arg mode distribution \
+            --arg artifact "$PKG_OUT" \
+            --arg sha256 "$SHA256" \
+            --arg git_sha "$GITHUB_SHA" \
+            --arg team_id "$APPLE_TEAM_ID" \
+            --arg app_certificate_sha1 "$(printf '%s' "$APP_CERT_SHA1" | tr -d ': ' | tr '[:lower:]' '[:upper:]')" \
+            --arg installer_certificate_sha1 "$(printf '%s' "$INST_CERT_SHA1" | tr -d ': ' | tr '[:lower:]' '[:upper:]')" \
+            --arg notarization_id "${{ steps.notarize.outputs.submission_id }}" \
+            --arg notarization_status "${{ steps.notarize.outputs.status }}" \
+            '{schema_version: 1, mode: $mode, artifact: $artifact, sha256: $sha256, git_sha: $git_sha, team_id: $team_id, application_certificate_sha1: $app_certificate_sha1, installer_certificate_sha1: $installer_certificate_sha1, notarization: {id: $notarization_id, status: $notarization_status}, stapled: true, gatekeeper_accepted: true, isolated_signing_job: true}' \
+            > macos-signing-report.json
+
+      - name: Remove signing credentials
+        if: always()
+        run: |
+          rm -f "$RUNNER_TEMP/app.p12" "$RUNNER_TEMP/installer.p12" "$RUNNER_TEMP"/AuthKey_*.p8
+          security delete-keychain "$RUNNER_TEMP/release-signing.keychain-db" 2>/dev/null || true
+
+      - name: Upload signed distribution package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: ${{ steps.package.outputs.path }}
+          path: ${{ steps.package.outputs.path }}
+
+      - name: Upload distribution signing report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: macos-signing-report-${{ inputs.version }}-${{ inputs.arch }}
+          path: macos-signing-report.json

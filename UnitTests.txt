@@ -1,0 +1,225 @@
+Mode: Q65-30A 
+Data: 30A_K1JT_6m_Ionoscatter (62 files, 6m ionoscatter DT 0.1 to 0.4) 
+Message: "K1JT K9AN R-16"
+RxFreq: 1000/10
+
+Commit        No_AP       MyCall     BothCalls
+-----------------------------------------------
+767f53: 1   1  5 116    6 10  85    21 32  59    RC1
+767f53: 2   2  7 301    6 10 241    21 33 168 
+767f53: 3   2  7 334    6 10 283    21 33 194
+
+94c315: 1   1  5  61    6 10  56    21 33  39
+94c315: 2   2  7 205    6 12 183    21 34 126
+94c315: 3   2  7 234    6 12 209    21 34 152
+
+7ad881: 1   2  7  69    6 12  61    21 33  46
+7ad881: 2   2  7 184    6 12 188    21 34 128
+7ad881: 3   2  7 244    6 12 216    21 34 148
+
+Mode: Q65-30A
+Data: 30A_N0AN_6m_Ionoscatter (69 files, 6m ionoscatter)
+Message: "N0AN K1JT -19"
+RxFreq: 1500/10
+
+Commit        No_AP       MyCall     BothCalls
+-----------------------------------------------
+767f53: 1   8 16  76    15 23  70    33 42  48
+767f53: 2  10 16 225    15 24 217    34 44 134
+767f53: 3  10 16 266    15 24 260    34 44 155
+
+94c315: 1   8 16  45    16 23  43    33 42  32
+94c315: 2  11 17 163    16 23 159    34 44 101
+94c315: 3  11 17 241    16 23 184    34 44 117
+
+7ad881: 1  10 18  94    17 24 101    35 45  90
+7ad881: 2  12 18 259    17 24 279    35 45 244
+7ad881: 3  12 18 299    17 24 322    35 45 284
+
+
+Mode: Q65-60B
+Data: 60B_1296_Troposcatter (75 files)
+Message: "VK7MO VK7PD QE38"
+RxFreq: 1000/10
+
+Commit        No_AP       MyCall       BothCalls
+--------------------------------------------------
+767f53: 1   1  5 115     12 27 105     68 69  22     RC1
+767f53: 2   1  5 322     12 28 304     65 67  53
+767f53: 3   1  5 401     12 28 354     65 67  63
+
+94c315: 1   1  8  81     12 26  71     68 69  19
+94c315: 2   1  8 249     14 28 235     68 69  36
+94c315: 3   1  8 283     14 28 270     68 69  39
+
+7ad881: 1   1  8  97     12 27  90     68 69  24
+7ad881: 2   1  8 253     14 28 238     68 69  47
+7ad881: 3   1  8 274     14 28 263     69 69  52
+
+
+Mode: Q65-60D
+Data: MsgAvg (22 files, simulated fDop = 50 Hz)
+Message: "K1ABC W9XYZ EN37"
+RxFreq: 1000/10
+
+Commit        No_AP       MyCall     BothCalls
+------------------------------------------------
+767f53: 1  0 11  39    19 19  28    22 22   7
+767f53: 2  0 11 103    21 21  70    22 22   7
+767f53: 3  0 11 106    21 21  73    22 22   7
+
+94c315: 1  0 11  27    19 19  20    22 22   7
+94c315: 2  0 11  83    21 21  57    22 22   7
+94c315: 3  0 11  92    21 21  64    22 22   7
+
+7ad881: 1  0 11  32    21 21  23    22 22   7
+7ad881: 2  0 11  77    21 21  53    22 22   7
+7ad881: 3  0 11  86    21 21  63    22 22  11
+
+Mode: Q65-60D
+Data: 60D_2 (21 files, 1296 troposcatter)
+Message: "VK7MO VK3WE QF32"
+RxFreq: 1000/20
+
+Commit       No_AP       MyCall     BothCalls
+----------------------------------------------
+767f53: 1   2  4  36    6  8  35    13 14  22
+767f53: 2   5  5  84    9 10  78    13 14  47
+767f53: 3   5  5  85    9 10  83    13 14  50
+
+94c315: 1   2  4  27    6  8  25    13 15  17
+94c315: 2   5  5  67    7  8  65    13 15  39
+94c315: 3   5  5  76    9 10  71    13 15  44
+
+7ad881: 1
+7ad881: 2
+7ad881: 3
+
+Mode: Q65-120D
+Data: 120D  (14 files, 10 GHz troposcatter)
+Message: "VK7MO VK3WE QF32", "VK7MO VK3WE R-18"
+RxFreq: 1000/20
+
+Commit       No_AP       MyCall     BothCalls
+----------------------------------------------
+767f53: 1   0  0  33    0  0  34     1  5  31   RC1
+767f53: 2   0  0  83    0  0  80     1  5  74
+767f53: 3   0  0  89    0  0  89     1  5  83
+
+94c315: 1   0  0  26    0  0  26     1  5  25
+94c315: 2   0  0  66    0  0  66     1  5  61
+94c315: 3   0  0  72    0  0  72     1  5  67
+
+7ad881: 1
+7ad881: 2
+7ad881: 3
+
+Mode: Q65-60D
+Data: 60D_10_GHz_EME (14 files)
+Message: "VK7MO K6QPV DM12", "VK7MO K6QPV -15"
+RxFreq: 1000/50
+
+Commit       No_AP       MyCall     BothCalls
+----------------------------------------------
+767f53: 1   8  9  13    9 10  12    14 14   6   RC1 
+767f53: 2   9 10  26   10 11  25    14 14   6
+767f53: 3   9 10  27   10 11  26    14 14   6
+
+94c315: 1   8  9  11    9 10  10    14 14   6
+94c315: 2   9 10  22   10 11  20    14 14   6
+94c315: 3   9 10  24   10 11  23    14 14   6
+
+7ad881: 1
+7ad881: 2
+7ad881: 3
+
+Mode: JTTY
+Data: W2PU_260807 (25 files, real on-air conversational QSO test between K9AN
+      and W2PU, 2026-08-07, D:\data\JTTY\W2PU_260807\)
+Message: conversational (not a fixed repeated test message)
+RxFreq: 1500/10 and 1500/50 (FTol)
+
+Metric: total accumulated decode lines logged by rjtty across the 25-file
+corpus (each successful frame merge prints the slot's current full text, so
+this counts decode *events*, not distinct correct messages -- a regression
+check against the known-good snapshot, not a literal "number correct" count).
+
+Commit                          Lines(ftol=10)  Lines(ftol=50)
+-----------------------------------------------------------------
+4e5aa053f (pre jtty_peakup fix):      240             238
+86fff7d28 (jtty_peakup fix):          241             241
+be1082f82 (merge-history dedup):      233             239
+0a6391c89/3bb309215 (3.5 Hz gate):    235             241
+7e511f229 (jtty_peakup stage 2):      235             241
+a09c8fd4c (retighten to 3.0 Hz):      235             241
+3d4676a45 (closed-slot dedup):        209             211
+
+86fff7d28 fixed lib/jtty/jtty_peakup.f90's time-search upper bound (ib was
+clamped to the sync-pattern length instead of the c1 buffer's actual valid
+range, silently zeroing ~17.5% of channel-0 candidate refinements whose
+coarse time offset exceeded ~0.416 s). 260807_134202.wav went from a
+3-way-split, partly garbled decode to a single clean thread exactly matching
+the known-correct message ("LOST THE END DUE TO 3 MINUTE TRANSITION");
+several other files' frequency estimates were also measurably more stable
+post-fix. No duplicate-word corruption found in a full corpus diff.
+
+be1082f82 added per-slot merge-history dedup (matching a rediscovered frame
+against a slot's full frame history, not just its current position), which
+correctly recognizes more retro-resweep rediscoveries as dupes instead of
+reprinting them -- the drop from 241 is dedup working better, not lost
+content (spot-checked: no decoded text regressed).
+
+0a6391c89 tightened decode_and_merge's slot-merge frequency gate from 8.0 Hz
+to 3.5 Hz (after a data-driven 3.0 Hz attempt was reverted -- a genuine
+same-message frame pair on 260807_140633.wav measured df1~3.0 Hz, right at
+that boundary, corrupting "KNOW IF PRIOR" into "KNOPRIOR"); erred tight
+deliberately, accepting more orphan fragments (260807_134312.wav,
+260807_134915.wav) in exchange for fewer wrong merges pending better
+frequency-estimation precision. 3bb309215 is a same-day comment-only cleanup
+of the debugging-narrative comments added along the way, no logic change.
+
+7e511f229 added a second refinement stage to jtty_peakup.f90: the existing
+coarse search only combines the 13 sync symbols non-coherently (32 ms
+coherent chunks, power-summed); stage 2 fits the near-linear phase ramp
+across those symbols (from the coarse 0.5 Hz grid's own residual frequency
+error) and coherently combines all 13 for a sharper f1. Measured on 51
+genuine on-air decodes down to -12 dB SNR: post-fit residual phase scatter
+tracks SNR the way ordinary estimation noise does, with no evidence the
+channel decorrelates over the full 416 ms window. No decoded-text changes
+at either FTol; only displayed frequencies shifted ~1 Hz tighter (e.g. one
+message's frame-to-frame spread went from 1.0 Hz to 0.4 Hz).
+
+a09c8fd4c retightened the frequency gate from 3.5 back to 3.0 Hz once the
+jtty_peakup refinement above made that safe: the same 260807_140633.wav
+case that forced 3.5 Hz measured under 2.3 Hz post-refinement. One file's
+decoded text actually improved (a "RTTYS" merge artifact at 3.5 Hz resolves
+to the correct "RTTY FOLKS" at 3.0 Hz); the two genuinely-wider-than-gate
+files still show their known orphan fragments either way.
+
+3d4676a45 fixed a duplicate-decode bug found via a new QRM test (see below):
+decode_and_merge's match scan skipped closed slots (is_last_frame) entirely,
+including the history-dedup fallback, so a closed slot's own signal being
+rediscovered later (e.g. a short single-frame message found again by an
+overlapping search window) always spawned a brand-new slot instead of being
+recognized as a duplicate. Closed slots now still run the history-dedup
+check while staying closed to new continuations; a pure dedup hit (no new
+text merged) also no longer reprints an unchanged line. The line-count drop
+here (235/241 to 209/211) is these now-suppressed duplicate reprints, not
+lost content (full-corpus diff was pure deletions, no text changes, no new
+duplicate-word corruption).
+
+Mode: JTTY
+Data: sjtty_qrm QRM-overlap test (synthetic, generated by lib/jtty/sjtty_qrm.f90)
+Message: multiple simultaneous signals at nearby frequencies, generated by:
+  sjtty_qrm 384 MM 1200 1800 5 1 -5
+RxFreq: 1500/50 (FTol)
+
+This generates one on-frequency signal (1500 Hz, "599 123") plus 4 nearby
+interferers with substantial frequency overlap (this run: KP4SX @1758.3,
+LV7QFH @1240.1, N2PPI @1430.0, N6GP @1511.6 Hz). Confirmed post-3d4676a45:
+rjtty and the WSJT-X GUI both decode all 5 signals exactly once each in the
+"All Decodes" pane; the "QSO Frequency" pane (narrower FTol) correctly shows
+only the signals within tolerance of RxFreq. No fixed WAV file is kept in
+the repo (regenerate with sjtty_qrm as needed) -- this is a good spot-check
+for the closed-slot dedup fix and for signal-subtraction/QRM handling more
+generally.

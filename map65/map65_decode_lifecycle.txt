@@ -1,0 +1,68 @@
+MAP65 decode request lifecycle
+==============================
+
+Parameter ownership
+-------------------
+The C-facing getters and setters in npar_ptrs_mod operate on a draft
+parameter record. MainWindow::decode prepares that record, then calls
+publish_decode_request. Publication copies the complete record into a FIFO
+queue and assigns it a monotonically increasing request ID.
+
+A dedicated mutex protects draft access, publication, cancellation and
+claiming. It is separate from g_fortran_decode_mutex, which is held for the
+decoder thread's entire lifetime.
+
+run_m65 claims one queued request before calling m65a. Claiming removes that
+request from the queue and copies its parameters into decoder-owned active
+storage. All decoder routines use those active parameters until the call
+returns. GUI updates can prepare and publish subsequent requests without
+changing the active pass.
+
+The live waterfall reads the draft center frequency through get_fcenter.
+Runtime sample-rate/FFT sizes and the working directory are initialized
+before decoding and are not per-request parameters.
+
+Triggers and completion
+-----------------------
+Automatic live decoding publishes an early request at 280 half-symbols and a
+final request at 302 half-symbols. Disk input publishes the final request.
+The FIFO preserves both requests if the early pass is delayed or has not
+started when the final trigger arrives.
+
+The live input generation advances when the sound/UDP input resets its
+write pointer, before writing the next interval's samples. Each request
+records that generation. An automatic live
+request still pending after rollover expires instead of decoding another
+interval's samples. The decoder emits <DecodeSkipped> with the expired
+request ID; the GUI clears busy only for the latest request, without
+changing decode counts or advancing a disk sequence. Manual repeats and
+disk requests do not expire on live rollover.
+
+newdat belongs to the active request and starts at 1. The DSP receives its
+own copy for FFT-cache invalidation. Clearing that copy or finishing a pass
+cannot erase or repeat a pending request.
+
+The Decode button sets nagain to reuse the previous sample snapshot.
+Freeze-decode also sets manualDecodeFlag. Publication consumes the draft
+manual flag, so it cannot leak into the next automatic request.
+
+An early pass emits <EarlyFinished>. A final or manual pass emits
+<DecodeFinished> with its request ID appended after the existing fixed-width
+fields. The GUI accepts final completion only when that ID still matches the
+latest published request. An older completion cannot clear busy state or
+advance a disk sequence while newer work is pending.
+
+decoder_ready temporarily prevents claims while input/parameters are being
+prepared; publication enables claims. Loading another file cancels queued
+requests and invalidates older completion IDs. Shutdown frees queued
+requests. Neither operation interrupts an already active DSP call.
+
+Sample-buffer boundary
+----------------------
+The request queue owns scalar parameters and strings, not sample buffers.
+decode0 copies live dd/ss/savg into the existing snapshot when an automatic
+request starts; manual repeats reuse that snapshot. Requests claimed before
+rollover still have the existing race between the sample copy and buffer
+updates. Generation checks reject already obsolete pending requests; they
+do not establish ownership of a claimed request's samples or synchronize
+its sample copy.

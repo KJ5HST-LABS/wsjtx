@@ -1,0 +1,76 @@
+:doctype: manpage
+:man source: AsciiDoc
+:man version: {VERSION}
+:man manual: WSJT-X Manual
+= udp_daemon(1)
+
+== NAME
+
+udp_daemon - Command-line reference server for the WSJT-X UDP protocol.
+
+== SYNOPSIS
+
+*udp_daemon* ['OPTIONS']
+
+== DESCRIPTION
+
+*udp_daemon* is a command-line reference implementation of a server for the
+WSJT-X UDP protocol. It discovers WSJT-X clients and prints their status,
+decodes, WSPR decodes, logged QSOs, and logged ADIF records. Its source also
+demonstrates how an external application can receive and respond to WSJT-X
+messages:
+
+https://github.com/WSJTX/wsjtx/tree/master/UDPExamples
+
+The daemon listens as a unicast server by default. To use multicast, specify a
+valid multicast group with *--multicast-group* and configure the same group
+and port in each WSJT-X instance under *Settings -> Reporting -> UDP Server*.
+Multicast permits multiple servers to receive the same WSJT-X messages.
+MAC-ambiguous IPv4 multicast group addresses are not supported.
+
+Without *--network-interface*, a multicast server joins the loopback
+interface. Use *--list-interfaces* to find interface names and repeat
+*--network-interface* to join the group on one or more selected interfaces.
+Some systems may require a suitable multicast route before traffic can be
+delivered to sockets on the sending host.
+
+== OPTIONS
+
+*-h, --help*::
+Display command-line help and exit.
+
+*--help-all*::
+Display command-line help including Qt-specific options and exit.
+
+*-v, --version*::
+Display the application version and exit.
+
+*-l, --list-interfaces*::
+Print the available network interfaces and exit.
+
+*-p* _PORT_, *--port*=_PORT_::
+Listen on UDP service port _PORT_. The default is 2237.
+
+*-g* _GROUP_, *--multicast-group*=_GROUP_::
+Join multicast group _GROUP_. Without this option, listen as a unicast server
+on all interfaces.
+
+*-i* _INTERFACE_, *--network-interface*=_INTERFACE_::
+Join the multicast group on the named network interface. This option may be
+repeated to select multiple interfaces; without it, multicast uses the
+loopback interface.
+
+== AUTHOR
+
+Bill Somerville, G4WJS.
+
+== COPYING
+
+*udp_daemon* is Copyright (C) 2015 by William Somerville, G4WJS,
+with contributions from additional authors. *udp_daemon* is Open Source
+software, licensed under the GNU General Public License (GPLv3).
+
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+General Public License for more details.

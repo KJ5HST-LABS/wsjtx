@@ -1,0 +1,79 @@
+[[NEW_FEATURES]]
+=== New in Version {VERSION_MAJOR}.{VERSION_MINOR}
+
+- *JTTY* is an entirely new digital mode designed for fast RTTY-like
+contest exchanges and other keyboard-to-keyboard communication. Its
+operational feel is similar to standard RTTY, but it has much better
+weak-signal performance and far lower error rate. JTTY transmissions
+can start at any time and typically last a few seconds. Error-free
+throughput is about 30 words per minute for arbitrary text and 60 WPM
+for the short, fixed-format messages generally used in RTTY-style
+contesting.
+
+- *_MAP65_* adds support for 192 kHz sample rate and a new JT65 *Full
+Deep Search* mode. JT65 false decodes are substantially reduced, and
+Q65 decoding sensitivity significantly improved for both single and
+dual polarization signals. A number of smaller improvements and bug
+fixes are present. We note that the
+https://wsjt.sourceforge.io/MAP65_Users_Guide.pdf[_MAP65_ User's
+Guide] is out-of-date, but still useful. This document is being
+thoroughly revised, and we hope to make a new version available soon.
+
+- *_QMAP_* now displays decoded callsigns superimposed on its
+waterfall. An optional vertical waterfall displays callsigns to its
+right, without obscuring the signal traces. Clicking a callsign in
+either waterfall sets up (and double-clicking starts) a QSO with that
+station, with the QSO subsequently conducted in a co-running copy of
+_WSJT-X_. A new *Stop* button ends a *Shift+F6* file sequence, as in
+_WSJT-X_ and _MAP65_. See <<QMAP,_QMAP_>> in this guide for more
+details.
+
+- *Q65 Pileup Mode:* a previously unused message bit now indicates
+whether the station being called was copied in the previous Rx
+interval. Decodes with this bit set are flagged with "#" in the
+decoded text window and in the Active Stations window. Everything
+needed is exchanged over the air; no internet connection is required.
+
+- *Raspberry Pi* and other ARM-based computers: pre-built 32-bit
+(armhf) as well as 64-bit (aarch64) packages are available. Projects
+such as DigiPi, which runs _WSJT-X_ on the Pi Zero 2 W, can install
+the current release without building from source.
+
+- *Decoded text panes* now keep their scroll position while you review
+earlier decodes. New decodes will continue to accumulate below, and
+the pane returns to live output when you scroll back to the end.
+
+- *Highlight orange* and *Highlight blue* prefix lists now accept
+wildcards (*) and exclusions (!).
+
+- *TX Inhibit* for multi-op contesting: with a UDP connection, an
+external controller can block _WSJT-X_ from transmitting when another
+transmitter is active on the same band.
+
+- *WSPR* and *FST4W* now upload spots to `wsprnet.eu` as a backup.
+Queued spots are preserved across retries when WSPRnet is slow or
+unavailable.
+
+- *CloudLog* and *Wavelog* integration has been improved, and *eQSL*
+uploads now use a secure protocol to protect your login credentials.
+
+- *Band Activity* shows `U.S.A.` and the correct state for a K-family
+callsign operating portable from a different state, instead of the
+DXCC entity of the callsign's home area.
+
+- *Settings* dialogs are more accessible, and keyboard navigation and
+focus handling are improved. Dialogs are laid out responsively rather
+than clipping controls on constrained window sizes or large
+accessibility fonts. Decode panes and the startup splash screen are
+properly named for use with assistive technology.
+
+- *German*, *Polish*, and *Ukrainian* translations of the user
+interface have been added, and the *Spanish* translation updated.
+
+- *Copyright notice* and *Trademark policy* selections have been added
+to the *Help* menus for _WSJT-X_, _MAP65_, and _QMAP_, and new icons
+are used for all three programs.
+
+- *Many* other smaller improvements and bug fixes. See the
+https://wsjtx.github.io/wsjtx/Release_Notes.txt[Release Notes] for
+details.

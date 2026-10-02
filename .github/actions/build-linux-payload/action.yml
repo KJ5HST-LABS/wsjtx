@@ -1,0 +1,457 @@
+name: "Build Linux payload"
+description: >-
+  Build and test wsjtx for one Linux architecture, with optional package and
+  artifact production. The caller decides job-container versus explicit Docker
+  execution; this action runs the shared native pipeline.
+
+inputs:
+  arch:
+    description: "Native Linux target architecture: x86_64 or aarch64"
+    required: true
+  version:
+    description: "WSJT-X version string"
+    required: true
+  hamlib_branch:
+    description: "Hamlib branch to build"
+    required: true
+  runtime_base:
+    description: >-
+      Runtime profile used to select the GCC 13.4 Bookworm toolchain.
+    required: false
+    default: "host"
+  recache:
+    description: "Manual ccache refresh; ordinary source changes do not enable it"
+    required: false
+    default: "false"
+  save_ccache:
+    description: "Save compiled objects for trusted builds"
+    required: false
+    default: "false"
+  validate_fortran_fallback:
+    description: "Build the x86_64 non-OpenMP common-library sentinel graph"
+    required: false
+    default: "false"
+  build_packages:
+    description: "Build, validate, and upload Linux packages and executable artifacts"
+    required: false
+    default: "true"
+  release_channel:
+    description: "Build release channel: DEVEL, RC, or GA"
+    required: false
+    default: "DEVEL"
+  rc_number:
+    description: "Release candidate number when release_channel is RC"
+    required: false
+    default: ""
+  allow_stale_image:
+    description: "Allow a previously promoted image when a dependency refresh changed the recipe"
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Validate workflow inputs
+      shell: bash
+      env:
+        WSJTX_VERSION: ${{ inputs.version }}
+        HAMLIB_BRANCH: ${{ inputs.hamlib_branch }}
+        WSJT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
+        WSJT_RC_NUMBER: ${{ inputs.rc_number }}
+        ARCH: ${{ inputs.arch }}
+        VALIDATE_FORTRAN_FALLBACK: ${{ inputs.validate_fortran_fallback }}
+      run: .github/scripts/validate-ci-inputs.sh
+
+    - name: Verify Linux CI image
+      id: image
+      shell: bash
+      env:
+        WSJTX_CI_IMAGE_ALLOW_RECIPE_MISMATCH: ${{ inputs.allow_stale_image }}
+      run: >-
+        .github/scripts/verify-linux-ci-image.sh
+        normal "${{ inputs.arch }}" "${{ inputs.hamlib_branch }}"
+
+    - name: Select Noble toolchain
+      if: inputs.runtime_base == 'host'
+      shell: bash
+      run: |
+        {
+          echo "CC=gcc"
+          echo "CXX=g++"
+          echo "FC=gfortran"
+        } >> "$GITHUB_ENV"
+
+    - name: Select GCC 13.4 Bookworm toolchain
+      if: inputs.runtime_base == 'bookworm-gcc13.4'
+      shell: bash
+      run: |
+        CC=/usr/local/bin/gcc
+        CXX=/usr/local/bin/g++
+        FC=/usr/local/bin/gfortran
+
+        for compiler in "$CC" "$CXX" "$FC"; do
+          if [ ! -x "$compiler" ]; then
+            echo "::error::Expected compiler not found at $compiler"
+            exit 1
+          fi
+          version=$("$compiler" -dumpfullversion -dumpversion)
+          echo "$compiler: $version"
+          if [ "$version" != "13.4.0" ]; then
+            echo "::error::Expected GCC 13.4.0, found $version at $compiler"
+            exit 1
+          fi
+        done
+
+        echo "CC=$CC" >> "$GITHUB_ENV"
+        echo "CXX=$CXX" >> "$GITHUB_ENV"
+        echo "FC=$FC" >> "$GITHUB_ENV"
+
+    # Run-unique keys let a refreshed archive become the newest prefix match
+    # even when an immutable cache already exists for the same commit SHA.
+    - name: Select ccache key
+      id: ccache-key
+      shell: bash
+      env:
+        RECACHE: ${{ inputs.recache }}
+      run: .github/scripts/select-ccache-key-suffix.sh
+
+    - name: Restore ccache
+      id: ccache
+      uses: actions/cache/restore@v5
+      with:
+        path: .ccache
+        key: ccache-linux-${{ inputs.arch }}-${{ steps.image.outputs.ccache_compatibility_id }}-${{ steps.image.outputs.generation }}-${{ github.sha }}${{ steps.ccache-key.outputs.suffix }}
+        restore-keys: |
+          ccache-linux-${{ inputs.arch }}-${{ steps.image.outputs.ccache_compatibility_id }}-${{ steps.image.outputs.generation }}-
+          ccache-linux-${{ inputs.arch }}-${{ steps.image.outputs.ccache_compatibility_id }}-
+
+    - name: Configure ccache
+      shell: bash
+      run: |
+        export CCACHE_DIR="${GITHUB_WORKSPACE}/.ccache"
+        export CCACHE_COMPILERCHECK="${{ steps.image.outputs.ccache_compiler_check }}"
+        {
+          echo "CCACHE_DIR=$CCACHE_DIR"
+          echo "CCACHE_COMPILERCHECK=$CCACHE_COMPILERCHECK"
+        } >> "$GITHUB_ENV"
+        echo "ccache recache: ${{ inputs.recache }}"
+        if [ "${{ inputs.recache }}" = "true" ]; then
+          echo "CCACHE_RECACHE=1" >> "$GITHUB_ENV"
+          echo "Forcing ccache recache for this run"
+        fi
+        mkdir -p "${GITHUB_WORKSPACE}/.ccache"
+        ccache --version
+        ccache --show-config
+        ccache --zero-stats
+
+    # Exercise the public CMake default without duplicating its compile graph.
+    # AUTO resolves to BOTH on the OpenMP-capable Linux x86_64 toolchain.
+    - name: Configure default Fortran graph
+      if: inputs.arch == 'x86_64'
+      shell: bash
+      run: |
+        cmake -S . -B cfgmatrix-default \
+          -DCMAKE_PREFIX_PATH="${{ steps.image.outputs.hamlib_prefix }};/opt/wsjtx/pfunit" \
+          -DWSJT_SKIP_MANPAGES=ON \
+          -DPFUNIT_DIR="${{ steps.image.outputs.pfunit_dir }}" \
+          -Wno-dev
+
+    - name: Configure build and tests
+      shell: bash
+      env:
+        WSJT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
+        WSJT_RC_NUMBER: ${{ inputs.rc_number }}
+      run: |
+        cmake -S . -B wsjtx-build \
+          -DCMAKE_PREFIX_PATH="${{ steps.image.outputs.hamlib_prefix }};/opt/wsjtx/pfunit" \
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+          -DCMAKE_CXX_COMPILER_LAUNCHER=ccache \
+          -DWSJT_SKIP_MANPAGES=ON \
+          -DWSJT_ENABLE_TESTS=ON \
+          -DWSJT_ENABLE_GUI_SMOKE_TESTS=ON \
+          -DWSJT_FORTRAN_LIBRARY_VARIANTS=OPENMP_ONLY \
+          -DWSJT_RELEASE_CHANNEL="${WSJT_RELEASE_CHANNEL}" \
+          -DWSJT_RC_NUMBER="${WSJT_RC_NUMBER}" \
+          -DPFUNIT_DIR="${{ steps.image.outputs.pfunit_dir }}" \
+          -Wno-dev
+
+    - name: Build and test targets
+      shell: bash
+      run: cmake --build wsjtx-build -j$(nproc)
+
+    - name: Show ccache stats
+      if: always()
+      shell: bash
+      run: ccache --show-stats
+
+    # MAP65 retains target-local OpenMP while the shared WSJT Fortran library
+    # uses its serial variant. Run this fallback graph only on the native leg.
+    - name: Build non-OpenMP common-library sentinels
+      if: inputs.arch == 'x86_64' && inputs.validate_fortran_fallback == 'true'
+      shell: bash
+      run: |
+        cmake -S . -B cfgmatrix-NON_OPENMP_ONLY \
+          -DCMAKE_PREFIX_PATH="${{ steps.image.outputs.hamlib_prefix }};/opt/wsjtx/pfunit" \
+          -DWSJT_SKIP_MANPAGES=ON \
+          -DWSJT_FORTRAN_LIBRARY_VARIANTS=NON_OPENMP_ONLY \
+          -DPFUNIT_DIR="${{ steps.image.outputs.pfunit_dir }}" \
+          -Wno-dev
+        cmake --build cfgmatrix-NON_OPENMP_ONLY \
+          --target jt65sim m65impl qmap_impl test_jtty_pack \
+          -j$(nproc)
+
+    - name: Run tests
+      id: ctest
+      shell: bash
+      run: xvfb-run -a -s "-screen 0 1280x1024x24" ctest --parallel 3 --output-on-failure --output-junit ctest-results.xml
+      working-directory: wsjtx-build
+      env:
+        QT_QPA_PLATFORM: xcb
+
+    - name: Publish test summary
+      if: always() && steps.ctest.conclusion != 'skipped'
+      shell: bash
+      working-directory: wsjtx-build
+      run: python3 ../.github/scripts/publish-ctest-summary.py "Linux ${{ inputs.arch }}" >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload test results
+      if: always() && steps.ctest.conclusion != 'skipped'
+      uses: actions/upload-artifact@v7
+      with:
+        name: ctest-results-linux-${{ inputs.arch }}
+        path: wsjtx-build/ctest-results.xml
+        if-no-files-found: ignore
+
+    - name: Verify binary
+      shell: bash
+      env:
+        ARCH: ${{ inputs.arch }}
+      run: |
+        source .github/scripts/linux-artifact-validation.sh
+        validate_linux_build_executables wsjtx-build "$ARCH"
+
+    # CMakeLists.txt:1989-2012 enables CPack's DEB generator when
+    # dpkg-buildpackage is on the path (provided by dpkg-dev, installed
+    # above). The DEB generator ignores CPACK_PACKAGE_FILE_NAME and
+    # uses its own CPACK_DEBIAN_FILE_NAME (default <pkg>_<ver>_<arch>.deb
+    # → wsjtx_3.0.1_amd64.deb regardless). Override that variable to
+    # align the filename with the AppImage/installer naming used by
+    # the rest of the pipeline.
+    - name: Package .deb
+      if: inputs.build_packages == 'true'
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        ARCH: ${{ inputs.arch }}
+      run: |
+        cd wsjtx-build
+        cpack -G DEB \
+          -D "CPACK_DEBIAN_FILE_NAME=wsjtx-${VERSION}-linux-${ARCH}.deb"
+        DEB="wsjtx-${VERSION}-linux-${ARCH}.deb"
+        if [ ! -f "$DEB" ]; then
+          echo "::error::cpack -G DEB produced no .deb at expected path: $DEB"
+          ls -la *.deb 2>/dev/null || true
+          exit 1
+        fi
+        ls -lh "$DEB"
+        file "$DEB"
+        # sed instead of `| head -20` so dpkg-deb doesn't get SIGPIPE'd by
+        # head's early close — interacts badly with `bash -o pipefail` under
+        # Bookworm's dpkg-deb (observed exit 141 on first container run).
+        dpkg-deb --info "$DEB" | sed -n '1,20p'
+        source ../.github/scripts/linux-artifact-validation.sh
+        validate_deb_package "$DEB"
+
+    - name: Upload .deb
+      if: inputs.build_packages == 'true'
+      uses: actions/upload-artifact@v7
+      with:
+        name: wsjtx-${{ inputs.version }}-linux-${{ inputs.arch }}-deb
+        path: wsjtx-build/wsjtx-${{ inputs.version }}-linux-${{ inputs.arch }}.deb
+        if-no-files-found: error
+        compression-level: 0
+
+    # RPM builds via the same CPack scaffolding the .deb step above
+    # uses. CMakeLists.txt:2014-2026 already auto-detects rpmbuild and
+    # sets the Fedora-style dependency list (qt5-qtbase >= 5.9, fftw-
+    # libs-single, boost-log, etc.); only the workflow side was
+    # missing. `-G RPM` is explicit so this step doesn't accidentally
+    # rebuild the .deb already produced above.
+    - name: Package RPM
+      if: inputs.build_packages == 'true'
+      shell: bash
+      working-directory: wsjtx-build
+      run: |
+        cpack -G RPM
+        ls -lh *.rpm
+
+    - name: Smoke-test RPM
+      if: inputs.build_packages == 'true'
+      shell: bash
+      working-directory: wsjtx-build
+      run: |
+        rpms=(*.rpm)
+        RPM=${rpms[0]}
+        echo "Querying $RPM"
+        rpm -qpi "$RPM"
+        rpm -qpR "$RPM"
+        source ../.github/scripts/linux-artifact-validation.sh
+        validate_rpm_package "$RPM"
+
+    - name: Upload RPM
+      if: inputs.build_packages == 'true'
+      uses: actions/upload-artifact@v7
+      with:
+        name: wsjtx-${{ inputs.version }}-linux-${{ inputs.arch }}-rpm
+        path: wsjtx-build/*.rpm
+        if-no-files-found: error
+        compression-level: 0
+
+    - name: Install to AppDir
+      if: inputs.build_packages == 'true'
+      shell: bash
+      env:
+        ARCH: ${{ inputs.arch }}
+      run: |
+        cmake --install wsjtx-build --prefix "${GITHUB_WORKSPACE}/AppDir/usr"
+        source .github/scripts/linux-artifact-validation.sh
+        validate_linux_application_tree AppDir appdir "$ARCH"
+
+    - name: Package AppImage
+      if: inputs.build_packages == 'true'
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        ARCH: ${{ inputs.arch }}
+        # Core linuxdeploy is pinned to a dated release. The Qt5 plugin
+        # stays on the rolling "continuous" channel because upstream has
+        # not cut a dated release since 1-alpha-20250213-1, which carries
+        # a filesystem_error bug on ubuntu-24.04 / Qt5.15.
+        LINUXDEPLOY_TAG: "1-alpha-20251107-1"
+        # Force every AppImage spawned by linuxdeploy (the qt plugin and
+        # appimagetool, both invoked as AppImages internally) to use
+        # `--appimage-extract-and-run` instead of expecting FUSE to be
+        # available. The host runner has libfuse2 installed by default so
+        # the plain `./linuxdeploy.AppImage --appimage-extract-and-run`
+        # was enough for x86_64; the Bookworm container has no FUSE and the
+        # plugin AppImage's first call (`--plugin-api-version`) exits 127
+        # without this env var. APPIMAGE_EXTRACT_AND_RUN=1 is the
+        # AppImage runtime's documented FUSE-less escape hatch.
+        APPIMAGE_EXTRACT_AND_RUN: "1"
+      run: |
+        curl_flags=(--fail --show-error --silent --location --retry 5 --retry-delay 5)
+        github_api_token='${{ github.token }}'
+        github_api_curl() {
+          local api_headers=(-H "User-Agent: wsjtx-ci")
+          if [ -n "$github_api_token" ]; then
+            api_headers+=(-H "Authorization: Bearer ${github_api_token}")
+            env GITHUB_TOKEN="$github_api_token" curl "${curl_flags[@]}" "${api_headers[@]}" "$@"
+          else
+            curl "${curl_flags[@]}" "${api_headers[@]}" "$@"
+          fi
+        }
+        case "$ARCH" in
+          x86_64)
+            LINUXDEPLOY_SHA256="c20cd71e3a4e3b80c3483cef793cda3f4e990aca14014d23c544ca3ce1270b4d"
+            ;;
+          aarch64)
+            LINUXDEPLOY_SHA256="620095110d693282b8ebeb244a95b5e911cf8f65f76c88b4b47d16ae6346fcff"
+            ;;
+          *)       echo "::error::Unknown linuxdeploy arch: $ARCH"; exit 1 ;;
+        esac
+
+        QT_PLUGIN_ASSET_NAME="linuxdeploy-plugin-qt-${ARCH}.AppImage"
+        QT_PLUGIN_ASSET_ID="$(
+          github_api_curl -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/linuxdeploy/linuxdeploy-plugin-qt/releases/tags/continuous" |
+          python3 -c 'import json, sys; name = sys.argv[1]; matches = [asset for asset in json.load(sys.stdin)["assets"] if asset["name"] == name]; print(matches[0]["id"]) if matches else sys.exit("asset not found: " + name)' "$QT_PLUGIN_ASSET_NAME"
+        )"
+
+        # Resolve the current asset ID because the Qt plugin intentionally
+        # follows upstream's rolling continuous release.
+        curl "${curl_flags[@]}" -o linuxdeploy.AppImage \
+          "https://github.com/linuxdeploy/linuxdeploy/releases/download/${LINUXDEPLOY_TAG}/linuxdeploy-${ARCH}.AppImage"
+        github_api_curl -H "Accept: application/octet-stream" -o linuxdeploy-plugin-qt.AppImage \
+          "https://api.github.com/repos/linuxdeploy/linuxdeploy-plugin-qt/releases/assets/${QT_PLUGIN_ASSET_ID}"
+        echo "${LINUXDEPLOY_SHA256}  linuxdeploy.AppImage" | sha256sum -c -
+        chmod +x linuxdeploy.AppImage linuxdeploy-plugin-qt.AppImage
+
+        # --appimage-extract-and-run on linuxdeploy itself + the env-var
+        # above on every child AppImage means the whole pipeline runs
+        # FUSE-free.
+        export OUTPUT="wsjtx-${VERSION}-linux-${ARCH}.AppImage"
+        env -u GITHUB_TOKEN ./linuxdeploy.AppImage --appimage-extract-and-run \
+          --appdir AppDir \
+          --plugin qt \
+          --output appimage \
+          --desktop-file AppDir/usr/share/applications/wsjtx.desktop \
+          --icon-file AppDir/usr/share/pixmaps/wsjtx_icon.png
+
+        ls -lh "$OUTPUT"
+        file "$OUTPUT"
+
+    - name: Smoke-test AppImage payload
+      if: inputs.build_packages == 'true'
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        ARCH: ${{ inputs.arch }}
+      run: |
+        APPIMAGE="wsjtx-${VERSION}-linux-${ARCH}.AppImage"
+        ./"$APPIMAGE" --appimage-extract >/dev/null
+        source .github/scripts/linux-artifact-validation.sh
+        validate_linux_application_tree squashfs-root appimage "$ARCH"
+        rm -rf squashfs-root
+
+    - name: Runtime-smoke-test AppImage
+      if: inputs.build_packages == 'true'
+      id: appimage_runtime_smoke
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        ARCH: ${{ inputs.arch }}
+      run: |
+        APPIMAGE="wsjtx-${VERSION}-linux-${ARCH}.AppImage"
+        LOG="wsjtx-build/appimage-startup-smoke.log"
+        source .github/scripts/linux-artifact-validation.sh
+        run_packaged_appimage_startup_smoke "./$APPIMAGE" "$LOG"
+
+    - name: Upload AppImage startup diagnostics
+      if: inputs.build_packages == 'true' && failure() && steps.appimage_runtime_smoke.outcome == 'failure'
+      uses: actions/upload-artifact@v7
+      with:
+        name: wsjtx-startup-smoke-linux-${{ inputs.arch }}
+        path: wsjtx-build/appimage-startup-smoke.log
+        if-no-files-found: ignore
+        retention-days: 7
+
+    - name: Upload AppImage
+      if: inputs.build_packages == 'true'
+      uses: actions/upload-artifact@v7
+      with:
+        name: wsjtx-${{ inputs.version }}-linux-${{ inputs.arch }}-AppImage
+        path: wsjtx-${{ inputs.version }}-linux-${{ inputs.arch }}.AppImage
+        if-no-files-found: error
+        compression-level: 0
+
+    - name: Upload build artifacts
+      if: inputs.build_packages == 'true'
+      uses: actions/upload-artifact@v7
+      with:
+        name: wsjtx-${{ inputs.version }}-linux-${{ inputs.arch }}
+        path: |
+          wsjtx-build/jt9
+          wsjtx-build/wsprd
+          wsjtx-build/wsjtx
+
+    - name: Report suppressed ccache save
+      if: inputs.save_ccache == 'true' && steps.image.outputs.recipe_match != 'true'
+      shell: bash
+      run: echo "::notice::Not saving ccache because this build used a stale Linux CI image recipe"
+
+    - name: Save ccache
+      if: inputs.save_ccache == 'true' && steps.image.outputs.recipe_match == 'true' && steps.ccache.outputs.cache-hit != 'true'
+      uses: actions/cache/save@v5
+      with:
+        path: .ccache
+        key: ${{ steps.ccache.outputs.cache-primary-key }}

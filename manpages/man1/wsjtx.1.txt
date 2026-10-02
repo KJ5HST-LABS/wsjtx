@@ -1,0 +1,125 @@
+:doctype: manpage
+:man source: AsciiDoc
+:man version: {VERSION}
+:man manual: WSJT-X Manual
+= wsjtx(1)
+
+== NAME
+
+wsjtx - Weak-signal communications program.
+
+== SYNOPSIS
+
+*wsjtx* ['OPTIONS']
+
+== DESCRIPTION
+
+*WSJT-X* is an amateur-radio application for weak-signal communication. Its
+selectable modes are FST4, FT4, FT8, JT4, JT9, JT65, Q65, JTTY, MSK144,
+FST4W, WSPR, Echo, and FreqCal.
+
+WSJT-X home page:: https://wsjtx.github.io/wsjtx/
+
+WSJT-X User Guide:: https://wsjtx.github.io/wsjtx/guide-full.html
+
+== OPTIONS
+
+*-h, --help*::
+Display command-line help and exit.
+
+*--help-all*::
+Display command-line help including Qt-specific options and exit.
+
+*-v, --version*::
+Display the application version and exit.
+
+*-r, --rig-name*=_RIG-NAME_::
+Run a named instance. Each concurrently running instance must use a unique
+name. The name is appended to the application identity, separating its
+instance lock, settings file, and writable data directory from other
+instances.
+
+*-p, --n1mm-tcp-port*=_PORT_::
+On Windows, connect the N1MM Logger+ interface to TCP port _PORT_ on the local
+host.
+
+*--mode*=_MODE_::
+Start in FT8, FT4, or JTTY mode. Mode names are case-insensitive. When
+*--n1mm-tcp-port* is supplied, the selected mode is locked for the N1MM
+session.
+
+*-c, --config*=_CONFIGURATION_::
+Select an existing saved configuration at startup. Configurations share the
+instance's settings file and do not change its writable data directory.
+
+*-l, --language*=_LANGUAGE_::
+Override the user-interface language with a language code, optionally
+followed by a country code, such as `de` or `pt-BR`.
+
+*--test-mode*::
+Redirect Qt standard writable locations to the test hierarchy and allow a
+separate test instance. This option is intended for application testing only.
+
+*--startup-smoke-test*::
+Start the application, process its initial GUI events, and exit. This option
+also uses the test-mode writable locations.
+
+== FILES
+
+*WSJT-X* uses the platform's Qt standard paths. On Linux, the default paths
+for an unnamed instance are:
+
+~/.config/WSJT-X.ini::
+Application settings. Named configurations selected with *--config* are
+stored in this file.
+
+~/.local/share/WSJT-X/::
+Writable application data.
+
+When *--rig-name* is used, a space, hyphen, space, and _RIG-NAME_ are appended
+to `WSJT-X` in both paths. If `XDG_CONFIG_HOME` or `XDG_DATA_HOME` is set, Qt
+uses that directory instead of the corresponding default above. *--test-mode*
+uses Qt's test-path hierarchy under `~/.qttest`.
+
+Notable files and directories in the writable data directory include:
+
+ALL.TXT::
+A record of transmitted and received messages and other activity. Depending
+on its logging settings and mode, WSJT-X may write date- or mode-specific
+variants instead.
+
+save/::
+The default directory for saved audio files. The location can be changed in
+the application settings.
+
+save/samples/::
+Sample audio files used by the User Guide tutorials and sample downloader.
+
+cty.dat::
+An optional writable override for the country file installed with WSJT-X.
+
+wsjtx.log::
+A plain-text CSV record of logged QSOs.
+
+wsjtx_log.adi::
+The ADIF log used as the primary WSJT-X logbook.
+
+== AUTHOR
+
+Joe Taylor, K1JT.
+
+== COPYING
+
+*wsjtx* is Copyright (C) 2001 - 2026 by Joseph H. Taylor, Jr., K1JT,
+with contributions from additional authors. WSJT-X is Open Source
+software, licensed under the GNU General Public License (GPLv3).
+
+*wsjtx* includes the ``**Hamlib - Ham Radio Control Libraries**''
+software which is licensed under the GNU Lesser General Public License
+(LGPL). Home page https://hamlib.github.io/, sources from
+https://github.com/Hamlib/Hamlib.
+
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+General Public License for more details.

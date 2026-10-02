@@ -1,0 +1,126 @@
+name: Prepare Release Candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Version without v (X.Y.Z or X.Y.Z-rcN)"
+        required: true
+        type: string
+      expected_sha:
+        description: "Full SHA at the tip of release/X.Y"
+        required: true
+        type: string
+      operation:
+        description: "Validate only, or create the immutable candidate tag and start its build"
+        required: true
+        type: choice
+        options: [validate, create]
+        default: validate
+
+permissions:
+  actions: read
+  contents: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: candidate-tagging
+    outputs:
+      candidate_tag: ${{ steps.validate.outputs.candidate_tag }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Fetch release branches and tags
+        run: git fetch origin '+refs/heads/release/*:refs/remotes/origin/release/*' '+refs/tags/*:refs/tags/*'
+      - name: Validate release commit
+        id: validate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$EXPECTED_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::expected_sha must be a full 40-character lowercase commit SHA"
+            exit 1
+          fi
+          IDENTITY=$(python3 .github/scripts/release-policy.py classify "$VERSION")
+          BRANCH=$(jq -r .release_branch <<<"$IDENTITY")
+          if [ "$GITHUB_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::Run this workflow from $BRANCH at $EXPECTED_SHA"
+            exit 1
+          fi
+          BRANCH_SHA=$(git rev-parse --verify --quiet "refs/remotes/origin/$BRANCH^{commit}" || true)
+          if [ "$BRANCH_SHA" != "$EXPECTED_SHA" ]; then
+            echo "::error::$BRANCH tip is ${BRANCH_SHA:-missing}, expected $EXPECTED_SHA"
+            exit 1
+          fi
+          git checkout --detach "$EXPECTED_SHA"
+          python3 .github/scripts/release-policy.py validate-source "$VERSION"
+
+          CI_RUN=$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$EXPECTED_SHA&status=completed&per_page=20" \
+            --jq '.workflow_runs | sort_by(.created_at) | reverse | .[0]')
+          if [ -z "$CI_RUN" ] || [ "$CI_RUN" = null ]; then
+            echo "::error::No completed ci.yml run found for $EXPECTED_SHA"
+            exit 1
+          fi
+          CI_ID=$(jq -r .id <<<"$CI_RUN")
+          CI_CONCLUSION=$(jq -r .conclusion <<<"$CI_RUN")
+          if [ "$CI_CONCLUSION" != success ]; then
+            echo "::error::Latest ci.yml run $CI_ID concluded $CI_CONCLUSION"
+            exit 1
+          fi
+          {
+            echo "branch=$BRANCH"
+            echo "ci_run_id=$CI_ID"
+            echo "candidate_tag=build/v$VERSION"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Verify candidate tag is create-only
+        id: tag
+        env:
+          VERSION: ${{ inputs.version }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          .github/scripts/check-candidate-tag.sh "build/v$VERSION" "$EXPECTED_SHA" >> "$GITHUB_OUTPUT"
+
+      - name: Create candidate tag
+        if: inputs.operation == 'create' && steps.tag.outputs.exists != 'true'
+        env:
+          VERSION: ${{ inputs.version }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+        run: |
+          git tag "build/v$VERSION" "$EXPECTED_SHA"
+          git push origin "refs/tags/build/v$VERSION:refs/tags/build/v$VERSION"
+
+      - name: Summarize candidate preparation
+        env:
+          VERSION: ${{ inputs.version }}
+          EXPECTED_SHA: ${{ inputs.expected_sha }}
+          OPERATION: ${{ inputs.operation }}
+          BRANCH: ${{ steps.validate.outputs.branch }}
+          CI_RUN_ID: ${{ steps.validate.outputs.ci_run_id }}
+        run: |
+          {
+            echo "## Release candidate preparation"
+            echo
+            echo "- Version: \`$VERSION\`"
+            echo "- Commit: \`$EXPECTED_SHA\`"
+            echo "- Release branch: \`$BRANCH\`"
+            echo "- CI run: [\`$CI_RUN_ID\`]($GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$CI_RUN_ID)"
+            echo "- Operation: \`$OPERATION\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  candidate:
+    if: inputs.operation == 'create'
+    needs: prepare
+    permissions:
+      contents: read
+      packages: read
+    uses: ./.github/workflows/release.yml
+    with:
+      candidate_tag: ${{ needs.prepare.outputs.candidate_tag }}
+      expected_sha: ${{ inputs.expected_sha }}

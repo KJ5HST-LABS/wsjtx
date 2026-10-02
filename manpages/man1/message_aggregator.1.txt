@@ -1,0 +1,50 @@
+:doctype: manpage
+:man source: AsciiDoc
+:man version: {VERSION}
+:man manual: WSJT-X Manual
+= message_aggregator(1)
+
+== NAME
+
+message_aggregator - Graphical reference server for the WSJT-X UDP protocol.
+
+== SYNOPSIS
+
+*message_aggregator*
+
+== DESCRIPTION
+
+*message_aggregator* is a graphical reference implementation of a server for
+the WSJT-X UDP protocol. It displays logged QSOs and WSPR decodes, and creates
+a dockable status and decode view for each connected WSJT-X instance. It also
+demonstrates requests and commands that an external application can send back
+to a WSJT-X client. Its source provides a starting point for applications that
+integrate with WSJT-X:
+
+https://github.com/WSJTX/wsjtx/tree/master/UDPExamples
+
+The server starts in unicast mode on UDP port 2237. Enter a valid multicast
+group to use multicast, select one or more network interfaces if required, and
+configure the same group and port in each WSJT-X instance under
+*Settings -> Reporting -> UDP Server*. Multicast permits multiple servers to
+receive the same WSJT-X messages. MAC-ambiguous IPv4 multicast group addresses
+are not supported.
+
+When no multicast interface is selected, the server joins the loopback
+interface. Some systems may require a suitable multicast route before traffic
+can be delivered to sockets on the sending host.
+
+== AUTHOR
+
+Bill Somerville, G4WJS.
+
+== COPYING
+
+*message_aggregator* is Copyright (C) 2015 by William Somerville, G4WJS,
+with contributions from additional authors. *message_aggregator* is Open
+Source software, licensed under the GNU General Public License (GPLv3).
+
+This program is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+General Public License for more details.

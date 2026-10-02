@@ -1,0 +1,343 @@
+set (libm65_FSRCS
+# Modules come first:
+  cacb_mod.f90
+  datcom_ptrs_mod.f90
+  decodes_mod.f90
+  extract_shared_mod.f90
+  gran_interface.f90
+  m65_mod.f90
+  map65_polarization_score.f90
+  four2a_legacy_wrap.f90
+  npar_ptrs_mod.f90
+  pfx_mod.f90
+  pr_mod.f90
+  rs_mod.f90
+  stdout_channel_mod.f90
+  wideband_sync.f90
+  fftw3_f77_interfaces.f90
+  sec0_mod.f90
+  ftrsd2_mod.f90
+
+# Non-module Fortran routines:
+  afc65b.f90
+  astro.f90
+  astro0.f90
+  astrosub.f90
+  ccf2.f90
+  ccf65.f90
+  cgen65.f90
+  chkhist.f90
+  chkmsg.f90
+  coord.f90
+  dcoord.f90
+  debug_log.f90
+  decode0.f90
+  decode1a.f90
+  decode65b.f90
+  deep65.f90
+  deg2grid.f90
+  demod64a.f90
+  display.f90
+  dot.f90
+  dpol.f90
+  encode65.f90
+  extract.f90
+  fchisq.f90
+  fchisq0.f90
+  fftw3.f90
+  fil6521.f90
+  filbig.f90
+  fmtmsg.f90
+  four2a.f90
+  ftninit.f90
+  ftnquit.f90
+  q65b.F90
+  gen65.f90
+  gen_q65_cwave.f90
+  gen_q65_wave.f90
+  geocentric.f90
+  getdphi.f90
+  getpfx1.f90
+  getpfx2.f90
+  graycode.f90
+  graycode65.f90
+  grid2deg.f90
+  grid2k.f90
+  indexx.f90
+  interleave63.f90
+  iqcal.f90
+  iqfix.f90
+  k2grid.f90
+  lorentzian.f90
+  m65a.f90
+  map65a.f90
+  moon2.f90
+  moondop.f90
+  nchar.f90
+  noisegen.f90
+  packjt.f90
+  pctile.f90
+  pfx.f90
+  pfxdump.f90
+  polfit.f90
+  recvpkt.f90
+  rfile3a.f90
+  run_m65.f90
+  s3avg.f90
+  sec_midn.f90
+  set.f90
+  setup65.f90
+  shell.f90
+  sleep_msec.f90
+  smo.f90
+  sun.f90
+  symspec.f90
+#  timer.f90
+  timf2.f90
+  tm2.f90
+  toxyz.f90
+  trimlist.f90
+  twkfreq.f90
+  twkfreq_xy.f90
+  txpol.f90
+  wavhdr.f90
+
+  f77_wisdom.f
+  )
+
+set (libm65_ka9q_CSRCS
+  decode_rs.c
+  encode_rs.c
+  init_rs.c
+)
+set_source_files_properties (${libm65_ka9q_CSRCS} PROPERTIES COMPILE_FLAGS -Wno-sign-compare)
+
+set (libm65_CSRCS
+  decode_request_mutex.cpp
+  ${libm65_ka9q_CSRCS}
+  ftrsd2.c
+#  gran.c
+  igray.c
+  tmoonsub.c
+  usleep.c
+  wrapkarn.c
+)
+
+# Platform-specific sources
+if (WIN32)
+  list(APPEND libm65_CSRCS
+       ptt.c
+       win_event_shim.c
+       stdout_shared_memory.cpp
+  )
+else ()
+  list(APPEND libm65_CSRCS
+       ptt_unix.c
+       posix_event_shim.c
+       stdout_shared_memory.cpp
+  )
+endif ()
+
+if (APPLE)
+  # Keep Apple's framework include flags out of m65impl's Fortran sources.
+  list (REMOVE_ITEM libm65_CSRCS stdout_shared_memory.cpp)
+  add_library (m65_qt STATIC stdout_shared_memory.cpp)
+  target_link_libraries (m65_qt PRIVATE Qt5::Core)
+endif ()
+
+#set (libm65_CXXSRCS
+#  ipcomm.cpp
+#  )
+
+add_definitions (-DBIGSYM=1)
+set_source_files_properties (sec_midn.f90 PROPERTIES COMPILE_FLAGS -fno-second-underscore)
+# pol is genuine C-supplied state (bind(C, name='run_m65_'), called from
+# MAP65's audio callback) that the current implementation doesn't happen
+# to reference; removing it would mean touching the C++ caller too, so we
+# suppress the warning instead.
+set_source_files_properties (run_m65.f90 PROPERTIES COMPILE_FLAGS "-Wno-unused-dummy-argument")
+if(Qt6_FOUND)
+  set_source_files_properties(m65a.f90 PROPERTIES COMPILE_FLAGS "-Wno-aliasing -fallow-argument-mismatch")
+else()  
+  set_source_files_properties(m65a.f90 PROPERTIES COMPILE_FLAGS "-Wno-aliasing")
+endif()
+
+set (libm65_C_and_CXXSRCS
+  ${libm65_CSRCS}
+  ${libm65_CXXSRCS}
+  )
+set_property (SOURCE ${libm65_C_and_CXXSRCS} APPEND_STRING PROPERTY COMPILE_FLAGS " -include wsjtx_config.h")
+set_property (SOURCE ${libm65_C_and_CXXSRCS} APPEND PROPERTY OBJECT_DEPENDS ${CMAKE_BINARY_DIR}/wsjtx_config.h)
+
+
+#
+# build our targets
+#
+add_library (m65impl STATIC ${libm65_FSRCS} ${libm65_CSRCS} ${libm65_CXXSRCS})
+
+target_compile_options(m65impl PRIVATE
+    $<$<COMPILE_LANGUAGE:Fortran>:
+    #    -fcheck=bounds
+    #    -fcheck=all
+    #    -frecursive
+        -fbacktrace
+        -Wall
+		-Wmaybe-uninitialized
+    #    -finit-real=snan # added for modernization testing
+    #    -finit-integer=-999999 # added for modernization testing
+    >
+)
+
+set_source_files_properties(stdout_channel_mod.f90 PROPERTIES
+    Fortran_PREPROCESS ON
+)
+
+# MAP65 uses OpenMP critical regions to protect shared FFTW planning state,
+# independently of which common Fortran library variant it consumes.
+if (NOT TARGET wsjt_fortran_openmp)
+  message (FATAL_ERROR "MAP65 requires Fortran OpenMP support")
+endif ()
+if (NOT APPLE)
+  target_link_libraries (m65impl PUBLIC Qt5::Core)
+endif ()
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+  target_link_libraries (m65impl PRIVATE rt)
+endif ()
+target_link_libraries (m65impl PRIVATE wsjt_fortran_openmp)
+wsjt_link_common_fortran (m65impl)
+
+if (WSJT_ENABLE_TESTS)
+  add_subdirectory (${CMAKE_SOURCE_DIR}/tests/unit/map65/decode_history
+    ${CMAKE_CURRENT_BINARY_DIR}/decode_history)
+
+  add_executable (test_map65_deep_search_cache
+    ${CMAKE_SOURCE_DIR}/tests/unit/map65/test_map65_deep_search_cache.f90)
+  target_include_directories (test_map65_deep_search_cache PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+  target_link_libraries (test_map65_deep_search_cache PRIVATE m65impl)
+  file (MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/deep_search_cache)
+  add_test (NAME test_map65_deep_search_cache COMMAND test_map65_deep_search_cache)
+  set_tests_properties (test_map65_deep_search_cache PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/deep_search_cache TIMEOUT 30)
+
+  add_executable (test_map65_decode_requests
+    ${CMAKE_SOURCE_DIR}/tests/unit/map65/test_map65_decode_requests.f90)
+  target_include_directories (test_map65_decode_requests PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+  target_link_libraries (test_map65_decode_requests PRIVATE m65impl)
+  add_test (NAME test_map65_decode_requests COMMAND test_map65_decode_requests)
+
+  add_executable (test_map65_astro
+    ${CMAKE_SOURCE_DIR}/tests/unit/map65/test_map65_astro.f90)
+  target_include_directories (test_map65_astro PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+  target_link_libraries (test_map65_astro PRIVATE m65impl)
+  add_test (NAME test_map65_astro COMMAND test_map65_astro)
+  set_tests_properties (test_map65_astro PROPERTIES TIMEOUT 180)
+
+  add_executable (test_map65_jt65_handoff
+    ${CMAKE_SOURCE_DIR}/tests/unit/jt65/jt65_test_fixture.f90
+    ${CMAKE_SOURCE_DIR}/tests/unit/jt65/test_map65_jt65_handoff.f90)
+  target_include_directories (test_map65_jt65_handoff PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+  target_link_libraries (test_map65_jt65_handoff PRIVATE m65impl jt65_test_vectors)
+  add_test (NAME test_map65_jt65_handoff COMMAND test_map65_jt65_handoff)
+  set_tests_properties (test_map65_jt65_handoff PROPERTIES TIMEOUT 180)
+
+  add_executable (test_q65_waveform_generator
+    ${CMAKE_SOURCE_DIR}/tests/unit/q65/test_q65_waveform_generator.f90)
+  target_include_directories (test_q65_waveform_generator PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+  target_link_libraries (test_q65_waveform_generator PRIVATE m65impl)
+  add_test (NAME test_q65_waveform_generator COMMAND test_q65_waveform_generator)
+  set_tests_properties (test_q65_waveform_generator PROPERTIES TIMEOUT 180)
+
+  add_executable (test_map65_wideband_sync_rows
+    ${CMAKE_SOURCE_DIR}/tests/unit/q65/test_map65_wideband_sync_rows.f90)
+  target_include_directories (test_map65_wideband_sync_rows PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+  target_link_libraries (test_map65_wideband_sync_rows PRIVATE m65impl)
+  add_test (NAME test_map65_wideband_sync_rows COMMAND test_map65_wideband_sync_rows)
+  set_tests_properties (test_map65_wideband_sync_rows PROPERTIES TIMEOUT 180)
+
+  add_executable (test_map65_polarization_score
+    ${CMAKE_SOURCE_DIR}/tests/unit/q65/test_map65_polarization_score.f90)
+  target_include_directories (test_map65_polarization_score PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+  target_link_libraries (test_map65_polarization_score PRIVATE m65impl)
+  add_test (NAME test_map65_polarization_score COMMAND test_map65_polarization_score)
+
+  add_executable (test_ccf65_correlator
+    ${CMAKE_SOURCE_DIR}/tests/unit/jt65/test_ccf65_correlator.f90)
+  target_include_directories (test_ccf65_correlator PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+  target_link_libraries (test_ccf65_correlator PRIVATE m65impl)
+  add_test (NAME test_ccf65_correlator COMMAND test_ccf65_correlator)
+  set_tests_properties (test_ccf65_correlator PROPERTIES TIMEOUT 180)
+
+  add_executable (test_map65_s3avg_contracts
+    ${CMAKE_SOURCE_DIR}/tests/unit/jt65/test_map65_s3avg_contracts.f90)
+  target_include_directories (test_map65_s3avg_contracts PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+  target_link_libraries (test_map65_s3avg_contracts PRIVATE m65impl)
+  add_test (NAME test_map65_s3avg_contracts COMMAND test_map65_s3avg_contracts)
+  set_tests_properties (test_map65_s3avg_contracts PROPERTIES TIMEOUT 180)
+
+  add_executable (test_map65_jt65_message_validity
+    ${CMAKE_SOURCE_DIR}/tests/unit/jt65/test_map65_jt65_message_validity.f90)
+  target_include_directories (test_map65_jt65_message_validity PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+  target_link_libraries (test_map65_jt65_message_validity PRIVATE m65impl)
+  add_test (NAME test_map65_jt65_message_validity COMMAND test_map65_jt65_message_validity)
+  set_tests_properties (test_map65_jt65_message_validity PROPERTIES TIMEOUT 180)
+
+  add_executable (test_map65_jt65_candidate_consistency
+    ${CMAKE_SOURCE_DIR}/tests/unit/jt65/test_map65_jt65_candidate_consistency.f90)
+  target_include_directories (test_map65_jt65_candidate_consistency PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+  target_link_libraries (test_map65_jt65_candidate_consistency PRIVATE m65impl)
+  add_test (NAME test_map65_jt65_candidate_consistency COMMAND test_map65_jt65_candidate_consistency)
+  set_tests_properties (test_map65_jt65_candidate_consistency PROPERTIES TIMEOUT 180)
+
+  add_executable (test_map65_result_selection
+    ${CMAKE_SOURCE_DIR}/tests/unit/map65/test_map65_result_selection.f90)
+  target_include_directories (test_map65_result_selection PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+  target_link_libraries (test_map65_result_selection PRIVATE m65impl)
+  add_test (NAME test_map65_result_selection COMMAND test_map65_result_selection)
+  set_tests_properties (test_map65_result_selection PROPERTIES TIMEOUT 180)
+
+  add_executable (test_map65_q65b_timeout
+    ${CMAKE_SOURCE_DIR}/tests/unit/map65/test_map65_q65b_timeout.f90)
+  target_include_directories (test_map65_q65b_timeout PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+  target_link_libraries (test_map65_q65b_timeout PRIVATE m65impl)
+  add_test (NAME test_map65_q65b_timeout COMMAND test_map65_q65b_timeout)
+  set_tests_properties (test_map65_q65b_timeout PROPERTIES TIMEOUT 180)
+
+  add_executable (test_map65_q65_dphi
+    ${CMAKE_SOURCE_DIR}/tests/unit/map65/test_map65_q65_dphi.f90)
+  target_include_directories (test_map65_q65_dphi PRIVATE ${CMAKE_CURRENT_BINARY_DIR})
+  target_link_libraries (test_map65_q65_dphi PRIVATE m65impl)
+  file (MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test-map65-q65-dphi)
+  add_test (NAME test_map65_q65_dphi COMMAND test_map65_q65_dphi)
+  set_tests_properties (test_map65_q65_dphi PROPERTIES
+    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/test-map65-q65-dphi
+    ENVIRONMENT "OMP_NUM_THREADS=1"
+    RUN_SERIAL TRUE
+    TIMEOUT 180)
+
+endif ()
+
+if (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 4)
+    target_compile_definitions(m65impl PRIVATE _WIN32)
+elseif (WIN32 AND CMAKE_SIZEOF_VOID_P EQUAL 8)
+    target_compile_definitions(m65impl PRIVATE _WIN64)
+endif()
+
+if (WIN32)
+    target_link_libraries(m65impl PUBLIC kernel32)
+endif()
+
+add_executable (mapsim mapsim.f90)
+add_dependencies(mapsim m65impl)
+target_link_libraries (mapsim m65impl ${FFTW3_LIBRARIES})
+wsjt_add_simulator_usage_test (mapsim "Usage:[ ]+mapsim")
+
+#add_executable (synctest synctest.f90)
+#target_link_libraries (synctest m65impl ${FFTW3_LIBRARIES})
+
+if (WIN32)
+  install (
+    TARGETS mapsim
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR} COMPONENT runtime
+    BUNDLE DESTINATION . COMPONENT runtime
+    )
+endif ()

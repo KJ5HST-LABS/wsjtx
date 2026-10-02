@@ -1,0 +1,59 @@
+find_package (Qt5Test 5 REQUIRED)
+
+add_test (
+  NAME test_release_state
+  COMMAND ${CMAKE_COMMAND}
+    -D SOURCE_DIR=${CMAKE_SOURCE_DIR}
+    -D TEST_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/release-state
+    -P ${CMAKE_SOURCE_DIR}/tests/release/test_release_state.cmake)
+
+find_package (Git QUIET)
+if (GIT_FOUND)
+  add_test (
+    NAME test_release_git_archive
+    COMMAND ${CMAKE_COMMAND}
+      -D SOURCE_DIR=${CMAKE_SOURCE_DIR}
+      -D TEST_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/release-git-archive
+      -D GIT_EXECUTABLE=${GIT_EXECUTABLE}
+      -P ${CMAKE_SOURCE_DIR}/tests/release/test_git_archive.cmake)
+endif ()
+
+add_compile_options ("$<$<COMPILE_LANGUAGE:Fortran>:-Wall;-Wno-conversion;-fno-second-underscore;-fno-f2c>")
+add_compile_options ("$<$<AND:$<COMPILE_LANGUAGE:Fortran>,$<CONFIG:Debug>>:-fbounds-check>")
+add_compile_options ("$<$<AND:$<COMPILE_LANGUAGE:Fortran>,$<NOT:$<CONFIG:Debug>>>:-funroll-all-loops>")
+add_compile_options ("$<$<AND:$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>,$<OR:$<C_COMPILER_ID:GNU>,$<C_COMPILER_ID:Clang>,$<C_COMPILER_ID:AppleClang>>>:-Wall;-Wextra>")
+add_compile_options ("$<$<AND:$<COMPILE_LANGUAGE:CXX>,$<CXX_COMPILER_ID:GNU>>:-Wno-pragmas>")
+add_compile_options ("$<$<AND:$<OR:$<C_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:GNU>>,$<NOT:$<CONFIG:Debug>>>:-fdata-sections;-ffunction-sections>")
+if (WSJT_BUILD_FORTRAN_OPENMP)
+  add_compile_options ("$<$<AND:$<OR:$<COMPILE_LANGUAGE:C>,$<COMPILE_LANGUAGE:CXX>>,$<C_COMPILER_ID:GNU>>:${OpenMP_C_FLAGS}>")
+endif ()
+
+set (CMAKE_AUTOMOC ON)
+include_directories (${CMAKE_CURRENT_BINARY_DIR} ${CMAKE_SOURCE_DIR})
+
+add_subdirectory (unit/audio)
+add_subdirectory (unit/band_hopping)
+add_subdirectory (unit/common)
+add_subdirectory (unit/decoder_ipc)
+add_subdirectory (unit/hrd)
+add_subdirectory (unit/hash)
+add_subdirectory (unit/message_filter)
+add_subdirectory (unit/msk)
+add_subdirectory (unit/network)
+add_subdirectory (unit/qmap)
+add_subdirectory (unit/jtty)
+add_subdirectory (unit/jt9)
+add_subdirectory (unit/jpl)
+add_subdirectory (unit/logbook)
+add_subdirectory (unit/map65)
+add_subdirectory (unit/echo)
+add_subdirectory (unit/ft8)
+add_subdirectory (unit/fst4)
+add_subdirectory (unit/legacy72)
+add_subdirectory (unit/packjt77)
+add_subdirectory (unit/q65)
+add_subdirectory (unit/jt65)
+add_subdirectory (unit/superfox)
+add_subdirectory (unit/streaming)
+add_subdirectory (unit/tci)
+add_subdirectory (unit/wsprd)

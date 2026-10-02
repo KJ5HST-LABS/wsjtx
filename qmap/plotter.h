@@ -1,0 +1,181 @@
+///////////////////////////////////////////////////////////////////////////
+// Some code in this file and accompanying files is based on work by
+// Moe Wheatley, AE4Y, released under the "Simplified BSD License".
+// For more details see the accompanying file LICENSE_WHEATLEY.TXT
+///////////////////////////////////////////////////////////////////////////
+
+#ifndef PLOTTER_H
+#define PLOTTER_H
+
+#include <QtGui>
+#include <QFrame>
+#include <QImage>
+#include <QToolTip>
+#include <QVector>
+#include <QList>
+#include <cstring>
+#include "commons.h"
+#include "decode_click_coalescer.h"
+#include "decode_label.h"
+
+#define VERT_DIVS 7	//specify grid screen divisions
+#define HORZ_DIVS 20
+
+class CPlotter : public QFrame
+{
+  Q_OBJECT
+public:
+  explicit CPlotter(QWidget *parent = 0);
+  ~CPlotter();
+
+  QSize minimumSizeHint() const override;
+  QSize sizeHint() const override;
+  QColor  m_ColorTbl[256] {};
+  bool    m_bDecodeFinished {};
+  int     m_plotZero {};
+  int     m_plotGain {};
+  float   m_fSpan {65.f};
+  qint32  m_nSpan {65};
+  qint32  m_binsPerPixel {1};
+  qint32  m_fQSO {125};
+  qint32  m_DF {};
+  qint32  m_tol {};
+  qint32  m_fCal {};
+
+  void draw(float sw[], int i0, float splot[]);		//Update the waterfalls
+  void SetRunningState(bool running);
+  void setPlotZero(int plotZero);
+  int  getPlotZero();
+  void setPlotGain(int plotGain);
+  int  getPlotGain();
+  void SetCenterFreq(int f);
+  qint64 centerFreq();
+  void SetStartFreq(quint64 f);
+  qint64 startFreq();
+  void SetFreqOffset(quint64 f);
+  qint64 freqOffset();
+  int  plotWidth();
+  void setNSpan(int n);
+  void UpdateOverlay();
+  void setDataFromDisk(bool b);
+  void setTol(int n);
+  void setBinsPerPixel(int n);
+  int  binsPerPixel();
+  void setFQSO(int n, bool bf);
+  void setFcal(int n);
+  void setNkhz(int n);
+  void DecodeFinished();
+  void DrawOverlay();
+  int  fQSO();
+  int  DF();
+  int  autoZero();
+  void setPalette(QString palette);
+  void setFsample(int n);
+  void setMode65(int n);
+  void set2Dspec(bool b);
+  double fGreen();
+  void setLockTxRx(bool b);
+  double rxFreq();
+  double txFreq();
+//  void updateFreqLabel();
+
+  void setDecodeLabels(const QList<QMapDecodeLabel>& labels);
+
+  // Hidden plotters may not receive an initial resize event, but spectrum production still needs valid geometry.
+  void ensureSized(int w, int h);
+
+signals:
+  void freezeDecode0(int n);
+  void freezeDecode1(int n);
+  void decodeLabelClicked(QByteArray decodeRow, DecodeClickGesture gesture);
+
+protected:
+  //re-implemented widget event handlers
+  void paintEvent(QPaintEvent *event) override;
+  void resizeEvent(QResizeEvent* event) override;
+  void mouseMoveEvent(QMouseEvent * event) override;
+  void mousePressEvent(QMouseEvent *event) override;
+  void mouseDoubleClickEvent(QMouseEvent *event) override;
+
+private:
+
+  void MakeFrequencyStrs();
+  void UTCstr();
+  void applySize();
+  int XfromFreq(float f);
+  float FreqfromX(int x);
+  qint64 RoundFreq(qint64 freq, int resolution);
+  // Render m_decodeLabels overlay on top of the waterfall pixmap. Stacks
+  // colliding labels vertically (max 5 rows) so a busy band doesn't paint
+  // labels on top of each other.
+  void paintDecodeLabels(QPainter& painter);
+
+  // Painting and hit-testing share the same collision-adjusted bounds.
+  struct DecodeLabelRect {
+    QMapDecodeLabel label;
+    QRect rect;
+  };
+  QVector<DecodeLabelRect> layoutDecodeLabels();
+  bool hitTestDecodeLabel(QPoint const& pos, QMapDecodeLabel& label);
+
+  // Raw wideband-row snapshots (post color-mapping input, pre color-map),
+  // front=newest, so a resize can repaint m_WaterfallPixmap from history
+  // instead of blanking it. m_zwf already plays this role for the zoom
+  // row -- this is the wideband row's counterpart. Each row keeps the
+  // frequency-per-pixel (df) it was captured at, since that changes with
+  // window width -- rebuildWideFromHistory() remaps by frequency, not by
+  // raw pixel index, so a width change rescales existing data instead of
+  // just shifting it to the wrong frequency.
+  struct WideHistoryLine {
+    QVector<float> row;
+    double startFreq;   // m_StartFreq at capture time
+    double df;           // kHz per pixel at capture time (m_fSpan/width)
+  };
+  void rebuildWideFromHistory();
+  QList<WideHistoryLine> m_wideHistory;
+  static constexpr int kMaxWideHistory = 2048;
+
+  QList<QMapDecodeLabel> m_decodeLabels;
+  DecodeClickCoalescer m_decodeClickCoalescer;
+
+  QPixmap m_WaterfallPixmap;
+  QPixmap m_ZoomWaterfallPixmap;
+  QPixmap m_2DPixmap;
+  unsigned char m_zwf[32768*400] {};
+  QPixmap m_ScalePixmap;
+  QPixmap m_ZoomScalePixmap;
+  QSize   m_Size;
+  QString m_Str;
+  QString m_HDivText[483];
+  bool    m_Running {};
+  bool    m_paintEventBusy {};
+  bool    m_2Dspec {};
+  bool    m_paintAllZoom {};
+  bool    m_bLockTxRx {};
+  double  m_CenterFreq {};
+  double  m_fGreen {};
+  double  m_TXfreq {};
+  qint64  m_StartFreq {100};
+  qint64  m_ZoomStartFreq {};
+  qint64  m_FreqOffset {};
+  qint32  m_dBStepSize {};
+  qint32  m_FreqUnits {1};
+  qint32  m_hdivs {HORZ_DIVS};
+  bool    m_dataFromDisk {};
+  QString m_sutc;
+  qint32  m_line {};
+  qint32  m_hist1[256] {};
+  qint32  m_hist2[256] {};
+  qint32  m_z1 {};
+  qint32  m_z2 {};
+  qint32  m_nkhz {};
+  qint32  m_fSample {96000};
+  qint32  m_mode65 {};
+  qint32  m_i0 {};
+  qint32  m_xClick {};
+  qint32  m_TXkHz {125};
+  qint32  m_TxDF {};
+
+};
+
+#endif // PLOTTER_H

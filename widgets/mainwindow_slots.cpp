@@ -1,0 +1,1093 @@
+#include "mainwindow.h"
+#include "ui_mainwindow.h"
+#include <QDesktopServices>
+#include <QUrl>
+#include <QDateTime>
+#include <QTimer>
+#include <QFile>
+#include <QTextStream>
+#include <QDebug>
+#include <QInputDialog>
+#include <QColor>
+#include <QVector>
+#include <QSettings>
+#include <QtMath>
+#include "MessageBox.hpp"
+#include "DecodedMessageReaction.hpp"
+#include "WaitFeaturePolicy.hpp"
+#include "commons.h"
+#include "echograph.h"
+#include "widegraph.h"
+#include "messageaveraging.h"
+#include "logqso.h"
+
+using SpecOp = Configuration::SpecialOperatingActivity;
+
+extern dec_data_t& dec_data;
+extern int volatile itone[MAX_NUM_SYMBOLS];
+extern int volatile itone0[MAX_NUM_SYMBOLS];
+extern int volatile icw[NUM_CW_SYMBOLS];
+extern int outBufSize;
+extern int rc;
+extern qint32 g_iptt;
+extern QVector<QColor> g_ColorTbl;
+extern bool blocked;
+extern bool m_displayBand;
+extern bool wait_and_call;
+extern bool no_wait_and_call;
+extern bool no_a7_decodes;
+extern bool keep_frequency;
+extern bool keep_msk144_frequency;
+extern bool msk144qsy;
+extern bool keep_last_tx_label;
+extern int m_Nslots0;
+extern int m_TxFreqFox;
+extern bool not_erase;
+extern bool first_Fox_alert;
+extern bool second_Fox_alert;
+extern bool no_Fox_alert;
+extern bool pounce;
+extern bool filtered;
+extern bool ignored;
+extern bool keepTx5;
+extern bool no_logging;
+extern bool BlankLineInserted;
+extern bool m_txing;
+extern bool HoldTxFreqStatus;
+extern bool m_band_changed;
+extern bool m_muted;
+extern bool no_decodes_to_UDP;
+extern bool rigFailed;
+extern bool programStart;
+extern int m_msk144_tr;
+extern int m_msk144_tr2;
+extern int m_msk144_tr6;
+extern QString txLog;
+extern QString ignoreList;
+extern QString ALLCALL7;
+extern QString m_hisCall0;
+extern QString earlyDecodes;
+
+
+extern "C" {
+  void genjtty_(char const * msg, int itone[], int* nsym, fortran_charlen_t);
+  void gen_jttywave_(int itone[], int* nsym, int* nsps, float* bt, float* fsample, float* f0,
+                    float xjunk[], float wave[], int* icmplx, int* nwave);
+}
+
+void MainWindow::on_monitorButton_clicked (bool checked)
+{
+  if (m_wav_load_coordinator.isLoading ()) {
+    ui->monitorButton->setChecked (false);
+    return;
+  }
+
+  if (!m_transmitting) {
+    if (checked)
+      {
+        auto const transition = m_operatingFrequency.enableMonitor (
+          operatingFrequencyContext (), [this] (Frequency corrected) {
+            return dispatchNominalFrequency (corrected, FrequencyRequestOrigin::User, true);
+          });
+        applyOperatingFrequencyTransition (transition);
+        applyMonitorEffects (true, transition.restorationAccepted);
+      }
+    else
+      {
+        applyMonitorEffects (false, false);
+      }
+  } else {
+    ui->monitorButton->setChecked (false); // disallow
+  }
+  if(m_mode=="Echo") m_echoRunning=false;
+  check_button_color();
+}
+
+void MainWindow::applyMonitorEffects (bool checked, bool restored)
+{
+  auto const prior = m_monitoring;
+  monitor (checked);
+  if (restored) setXIT (ui->TxFreqSpinBox->value ());
+  if (checked && !prior)
+    {
+      if (m_mode == "FST4W")
+        on_sbFST4W_RxFreq_valueChanged (ui->sbFST4W_RxFreq->value ());
+      else
+        on_RxFreqSpinBox_valueChanged (ui->RxFreqSpinBox->value ());
+    }
+  m_config.sync_transceiver (true, checked);
+  if (m_mode == "Echo") m_echoRunning = false;
+  check_button_color ();
+}
+
+void MainWindow::on_autoButton_clicked (bool checked)
+{
+  if (ui->DX_Call_Button->isChecked() && m_specOp==SpecOp::HOUND && m_config.superFox() && !m_bDoubleClicked) return;  // for Wait & Call
+  m_config.transceiver_tune (false);  // reset rig tuning
+  if (checked && ui->tuneButton->isChecked() && !(m_mode=="WSPR" || m_mode=="FST4W")) return; // not allowed while tuning
+  stopWRTimer.stop();                                       // stop any Wait & Reply timeout
+  if (!checked && ui->DX_Call_Button->isChecked()) {
+      stopWCTimer.stop();                                   // stop any Wait & Call timeout
+      ui->DX_Call_Button->click ();                         // disable Wait & Call
+      no_wait_and_call = false;                             // reset Wait & Call
+  }
+  m_specOp=m_config.special_op_id();
+  ui->pbBandHopping->setChecked(false); // disable band hopping when Tx is enabled
+  if (checked) {
+      m_auto = checked;
+      QTimer::singleShot (3000, [=] {pounce = false;});  // ensure to select only CQ messages
+  } else {
+      pounce = false;
+      m_auto = false;
+      m_bCallingCQ = false;
+      ui->autoButton->setChecked(false);  // ensure autoButton is unchecked
+      filtered = false;
+      ignored = false;
+      m_muted = false;
+      m_autoRespondScores.reset();
+  }
+  if (m_mode=="WSPR" || m_mode=="FST4W")
+    {
+      m_beaconTxController.setAutoEnabled (checked);
+    }
+  bool const enableTxChanged = m_autoRespondPeriodState.setEnableTx(checked);
+  if (checked && enableTxChanged && m_autoRespondPeriodState.armCurrentReceivePeriod(
+        pendingCqAutoRespondIntent(), autoRespondPolicy())) {
+    m_autoRespondScores.reset();
+  }
+  m_maxPoints=-1;
+  if (checked && ui->respondComboBox->isVisible() && autoRespondPolicy () != AutoRespondPolicy::None
+      && CALLING == m_QSOProgress) {
+      m_bAutoReply = false;         // ready for next
+  }
+  statusUpdate ();
+  m_bEchoTxOK=false;
+  if(m_mode=="Echo" and m_auto) {
+    m_nclearave=1;
+    echocom_.nsum=0;
+  }
+  m_tAutoOn=QDateTime::currentMSecsSinceEpoch()/1000;
+  if(m_mode=="Echo") m_echoRunning=false;
+  check_button_color();
+}
+
+void MainWindow::on_stopButton_clicked()                       //stopButton
+{
+  ui->pbBandHopping->setChecked(false); // disable band hopping
+  monitor (false);
+  if(m_mode=="JTTY" and m_saveAll and !m_diskData) {
+    jtty_save_wav();
+  }
+  m_loopall=false;
+  finishReferenceSpectrumMeasurement(true);
+  if (ui->DX_Call_Button->isChecked()) ui->DX_Call_Button->click ();
+  stopWRTimer.stop();           // Stop any Wait & Reply timeout
+  stopWCTimer.stop();           // Stop any Wait & Call timeout
+  no_wait_and_call = false;
+  m_specOp=m_config.special_op_id();
+  if (ui->respondComboBox->isVisible() and autoRespondPolicy () != AutoRespondPolicy::None and !m_diskData) {
+    m_autoRespondScores.reset();
+    if (!(m_mode=="Q65" or m_mode=="JT65")) {
+      clearDX();                                   // clear dxCallEntry
+      ui->dxGridEntry->clear ();                   // clear dxGridEntry
+      if (!keepTx5) ui->tx5->setCurrentText("");   // clear tx5
+    }
+  }
+  pounce = false;
+  ui->autoButton->setChecked(false);  // ensure auoButton is unchecked
+  filtered = false;
+  ignored = false;
+  m_muted = false;
+  check_button_color();
+}
+
+void MainWindow::on_pbBandHopping_clicked()
+{
+  if (m_auto) ui->pbBandHopping->setChecked(false); // don't allow band hopping when in QSO
+}
+
+void MainWindow::on_DecodeButton_clicked (bool /* checked */) //Decode request
+{
+  if (m_wav_load_coordinator.isLoading ()) {
+    ui->DecodeButton->setChecked (false);
+    return;
+  }
+
+  if(m_mode=="MSK144") {
+    ui->DecodeButton->setChecked(false);
+  } else if(m_mode=="JTTY") {
+    jtty_again();
+  } else {
+    if(m_mode!="WSPR" && !decoderBusy ()) {
+      if (usesJt9Process ()
+          && (Jt9ProcessPhase::Ready != m_jt9ProcessPhase
+              || QProcess::Running != proc_jt9.state ()))
+        {
+          ui->DecodeButton->setChecked (false);
+          showStatusMessage (tr ("Decoder is starting; decode request skipped."));
+          return;
+        }
+      m_manualDecode=true;
+      dec_data.params.newdat=0;
+      dec_data.params.nagain=1;
+      decode();
+    }
+  }
+}
+
+void MainWindow::on_ClrAvgButton_clicked()
+{
+  m_nclearave=1;
+  if(m_mode=="Echo") {
+    echocom_.nsum=0;
+    m_echoGraph->clearAvg();
+    m_wideGraph->restartTotalPower();
+  } else {
+    if(m_msgAvgWidget != NULL) {
+      if(m_msgAvgWidget->isVisible()) m_msgAvgWidget->displayAvg("");
+    }
+    if(m_mode=="Q65") ndecodes_label.setText("0  0");
+  }
+}
+
+void MainWindow::on_EraseButton_clicked ()
+{
+  qint64 ms=QDateTime::currentMSecsSinceEpoch();
+  if (m_config.alternate_erase_button()) {
+     ui->decodedTextBrowser->erase ();
+     if((ms-m_msErase)<500) {
+       ui->decodedTextBrowser2->erase ();
+     }
+  } else {
+     ui->decodedTextBrowser2->erase ();
+     if(m_mode=="WSPR" or m_mode=="Echo" or m_mode=="FST4W") {
+       ui->decodedTextBrowser->erase ();
+     } else {
+       if((ms-m_msErase)<500) {
+         ui->decodedTextBrowser->erase ();
+       }
+     }
+  }
+  m_msErase=ms;
+}
+
+void MainWindow::on_txb1_clicked()
+{
+  m_autoRespondPeriodState.disarm();
+  if (ui->tx1->isEnabled ()) {
+    m_ntx=1;
+    m_QSOProgress = REPLYING;
+    ui->txrb1->setChecked(true);
+    if(m_transmitting) m_restart=true;
+  }
+  else {
+    on_txb2_clicked ();
+  }
+}
+
+void MainWindow::on_txb2_clicked()
+{
+    m_autoRespondPeriodState.disarm();
+    m_ntx=2;
+    m_QSOProgress = REPORT;
+    ui->txrb2->setChecked(true);
+    if(m_transmitting) m_restart=true;
+}
+
+void MainWindow::on_txb3_clicked()
+{
+    m_autoRespondPeriodState.disarm();
+    m_ntx=3;
+    m_QSOProgress = ROGER_REPORT;
+    ui->txrb3->setChecked(true);
+    if(m_transmitting) m_restart=true;
+}
+
+void MainWindow::on_txb4_clicked()
+{
+    m_autoRespondPeriodState.disarm();
+    m_ntx=4;
+    m_QSOProgress = ROGERS;
+    ui->txrb4->setChecked(true);
+    if(m_transmitting) m_restart=true;
+}
+
+void MainWindow::on_txb5_clicked()
+{
+    m_autoRespondPeriodState.disarm();
+    m_ntx=5;
+    m_QSOProgress = SIGNOFF;
+    ui->txrb5->setChecked(true);
+    if(m_transmitting) m_restart=true;
+}
+
+void MainWindow::on_txb6_clicked()
+{
+    m_autoRespondPeriodState.disarm();
+    m_ntx=6;
+    m_QSOProgress = CALLING;
+    set_dateTimeQSO(-1);
+    ui->txrb6->setChecked(true);
+    if(m_transmitting) m_restart=true;
+    if(m_mode=="MSK144" && !programStart && !m_band_changed && !keep_msk144_frequency
+        && hasMsk144BaseFrequency ()) {
+      if (requestNominalFrequencyChange (m_msk144basefreq, FrequencyRequestOrigin::User))
+        {
+          msk144qsy = false;
+        }
+    }
+}
+
+void MainWindow::on_lookupButton_clicked()                    //Lookup button
+{
+  qint64 ms=QDateTime::currentMSecsSinceEpoch();
+  lookup();
+  if((ms-m_msErase)<500) {
+    QString hisCall=ui->dxCallEntry->text();
+    if (hisCall !="") QDesktopServices::openUrl (QUrl {"https://www.qrz.com/db/" + hisCall});
+  }
+  m_msErase=ms;
+}
+
+void MainWindow::on_addButton_clicked()                       //Add button
+{
+  if(!ui->dxGridEntry->text ().size ()) {
+    MessageBox::warning_message (this, tr ("Add to CALL3.TXT")
+                                 , tr ("Please enter a valid grid locator"));
+    return;
+  }
+  m_call3Modified=false;
+  QString hisCall=ui->dxCallEntry->text();
+  QString hisgrid=ui->dxGridEntry->text();
+  QString newEntry=hisCall + "," + hisgrid;
+
+  //  int ret = MessageBox::query_message(this, tr ("Add to CALL3.TXT"),
+  //       tr ("Is %1 known to be active on EME?").arg (newEntry));
+  //  if(ret==MessageBox::Yes) {
+  //    newEntry += ",EME,,";
+  //  } else {
+  newEntry += ",,,";
+  //  }
+
+  QFile f1 {m_config.writeable_data_dir ().absoluteFilePath ("CALL3.TXT")};
+  if(!f1.open(QIODevice::ReadWrite | QIODevice::Text)) {
+    MessageBox::warning_message (this, tr ("Add to CALL3.TXT")
+                                 , tr ("Cannot open \"%1\" for read/write: %2")
+                                 .arg (f1.fileName ()).arg (f1.errorString ()));
+    return;
+  }
+  if(f1.size()==0) {
+    QTextStream out(&f1);
+    out << "ZZZZZZ"
+#if QT_VERSION >= QT_VERSION_CHECK (5, 15, 0)
+        << Qt::endl
+#else
+        << endl
+#endif
+      ;
+    f1.seek (0);
+  }
+  QFile f2 {m_config.writeable_data_dir ().absoluteFilePath ("CALL3.TMP")};
+  if(!f2.open(QIODevice::ReadWrite | QIODevice::Truncate | QIODevice::Text)) {
+    MessageBox::warning_message (this, tr ("Add to CALL3.TXT")
+                                 , tr ("Cannot open \"%1\" for writing: %2")
+                                 .arg (f2.fileName ()).arg (f2.errorString ()));
+    return;
+  }
+  {
+    QTextStream in(&f1);          //Read from CALL3.TXT
+    QTextStream out(&f2);         //Copy into CALL3.TMP
+    QString hc=hisCall;
+    QString hc1="";
+    QString hc2="000000";
+    QString s;
+    do {
+      s=in.readLine();
+      hc1=hc2;
+      if(s.mid(0,2)=="//") {
+        out << s + QChar::LineFeed; //Copy all comment lines
+      } else {
+        int i1=s.indexOf(",");
+        hc2=s.mid(0,i1);
+        if(hc>hc1 && hc<hc2) {
+          out << newEntry + QChar::LineFeed;
+          out << s + QChar::LineFeed;
+          m_call3Modified=true;
+        } else if(hc==hc2) {
+          QString t {tr ("%1\nis already in CALL3.TXT"
+                         ", do you wish to replace it?").arg (s)};
+          int ret = MessageBox::query_message (this, tr ("Add to CALL3.TXT"), t);
+          if(ret==MessageBox::Yes) {
+            out << newEntry + QChar::LineFeed;
+            m_call3Modified=true;
+          }
+        } else {
+          if(s!="") out << s + QChar::LineFeed;
+        }
+      }
+    } while(!s.isNull());
+    if(hc>hc1 && !m_call3Modified) out << newEntry + QChar::LineFeed;
+  }
+
+  if(m_call3Modified) {
+    auto const& old_path = m_config.writeable_data_dir ().absoluteFilePath ("CALL3.OLD");
+    QFile f0 {old_path};
+    if (f0.exists ()) f0.remove ();
+    f1.copy (old_path);                       // copying as we want to
+                                              // preserve symlinks
+    f1.open (QFile::WriteOnly | QFile::Text); // truncates
+    f2.seek (0);
+    QByteArray tmp = f2.readAll();
+    if (tmp != (const char*)NULL) f1.write (tmp);                 // copy contents
+    else qDebug() << "tmp==NULL at f1.write";
+    f2.remove ();
+  }
+}
+
+void MainWindow::on_ignoreButton_clicked()                    //Ignore button
+{
+  addCallsignToignoreList();
+}
+
+void MainWindow::on_DX_Call_Button_clicked (bool checked)
+{
+  WaitFeatureContext const waitContext {
+    m_mode,
+    m_specOp,
+    m_config.Wait_features_enabled(),
+    ui->cbAutoSeq->isChecked(),
+    !m_hisCall.isEmpty(),
+    m_config.NCCC_Sprint()
+  };
+  if (checked && wait_and_call_arming_eligible (waitContext)) {
+      wait_and_call = true;       // toggle Wait & Call on when allowed
+  } else {
+      wait_and_call = false;      // toggle Wait & Call off in any other case
+      ui->DX_Call_Button->setChecked (false);
+      if (m_specOp==SpecOp::HOUND && m_config.superFox() && !m_auto) clearDX();
+  }
+  check_button_color();
+}
+
+void MainWindow::on_genStdMsgsPushButton_clicked()          //genStdMsgs button
+{
+  ui->pbBandHopping->setChecked(false); // disable band hopping
+  genStdMsgs(m_rpt);
+  if (!m_bDoubleClicked && m_hisCall!="") {
+      if (ui->tx1->isEnabled ()) {
+          QTimer::singleShot (0, ui->txrb1, SLOT (click ()));   // Go to Tx1
+      } else {
+          QTimer::singleShot (0, ui->txrb2, SLOT (click ()));   // Go to Tx2 if Tx1 is disabled
+      }
+      m_bMyCallStd=stdCall(m_config.my_callsign()); //ft8md
+      m_bHisCallStd=stdCall(m_hisCall); //ft8md
+      
+  }
+}
+
+void MainWindow::on_logQSOButton_clicked()                 //Log QSO button
+{
+  auto stopAutoTx = [this] {
+    if (SpecOp::NA_VHF==m_specOp && m_mode=="FT4" && m_config.NCCC_Sprint()) {
+      QTimer::singleShot (int(850.0*m_TRperiod), [this] {cease_auto_Tx_after_QSO ();});
+    } else {
+      cease_auto_Tx_after_QSO ();
+    }
+  };
+  DecodedMessageReaction::applyAutoTxStopAfterLogging(
+    m_mode, m_config.repeat_Tx(), send_rr73_for_tx4 (), stopAutoTx);
+
+  if (!m_hisCall.size ()) {
+    MessageBox::warning_message (this, tr ("Warning:  DX Call field is empty."));
+    if ((SpecOp::NA_VHF == m_specOp or SpecOp::WW_DIGI == m_specOp) && m_config.autoLog()) return;  // prevent program crash
+  }
+  // m_dateTimeQSOOn should really already be set but we'll ensure it gets set to something just in case
+  if (!m_dateTimeQSOOn.isValid ()) {
+    auto now = QDateTime::currentDateTimeUtc();
+    m_dateTimeQSOOn = now.addSecs (-(m_ntx - 2) * int(m_TRperiod) -
+                                   int(fmod(double(now.time().second()),m_TRperiod)));
+  }
+  auto dateTimeQSOOff = QDateTime::currentDateTimeUtc();
+  if (dateTimeQSOOff < m_dateTimeQSOOn) dateTimeQSOOff = m_dateTimeQSOOn;
+  QString grid=m_hisGrid;
+  if(grid=="....") grid="";
+
+  // Optionally replace empty grids by "ZZ00"
+  if(m_config.ZZ00() && m_hisGrid=="" && m_specOp!=SpecOp::NONE && m_specOp!=SpecOp::FOX && m_specOp!=SpecOp::HOUND) m_hisGrid = "ZZ00";
+
+  switch( m_specOp )
+    {
+      case SpecOp::NA_VHF:
+        m_xSent=m_config.my_grid().left(4);
+        m_xRcvd=m_hisGrid.left(4);
+        break;
+      case SpecOp::EU_VHF:
+        m_rptSent=m_xSent.split(" ").at(0).left(2);
+        m_rptRcvd=m_xRcvd.split(" ").at(0).left(2);
+        if(m_xRcvd.split(" ").size()>=2) m_hisGrid=m_xRcvd.split(" ").at(1);
+        grid=m_hisGrid;
+        ui->dxGridEntry->setText(grid);
+        break;
+      case SpecOp::FIELD_DAY:
+        m_rptSent=m_xSent.split(" ").at(0);
+        m_rptRcvd=m_xRcvd.split(" ").at(0);
+        break;
+      case SpecOp::RTTY:
+        m_rptSent=m_xSent.split(" ").at(0);
+        m_rptRcvd=m_xRcvd.split(" ").at(0);
+        break;
+      case SpecOp::WW_DIGI:
+        m_xSent=m_config.my_grid().left(4);
+        m_xRcvd=m_hisGrid.left(4);
+        break;
+      case SpecOp::ARRL_DIGI:
+        m_xSent=m_config.my_grid().left(4);
+        m_xRcvd=m_hisGrid.left(4);
+        break;
+      case SpecOp::Q65_PILEUP:
+        m_xSent=m_config.my_grid().left(4);
+        m_xRcvd=m_hisGrid;
+        break;
+      default: break;
+    }
+
+  m_logDlg->initLogQSO (m_hisCall, grid, m_mode, m_rptSent, m_rptRcvd,
+                        m_dateTimeQSOOn, dateTimeQSOOff, m_operatingFrequency.rx () +
+                        ui->TxFreqSpinBox->value(), m_noSuffix, m_xSent, m_xRcvd);
+  m_inQSOwith="";
+  if (ui->respondComboBox->isVisible() && autoRespondPolicy () != AutoRespondPolicy::None) {
+        m_autoRespondScores.reset();
+  }
+  QTimer::singleShot (2000, [=] {
+      pounce = false;
+      filtered = false;
+      read_txLog();
+      check_button_color();
+  });
+  QTimer::singleShot (7000, [=] {
+      read_txLog();
+  });
+  stopWRTimer.stop();           // Stop any Wait & Reply timeout
+  stopWCTimer.stop();           // Stop any Wait & Call timeout
+}
+
+void MainWindow::on_tuneButton_clicked (bool checked)
+{
+  if (checked) m_autoRespondPeriodState.disarm();
+  rigTuneTimer.stop ();
+  ui->pbBandHopping->setChecked(false); // disable band hopping
+  // prevent tuning on top of a SuperFox message
+  if (SpecOp::HOUND==m_specOp && m_config.superFox() && !m_tune) {
+    QDateTime now = QDateTime::currentDateTimeUtc();
+    int s = now.time().toString("ss").toInt();
+    if ((s >= 0 && s < 15) || (s >= 30 && s < 45)) {
+      ui->tuneButton->setChecked (false);
+      m_config.transceiver_tune (false);  // reset rig tuning
+      return;
+    }
+  }
+  m_config.transceiver_tune (false);  // reset rig tuning
+  if (blocked) return;
+  if (checked && (m_mode=="WSPR" || m_mode=="FST4W")
+      && m_beaconTxController.tuneKind () == BeaconTx::TuneKind::None)
+    {
+      processBeaconActions (m_beaconTxController.tuneStarted (BeaconTx::TuneKind::Manual));
+    }
+  if (m_auto && !(m_mode=="WSPR" || m_mode=="FST4W")) ui->autoButton->click();   // stop any other transmission
+  stopWRTimer.stop();           // stop any Wait & Reply timeout
+  stopWCTimer.stop();           // stop any Wait & Call timeout
+  if (checked && m_config.tune_watchdog() && !(m_mode=="WSPR" || m_mode=="FST4W")) {
+      tuneATU_Timer.start (m_config.tune_watchdog_time()*1000); // tune watchdog
+  }
+  if (!checked) {
+      tuneATU_Timer.stop ();    // stop tune watchdog when stopping Tune manually
+      ui->tuneButton->setText("Tune");
+  }
+  static bool lastChecked = false;
+  if (lastChecked == checked) return;
+  lastChecked = checked;
+  if (checked && m_tune==false) { // we're starting tuning so remember Tx and change pwr to Tune value
+    if (m_config.pwrBandTuneMemory ()) {
+      auto const& curBand = ui->bandComboBox->currentText();
+      m_pwrBandTxMemory[curBand] = ui->outAttenuation->value(); // remember our Tx pwr
+      m_PwrBandSetOK = false;
+      if (m_pwrBandTuneMemory.contains(curBand)) {
+        ui->outAttenuation->setValue(m_pwrBandTuneMemory[curBand].toInt()); // set to Tune pwr
+      }
+      m_PwrBandSetOK = true;
+    }
+  }
+  if (m_tune) {
+    tuneButtonTimer.start(250);
+  } else {
+    m_sentFirst73=false;
+    itone[0]=0;
+    on_monitorButton_clicked (true);
+    m_tune=true;
+  }
+  if (m_tci_audio) Q_EMIT m_config.transceiver_tune(checked);
+  else Q_EMIT tune (checked);
+}
+
+void MainWindow::reset_transmit_controls_after_stop ()
+{
+  m_autoRespondPeriodState.setEnableTx(false);
+  ui->pbBandHopping->setChecked(false); // disable band hopping
+  m_btxok=false;
+  m_bCallingCQ = false;
+  m_bAutoReply = false;         // ready for next
+  m_maxPoints=-1;
+  if (ui->DX_Call_Button->isChecked()) ui->DX_Call_Button->click ();
+  stopWRTimer.stop();           // Stop any Wait & Reply timeout
+  stopWCTimer.stop();           // Stop any Wait & Call timeout
+  tuneATU_Timer.stop ();        // stop tune watchdog when stopping Tune manually
+  no_wait_and_call = false;
+  m_specOp=m_config.special_op_id();
+  if (ui->respondComboBox->isVisible() && autoRespondPolicy () != AutoRespondPolicy::None) {
+      m_autoRespondScores.reset();
+  }
+  pounce = false;
+  ui->autoButton->setChecked(false);  // ensure autoButton is unchecked
+  ui->tuneButton->setChecked (false);
+  ui->tuneButton->setText("Tune");
+  m_tune=false;
+  m_bTxTime=false;
+  filtered = false;
+  ignored = false;
+  m_muted = false;
+  check_button_color();
+}
+
+void MainWindow::on_stopTxButton_clicked()                    // Stop Tx
+{
+  noteTxStopReason (TxEvidence::TxStopReason::UserHalt);
+  if (m_beaconTxController.txLifecycle () == BeaconTx::TxLifecycle::Decided
+      || m_beaconTxController.txLifecycle () == BeaconTx::TxLifecycle::StartRequested)
+    {
+      m_tx_when_ready = false;
+      ptt1Timer.stop ();
+      processBeaconActions (m_beaconTxController.transmitWindowEnded ());
+      if (g_iptt == 1 || m_transmitting) stopTx ();
+      else g_iptt = 0;
+    }
+  if (m_beaconTxController.active ())
+    {
+      m_beaconTxController.setAutoEnabled (false);
+    }
+  if (m_tune) stop_tuning ();
+  if (m_auto) auto_tx_mode (false);
+  reset_transmit_controls_after_stop ();
+}
+
+void MainWindow::on_pbR2T_clicked()
+{
+  ui->TxFreqSpinBox->setValue(ui->RxFreqSpinBox->value ());
+}
+
+void MainWindow::on_pbT2R_clicked()
+{
+  if (ui->RxFreqSpinBox->isEnabled ())
+    {
+      ui->RxFreqSpinBox->setValue (ui->TxFreqSpinBox->value ());
+    }
+}
+
+void MainWindow::on_pbR2T_2_clicked()
+{
+    ui->TxFreqSpinBox_2->setValue(ui->RxFreqSpinBox_2->value ());
+}
+
+void MainWindow::on_pbT2R_2_clicked()
+{
+    ui->RxFreqSpinBox_2->setValue (ui->TxFreqSpinBox_2->value ());
+}
+
+void MainWindow::on_readFreq_clicked()
+{
+  if (m_transmitting) return;
+
+  if (m_config.transceiver_online ())
+    {
+      m_config.sync_transceiver (true, true);
+    }
+}
+
+void MainWindow::on_cbFast9_clicked(bool b)
+{
+  if(m_mode=="JT9") {
+    m_bFast9=b;
+//    ui->cbAutoSeq->setVisible(b);
+    blocked=true;   // needed to prevent a loop
+    on_actionJT9_triggered();
+    QTimer::singleShot (50, [=] {blocked = false;});   // needed to prevent a loop
+    QTimer::singleShot (200, [=] {
+      if(m_mode=="JT9") m_settings->setValue("JT9_Fast",m_bFast9);
+    });
+  }
+
+  if(b) {
+    m_TRperiod = ui->sbTR->value ();
+  } else {
+    m_TRperiod=60.0;
+  }
+  progressBar.setMaximum(int(m_TRperiod));
+  m_wideGraph->setPeriod(m_TRperiod,m_nsps);
+  fast_config(b);
+  statusChanged ();
+}
+
+void MainWindow::on_pbTxNext_clicked(bool b)
+{
+  if (m_mode=="WSPR" || m_mode=="FST4W")
+    {
+      auto const pendingStart = m_beaconTxController.txLifecycle ()
+        == BeaconTx::TxLifecycle::StartRequested;
+      auto const planId = m_beaconTxController.txPlanId ();
+      processBeaconActions (m_beaconTxController.setTxNext (b));
+      if (!b && pendingStart && !m_beaconTxController.transmitWindow ())
+        {
+          m_tx_when_ready = false;
+          ptt1Timer.stop ();
+          if (m_transmitting) stopTx ();
+          else
+            {
+              g_iptt = 0;
+              processBeaconActions (m_beaconTxController.txStopped (planId));
+            }
+        }
+    }
+  if (b && !ui->autoButton->isChecked ())
+    {
+      ui->autoButton->click (); // make sure Tx is possible
+    }
+}
+
+void MainWindow::on_pbFoxReset_clicked()
+{
+  if(m_specOp!=SpecOp::FOX) return;
+  auto button = MessageBox::query_message (this, tr ("Confirm Reset"),
+      tr ("Are you sure you want to clear the QSO queues?"));
+  if(button == MessageBox::Yes) {
+    FoxReset("Manual Reset");
+  }
+}
+
+void MainWindow::on_pbFreeText_clicked()
+{
+  bool ok;
+  QString freeTextMsg;
+  if(m_config.superFox()) {
+    freeTextMsg = QInputDialog::getText (this, tr("Free Text Message"),
+           tr("Message:"), QLineEdit::Normal, m_freeTextMsg0, &ok).left(26);
+  } else {
+    freeTextMsg = QInputDialog::getText (this, tr("Free Text Message"),
+           tr("Message:"), QLineEdit::Normal, m_freeTextMsg0, &ok).left(13);
+  }
+  if(!ok) return;
+
+  freeTextMsg=freeTextMsg.toUpper();
+  if(m_config.superFox()) {
+    // Mirrors valid_sfox_free_text in lib/superfox/sfox_pack.f90.
+    QString const validChars {" 0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ+-./?"};
+    for(QChar const ch: freeTextMsg) {
+      if(!validChars.contains(ch)) {
+        QString const message = tr ("SuperFox free text may only contain "
+            "spaces, digits, uppercase letters, and + - . / ?.");
+        MessageBox::warning_message (this, tr ("Free Text Message"), message);
+        return;
+      }
+    }
+  }
+
+  m_freeTextMsg=freeTextMsg;
+  m_freeTextMsg0=m_freeTextMsg;
+}
+
+void MainWindow::on_pbBestSP_clicked()
+{
+  m_bBestSPArmed = !m_bBestSPArmed;
+  if(m_bBestSPArmed and !m_transmitting) ui->pbBestSP->setStyleSheet ("QPushButton{color:red}");
+  if(!m_bBestSPArmed) ui->pbBestSP->setStyleSheet ("");
+  if(m_bBestSPArmed) m_dateTimeBestSP=QDateTime::currentDateTimeUtc();
+}
+
+void MainWindow::on_houndButton_clicked (bool checked)
+{
+  if (checked) {
+    HoldTxFreqStatus = ui->cbHoldTxFreq->isChecked();  // save state of the Hold Tx Freq checkbox
+    m_config.setSpecial_Hound();
+    ui->tx1->setVisible(true);
+    ui->tx1->setEnabled(true);
+    ui->txb1->setEnabled(true);
+  } else {
+    m_config.setSpecial_None();
+    keep_frequency = true;
+    QTimer::singleShot (250, [=] {keep_frequency = false;});
+  }
+  m_specOp=m_config.special_op_id();
+  on_actionFT8_triggered();
+  check_button_color();
+}
+
+void MainWindow::on_cbHoldTxFreq_clicked (bool)
+{
+    HoldTxFreqStatus = ui->cbHoldTxFreq->isChecked();  // save state of the Hold Tx Freq checkbox
+}
+
+void MainWindow::on_ft8Button_clicked()
+{
+    if (m_specOp==SpecOp::HOUND or m_specOp==SpecOp::FOX) {
+      m_config.setSpecial_None();
+      m_specOp=m_config.special_op_id();
+    }
+    on_actionFT8_triggered();
+}
+
+void MainWindow::on_ft4Button_clicked()
+{
+    on_actionFT4_triggered();
+}
+
+void MainWindow::on_msk144Button_clicked()
+{
+    on_actionMSK144_triggered();
+}
+
+void MainWindow::on_q65Button_clicked()
+{
+    if (m_specOp==SpecOp::Q65_PILEUP) {
+      m_q65PileupCopiedLastRxCall.clear();
+      m_q65PileupCopiedCallers.clear();
+      m_config.setSpecial_None();
+      m_specOp=m_config.special_op_id();
+    }
+    on_actionQ65_triggered();
+}
+
+void MainWindow::on_jt65Button_clicked()
+{
+    on_actionJT65_triggered();
+}
+
+void MainWindow::on_echoButton_clicked()
+{
+    on_actionEcho_triggered();
+}
+
+void MainWindow::on_pb15A_clicked()
+{
+    ui->sbTR->setValue(15);
+    ui->sbSubmode->setValue(0);
+}
+
+void MainWindow::on_pb15C_clicked()
+{
+    ui->sbTR->setValue(15);
+    ui->sbSubmode->setValue(2);
+    ui->TxFreqSpinBox->setValue(700);
+}
+
+void MainWindow::on_pb30B_clicked()
+{
+    ui->sbTR->setValue(30);
+    ui->sbSubmode->setValue(1);
+}
+
+void MainWindow::on_pb60C_clicked()
+{
+    ui->sbTR->setValue(60);
+    ui->sbSubmode->setValue(2);
+}
+
+void MainWindow::on_pb60D_clicked()
+{
+    ui->sbTR->setValue(60);
+    ui->sbSubmode->setValue(3);
+}
+
+void MainWindow::on_pb60E_clicked()
+{
+    ui->sbTR->setValue(60);
+    ui->sbSubmode->setValue(4);
+    ui->TxFreqSpinBox->setValue(700);
+}
+
+void MainWindow::on_pb160_clicked()
+{
+  requestBandButtonFrequency (1840000, 1837000, m_msk144_tr);
+}
+
+void MainWindow::on_pb80_clicked()
+{
+  requestBandButtonFrequency (3573000, 3576000, m_msk144_tr);
+}
+
+void MainWindow::on_pb60_clicked()
+{
+  requestBandButtonFrequency (5357000, 5357000, m_msk144_tr);
+}
+
+void MainWindow::on_pb40_clicked()
+{
+  requestBandButtonFrequency (7074000, 7077000, m_msk144_tr);
+}
+
+void MainWindow::on_pb30_clicked()
+{
+  requestBandButtonFrequency (10136000, 10139000, m_msk144_tr);
+}
+
+void MainWindow::on_pb20_clicked()
+{
+  requestBandButtonFrequency (14074000, 14077000, m_msk144_tr);
+}
+
+void MainWindow::on_pb17_clicked()
+{
+  requestBandButtonFrequency (18100000, 18103000, m_msk144_tr);
+}
+
+void MainWindow::on_pb15_clicked()
+{
+  requestBandButtonFrequency (21074000, 21077000, m_msk144_tr);
+}
+
+void MainWindow::on_pb12_clicked()
+{
+  requestBandButtonFrequency (24915000, 24918000, m_msk144_tr);
+}
+
+void MainWindow::on_pb10_clicked()
+{
+  requestBandButtonFrequency (28074000, 28077000, m_msk144_tr);
+}
+
+void MainWindow::on_pb6_clicked()
+{
+  requestBandButtonFrequency (50313000, 50316000, m_msk144_tr6);
+}
+
+void MainWindow::on_pb2_clicked()
+{
+  requestBandButtonFrequency (144074000, 144077000, m_msk144_tr2);
+}
+
+void MainWindow::on_pb70_clicked()
+{
+  requestBandButtonFrequency (432074000, 432077000, m_msk144_tr);
+}
+
+void MainWindow::on_pb8_clicked()
+{
+  requestBandButtonFrequency (40680000, 40680000, m_msk144_tr);
+}
+
+void MainWindow::on_pb50_clicked()
+{
+  requestBandButtonFrequency (50313000, 50316000, m_msk144_tr6);
+}
+
+void MainWindow::on_pb4_clicked()
+{
+  requestBandButtonFrequency (70154000, 70154000, m_msk144_tr6);
+}
+
+void MainWindow::on_pb144_clicked()
+{
+  requestBandButtonFrequency (144074000, 144077000, m_msk144_tr2);
+}
+
+void MainWindow::on_pb220_clicked()
+{
+  requestBandButtonFrequency (222174000, 222177000, m_msk144_tr);
+}
+
+void MainWindow::on_pb432_clicked()
+{
+  requestBandButtonFrequency (432174000, 432177000, m_msk144_tr);
+}
+
+void MainWindow::on_pb902_clicked()
+{
+  requestBandButtonFrequency (902174000, 902177000, m_msk144_tr);
+}
+
+void MainWindow::on_pb23_clicked()
+{
+  requestBandButtonFrequency (1296065000, 1296065000, m_msk144_tr);
+}
+
+void MainWindow::on_pb13_clicked()
+{
+  requestBandButtonFrequency (2304065000, 2304065000, m_msk144_tr);
+}
+
+void MainWindow::on_pb9_clicked()
+{
+  requestBandButtonFrequency (3400065000, 3400065000, m_msk144_tr);
+}
+
+void MainWindow::on_pb5G_clicked()
+{
+  requestBandButtonFrequency (5760200000, 5760200000, m_msk144_tr);
+}
+
+void MainWindow::on_pb10G_clicked()
+{
+  requestBandButtonFrequency (10368200000, 10368200000, m_msk144_tr);
+}
+
+void MainWindow::on_pb24G_clicked()
+{
+  requestBandButtonFrequency (24048200000, 24048200000, m_msk144_tr);
+}
+
+void MainWindow::on_pbSendMessage_clicked()
+{
+  submitJttyDraft (ui->Tx_Message->text ().toUpper ());
+}
+
+void MainWindow::on_Tx_Message_returnPressed()
+{
+  on_pbSendMessage_clicked();
+}
+
+void MainWindow::on_pbF1_clicked()
+{
+  sendJttyFunctionKey(1);
+}
+
+void MainWindow::on_pbF2_clicked()
+{
+  sendJttyFunctionKey(2);
+}
+
+void MainWindow::on_pbF3_clicked()
+{
+  sendJttyFunctionKey(3);
+}
+
+void MainWindow::on_pbF4_clicked()
+{
+  sendJttyFunctionKey(4);
+}
+
+void MainWindow::on_pbF5_clicked()
+{
+  sendJttyFunctionKey(5);
+}
+
+void MainWindow::on_pbF6_clicked()
+{
+  sendJttyFunctionKey(6);
+}
+
+void MainWindow::on_pbF7_clicked()
+{
+  sendJttyFunctionKey(7);
+}
+
+void MainWindow::on_pbF8_clicked()
+{
+  sendJttyFunctionKey(8);
+}
