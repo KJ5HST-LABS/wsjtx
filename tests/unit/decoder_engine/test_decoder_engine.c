@@ -102,7 +102,7 @@ static decoder_attempt_request request_for(int64_t input_id, int64_t analysis_id
   request.ft8.search_low_hz = 200;
   request.ft8.search_high_hz = 4000;
   request.ft8.tolerance_hz = 20;
-  request.ft8.depth = 3;
+  request.ft8.depth = 1;
   request.ft8.ap_width_hz = 75;
   request.ft8.cycles = 1;
   request.ft8.threads = 1;
@@ -114,6 +114,20 @@ static decoder_attempt_request request_for(int64_t input_id, int64_t analysis_id
   memset(request.ft8.his_base_call, ' ', sizeof request.ft8.his_base_call);
   memset(request.ft8.mygrid, ' ', sizeof request.ft8.mygrid);
   memset(request.ft8.hisgrid, ' ', sizeof request.ft8.hisgrid);
+  return request;
+}
+
+static decoder_attempt_request mtd_request_for(int64_t input_id, int64_t analysis_id)
+{
+  decoder_attempt_request request = request_for(input_id, analysis_id);
+  request.ft8.mtd = 1;
+  request.ft8.depth = 3;
+  request.ft8.threads = 2;
+  request.ft8.candidate_thinning = 100;
+  request.ft8.receive_sensitivity = 3;
+  request.ft8.low_threshold = 1;
+  request.ft8.subtract_pass = 1;
+  request.ft8.wide_dx_search = 1;
   return request;
 }
 
@@ -163,13 +177,13 @@ static void check_reset_and_recreate(callback_context *context,
   check_same_result(context, &reference, reference_count);
 }
 
-static void check_repeat_stages(callback_context *context, const int16_t *original)
+static void check_repeat_stages_and_eme(callback_context *context, const int16_t *original)
 {
   decoder_attempt_request request = request_for(701, 801);
   decoder_attempt_outcome outcome;
   context->request = &request;
   request.phase = DECODER_PHASE_REPEAT;
-  request.ft8.depth = 1;
+  request.ft8.eme_delay_seconds = 2.0f;
   CHECK(decoder_engine_reset_session(context->engine) == DECODER_OK);
   for (int stage = 41; stage < 50; ++stage) {
     request.ft8.half_symbol_stage = stage;
@@ -183,12 +197,32 @@ static void check_repeat_stages(callback_context *context, const int16_t *origin
   decode_signal(context, original, &outcome);
 }
 
-static void check_mtd_residual_retention(callback_context *context,
-                                        decoder_attempt_request *request)
+static void probe_mtd_residual(callback_context *context, decoder_attempt_request *request,
+                               int source, float *residual)
+{
+  decoder_attempt_request probe = *request;
+  decoder_attempt_outcome outcome;
+  /* Stop after input preparation so decoding cannot modify the residual. */
+  probe.ft8.filtered_retry = 1;
+  probe.ft8.receive_frequency_hz = 3000;
+  probe.ft8.search_low_hz = 1000;
+  probe.ft8.search_high_hz = 2000;
+  probe.phase = DECODER_PHASE_REPEAT;
+  probe.source = source;
+  probe.attempt_no = ++request->attempt_no;
+  CHECK(decoder_engine_decode(context->engine, &probe, context->audio,
+                             NULL, NULL, &outcome) == DECODER_OK);
+  decoder_engine_test_residual(residual);
+}
+
+static void check_mtd_lifecycle(callback_context *context, decoder_attempt_request *request,
+                                const int16_t *original, const decoder_engine_options *options)
 {
   float *saved = malloc(180000 * sizeof *saved);
   float *current = malloc(180000 * sizeof *current);
   decoder_attempt_outcome outcome;
+  decoder_observation reference = context->expected_record;
+  int reference_count = context->count;
   int changed = 0;
   CHECK(saved != NULL && current != NULL);
   decoder_engine_test_residual(saved);
@@ -196,57 +230,39 @@ static void check_mtd_residual_retention(callback_context *context,
     changed |= saved[i] != context->audio->samples[i];
   CHECK(changed);
 
-  /* Stop after input preparation so the next pass cannot change the residual. */
-  request->ft8.filtered_retry = 1;
-  request->ft8.receive_frequency_hz = 3000;
-  request->ft8.search_low_hz = 1000;
-  request->ft8.search_high_hz = 2000;
-  request->phase = DECODER_PHASE_REPEAT;
-  ++request->attempt_no;
-  CHECK(decoder_engine_decode(context->engine, request, context->audio,
-                             NULL, NULL, &outcome) == DECODER_OK);
-  decoder_engine_test_residual(current);
+  probe_mtd_residual(context, request, DECODER_SOURCE_FILE, current);
   CHECK(memcmp(saved, current, 180000 * sizeof *saved) == 0);
 
-  request->source = DECODER_SOURCE_LIVE;
-  ++request->attempt_no;
-  CHECK(decoder_engine_decode(context->engine, request, context->audio,
-                             NULL, NULL, &outcome) == DECODER_OK);
-  decoder_engine_test_residual(current);
-  for (int i = 0; i < 180000; ++i)
-    CHECK(current[i] == context->audio->samples[i]);
+  for (int recreate = 0; recreate <= 1; ++recreate) {
+    if (recreate) {
+      CHECK(decoder_engine_destroy(context->engine) == DECODER_OK);
+      CHECK(decoder_engine_create(options, &context->engine) == DECODER_OK);
+    } else {
+      CHECK(decoder_engine_reset_session(context->engine) == DECODER_OK);
+    }
+    ++request->input_id;
+    ++request->analysis_id;
+    request->attempt_no = 1;
+    probe_mtd_residual(context, request, DECODER_SOURCE_FILE, current);
+    for (int i = 0; i < 180000; ++i)
+      CHECK(current[i] == context->audio->samples[i]);
 
-  for (int reset = 0; reset <= 1; ++reset) {
-    request->phase = DECODER_PHASE_NORMAL;
-    request->source = DECODER_SOURCE_FILE;
-    request->ft8.filtered_retry = 0;
-    request->ft8.receive_frequency_hz = 1500;
-    request->ft8.search_low_hz = 200;
-    request->ft8.search_high_hz = 4000;
     ++request->attempt_no;
-    CHECK(decoder_engine_decode(context->engine, request, context->audio,
-                               NULL, NULL, &outcome) == DECODER_OK);
+    decode_signal(context, original, &outcome);
+    check_same_result(context, &reference, reference_count);
     decoder_engine_test_residual(current);
     changed = 0;
     for (int i = 0; i < 180000; ++i)
       changed |= current[i] != context->audio->samples[i];
     CHECK(changed);
-    if (reset)
-      CHECK(decoder_engine_reset_session(context->engine) == DECODER_OK);
-    else
+    if (recreate) {
       CHECK(decoder_engine_release_input(context->engine, request->input_id) == DECODER_OK);
-    ++request->input_id;
-    ++request->analysis_id;
-    request->attempt_no = 1;
-    request->source = DECODER_SOURCE_FILE;
-    request->phase = DECODER_PHASE_REPEAT;
-    request->ft8.filtered_retry = 1;
-    request->ft8.receive_frequency_hz = 3000;
-    request->ft8.search_low_hz = 1000;
-    request->ft8.search_high_hz = 2000;
-    CHECK(decoder_engine_decode(context->engine, request, context->audio,
-                               NULL, NULL, &outcome) == DECODER_OK);
-    decoder_engine_test_residual(current);
+      ++request->input_id;
+      ++request->analysis_id;
+      request->attempt_no = 1;
+    }
+    probe_mtd_residual(context, request,
+                       recreate ? DECODER_SOURCE_FILE : DECODER_SOURCE_LIVE, current);
     for (int i = 0; i < 180000; ++i)
       CHECK(current[i] == context->audio->samples[i]);
   }
@@ -321,56 +337,34 @@ int main(void)
   /* A different reception cannot silently replace retained input state. */
   request.input_id = 103;
   CHECK(decoder_engine_decode(engine, &request, &audio, observe, &context, &outcome) == DECODER_INVALID);
-  CHECK(decoder_engine_release_input(engine, 102) == DECODER_OK);
-  CHECK(context.retained.input_id == 102);
-  CHECK(context.retained.analysis_id == 202);
+  request.input_id = 102;
+  check_reset_and_recreate(&context, &request, before, &options, &outcome);
+  CHECK(decoder_engine_release_input(context.engine, request.input_id) == DECODER_OK);
+  CHECK(context.retained.input_id == request.input_id);
+  CHECK(context.retained.analysis_id == request.analysis_id);
 
   memset(samples, 0, 180000 * sizeof *samples);
   context.count = 0;
-  request = request_for(103, 203);
-  CHECK(decoder_engine_decode(engine, &request, &audio, observe, &context, &outcome) == DECODER_OK);
+  request = request_for(105, 205);
+  CHECK(decoder_engine_decode(context.engine, &request, &audio, observe, &context, &outcome) == DECODER_OK);
   CHECK(outcome.observation_count == 0 && context.count == 0);
   CHECK(outcome.retained_count == 0);
-  CHECK(decoder_engine_reset_session(engine) == DECODER_OK);
-  memcpy(samples, before, 180000 * sizeof *samples);
-  request = request_for(104, 204);
-  decode_signal(&context, before, &outcome);
-  check_reset_and_recreate(&context, &request, before, &options, &outcome);
-
-  check_repeat_stages(&context, before);
-  context.request = &request;
   CHECK(decoder_engine_reset_session(context.engine) == DECODER_OK);
-  request = request_for(301, 401);
-  request.ft8.mtd = 1;
-  request.ft8.threads = 2;
-  request.ft8.candidate_thinning = 100;
-  request.ft8.receive_sensitivity = 3;
-  request.ft8.cycles = 3;
-  request.ft8.low_threshold = 1;
-  request.ft8.subtract_pass = 1;
-  request.ft8.wide_dx_search = 1;
+  memcpy(samples, before, 180000 * sizeof *samples);
+  request = mtd_request_for(301, 401);
   decode_signal(&context, before, &outcome);
   CHECK(context.expected_record.variant == DECODER_FT8_MTD);
-  check_reset_and_recreate(&context, &request, before, &options, &outcome);
-  check_mtd_residual_retention(&context, &request);
-  request.phase = DECODER_PHASE_NORMAL;
-  request.ft8.filtered_retry = 0;
-  request.ft8.receive_frequency_hz = 1500;
-  request.ft8.search_low_hz = 200;
-  request.ft8.search_high_hz = 4000;
+  check_mtd_lifecycle(&context, &request, before, &options);
   /* Classic crops EME input; MTD analyzes the original sample coordinates. */
   context.expected_start_seconds = 2.15f;
   decoder_engine_test_signal(samples, context.expected_payload, context.expected_tones, 25800);
   memcpy(before, samples, 180000 * sizeof *samples);
-  for (int mtd = 0; mtd <= 1; ++mtd) {
-    CHECK(decoder_engine_reset_session(context.engine) == DECODER_OK);
-    request.input_id = 501 + mtd;
-    request.analysis_id = 601 + mtd;
-    request.attempt_no = 1;
-    request.ft8.mtd = mtd;
-    request.ft8.eme_delay_seconds = 2.0f;
-    decode_signal(&context, before, &outcome);
-  }
+  check_repeat_stages_and_eme(&context, before);
+  context.request = &request;
+  CHECK(decoder_engine_reset_session(context.engine) == DECODER_OK);
+  request = mtd_request_for(502, 602);
+  request.ft8.eme_delay_seconds = 2.0f;
+  decode_signal(&context, before, &outcome);
   CHECK(decoder_engine_destroy(context.engine) == DECODER_OK);
   decoder_engine_test_host_windows();
   free(before);
