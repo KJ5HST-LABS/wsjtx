@@ -30,7 +30,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends build-essential gfortran cmake ninja-build pkg-config \
             qtbase5-dev qtmultimedia5-dev libqt5serialport5-dev qttools5-dev qttools5-dev-tools libqt5websockets5-dev \
-            libqt5sql5-sqlite libfftw3-dev libboost-all-dev libhamlib-dev libusb-1.0-0-dev libudev-dev patchelf file
+            libqt5sql5-sqlite libfftw3-dev libboost-all-dev libhamlib-dev libusb-1.0-0-dev libudev-dev portaudio19-dev patchelf file
 
       - name: Configure
         run: |
