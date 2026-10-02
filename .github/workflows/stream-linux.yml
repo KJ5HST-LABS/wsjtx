@@ -1,0 +1,78 @@
+# The Linux x86_64 streaming jt9/wsprd bundles that WSJT and rad-con download (rigged
+# crates/radio-digital/src/jt9/downloader.rs: `<bin>-linux-x86_64.tar.gz` unpacking to `<bin>/<bin>` + `<bin>/lib/`).
+# The WSJT-X release workflow cannot build Linux outside WSJTX (its container images are WSJTX-only), so this
+# builds just jt9 + wsprd on the runner, from the source branch given, with Ubuntu's packages. Every library
+# outside glibc is bundled; the binary's RUNPATH is $ORIGIN/lib and each library's is $ORIGIN (the June
+# build's layout). The smoke test runs the bundle with no LD_LIBRARY_PATH and requires `--stream` in its help.
+name: Stream bundles (Linux x86_64)
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_ref:
+        description: the source branch or tag to build
+        default: stream/v3.2.0-rc1-517
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.source_ref }}
+          path: src
+
+      - name: Packages
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends build-essential gfortran cmake ninja-build pkg-config \
+            qtbase5-dev qtmultimedia5-dev libqt5serialport5-dev qttools5-dev qttools5-dev-tools libqt5websockets5-dev \
+            libqt5sql5-sqlite libfftw3-dev libboost-all-dev libhamlib-dev libusb-1.0-0-dev libudev-dev patchelf file
+
+      - name: Configure
+        run: |
+          cmake -S src -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DWSJT_SKIP_MANPAGES=ON -DWSJT_GENERATE_DOCS=OFF \
+            -DWSJT_ENABLE_TESTS=ON
+
+      - name: Build jt9, wsprd and the streaming tests
+        run: cmake --build build --target jt9 wsprd test_streaming_period test_streaming_consumers
+
+      - name: Streaming tests
+        run: cd build && ctest -R streaming --output-on-failure
+
+      - name: Bundle
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          for b in jt9 wsprd; do
+            d="out/$b"; mkdir -p "$d/lib"
+            cp "build/$b" "$d/$b"
+            ldd "build/$b" | awk '/=> \//{print $3}' | while read -r lib; do
+              case "$(basename "$lib")" in
+                libc.so.*|libm.so.*|libmvec.so.*|libpthread.so.*|libdl.so.*|librt.so.*|ld-linux*|libresolv.so.*) ;;
+                *) cp -L "$lib" "$d/lib/" ;;
+              esac
+            done
+            patchelf --set-rpath '$ORIGIN/lib' "$d/$b"
+            for l in "$d"/lib/*; do patchelf --set-rpath '$ORIGIN' "$l"; done
+            tar -czf "out/$b-linux-x86_64.tar.gz" -C out "$b"
+            echo "== $b: $(ls "$d/lib" | wc -l) libraries"; ls "$d/lib"
+          done
+
+      - name: Smoke — the bundle runs on its own libraries and streams
+        run: |
+          set -euo pipefail
+          rm -rf smoke && mkdir smoke && tar -xzf out/jt9-linux-x86_64.tar.gz -C smoke && tar -xzf out/wsprd-linux-x86_64.tar.gz -C smoke
+          env -u LD_LIBRARY_PATH ldd smoke/jt9/jt9 | tee ldd.txt
+          ! grep -q "not found" ldd.txt
+          env -u LD_LIBRARY_PATH smoke/jt9/jt9 --help | tee help.txt
+          grep -q -- "--stream" help.txt
+          env -u LD_LIBRARY_PATH smoke/wsprd/wsprd --help 2>&1 | head -3 || true
+          sha256sum out/*.tar.gz
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: stream-bundles-linux-x86_64
+          path: out/*.tar.gz
+          if-no-files-found: error
