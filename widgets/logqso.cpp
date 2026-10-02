@@ -218,7 +218,13 @@ void LogQSO::initLogQSO(QString const& hisCall, QString const& hisGrid, QString 
                         Radio::Frequency dialFreq, bool noSuffix, QString xSent, QString xRcvd)
 {
 
-  if(!isHidden()) return;
+  if (!isHidden ())
+    {
+      if (isMinimized ()) showNormal ();
+      raise ();
+      activateWindow ();
+      return;
+    }
   QPushButton* okBtn = ui->buttonBox->button(QDialogButtonBox::Ok);
   okBtn->setAutoDefault(true);
   okBtn->setDefault(true);
