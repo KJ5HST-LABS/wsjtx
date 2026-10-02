@@ -631,7 +631,7 @@ class ReleasePolicyTest(unittest.TestCase):
             self.assertEqual(manifest["macos_signing"]["mode"], "distribution")
             self.assertEqual(manifest["macos_signing"]["replaceable_assets"], [])
             self.assertEqual(manifest["windows_signing"]["mode"], "signpath")
-            self.assertEqual(len(manifest["assets"]), 13)
+            self.assertEqual(len(manifest["assets"]), 12)
 
     def test_manual_macos_assets_keep_release_names_without_immutable_hashes(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -669,7 +669,6 @@ class ReleasePolicyTest(unittest.TestCase):
             manifest = json.loads((root / "release-manifest.json").read_text())
             replaceable = {
                 f"wsjtx-{version}-arm64-macOS.pkg",
-                f"wsjtx-{version}-x86_64-macOS.pkg",
             }
             release_names = {path.name for path in release_policy.release_files(root, version, "validation")}
             immutable_names = {entry["name"] for entry in manifest["assets"]}
@@ -735,7 +734,7 @@ class ReleasePolicyTest(unittest.TestCase):
             version = "3.2.0-rc1"
             commit = "b" * 40
             tag = f"v{version}"
-            for arch in ("arm64", "x86_64"):
+            for arch in ("arm64",):
                 package_dir = root / f"wsjtx-{version}-{arch}-macOS.pkg"
                 package_dir.mkdir()
                 package = package_dir / f"wsjtx-{version}-{arch}-macOS.pkg"
@@ -777,7 +776,7 @@ class ReleasePolicyTest(unittest.TestCase):
             version = "3.2.0-rc1"
             commit = "b" * 40
             tag = f"v{version}"
-            for arch in ("arm64", "x86_64"):
+            for arch in ("arm64",):
                 package_dir = root / f"wsjtx-{version}-{arch}-macOS-unsigned.pkg"
                 package_dir.mkdir()
                 package = package_dir / f"wsjtx-{version}-{arch}-macOS.pkg"

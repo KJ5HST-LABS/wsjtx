@@ -16,7 +16,7 @@ on:
         type: string
         default: "4.7.2"
       arch:
-        description: "Target architecture (arm64 or x86_64)"
+        description: "Target architecture (arm64)"
         required: true
         type: string
       runner:
@@ -114,7 +114,6 @@ on:
         type: choice
         options:
           - arm64
-          - x86_64
         default: "arm64"
       cold_build:
         description: "Bypass workflow dependency and compiler caches without saving them"
@@ -173,11 +172,11 @@ jobs:
   build:
     # runs-on cannot reference job-level env, so keep this expression and RUNNER
     # aligned. RUNNER also keeps cache keys consistent across both triggers.
-    runs-on: ${{ inputs.runner || (inputs.arch == 'x86_64' && 'macos-15-intel' || 'macos-15') }}
+    runs-on: ${{ inputs.runner || 'macos-15' }}
     timeout-minutes: 180
     env:
-      RUNNER: ${{ inputs.runner || (inputs.arch == 'x86_64' && 'macos-15-intel' || 'macos-15') }}
-      DEPLOYMENT_TARGET: ${{ inputs.deployment_target || (inputs.arch == 'x86_64' && '10.13' || '11.0') }}
+      RUNNER: ${{ inputs.runner || 'macos-15' }}
+      DEPLOYMENT_TARGET: ${{ inputs.deployment_target || '11.0' }}
       VERSION: ${{ inputs.version }}
       HAMLIB_BRANCH: ${{ inputs.hamlib_branch }}
       WSJT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
@@ -197,12 +196,12 @@ jobs:
       - name: Verify macOS build tuple
         run: |
           case "${ARCH}:${RUNNER}:${DEPLOYMENT_TARGET}" in
-            arm64:macos-15:11.0|x86_64:macos-15-intel:10.13)
+            arm64:macos-15:11.0)
               echo "Using supported macOS build tuple: ${ARCH} on ${RUNNER} targeting ${DEPLOYMENT_TARGET}"
               ;;
             *)
               echo "::error::Unsupported macOS build tuple: arch=${ARCH}, runner=${RUNNER}, deployment_target=${DEPLOYMENT_TARGET}"
-              echo "::error::Use arm64:macos-15:11.0 or x86_64:macos-15-intel:10.13 for deployable macOS artifacts."
+              echo "::error::Use arm64:macos-15:11.0 for deployable macOS artifacts."
               exit 1
               ;;
           esac
@@ -312,37 +311,9 @@ jobs:
             --prefix "${GITHUB_WORKSPACE}/gfortran-prefix" \
             --github-output
 
-      - name: Install controlled Intel gfortran
-        id: controlled-intel-fc
-        if: inputs.arch == 'x86_64'
-        run: |
-          .github/scripts/install-xpack-gfortran-macos.sh \
-            --target "${{ env.DEPLOYMENT_TARGET }}" \
-            --arch "${{ inputs.arch }}" \
-            --work-dir "${RUNNER_TEMP}/xpack-gfortran" \
-            --prefix "${GITHUB_WORKSPACE}/gfortran-prefix" \
-            --github-output
-
       - name: Select gfortran
         id: fc
         run: |
-          if [ "${{ inputs.arch }}" = "x86_64" ]; then
-            echo "Using controlled gfortran: ${{ steps.controlled-intel-fc.outputs.path }}"
-            {
-              echo "path=${{ steps.controlled-intel-fc.outputs.path }}"
-              echo "prefix=${{ steps.controlled-intel-fc.outputs.prefix }}"
-              echo "original_prefix=${{ steps.controlled-intel-fc.outputs.original_prefix }}"
-              echo "runtime_lib_dir=${{ steps.controlled-intel-fc.outputs.runtime_lib_dir }}"
-              echo "libgomp=${{ steps.controlled-intel-fc.outputs.libgomp }}"
-              echo "fortran_runtime_flags=${{ steps.controlled-intel-fc.outputs.fortran_runtime_flags }}"
-              echo "runtime_link_flags=${{ steps.controlled-intel-fc.outputs.runtime_link_flags }}"
-              echo "runtime_archives=${{ steps.controlled-intel-fc.outputs.runtime_archives }}"
-              echo "version=${{ steps.controlled-intel-fc.outputs.version }}"
-              echo "cache_key=${{ steps.controlled-intel-fc.outputs.cache_key }}"
-            } >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
           echo "Using controlled gfortran: ${{ steps.controlled-arm-fc.outputs.path }}"
           {
             echo "path=${{ steps.controlled-arm-fc.outputs.path }}"
@@ -1057,7 +1028,7 @@ jobs:
   sign_distribution:
     if: inputs.signing_mode == 'distribution'
     needs: build
-    runs-on: ${{ inputs.runner || (inputs.arch == 'x86_64' && 'macos-15-intel' || 'macos-15') }}
+    runs-on: ${{ inputs.runner || 'macos-15' }}
     timeout-minutes: 30
     environment: apple-release-signing
     env:

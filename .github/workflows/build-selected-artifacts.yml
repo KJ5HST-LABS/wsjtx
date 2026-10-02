@@ -13,7 +13,6 @@ on:
           - macos-arm64-windows-x64
           - linux-x64
           - linux-arm64
-          - macos-x64
           - all
         default: macos-arm64
       mode:
@@ -137,25 +136,6 @@ jobs:
       arch: "arm64"
       runner: "macos-15"
       deployment_target: "11.0"
-      recache: ${{ inputs.recache }}
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
-
-  macos-x64:
-    needs: [prepare, linux-smoke-x64]
-    if: >-
-      always() &&
-      !cancelled() &&
-      needs.prepare.result == 'success' &&
-      (needs.linux-smoke-x64.result == 'success' || needs.linux-smoke-x64.result == 'skipped') &&
-      (inputs.targets == 'macos-x64' || inputs.targets == 'all')
-    uses: ./.github/workflows/build-macos.yml
-    with:
-      version: ${{ needs.prepare.outputs.version }}
-      hamlib_branch: "4.7.2"
-      arch: "x86_64"
-      runner: "macos-15-intel"
-      deployment_target: "10.13"
       recache: ${{ inputs.recache }}
       release_channel: ${{ needs.prepare.outputs.release_channel }}
       rc_number: ${{ needs.prepare.outputs.rc_number }}

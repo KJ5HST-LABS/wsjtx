@@ -49,7 +49,7 @@ if [ -z "$arch" ] || [ -z "$deployment_target" ] || [ -z "$prefix" ]; then
 fi
 
 case "$arch" in
-  arm64|x86_64)
+  arm64)
     ;;
   *)
     echo "Unsupported macOS Qt architecture: $arch" >&2
@@ -58,7 +58,7 @@ case "$arch" in
 esac
 
 case "${arch}:${deployment_target}" in
-  arm64:11.0|x86_64:10.13)
+  arm64:11.0)
     ;;
   *)
     echo "Unsupported macOS Qt deployment tuple: arch=${arch}, deployment_target=${deployment_target}" >&2

@@ -82,19 +82,6 @@ jobs:
       rc_number: ${{ needs.prepare.outputs.rc_number }}
       signing_mode: validation
 
-  macos-intel:
-    needs: prepare
-    uses: ./.github/workflows/build-macos.yml
-    with:
-      version: ${{ needs.prepare.outputs.version }}
-      hamlib_branch: "4.7.2"
-      arch: x86_64
-      runner: macos-15-intel
-      deployment_target: "10.13"
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
-      signing_mode: validation
-
   linux:
     needs: prepare
     uses: ./.github/workflows/build-linux.yml
@@ -153,7 +140,7 @@ jobs:
       rc_number: ${{ needs.prepare.outputs.rc_number }}
 
   candidate-ready:
-    needs: [prepare, macos, macos-intel, linux, linux-arm, linux-armhf, windows]
+    needs: [prepare, macos, linux, linux-arm, linux-armhf, windows]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

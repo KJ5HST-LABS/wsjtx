@@ -100,22 +100,6 @@ jobs:
       rc_number: ${{ needs.prepare.outputs.rc_number }}
       signing_mode: ${{ needs.prepare.outputs.macos_sign_mode }}
 
-  macos-intel:
-    needs: prepare
-    uses: ./.github/workflows/build-macos.yml
-    permissions:
-      actions: read
-      contents: read
-    with:
-      version: ${{ needs.prepare.outputs.version }}
-      hamlib_branch: "4.7.2"
-      arch: x86_64
-      runner: macos-15-intel
-      deployment_target: "10.13"
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
-      signing_mode: ${{ needs.prepare.outputs.macos_sign_mode }}
-
   linux:
     needs: prepare
     uses: ./.github/workflows/build-linux.yml
@@ -184,7 +168,7 @@ jobs:
       windows_signing: ${{ needs.prepare.outputs.windows_signing }}
 
   assemble:
-    needs: [prepare, macos, macos-intel, linux, linux-arm, linux-armhf, windows]
+    needs: [prepare, macos, linux, linux-arm, linux-armhf, windows]
     runs-on: ubuntu-latest
     timeout-minutes: 30
     permissions:
