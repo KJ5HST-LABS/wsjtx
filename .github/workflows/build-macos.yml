@@ -158,13 +158,22 @@ on:
         required: false
         type: string
         default: ""
+      source_ref:
+        description: "Commit to build instead of the dispatched ref (empty = the dispatched ref)"
+        required: false
+        type: string
+        default: ""
 
 jobs:
   build:
     # runs-on cannot reference job-level env, so keep this expression and RUNNER
     # aligned. RUNNER also keeps cache keys consistent across both triggers.
     runs-on: ${{ inputs.runner || (inputs.arch == 'x86_64' && 'macos-15-intel' || 'macos-15') }}
-    timeout-minutes: 45
+    # A cold Qt build alone takes ~46 min on macos-15-intel (~12 min on macos-15;
+    # runs 37024387990, 37024378542), so x86_64 gets room for an all-cold run: Qt,
+    # every pinned dependency, WSJT-X and its tests (~90 min). 45 holds for x86_64
+    # only when warm-dependency-caches.yml has already filled those caches.
+    timeout-minutes: ${{ inputs.arch == 'x86_64' && 150 || 45 }}
     env:
       RUNNER: ${{ inputs.runner || (inputs.arch == 'x86_64' && 'macos-15-intel' || 'macos-15') }}
       DEPLOYMENT_TARGET: ${{ inputs.deployment_target || (inputs.arch == 'x86_64' && '10.13' || '11.0') }}
@@ -177,7 +186,11 @@ jobs:
       BOOST_VERSION: 1.85.0
       BOOST_SOURCE_SHA256: 7009fe1faa1697476bdc7027703a2badb84e849b7b0baad5086b087b971f8617
     steps:
+      # source_ref builds a source commit with this workflow from another branch;
+      # the binaries' revision string is the checked-out HEAD (CMake/getsvn.cmake).
       - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.source_ref }}
 
       - name: Validate workflow inputs
         env:
