@@ -277,6 +277,7 @@ set (wsjt_FSRCS
   lib/jt4.f90
   lib/jt4_decode.f90
   lib/jt65_decode.f90
+  lib/jt65_host_support.f90
   lib/jt65_mod.f90
   lib/jt65_mod6.f90 #ft8md
   lib/ft8_decode.f90

@@ -5,6 +5,7 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   use timer_module, only: timer
   use jt4_decode
   use jt65_decode
+  use jt65_host_support, only: load_jt65_calls
   use jt9_decode
   use fst4_decode
   use q65_decode
@@ -48,6 +49,8 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   character(len=12) :: mycall, hiscall
   character(len=6) :: mygrid, hisgrid
   character*60 line
+  character(len=12), allocatable :: jt65_calls(:)
+  character(len=4), allocatable :: jt65_grids(:)
   data ntr0/-1/
   save
   type(counting_jt4_decoder) :: my_jt4
@@ -56,9 +59,10 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   type(counting_fst4_decoder) :: my_fst4
   type(counting_q65_decoder) :: my_q65  
 
-  if(params%nmode.eq.8.or.params%nmode.eq.5.or.params%nmode.eq.9) then
+  if(params%nmode.eq.8.or.params%nmode.eq.5.or.params%nmode.eq.9.or.params%nmode.eq.65) then
      call run_decoder_engine(id2,params,nfsample,completion,progress_generation, &
-          0_c_int64_t,0_c_int64_t,0_c_int,merge(params%kin,0_c_int,params%nmode==5.or.params%nmode==9))
+          0_c_int64_t,0_c_int64_t,0_c_int, &
+          merge(params%kin,0_c_int,params%nmode==5.or.params%nmode==9.or.params%nmode==65))
      return
   endif
 
@@ -229,7 +233,7 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
               !     id2(1:nz)=0                ! temporarily disabled as it can breaak the JT9 decoder, maybe others
   endif
 
-  if(params%nmode.eq.4 .or. params%nmode.eq.65) open(14,file=trim(temp_dir)// &
+  if(params%nmode.eq.4) open(14,file=trim(temp_dir)// &
        '/avemsg.txt',status='unknown')
 
   if(params%nmode.eq.4) then
@@ -259,6 +263,11 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   newdat65=params%newdat
   newdat9=params%newdat
 
+  if(params%nmode==74.and.iand(params%ndepth,32)/=0) then
+     call load_jt65_calls(jt65_calls,jt65_grids)
+     call my_jt65%set_calls(jt65_calls,jt65_grids)
+  endif
+
 !$ call omp_set_dynamic(.true.)
 
   call wsjt_tsan_release_decoder_section_primary()
@@ -267,21 +276,7 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
 
 !$omp section
   call wsjt_tsan_acquire_decoder_section_primary()
-  if(params%nmode.eq.65) then                       ! We're in JT65 mode     
-     if(newdat65) dd(1:npts65)=id2(1:npts65)
-     nf1=params%nfa
-     nf2=params%nfb
-     call timer('jt65a   ',0)
-     call my_jt65%decode(jt65_decoded,dd,npts65,newdat65,params%nutc,      &
-          nf1,nf2,params%nfqso,ntol65,params%nsubmode,params%minsync,      &
-          logical(params%nagain),params%n2pass,logical(params%nrobust),    &
-          ntrials,params%naggressive,params%ndepth,params%emedelay,        &
-          logical(params%nclearave),mycall,hiscall,                        &
-          hisgrid,params%nexp_decode,params%nQSOProgress,                  &
-          logical(params%ljt65apon))
-     call timer('jt65a   ',1)
-
-  else if(params%nmode.eq.9 .or. (params%nmode.eq.(65+9) .and.             &
+  if(params%nmode.eq.9 .or. (params%nmode.eq.(65+9) .and.             &
        params%ntxmode.eq.9)) then
               ! We're in JT9 mode, or should do JT9 first
      call timer('decjt9  ',0)
@@ -331,7 +326,7 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   call set_decode_completion(completion,nsynced,ndecoded,navg0)
   call write_decode_progress(active_progress_generation)
   close(13)
-  if(params%nmode.eq.4 .or. params%nmode.eq.65 .or. params%nmode.eq.66) close(14)
+  if(params%nmode.eq.4 .or. params%nmode.eq.66) close(14)
   return
 end subroutine multimode_decoder_core
 

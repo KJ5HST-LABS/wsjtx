@@ -5312,7 +5312,8 @@ void MainWindow::decode (Ft8MtdDecodeCoordinator::Stage ft8Stage,
   dec_data.params.nsubmode=m_nSubMode;
   dec_data.params.minw=0;
   dec_data.params.nclearave=m_nclearave;
-  if(m_nclearave!=0) {
+  if (m_mode == "JT65" && m_jt65ClearAveragesPending) dec_data.params.nclearave=1;
+  if(dec_data.params.nclearave!=0) {
     QFile f(m_config.temp_dir ().absoluteFilePath ("avemsg.txt"));
     f.remove();
   }
@@ -5478,6 +5479,8 @@ void MainWindow::decode (Ft8MtdDecodeCoordinator::Stage ft8Stage,
 
     auto const publishResult = publishDecodeRequest (
       decoderParams.newdat, ft8Stage, ft8Period);
+    if (DecodePublishResult::Published == publishResult && m_mode == "JT65")
+      m_jt65ClearAveragesPending = false;
     if (DecodePublishResult::Published == publishResult && scheduledFt8)
       {
         if (m_ft8MtdDecodeCoordinator.published (ft8Stage, ft8Period))
@@ -11346,6 +11349,7 @@ void MainWindow::on_actionJT65_triggered()
   });
   on_actionJT9_triggered();
   m_mode="JT65";
+  m_jt65ClearAveragesPending = true;
   if(m_specOp==SpecOp::HOUND) {
     m_config.setSpecial_None();
     m_specOp=m_config.special_op_id();
@@ -12607,6 +12611,7 @@ void MainWindow::applyOperatingFrequencyTransition (OperatingFrequency::Transiti
   if (transition.before.rx != transition.after.rx)
     {
       if (m_mode == "JTTY") updateJttyReceiveContext();
+      if (m_mode == "JT65") m_jt65ClearAveragesPending = true;
       cancelPendingFt8Decode ("dial frequency changed");
       genCQMsg ();
     }

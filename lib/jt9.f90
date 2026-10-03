@@ -567,7 +567,7 @@ program jt9
      endif
 
 ! Normal decoding pass
-     if(mode.eq.8.or.mode.eq.9) then
+     if(mode.eq.8.or.mode.eq.9.or.mode.eq.65) then
         call run_engine_wav(shared_data%id2,engine_valid_samples)
      else if(mode.eq.5) then
         call run_engine_wav(shared_data%id2,72576)
@@ -595,7 +595,6 @@ program jt9
      call filbigvar(-1.,0,0.,0,0.,0.,0)       !used for FFT plans for FT8 multithread detector
   else
      call four2a(a,-1,1,1,1)
-     call filbig(a,-1,1,0.0,0,0,0,0,0)        !used for all other FFT plans
   endif
   call fftwf_cleanup_threads()
   call fftwf_cleanup()

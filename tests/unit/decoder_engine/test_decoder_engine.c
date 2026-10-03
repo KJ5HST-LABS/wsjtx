@@ -293,7 +293,7 @@ int main(void)
   CHECK(decoder_engine_create(&options, &second) == DECODER_BUSY);
   CHECK(decoder_engine_get_capabilities(engine, &capabilities) == DECODER_OK);
   CHECK(capabilities.abi_version == DECODER_ENGINE_ABI);
-  CHECK(capabilities.supported_modes == (DECODER_SUPPORT_FT8 | DECODER_SUPPORT_FT4 | DECODER_SUPPORT_JT9));
+  CHECK(capabilities.supported_modes == (DECODER_SUPPORT_FT8 | DECODER_SUPPORT_FT4 | DECODER_SUPPORT_JT9 | DECODER_SUPPORT_JT65));
   CHECK(capabilities.cancellation == 0);
   CHECK(capabilities.concurrent_sessions == 0);
   CHECK(capabilities.evidence_capacity == 1024);
@@ -301,7 +301,7 @@ int main(void)
   context.engine = engine;
   context.request = &request;
   context.audio = &audio;
-  request.mode = 65;
+  request.mode = 66;
   CHECK(decoder_engine_decode(engine, &request, &audio, observe, &context, &outcome) == DECODER_UNSUPPORTED);
   request.mode = DECODER_MODE_FT4;
   CHECK(decoder_engine_decode(engine, &request, &audio, observe, &context, &outcome) == DECODER_INVALID);

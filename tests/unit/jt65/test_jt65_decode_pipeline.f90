@@ -60,6 +60,8 @@ program test_jt65_decode_pipeline
   call test_decoder_reuse(samples, decoder)
   call test_auto_clear_average(samples, decoder)
   call test_duplicate_average_cursor
+  call decoder%destroy()
+  deallocate(samples)
   print '(a)', 'JT65 decoder pipeline tests passed'
 
 contains
