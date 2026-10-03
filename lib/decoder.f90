@@ -56,9 +56,9 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   type(counting_fst4_decoder) :: my_fst4
   type(counting_q65_decoder) :: my_q65  
 
-  if(params%nmode.eq.8.or.params%nmode.eq.5) then
-     call run_decoder_engine(ss,id2,params,nfsample,completion,progress_generation, &
-          0_c_int64_t,0_c_int64_t,0_c_int,merge(params%kin,0_c_int,params%nmode==5))
+  if(params%nmode.eq.8.or.params%nmode.eq.5.or.params%nmode.eq.9) then
+     call run_decoder_engine(id2,params,nfsample,completion,progress_generation, &
+          0_c_int64_t,0_c_int64_t,0_c_int,merge(params%kin,0_c_int,params%nmode==5.or.params%nmode==9))
      return
   endif
 

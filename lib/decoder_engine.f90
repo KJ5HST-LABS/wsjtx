@@ -3,7 +3,8 @@ module decoder_engine
   use decoder_engine_types
   use packjt77, only: pack77_state,initialize_pack77_state,reset_pack77_state
   use ft8_engine_kernel, only: ft8_kernel_state,params_block,run_ft8_kernel,reset_ft8_kernel,release_ft8_input
-  use decoder_callbacks, only: decoder_callback_context,counting_ft4_decoder,ft4_decoded
+  use decoder_callbacks, only: decoder_callback_context,counting_ft4_decoder,ft4_decoded, &
+       counting_jt9_decoder,jt9_decoded
   use decode_completion_module, only: decode_completion_result,set_decode_completion,write_decode_progress
   use prog_args, only: temp_dir
   use timer_module, only: timer
@@ -83,11 +84,21 @@ module decoder_engine
      character(c_char) :: mycall(12)=' '
      character(c_char) :: hiscall(12)=' '
   end type
+  type, bind(C) :: jt9_options
+     integer(c_int) :: utc=0
+     integer(c_int) :: receive_frequency_hz=0
+     integer(c_int) :: search_low_hz=0
+     integer(c_int) :: search_high_hz=0
+     integer(c_int) :: tolerance_hz=0
+     integer(c_int) :: depth=0
+     integer(c_int) :: submode=0
+  end type
   type, bind(C) :: attempt_request
      integer(c_int64_t) :: input_id=0,analysis_id=0
      integer(c_int) :: attempt_no=0,mode=8,phase=2,source=0
      type(ft8_options) :: ft8
      type(ft4_options) :: ft4
+     type(jt9_options) :: jt9
   end type
   type, bind(C) :: audio_view
      type(c_ptr) :: samples
@@ -107,6 +118,8 @@ module decoder_engine
      type(pack77_state) :: knowledge
      type(ft8_kernel_state) :: kernel
      type(counting_ft4_decoder) :: ft4
+     ! GCC 13 can finalize an uninitialized temporary for an embedded finalizable extension.
+     type(counting_jt9_decoder), allocatable :: jt9
      type(attempt_request) :: request
      type(engine_observation), allocatable :: evidence(:)
      integer(c_short), allocatable :: audio(:)
@@ -126,9 +139,24 @@ module decoder_engine
 
 contains
 
+  pure integer function analysis_extent(mode) result(samples)
+    integer, intent(in) :: mode
+    select case(mode)
+    case(engine_mode_ft4)
+       samples=72576
+    case(engine_mode_ft8)
+       samples=180000
+    case(engine_mode_jt9)
+       samples=720000
+    case default
+       samples=0
+    end select
+  end function analysis_extent
+
   subroutine initialize_session(state)
     type(engine_session), intent(inout) :: state
-    allocate(state%audio(180000),state%evidence(evidence_capacity))
+    allocate(state%jt9)
+    allocate(state%audio(analysis_extent(engine_mode_ft8)),state%evidence(evidence_capacity))
     state%audio=0
     call initialize_pack77_state(state%knowledge)
     call reset_ft8_kernel(state%kernel)
@@ -157,7 +185,8 @@ contains
        bind(C,name='decoder_engine_get_capabilities') result(status)
     type(c_ptr), value :: handle
     type(engine_capabilities), intent(out) :: caps
-    caps=engine_capabilities(engine_abi,ior(engine_support_ft8,engine_support_ft4),0,0,evidence_capacity)
+    caps=engine_capabilities(engine_abi,ior(ior(engine_support_ft8,engine_support_ft4),engine_support_jt9), &
+         0,0,evidence_capacity)
     status=invalid
     if(valid_handle(handle)) status=ok
   end function
@@ -181,6 +210,7 @@ contains
     logical, intent(in) :: render
     integer, intent(in) :: progress
     integer(c_short), pointer :: samples(:)
+    integer :: analysis_samples
     type(params_block) :: params
     type(decoder_callback_context) :: context
     outcome=attempt_outcome()
@@ -189,21 +219,31 @@ contains
     status=busy
     if(session%running) go to 900
     status=unsupported
-    if(request%mode/=engine_mode_ft8.and.request%mode/=engine_mode_ft4) go to 900
+    if(request%mode/=engine_mode_ft8.and.request%mode/=engine_mode_ft4.and. &
+         request%mode/=engine_mode_jt9) go to 900
     if(audio%sample_rate_hz/=12000) go to 900
     status=invalid
     if(request%input_id<=0.or.request%analysis_id<=0.or.request%attempt_no<=0) go to 900
     if(request%phase<1.or.request%phase>3.or.request%source<0.or.request%source>1) go to 900
-    if(audio%sample_count<1.or.audio%sample_count>180000) go to 900
+    analysis_samples=analysis_extent(request%mode)
+    if(audio%sample_count<1.or.audio%sample_count>analysis_samples) go to 900
     if(.not.c_associated(audio%samples)) go to 900
     if(request%mode==engine_mode_ft4) then
-       if(audio%sample_count>72576.or.request%phase==1) go to 900
+       if(request%phase==1) go to 900
        if(request%ft4%search_low_hz<0.or.request%ft4%search_high_hz>6000.or. &
             request%ft4%search_low_hz>request%ft4%search_high_hz) go to 900
        if(request%ft4%depth<1.or.request%ft4%depth>3) go to 900
        if(request%ft4%qso_progress<0.or.request%ft4%qso_progress>5) go to 900
        if(request%ft4%contest<0.or.request%ft4%contest>7) go to 900
        if(request%ft4%cq_only<0.or.request%ft4%cq_only>1) go to 900
+    else if(request%mode==engine_mode_jt9) then
+       if(request%phase==1) go to 900
+       if(request%jt9%search_low_hz<0.or.request%jt9%search_high_hz>5000.or. &
+            request%jt9%search_low_hz>request%jt9%search_high_hz) go to 900
+       if(request%jt9%receive_frequency_hz<0.or.request%jt9%receive_frequency_hz>5000) go to 900
+       if(request%jt9%tolerance_hz<0.or.request%jt9%tolerance_hz>5000) go to 900
+       if(request%jt9%depth<1.or.request%jt9%depth>3) go to 900
+       if(request%jt9%submode<0.or.request%jt9%submode>7) go to 900
     else
        if(request%ft8%search_low_hz<0.or.request%ft8%search_high_hz>6000.or. &
             request%ft8%search_low_hz>request%ft8%search_high_hz) go to 900
@@ -215,6 +255,10 @@ contains
     if(session%input_id/=0.and.session%input_mode/=request%mode) go to 900
     if(session%analysis_id==request%analysis_id.and.request%attempt_no<=session%last_attempt) go to 900
 
+    if(size(session%audio)<analysis_samples) then
+       deallocate(session%audio)
+       allocate(session%audio(analysis_samples))
+    endif
     session%running=.true.
     session%request=request
     session%input_id=request%input_id
@@ -225,18 +269,21 @@ contains
     session%user=user
     session%render_legacy=render
     session%emitted=0
-    session%audio=0
     call c_f_pointer(audio%samples,samples,[audio%sample_count])
     session%audio(1:audio%sample_count)=samples
+    session%audio(audio%sample_count+1:analysis_samples)=0
     context%sink=>collect_observation
     context%superfox_sink=>collect_superfox
     context%sink_user=handle
     context%render_legacy=render
     if(request%mode==engine_mode_ft4) then
        call run_ft4_attempt(request%ft4,request%phase,context,progress)
+    else if(request%mode==engine_mode_jt9) then
+       call run_jt9_attempt(request%jt9,request%phase,audio%sample_count,context,progress)
     else
        call request_to_params(request,audio%sample_count,params)
-       call run_ft8_kernel(session%kernel,session%knowledge,session%audio,params,session%completion,progress,context)
+       call run_ft8_kernel(session%kernel,session%knowledge,session%audio(:180000), &
+            params,session%completion,progress,context)
     endif
     outcome%observation_count=session%emitted
     outcome%retained_count=session%retained
@@ -248,30 +295,35 @@ contains
 900 outcome%status=status
   end function
 
+  subroutine open_legacy_output(phase,ios)
+    integer, intent(in) :: phase
+    integer, intent(out) :: ios
+    integer :: tries
+
+    do tries=1,4
+       if(phase==3) then
+          open(13,file=trim(temp_dir)//'/decoded.txt',status='unknown',position='append',iostat=ios)
+       else
+          open(13,file=trim(temp_dir)//'/decoded.txt',status='unknown',iostat=ios)
+       endif
+       if(ios==0) exit
+       if(tries<4) call sleep_msec(10)
+    enddo
+  end subroutine open_legacy_output
+
   subroutine run_ft4_attempt(options,phase,callback_context,progress)
     type(ft4_options), intent(in) :: options
     integer, intent(in) :: phase,progress
     type(decoder_callback_context), intent(in) :: callback_context
     type(decoder_callback_context) :: context
     character(len=12) :: mycall,hiscall
-    integer :: tries
 
     context=callback_context
     context%nutc=options%utc
     context%nfqso=options%receive_frequency_hz
     context%ncontest=options%contest
     context%ios13=-1
-    if(context%render_legacy) then
-       do tries=1,4
-          if(phase==3) then
-             open(13,file=trim(temp_dir)//'/decoded.txt',status='unknown',position='append',iostat=context%ios13)
-          else
-             open(13,file=trim(temp_dir)//'/decoded.txt',status='unknown',iostat=context%ios13)
-          endif
-          if(context%ios13==0) exit
-          if(tries<4) call sleep_msec(10)
-       enddo
-    endif
+    if(context%render_legacy) call open_legacy_output(phase,context%ios13)
     session%ft4%context=context
     session%ft4%decoded=0
     mycall=transfer(options%mycall,mycall)
@@ -286,6 +338,31 @@ contains
     call set_decode_completion(session%completion,0,session%ft4%decoded,0)
     call write_decode_progress(progress)
     if(context%ios13==0) close(13)
+  end subroutine
+
+  subroutine run_jt9_attempt(options,phase,sample_count,callback_context,progress)
+    type(jt9_options), intent(in) :: options
+    integer, intent(in) :: phase,sample_count,progress
+    type(decoder_callback_context), intent(in) :: callback_context
+    type(decoder_callback_context) :: context
+
+    context=callback_context
+    context%nutc=options%utc
+    context%nfqso=options%receive_frequency_hz
+    context%submode=options%submode
+    context%ios13=-1
+    session%jt9%decoded=0
+    if(sqrt(sum(real(session%audio(:sample_count))**2)/real(sample_count))<0.5) go to 100
+    if(context%render_legacy) call open_legacy_output(phase,context%ios13)
+    session%jt9%context=context
+    call timer('decjt9  ',0)
+    call session%jt9%decode_pcm(jt9_decoded,session%audio,sample_count,options%receive_frequency_hz, &
+         options%search_low_hz,options%search_high_hz,options%tolerance_hz,options%depth, &
+         options%submode,phase==3)
+    call timer('decjt9  ',1)
+    if(context%ios13==0) close(13)
+100 call set_decode_completion(session%completion,0,session%jt9%decoded,0)
+    call write_decode_progress(progress)
   end subroutine
 
   subroutine collect_observation(user,observation)
@@ -344,6 +421,7 @@ contains
     status=invalid
     if(input_id<=0.or.session%input_id/=input_id) return
     call release_ft8_input(session%kernel)
+    call session%jt9%release_input()
     session%audio=0
     session%input_id=0
     session%input_mode=0
@@ -362,6 +440,7 @@ contains
     if(session%running) return
     call reset_ft8_kernel(session%kernel)
     call session%ft4%reset()
+    call session%jt9%reset()
     call reset_pack77_state(session%knowledge)
     session%audio=0
     session%input_id=0
@@ -479,7 +558,7 @@ contains
     endif
     if(input_id<=0.or.analysis_id<=0) then
        if(session%input_id==0.or.params%nutc/=fallback_utc.or.session%input_mode/=params%nmode.or. &
-            (params%nmode==engine_mode_ft4.and..not.params%nagain).or. &
+            ((params%nmode==engine_mode_ft4.or.params%nmode==engine_mode_jt9).and..not.params%nagain).or. &
             (params%nzhsym==41.and..not.params%nagain)) then
           fallback_input=fallback_input+1
           fallback_analysis=fallback_analysis+1
@@ -513,6 +592,14 @@ contains
        request%ft4%contest=iand(params%nexp_decode,7)
        request%ft4%mycall=params%mycall
        request%ft4%hiscall=params%hiscall
+    else if(request%mode==engine_mode_jt9) then
+       request%jt9%utc=params%nutc
+       request%jt9%receive_frequency_hz=params%nfqso
+       request%jt9%search_low_hz=params%nfa
+       request%jt9%search_high_hz=params%nfb
+       request%jt9%tolerance_hz=params%ntol
+       request%jt9%depth=iand(params%ndepth,7)
+       request%jt9%submode=params%nsubmode
     else
        request%ft8%reuse_spectrum=merge(0,1,params%newdat)
        request%ft8%half_symbol_stage=params%nzhsym
@@ -566,11 +653,12 @@ contains
        request%ft8%hisgrid=params%hisgrid
     endif
     audio%samples=c_loc(id2(1))
-    audio%sample_count=min(180000,valid_samples)
-    if(valid_samples<=0.and.input_id<=0) audio%sample_count=180000
-    if(request%mode==engine_mode_ft4) then
-       audio%sample_count=min(audio%sample_count,72576)
-    else
+    audio%sample_count=min(analysis_extent(request%mode),valid_samples)
+    if(valid_samples<=0.and.input_id<=0) then
+       audio%sample_count=analysis_extent(request%mode)
+       if(request%mode==engine_mode_jt9) audio%sample_count=624000
+    endif
+    if(request%mode==engine_mode_ft8) then
        if(params%lmultift8.and..not.(iand(params%nexp_decode,7)==7.and. &
             params%b_superfox.and.params%b_even_seq)) &
             audio%sample_count=min(audio%sample_count,params%nzhsym*3456)
@@ -606,14 +694,13 @@ contains
   end subroutine report_host_rejection
 end module decoder_engine
 
-subroutine run_decoder_engine(ss,id2,params,nfsample,completion,progress_generation, &
+subroutine run_decoder_engine(id2,params,nfsample,completion,progress_generation, &
      input_id,analysis_id,attempt_no,valid_samples)
-  use, intrinsic :: iso_c_binding, only: c_short,c_int,c_int64_t,c_float
+  use, intrinsic :: iso_c_binding, only: c_short,c_int,c_int64_t
   use decoder_engine, only: engine_host_decode
   use ft8_engine_kernel, only: params_block
   use decode_completion_module, only: decode_completion_result
   implicit none
-  real(c_float), intent(in) :: ss(*)
   integer(c_short), target, intent(in) :: id2(*)
   type(params_block), intent(in) :: params
   integer(c_int), intent(in) :: nfsample,progress_generation,attempt_no,valid_samples

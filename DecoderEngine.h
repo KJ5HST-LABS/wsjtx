@@ -6,8 +6,8 @@ extern "C" {
 #endif
 
 typedef void *decoder_engine_handle;
-enum { DECODER_ENGINE_ABI = 3, DECODER_MODE_FT4 = 5, DECODER_MODE_FT8 = 8 };
-enum { DECODER_SUPPORT_FT8 = 1, DECODER_SUPPORT_FT4 = 2 };
+enum { DECODER_ENGINE_ABI = 4, DECODER_MODE_FT4 = 5, DECODER_MODE_FT8 = 8, DECODER_MODE_JT9 = 9 };
+enum { DECODER_SUPPORT_FT8 = 1, DECODER_SUPPORT_FT4 = 2, DECODER_SUPPORT_JT9 = 4 };
 enum { DECODER_OK = 0, DECODER_INVALID = 1, DECODER_BUSY = 2,
        DECODER_UNSUPPORTED = 3, DECODER_CAPACITY = 4 };
 enum { DECODER_PHASE_EARLY = 1, DECODER_PHASE_NORMAL = 2, DECODER_PHASE_REPEAT = 3 };
@@ -95,18 +95,32 @@ typedef struct {
   char hiscall[12];
 } decoder_ft4_options;
 
-/* Only the options for mode are read. EARLY is an FT8 phase; FT4 uses
+/* Slow JT9A-H use one-minute periods; submode 0..7 selects A..H.
+   Decoding spectra are prepared internally, independently of display settings. */
+typedef struct {
+  int32_t utc;
+  int32_t receive_frequency_hz;
+  int32_t search_low_hz;
+  int32_t search_high_hz;
+  int32_t tolerance_hz;
+  int32_t depth;
+  int32_t submode;
+} decoder_jt9_options;
+
+/* Only the options for mode are read. EARLY is an FT8 phase; FT4 and JT9 use
    NORMAL or REPEAT. Mode support is reported by supported_modes. */
 typedef struct {
   int64_t input_id, analysis_id;
   int32_t attempt_no, mode, phase, source;
   decoder_ft8_options ft8;
   decoder_ft4_options ft4;
+  decoder_jt9_options jt9;
 } decoder_attempt_request;
 
 /* Borrowed read-only mono signed PCM. Only sample_count samples are read.
-   Both modes accept 12000 Hz. FT8 accepts 1..180000 samples;
+   All modes accept 12000 Hz. FT8 accepts 1..180000 samples;
    FT4 accepts 1..72576 samples (its analysis window within a 7.5-second period).
+   Slow JT9 accepts 1..720000 samples (a one-minute period).
    Short inputs are zero-padded. Release input before changing its identity or mode. */
 typedef struct {
   const int16_t *samples;
@@ -143,9 +157,18 @@ typedef struct {
   int32_t kind, child_index;
 } decoder_superfox_evidence;
 
+/* Drift is quantized by the JT9A estimator to 12000/16384 Hz over
+   its 48.96-second analysis span, then expressed here in Hz/minute.
+   JT9B-H do not estimate drift and leave has_drift zero. */
+typedef struct {
+  int32_t has_drift;
+  float drift_hz_per_minute;
+} decoder_jt9_result;
+
 /* dt_seconds retains the mode's operator-facing DT convention. Use the
    evidence's waveform_start_seconds for reconstruction when available.
-   mode and variant select ft8, ft4, or superfox; inactive records are zero.
+   mode and variant select ft8, ft4, superfox, or jt9; inactive records are zero.
+   JT9 variant is its submode (0..7 for A..H); JT9 has no 77-bit evidence.
    Availability flags and payload_origin govern fields in the active record. */
 typedef struct {
   int64_t input_id, analysis_id;
@@ -156,6 +179,7 @@ typedef struct {
   decoder_ft8_evidence ft8;
   decoder_ft4_evidence ft4;
   decoder_superfox_evidence superfox;
+  decoder_jt9_result jt9;
 } decoder_observation;
 
 typedef struct {
