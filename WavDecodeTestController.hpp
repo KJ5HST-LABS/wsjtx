@@ -1,5 +1,5 @@
-#ifndef JT9_WAV_TEST_CONTROLLER_HPP__
-#define JT9_WAV_TEST_CONTROLLER_HPP__
+#ifndef WAV_DECODE_TEST_CONTROLLER_HPP__
+#define WAV_DECODE_TEST_CONTROLLER_HPP__
 
 #include <QObject>
 #include <QString>
@@ -7,11 +7,13 @@
 
 class MainWindow;
 
-class Jt9WavTestController final : public QObject
+class WavDecodeTestController final : public QObject
 {
 public:
-  Jt9WavTestController (MainWindow * window, QString wavPath,
-                        QString expectedMessage, QObject * parent = nullptr);
+  enum class Mode {Jt9, Jt65};
+
+  WavDecodeTestController (MainWindow * window, QString wavPath,
+                           QString expectedMessage, Mode mode, QObject * parent = nullptr);
   void begin ();
   bool succeeded () const {return m_succeeded;}
 
@@ -21,6 +23,8 @@ private:
   void finish (QString const& error = {});
 
   MainWindow * m_window;
+  Mode m_mode;
+  QString m_modeName;
   QString m_wavPath;
   QString m_expectedMessage;
   QTimer m_timeout;

@@ -1,3 +1,11 @@
+if (NOT DEFINED MODE)
+  set (MODE JT9)
+endif ()
+if (NOT MODE STREQUAL "JT9" AND NOT MODE STREQUAL "JT65")
+  message (FATAL_ERROR "MODE must be JT9 or JT65")
+endif ()
+string (TOLOWER "${MODE}" mode_option)
+
 foreach (required_variable WSJTX SAMPLE EXPECTED_MESSAGE WORK_DIR)
   if (NOT DEFINED ${required_variable} OR "${${required_variable}}" STREQUAL "")
     message (FATAL_ERROR "${required_variable} is required")
@@ -5,7 +13,7 @@ foreach (required_variable WSJTX SAMPLE EXPECTED_MESSAGE WORK_DIR)
 endforeach ()
 
 string (RANDOM LENGTH 12 ALPHABET 0123456789abcdef run_id)
-set (rig_name "CTEST-JT9-WAV-${run_id}")
+set (rig_name "CTEST-${MODE}-WAV-${run_id}")
 set (ipc_dir "${WORK_DIR}-ipc")
 file (REMOVE_RECURSE "${WORK_DIR}" "${ipc_dir}")
 file (MAKE_DIRECTORY
@@ -18,7 +26,7 @@ set (wsjtx_environment
   "XDG_CONFIG_HOME=${WORK_DIR}/config"
   "XDG_DATA_HOME=${WORK_DIR}/data"
   "XDG_CACHE_HOME=${WORK_DIR}/cache"
-  "WSJT_QMAP_SHARED_MEMORY_KEY=mem_qmap-test_wsjtx_jt9_wav")
+  "WSJT_QMAP_SHARED_MEMORY_KEY=mem_qmap-test_wsjtx_${mode_option}_wav")
 if (NOT APPLE)
   list (APPEND wsjtx_environment "TMPDIR=${ipc_dir}")
 endif ()
@@ -35,8 +43,8 @@ execute_process (
     ${wsjtx_environment}
     "${WSJTX}"
     --test-mode
-    --jt9-wav-test "${SAMPLE}"
-    --jt9-wav-expected "${EXPECTED_MESSAGE}"
+    --${mode_option}-wav-test "${SAMPLE}"
+    --${mode_option}-wav-expected "${EXPECTED_MESSAGE}"
     --rig-name "${rig_name}"
   WORKING_DIRECTORY "${WORK_DIR}"
   TIMEOUT 75
@@ -47,9 +55,9 @@ file (WRITE "${WORK_DIR}/stdout.log" "${wsjtx_stdout}")
 file (WRITE "${WORK_DIR}/stderr.log" "${wsjtx_stderr}")
 if (NOT wsjtx_result STREQUAL "0")
   message (FATAL_ERROR
-    "WSJT-X JT9 WAV test failed with exit code ${wsjtx_result}\n"
+    "WSJT-X ${MODE} WAV test failed with exit code ${wsjtx_result}\n"
     "stdout:\n${wsjtx_stdout}\n"
     "stderr:\n${wsjtx_stderr}")
 endif ()
 
-message (STATUS "WSJT-X JT9 WAV decode and repeat passed")
+message (STATUS "WSJT-X ${MODE} WAV decode and repeat passed")

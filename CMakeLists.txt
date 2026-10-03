@@ -707,6 +707,19 @@ if (WSJT_ENABLE_TESTS)
     COMMAND ${CMAKE_COMMAND} -DJT9=$<TARGET_FILE:jt9>
             -P ${CMAKE_SOURCE_DIR}/tests/unit/jt9/test_jt9_cli_validation.cmake)
 
+  find_package (Python3 COMPONENTS Interpreter QUIET)
+  if (Python3_Interpreter_FOUND)
+    add_test (NAME test_jt65_stream
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/tests/integration/jt65/check_stream.py
+        $<TARGET_FILE:jt9>
+        ${CMAKE_SOURCE_DIR}/test/wav_to_stream_harness.py
+        ${CMAKE_BINARY_DIR}/tests/unit/decoder_engine/jt65-engine.wav
+        ${CMAKE_BINARY_DIR}/Testing/Jt65Stream)
+    set_tests_properties (test_jt65_stream PROPERTIES
+      FIXTURES_REQUIRED jt65_engine_wav TIMEOUT 75 LABELS "decoder;jt65;integration")
+  endif ()
+
   # Golden output is pinned to the required GNU/Linux x86-64 decoder path.
   if (EXISTS "${CMAKE_SOURCE_DIR}/samples" AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
       CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
@@ -1235,13 +1248,27 @@ if (WSJT_ENABLE_TESTS AND WSJT_ENABLE_GUI_SMOKE_TESTS
       "-DSAMPLE=${CMAKE_SOURCE_DIR}/samples/JT9/130418_1742.wav"
       "-DEXPECTED_MESSAGE=JA1KAU PD0JAC -23"
       "-DWORK_DIR=${CMAKE_BINARY_DIR}/Testing/Jt9Wav"
-      -P ${CMAKE_SOURCE_DIR}/tests/integration/jt9/run_wav_gui.cmake)
+      -P ${CMAKE_SOURCE_DIR}/tests/integration/decoder_engine/run_wav_gui.cmake)
   set_tests_properties (test_wsjtx_jt9_wav PROPERTIES
     LABELS "gui;decoder;jt9;integration"
     PROCESSORS 1
     TIMEOUT 90)
+  add_test (
+    NAME test_wsjtx_jt65_wav
+    COMMAND ${CMAKE_COMMAND}
+      "-DWSJTX=$<TARGET_FILE:wsjtx>"
+      "-DMODE=JT65"
+      "-DSAMPLE=${CMAKE_BINARY_DIR}/tests/unit/decoder_engine/jt65-engine.wav"
+      "-DEXPECTED_MESSAGE=K1ABC W9XYZ FN42"
+      "-DWORK_DIR=${CMAKE_BINARY_DIR}/Testing/Jt65Wav"
+      -P ${CMAKE_SOURCE_DIR}/tests/integration/decoder_engine/run_wav_gui.cmake)
+  set_tests_properties (test_wsjtx_jt65_wav PROPERTIES
+    FIXTURES_REQUIRED jt65_engine_wav
+    LABELS "gui;decoder;jt65;integration"
+    PROCESSORS 1
+    TIMEOUT 90)
   if (WSJT_ENABLE_TSAN)
-    set_tests_properties (test_wsjtx_jt9_wav PROPERTIES
+    set_tests_properties (test_wsjtx_jt9_wav test_wsjtx_jt65_wav PROPERTIES
       ENVIRONMENT "TSAN_OPTIONS=${wsjt_tsan_gui_options}")
   endif ()
 

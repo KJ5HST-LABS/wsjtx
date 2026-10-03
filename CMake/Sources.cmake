@@ -222,7 +222,7 @@ if (WSJT_ENABLE_TESTS)
     Audio/FixtureSoundOutput.cpp
     Ft8TxLoopbackTestController.cpp
     JttyTxLoopbackTestController.cpp
-    Jt9WavTestController.cpp
+    WavDecodeTestController.cpp
     LiveAudioTestController.cpp
     ReceiveHandoffTestController.cpp
     )

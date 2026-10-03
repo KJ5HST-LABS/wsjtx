@@ -236,7 +236,7 @@ public:
   static constexpr int liveAudioTestDecodeLowFrequency () {return 200;}
   static constexpr int liveAudioTestDecodeHighFrequency () {return 3000;}
   bool configureLiveAudioTestDecodeRange ();
-  bool startJt9WavTest (QString const& path);
+  bool startWavDecodeTest (QString const& path);
   bool prepareLiveAudioTestFt8InputCompletion ();
   QString completeLiveAudioTestFt8Input (qint64 frames);
   bool configureLiveAudioTestHandoff ();
