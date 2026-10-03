@@ -91,8 +91,6 @@ private slots:
 
   void spotTimeIsIndependentOfLocale()
   {
-    // The old code went through a "yyyy MMM dd" month name, which failed on
-    // non-English Windows and sent an empty date.
     QDateTime const now {QDate {2026, 9, 30}, QTime {18, 7, 10}, Qt::UTC};
     auto const previous = QLocale {};
     for (auto const name : {"cs_CZ", "es_AR", "hu_HU", "fr_FR", "de_DE", "zh_TW", "ru_RU"}) {
