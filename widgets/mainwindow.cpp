@@ -5512,6 +5512,22 @@ void MainWindow::decode (Ft8MtdDecodeCoordinator::Stage ft8Stage,
 }
 
 #if defined (WSJT_ENABLE_LIVE_AUDIO_TEST)
+bool MainWindow::startJt9WavTest (QString const& path)
+{
+  if (!m_automated_test || !m_config.is_dummy_rig ()
+      || m_mode != QStringLiteral ("JT9")
+      || m_nSubMode != 0 || m_bFast9 || m_bFastMode || m_TRperiod != 60.0
+      || decoderBusy () || !decoderBackendRunning ()
+      || !ui->actionOpen->isEnabled () || m_wav_load_coordinator.isLoading ())
+    return false;
+  monitor (false);
+  m_path = path;
+  m_diskData = true;
+  on_stopButton_clicked ();
+  read_wav_file (path);
+  return true;
+}
+
 bool MainWindow::configureLiveAudioTestDecodeRange ()
 {
   // FT8's 1500/2048 Hz bins make 956 pixels at 4 bins/pixel span 200-3000 Hz.

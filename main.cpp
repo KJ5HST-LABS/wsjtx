@@ -64,6 +64,7 @@
 #include "Audio/FixtureSoundOutput.hpp"
 #include "Ft8TxLoopbackTestController.hpp"
 #include "JttyTxLoopbackTestController.hpp"
+#include "Jt9WavTestController.hpp"
 #include "LiveAudioTestController.hpp"
 #include "ReceiveHandoffTestController.hpp"
 #include <QAudioFormat>
@@ -298,6 +299,7 @@ int main(int argc, char *argv[])
   bool jtty_tx_loopback_test {false};
   bool ft8_tx_loopback_test {false};
   bool receive_handoff_test {false};
+  bool jt9_wav_test {false};
   unsigned test_audio_speed {1};
 #endif
   try
@@ -396,6 +398,14 @@ int main(int argc, char *argv[])
         QStringList {} << "receive-handoff-test",
         "Backlog two synthetic periods at the MainWindow receive boundary.");
       parser.addOption (receive_handoff_test_option);
+      QCommandLineOption jt9_wav_test_option (
+        QStringList {} << "jt9-wav-test",
+        "Decode a JT9 WAV through the application and repeat the decode.", "wav-path");
+      parser.addOption (jt9_wav_test_option);
+      QCommandLineOption jt9_wav_expected_option (
+        QStringList {} << "jt9-wav-expected",
+        "Message that must appear during both JT9 WAV decodes.", "message");
+      parser.addOption (jt9_wav_expected_option);
       QCommandLineOption test_audio_speed_option (
         QStringList {} << "test-audio-speed",
         "JTTY fixture delivery speed (integer 1 through 4).", "factor", "1");
@@ -428,6 +438,7 @@ int main(int argc, char *argv[])
       jtty_tx_loopback_test = parser.isSet (jtty_tx_loopback_test_option);
       ft8_tx_loopback_test = parser.isSet (ft8_tx_loopback_test_option);
       receive_handoff_test = parser.isSet (receive_handoff_test_option);
+      jt9_wav_test = parser.isSet (jt9_wav_test_option);
       bool audio_speed_valid {false};
       test_audio_speed = parser.value (test_audio_speed_option).toUInt (&audio_speed_valid);
       if (!audio_speed_valid || test_audio_speed < 1 || test_audio_speed > 4
@@ -452,13 +463,20 @@ int main(int argc, char *argv[])
                        "must be used together" << std::endl;
           return EXIT_FAILURE;
         }
+      if (jt9_wav_test != parser.isSet (jt9_wav_expected_option)
+          || (jt9_wav_test && parser.value (jt9_wav_expected_option).trimmed ().isEmpty ()))
+        {
+          std::cerr << "--jt9-wav-test and a nonempty --jt9-wav-expected must be used together"
+                    << std::endl;
+          return EXIT_FAILURE;
+        }
       if ((startup_smoke_test ? 1 : 0) + (live_audio_test ? 1 : 0)
           + (jtty_live_audio_test ? 1 : 0)
           + (jtty_tx_loopback_test ? 1 : 0)
           + (ft8_tx_loopback_test ? 1 : 0)
-          + (receive_handoff_test ? 1 : 0) > 1)
+          + (receive_handoff_test ? 1 : 0) + (jt9_wav_test ? 1 : 0) > 1)
         {
-          std::cerr << "Startup, live-audio, and TX loopback tests are mutually exclusive"
+          std::cerr << "Startup, audio, WAV, and receive-handoff tests are mutually exclusive"
                     << std::endl;
           return EXIT_FAILURE;
         }
@@ -477,7 +495,7 @@ int main(int argc, char *argv[])
         }
       automated_test = startup_smoke_test || live_audio_test
         || jtty_live_audio_test || jtty_tx_loopback_test || ft8_tx_loopback_test
-        || receive_handoff_test;
+        || receive_handoff_test || jt9_wav_test;
 #else
       automated_test = startup_smoke_test;
 #endif
@@ -891,6 +909,7 @@ int main(int argc, char *argv[])
 #ifdef WSJT_ENABLE_LIVE_AUDIO_TEST
           std::unique_ptr<LiveAudioTestController> live_audio_controller;
           std::unique_ptr<ReceiveHandoffTestController> receive_handoff_controller;
+          std::unique_ptr<Jt9WavTestController> jt9_wav_controller;
           std::unique_ptr<JttyTxLoopbackTestController> jtty_tx_controller;
           std::unique_ptr<Ft8TxLoopbackTestController> ft8_tx_controller;
           if (live_audio_test || jtty_live_audio_test)
@@ -908,6 +927,15 @@ int main(int argc, char *argv[])
                                   [controller] {
                                     controller->begin ();
                                   });
+            }
+          if (jt9_wav_test)
+            {
+              a.setQuitOnLastWindowClosed (false);
+              jt9_wav_controller.reset (new Jt9WavTestController {
+                &w, parser.value (jt9_wav_test_option),
+                parser.value (jt9_wav_expected_option)});
+              auto * controller = jt9_wav_controller.get ();
+              QTimer::singleShot (0, controller, [controller] { controller->begin (); });
             }
           if (receive_handoff_test)
             {
@@ -989,6 +1017,11 @@ int main(int argc, char *argv[])
             }
           if (ft8_tx_loopback_test
               && (!ft8_tx_controller || !ft8_tx_controller->succeeded ()))
+            {
+              result = EXIT_FAILURE;
+            }
+          if (jt9_wav_test
+              && (!jt9_wav_controller || !jt9_wav_controller->succeeded ()))
             {
               result = EXIT_FAILURE;
             }

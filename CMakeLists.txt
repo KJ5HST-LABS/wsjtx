@@ -1225,6 +1225,23 @@ if (WSJT_ENABLE_TESTS AND WSJT_ENABLE_GUI_SMOKE_TESTS
         AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")))
   add_dependencies (wsjtx sjtty)
 
+  add_test (
+    NAME test_wsjtx_jt9_wav
+    COMMAND ${CMAKE_COMMAND}
+      "-DWSJTX=$<TARGET_FILE:wsjtx>"
+      "-DSAMPLE=${CMAKE_SOURCE_DIR}/samples/JT9/130418_1742.wav"
+      "-DEXPECTED_MESSAGE=JA1KAU PD0JAC -23"
+      "-DWORK_DIR=${CMAKE_BINARY_DIR}/Testing/Jt9Wav"
+      -P ${CMAKE_SOURCE_DIR}/tests/integration/jt9/run_wav_gui.cmake)
+  set_tests_properties (test_wsjtx_jt9_wav PROPERTIES
+    LABELS "gui;decoder;jt9;integration"
+    PROCESSORS 1
+    TIMEOUT 90)
+  if (WSJT_ENABLE_TSAN)
+    set_tests_properties (test_wsjtx_jt9_wav PROPERTIES
+      ENVIRONMENT "TSAN_OPTIONS=${wsjt_tsan_gui_options}")
+  endif ()
+
   set (live_test "test_wsjtx_live_audio_jtty")
   set (loopback_test "test_wsjtx_jtty_tx_loopback")
   set (wsjtx_jtty_tests ${live_test} ${loopback_test})

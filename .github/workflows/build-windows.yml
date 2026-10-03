@@ -293,7 +293,8 @@ jobs:
           import xml.etree.ElementTree as ET
 
           root = ET.parse('ctest-results.xml').getroot()
-          for name in ('test_wsjtx_live_audio_jtty', 'test_wsjtx_jtty_tx_loopback'):
+          for name in ('test_wsjtx_live_audio_jtty', 'test_wsjtx_jtty_tx_loopback',
+                       'test_wsjtx_jt9_wav'):
               test = root.find(f".//testcase[@name='{name}']")
               if test is None or test.find('failure') is not None or test.find('skipped') is not None:
                   raise SystemExit(f'{name} was not executed successfully')

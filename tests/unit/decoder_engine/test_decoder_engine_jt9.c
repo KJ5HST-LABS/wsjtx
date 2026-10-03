@@ -65,9 +65,17 @@ static void observe(const decoder_observation *record, void *opaque)
     CHECK(isfinite(record->jt9.drift_hz_per_minute));
     if (record->jt9.has_drift) CHECK(fabsf(record->jt9.drift_hz_per_minute) < 2.0f);
     if (f->compare_reference) {
+      /* FFT layout roundoff is amplified by wide-mode sync normalization. */
+      const float sync_tolerance = 0.001f + 0.0001f * fabsf(f->reference[2]);
+      if (fabsf(record->sync - f->reference[2]) >= sync_tolerance) {
+        fprintf(stderr, "JT9%c input %lld attempt %d: sync %.9g, reference %.9g, difference %.9g, tolerance %.9g\n",
+                'A' + f->request.jt9.submode, (long long)f->request.input_id,
+                f->request.attempt_no, record->sync, f->reference[2],
+                record->sync - f->reference[2], sync_tolerance);
+      }
       CHECK(fabsf(record->frequency_hz - f->reference[0]) < 0.001f);
       CHECK(fabsf(record->dt_seconds - f->reference[1]) < 0.001f);
-      CHECK(fabsf(record->sync - f->reference[2]) < 0.001f);
+      CHECK(fabsf(record->sync - f->reference[2]) < sync_tolerance);
       CHECK(record->snr_db == (int)f->reference[3]);
     }
   }
