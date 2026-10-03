@@ -525,6 +525,11 @@ auto FrequencyList_v2_101::frequency_list () const -> FrequencyItems const&
   return m_->frequency_list_;
 }
 
+auto FrequencyList_v2_101::default_items () -> FrequencyItems const&
+{
+  return default_frequency_list;
+}
+
 auto FrequencyList_v2_101::frequency_list (QModelIndexList const& model_index_list) const -> FrequencyItems
 {
   FrequencyItems list;

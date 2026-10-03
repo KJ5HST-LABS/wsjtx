@@ -113,6 +113,7 @@ public:
   // Load and store underlying items
   FrequencyItems frequency_list (FrequencyItems);
   FrequencyItems const& frequency_list () const;
+  static FrequencyItems const& default_items ();
   FrequencyItems frequency_list (QModelIndexList const&) const;
   void frequency_list_merge (FrequencyItems const&);
   void to_json_file(QFile *, QString, QString, FrequencyItems const&);

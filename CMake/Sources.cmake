@@ -15,6 +15,7 @@ set (wsjt_qt_CXXSRCS
   helper_functions.cpp
   qt_helpers.cpp
   widgets/MessageBox.cpp
+  widgets/SuggestedFrequenciesDialog.cpp
   MetaDataRegistry.cpp
   Network/NetworkServerLookup.cpp
   Network/DecodedTime.cpp
@@ -28,6 +29,7 @@ set (wsjt_qt_CXXSRCS
   models/Bands.cpp
   models/Modes.cpp
   models/FrequencyList.cpp
+  models/FrequencySuggestions.cpp
   models/StationList.cpp
   widgets/FrequencyLineEdit.cpp
   widgets/FrequencyDeltaLineEdit.cpp
