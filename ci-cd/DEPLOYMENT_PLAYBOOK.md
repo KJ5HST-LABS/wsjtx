@@ -68,7 +68,7 @@ Understanding the architecture will help you debug issues during deployment.
 │                                    manual run selects broader platform coverage.
 │
 ├── build-macos.yml              ← Reusable workflow (workflow_call).
-│                                    macOS build (arm64 or x86_64); Developer ID
+│                                    macOS arm64 build; Developer ID
 │                                    signing and notarization require credentials.
 │
 ├── build-linux.yml              ← Reusable workflow (workflow_call).
@@ -155,7 +155,6 @@ Each approved public `v*` tag yields one installer per target plus a source tarb
 | Artifact | Produced by | Format |
 |----------|-------------|--------|
 | `wsjtx-<ver>-arm64-macOS.pkg` | `build-macos.yml` (arm64 leg) | Hosted Developer ID signing, or a validated package for manual replacement |
-| `wsjtx-<ver>-x86_64-macOS.pkg` | `build-macos.yml` (x86_64 leg) | Hosted Developer ID signing, or a validated package for manual replacement |
 | `wsjtx-<ver>-linux-x86_64.AppImage` | `build-linux.yml` (x86_64 leg) | Portable AppImage |
 | `wsjtx-<ver>-linux-aarch64.AppImage` | `build-linux.yml` (aarch64 leg) | Portable AppImage |
 | `wsjtx-<ver>-linux-armhf.AppImage` | `build-linux.yml` (armhf leg) | Portable AppImage |
@@ -165,7 +164,7 @@ Each approved public `v*` tag yields one installer per target plus a source tarb
 | `wsjtx-<ver>-win64.exe` | `build-windows.yml` | SignPath Foundation Authenticode for both public RC and GA |
 | `wsjtx-<ver>-src.tar.gz` | Public release workflow | Source tarball from the public tag |
 
-The project-created source tarball is assembled from the public tag. GitHub also generates its own zip and tar.gz source archives for that tag; they contain the tagged tree but may have different compressed hashes. `SHA256SUMS` covers immutable payload assets uploaded by the workflow. In manual macOS signing mode it excludes the two replaceable `.pkg` files, which the release manifest identifies separately. The manifest also records the tag, source commit, workflow run, and builder provenance. Checksums detect changed bytes; platform signatures establish signer identity and must be verified separately.
+The project-created source tarball is assembled from the public tag. GitHub also generates its own zip and tar.gz source archives for that tag; they contain the tagged tree but may have different compressed hashes. `SHA256SUMS` covers immutable payload assets uploaded by the workflow. In manual macOS signing mode it excludes the replaceable `.pkg` file, which the release manifest identifies separately. The manifest also records the tag, source commit, workflow run, and builder provenance. Checksums detect changed bytes; platform signatures establish signer identity and must be verified separately.
 
 ### All-Platforms-Ready Gate
 
@@ -176,7 +175,6 @@ The gate checks for one installer per platform:
 | Platform | Expected artifact pattern |
 |----------|---------------------------|
 | macOS arm64 | Hosted-signing artifact, or `artifacts/wsjtx-<ver>-arm64-macOS-unsigned.pkg/*.pkg` in manual mode |
-| macOS x86_64 | Hosted-signing artifact, or `artifacts/wsjtx-<ver>-x86_64-macOS-unsigned.pkg/*.pkg` in manual mode |
 | Linux x86_64 | `artifacts/wsjtx-<ver>-linux-x86_64-AppImage/*.AppImage` |
 | Linux aarch64 | `artifacts/wsjtx-<ver>-linux-aarch64-AppImage/*.AppImage` |
 | Linux armhf | `artifacts/wsjtx-<ver>-linux-armhf-AppImage/*.AppImage` |
@@ -424,7 +422,7 @@ The environment inventory must contain both certificate identities and the API-k
 
 Also configure the public workflow's non-secret expected Apple Team ID and SHA-1 fingerprints for the Application and Installer certificates. These are identifiers, not private-key material; the distribution job uses them to reject a valid but unintended identity.
 
-Set repository variable `MACOS_DISTRIBUTION_SIGNING_ENABLED=false` until the full environment is configured and tested. In that state the workflow publishes validated unsigned packages under the stable release filenames so a release manager can replace them manually. The manifest identifies those two packages as replaceable and excludes them from immutable hashes; workflow reruns preserve existing packages by name. Set the variable to `true` only after both architectures complete signing, notarization, stapling, identity, entitlement, and Gatekeeper verification. Distribution mode fails closed if any credential is absent.
+Set repository variable `MACOS_DISTRIBUTION_SIGNING_ENABLED=false` until the full environment is configured and tested. In that state the workflow publishes validated unsigned packages under the stable release filenames so a release manager can replace them manually. The manifest identifies that package as replaceable and excludes it from immutable hashes; workflow reruns preserve an existing package by name. Set the variable to `true` only after the package completes signing, notarization, stapling, identity, entitlement, and Gatekeeper verification. Distribution mode fails closed if any credential is absent.
 
 > **About Windows signing.** Public RC and GA installers use SignPath Foundation by default. A tagged release can explicitly select an unsigned installer. No Windows certificate private key exists in GitHub; it remains in SignPath's HSM. Ordinary CI builds may use a per-run ephemeral self-signed certificate.
 
@@ -547,7 +545,7 @@ git push -u origin ci/github-actions
 gh pr create \
   --repo WSJTX/wsjtx-internal \
   --title "Add GitHub Actions CI/CD" \
-  --body "Five-platform CI (macOS arm64, macOS x86_64, Linux x86_64, Linux aarch64, Windows x86_64) with tag-triggered releases (\`build/v*\`)."
+  --body "Five-platform CI (macOS arm64, Linux x86_64, Linux aarch64, Linux armhf, Windows x86_64) with tag-triggered releases (\`build/v*\`)."
 ```
 
 **Important note about forks:** Workflow files in PRs from forks don't run automatically — this is a GitHub security feature. The PR must be merged before the workflows will trigger. This means you can't test the CI from a fork PR. If you need to test before merging, use a branch on the official repo (Option A).
@@ -583,12 +581,11 @@ gh run list --repo WSJTX/wsjtx-internal --limit 5
 
 ### Step 3: Check the Selected Platforms
 
-An ordinary push runs the default Linux x86_64 check. Before a candidate, apply the `full-ci` label to a PR or manually dispatch full CI and confirm all six target builds. Expected times (first run, no cache):
+An ordinary push runs the default Linux x86_64 check. Before a candidate, apply the `full-ci` label to a PR or manually dispatch full CI and confirm all five target builds. Expected times (first run, no cache):
 
 | Platform | First Run | Cached Run |
 |----------|-----------|------------|
 | macOS arm64 | ~12-15 min | ~8 min |
-| macOS x86_64 (Intel) | ~15-20 min | ~10 min |
 | Linux x86_64 | ~10-12 min | ~7 min |
 | Linux aarch64 | ~10-12 min | ~7 min |
 | Windows x86_64 | ~40-45 min | ~15 min |
@@ -625,7 +622,7 @@ git push
 
 ## 9. Phase 7: Test the Release Pipeline
 
-Only do this after CI is green on all six targets.
+Only do this after CI is green on all five targets.
 
 ### Step 1: Prepare Release Metadata
 
@@ -663,7 +660,7 @@ Before a newest-line GA, verify that public `master` is an ancestor of the candi
 
 After promotion, verify that the public release branch and tag resolve to the candidate SHA. For a newest-line GA, check `master` too. For an older-line GA, confirm that `master` and GitHub Latest did not change. Public release-branch pushes skip the full CI matrix; private release branches and pull requests still run it.
 
-If `MACOS_DISTRIBUTION_SIGNING_ENABLED` is false, after publication download both `.pkg` assets, sign and notarize them outside GitHub, verify their signatures and installed behavior, then replace the assets without changing their filenames. They are intentionally absent from `SHA256SUMS`; the manifest and assemble summary identify them as manually replaceable. Enable the variable after the `apple-release-signing` environment is fully configured.
+If `MACOS_DISTRIBUTION_SIGNING_ENABLED` is false, after publication download the `.pkg` asset, sign and notarize it outside GitHub, verify its signature and installed behavior, then replace the asset without changing its filename. It is intentionally absent from `SHA256SUMS`; the manifest and assemble summary identify it as manually replaceable. Enable the variable after the `apple-release-signing` environment is fully configured.
 
 ### Step 5: Verify the Artifacts
 
@@ -824,7 +821,7 @@ gh secret set DEVELOPER_ID_CERTIFICATE_P12 --repo WSJTX/wsjtx --env apple-releas
 | Log message | Meaning | Fix |
 |-------------|---------|-----|
 | "The signature of the binary is invalid" | Code signing used wrong identity or missed a binary | Check that all executables and dylibs are signed |
-| "The binary uses an SDK older than the 10.9 SDK" | Deployment target too old | Check `CMAKE_OSX_DEPLOYMENT_TARGET` (11.0 for arm64 per `ci.yml:39`, 10.13 for x86_64 Intel per `ci.yml:50`) |
+| "The binary uses an SDK older than the 10.9 SDK" | Deployment target too old | Check `CMAKE_OSX_DEPLOYMENT_TARGET` (11.0, the `deployment_target` input of `build-macos.yml`) |
 | "The signature does not include a secure timestamp" | Missing `--timestamp` in codesign | Verify the codesign commands include `--timestamp` |
 
 ### Problem: Windows build fails at OmniRig install
@@ -885,7 +882,7 @@ gh secret set CROSS_REPO_TOKEN --repo WSJTX/wsjtx-internal
 | `.github/workflows/promote-release.yml` | Validate/promote exact source to the public repo | None |
 | `.github/workflows/public-release.yml` | Public policy-checked build, bundle verification, and GitHub Release | None |
 | `.github/workflows/sign-windows-release.yml` | Public SignPath build/sign/verification | SignPath project and policy identifiers |
-| `.github/workflows/build-macos.yml` | macOS build (parameterized arm64/x86_64) | None |
+| `.github/workflows/build-macos.yml` | macOS arm64 build | None |
 | `.github/workflows/build-linux.yml` | Linux build (parameterized x86_64/aarch64/armhf) | None |
 | `.github/workflows/build-windows.yml` | Windows x86_64 build | None |
 | `.github/workflows/hamlib-upstream-check.yml` | Scheduled (weekly cron + `workflow_dispatch`) poll of Hamlib upstream tags; files a tracking issue when a newer 4.x release is available. No platform builds; self-contained. | None |

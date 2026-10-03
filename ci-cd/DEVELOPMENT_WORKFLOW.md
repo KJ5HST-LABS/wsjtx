@@ -184,13 +184,12 @@ Or use the GitHub web UI: go to the repo, click "Compare & pull request" on the 
 When the PR is opened (and on every subsequent push), the default CI path runs the Linux x86_64 build. Apply the `full-ci` label or dispatch CI manually when all supported targets should run:
 
 - **macOS ARM64** — builds; Developer ID signing and notarization require credentials
-- **macOS Intel x86_64** — builds; Developer ID signing and notarization require credentials
 - **Linux x86_64** — builds
 - **Linux aarch64** — builds (ARM Linux, via `ubuntu-24.04-arm`)
 - **Linux armhf** — builds in the armhf container
 - **Windows x86_64** — builds and signs via MSYS2/MinGW
 
-Green checks cover the jobs selected for that run. A red X means something broke — click the check to see which platform failed and view the logs. The private release candidate always runs the complete six-target matrix before source can be promoted.
+Green checks cover the jobs selected for that run. A red X means something broke — click the check to see which platform failed and view the logs. The private release candidate always runs the complete five-target matrix before source can be promoted.
 
 #### 7. Review and merge
 
@@ -298,7 +297,7 @@ CI/CD serves two purposes: **quality gates** (does it compile?) and **release au
   Push to develop   │                       ci.yml                            │
   or open a PR  ──> │ Linux x86_64 by default                               │
                     │                                                        │
-  full-ci/manual ──>│ macOS arm64 + Intel, Linux x86_64 + aarch64 + armhf,  │
+  full-ci/manual ──>│ macOS arm64, Linux x86_64 + aarch64 + armhf,          │
                     │ and Windows x86_64                                     │
                     │                                                        │
                     │ Selected jobs must all be green                        │
@@ -338,13 +337,12 @@ CI runs on GitHub-hosted runners:
 | Platform | Runner | Architecture | Cost |
 |----------|--------|-------------|------|
 | macOS ARM64 | `macos-15` | ARM64 (Apple Silicon) | 10x multiplier on Actions minutes |
-| macOS Intel | `macos-15-intel` | x86_64 | 10x multiplier on Actions minutes |
 | Linux | `ubuntu-24.04` | x86_64 | 1x (baseline) |
 | Linux aarch64 | `ubuntu-24.04-arm` | aarch64 | 1x (baseline) |
 | Linux armhf | `ubuntu-24.04` + container | armhf | 1x (baseline) |
 | Windows | `windows-latest` + MSYS2 | x86_64 | 2x multiplier |
 
-**Free tier:** GitHub provides 2,000 free Actions minutes/month for private repos (with multipliers applied). macOS jobs dominate billed time because both use the 10x multiplier; Linux targets run at the baseline rate.
+**Free tier:** GitHub provides 2,000 free Actions minutes/month for private repos (with multipliers applied). The macOS job dominates billed time because it uses the 10x multiplier; Linux targets run at the baseline rate.
 
 **Caching:** Hamlib builds and MSYS2 packages are cached to reduce build times. First-run builds are slower; subsequent builds use the cache.
 
@@ -354,7 +352,7 @@ Tests run via ctest at the end of each platform's build job, after compilation s
 
 - Any test failure fails the platform's build job
 - A failed build job fails the entire CI run (red X on the PR or push)
-- A failed candidate build blocks `release.yml`'s `candidate-ready` job, which requires macOS arm64 and Intel, Linux x86_64, aarch64, and armhf, plus Windows x86_64. Candidate builds do not publish.
+- A failed candidate build blocks `release.yml`'s `candidate-ready` job, which requires macOS arm64, Linux x86_64, aarch64, and armhf, plus Windows x86_64. Candidate builds do not publish.
 
 This is the simplest possible policy for v1. If a flaky test emerges, the team can add `continue-on-error: true` to the offending test's platform as a targeted soft-warn, file an issue to triage the flake, and remove the exception once fixed. No blanket soft-warn policy on `develop`.
 
@@ -432,9 +430,9 @@ RCs and GA are prepared on the same `release/X.Y` branch, never directly on `dev
 
 Before promoting an RC to GA, confirm:
 
-- All six target jobs in the public release workflow ran green
+- All five target jobs in the public release workflow ran green
 - The macOS `.pkg` passes the signing, staple, Gatekeeper, entitlement, and installed-runtime checks in the Deployment Playbook
-- At least one volunteer on each supported platform (macOS ARM64, macOS Intel x86_64, Linux x86_64, Linux aarch64, Windows x86_64) has installed the RC and exercised the workflow they care about
+- At least one volunteer on each supported platform (macOS ARM64, Linux x86_64, Linux aarch64, Windows x86_64) has installed the RC and exercised the workflow they care about
 - No critical issue has been filed against the RC for a reasonable soak period (typically 48 hours after the platform volunteers confirm)
 
 If an RC fails testing, push a fix to the release branch, update the metadata to the next RC number, and create `-rc2`, `-rc3`, etc. Each RC remains an independent public prerelease for reference.
@@ -448,7 +446,6 @@ Change the tracked state from `RC n` to `GA` in a metadata-only commit, wait for
 | Artifact | Platform | Signed | Notes |
 |----------|----------|--------|-------|
 | `wsjtx-3.2.0-rc1-arm64-macOS.pkg` | macOS ARM64 | After hosted or manual signing | Developer ID signed, notarized, and stapled; verify per the Deployment Playbook |
-| `wsjtx-3.2.0-rc1-x86_64-macOS.pkg` | macOS Intel x86_64 | After hosted or manual signing | Developer ID signed, notarized, and stapled; verify per the Deployment Playbook |
 | `wsjtx-3.2.0-rc1-linux-x86_64.AppImage` | Linux x86_64 | No | Published with matching `.deb` and `.rpm` packages |
 | `wsjtx-3.2.0-rc1-linux-aarch64.AppImage` | Linux aarch64 | No | Published with matching `.deb` and `.rpm` packages |
 | `wsjtx-3.2.0-rc1-linux-armhf.AppImage` | Linux armhf | No | Published with matching `.deb` and `.rpm` packages |
@@ -456,7 +453,7 @@ Change the tracked state from `RC n` to `GA` in a metadata-only commit, wait for
 | `wsjtx-3.2.0-rc1-src.tar.gz` | Source | N/A | Project-created archive of the public tagged commit |
 | `SHA256SUMS` and release manifest | CI-managed assets | N/A | Bind immutable uploaded bytes to their public tag, commit, and build provenance |
 
-GitHub also adds automatic **Source code (zip)** and **Source code (tar.gz)** links from the public tag. They represent the same tagged source but are generated and compressed by GitHub, so their archive hashes need not equal the project-created `.tar.gz`. `SHA256SUMS` covers immutable assets uploaded by the project. In manual macOS signing mode it excludes the two replaceable `.pkg` files, which the manifest identifies separately. A checksum detects changed bytes but is not a substitute for platform signatures or tag-to-commit checks.
+GitHub also adds automatic **Source code (zip)** and **Source code (tar.gz)** links from the public tag. They represent the same tagged source but are generated and compressed by GitHub, so their archive hashes need not equal the project-created `.tar.gz`. `SHA256SUMS` covers immutable assets uploaded by the project. In manual macOS signing mode it excludes the replaceable `.pkg` file, which the manifest identifies separately. A checksum detects changed bytes but is not a substitute for platform signatures or tag-to-commit checks.
 
 ### Who can trigger a release?
 
@@ -607,7 +604,7 @@ gh pr create --base develop --title "fix: handle /P suffix in FT8 decoder" \
 Tested with the WA6BEV.wav reference file on macOS ARM64."
 ```
 
-CI runs. All six targets build green.
+CI runs. All five targets build green.
 
 ### 5. Review and merge
 

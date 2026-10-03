@@ -106,7 +106,7 @@ validate_inputs() {
   if [ -n "${DEPLOYMENT_TARGET+x}" ]; then
     case "$DEPLOYMENT_TARGET" in
       ''|*[!0-9.]*)
-        fail "Invalid deployment_target '${DEPLOYMENT_TARGET}': use a dotted numeric version such as 10.13 or 11.0"
+        fail "Invalid deployment_target '${DEPLOYMENT_TARGET}': use a dotted numeric version such as 11.0"
         ;;
     esac
   fi
@@ -145,7 +145,7 @@ if [ "${1:-}" = "--self-test" ]; then
   run_isolated \
     env WSJTX_VERSION="3.0.1-rc1" HAMLIB_BRANCH="4.7.2" \
         WSJT_RELEASE_CHANNEL="RC" WSJT_RC_NUMBER="1" \
-        ARCH="x86_64" DEPLOYMENT_TARGET="10.13" RUNNER="macos-15-intel" \
+        ARCH="arm64" DEPLOYMENT_TARGET="11.0" RUNNER="macos-15" \
         IMAGE_TAG="candidate-123-1" \
         VALIDATE_FORTRAN_FALLBACK="true" \
     >/dev/null

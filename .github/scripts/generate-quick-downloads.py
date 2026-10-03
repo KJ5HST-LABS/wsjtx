@@ -54,8 +54,6 @@ def main(argv):
     for n in names:
         if n.endswith("-arm64-macOS.pkg"):
             macos["Apple Silicon"] = n
-        elif n.endswith("-x86_64-macOS.pkg"):
-            macos["Intel"] = n
         elif re.search(r"-win\d+\.exe$", n):           # installer, not raw jt9.exe
             windows["64-bit"] = n
         elif n.endswith("-src.tar.gz"):
@@ -90,8 +88,6 @@ def main(argv):
         out += ["", "### macOS"]
         if "Apple Silicon" in macos:
             out.append(f"- Apple Silicon: [{macos['Apple Silicon']}]({url(macos['Apple Silicon'])})")
-        if "Intel" in macos:
-            out.append(f"- Intel: [{macos['Intel']}]({url(macos['Intel'])})")
 
     if windows:
         out += ["", "### Windows"]

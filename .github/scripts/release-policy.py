@@ -425,7 +425,6 @@ def expected_assets(version: str, distribution: bool) -> list[str]:
     mac_suffix = "macOS.pkg" if distribution else "macOS-unsigned.pkg"
     return [
         f"wsjtx-{version}-arm64-{mac_suffix}",
-        f"wsjtx-{version}-x86_64-{mac_suffix}",
         f"wsjtx-{version}-linux-x86_64-AppImage",
         f"wsjtx-{version}-linux-aarch64-AppImage",
         f"wsjtx-{version}-linux-armhf-AppImage",
@@ -441,7 +440,6 @@ def public_expected_assets(version: str, macos_mode: str, windows_mode: str = "s
     mac_suffix = "macOS.pkg" if macos_mode == "distribution" else "macOS-unsigned.pkg"
     return [
         f"wsjtx-{version}-arm64-{mac_suffix}",
-        f"wsjtx-{version}-x86_64-{mac_suffix}",
         f"wsjtx-{version}-linux-x86_64-AppImage",
         f"wsjtx-{version}-linux-aarch64-AppImage",
         f"wsjtx-{version}-linux-armhf-AppImage",
@@ -537,7 +535,7 @@ def verify_signing_reports(
         raise ValueError(f"unsupported macOS release mode: {macos_mode}")
     if windows_mode not in WINDOWS_MODES:
         raise ValueError(f"unsupported Windows release mode: {windows_mode}")
-    for arch in ("arm64", "x86_64"):
+    for arch in ("arm64",):
         report = read_single_json(root / f"macos-signing-report-{version}-{arch}")
         if report.get("mode") != macos_mode or report.get("git_sha") != commit:
             raise ValueError(f"macOS {arch} report does not bind {macos_mode} packaging to {commit}")
@@ -598,7 +596,7 @@ def write_manifest(args: argparse.Namespace) -> None:
             raise ValueError(f"Linux {arch} builder digest is not an immutable sha256 digest")
     files = release_files(root, args.version, args.macos_mode, args.windows_mode)
     replaceable_macos = (
-        {f"wsjtx-{args.version}-{arch}-macOS.pkg" for arch in ("arm64", "x86_64")}
+        {f"wsjtx-{args.version}-arm64-macOS.pkg"}
         if args.macos_mode == "validation"
         else set()
     )

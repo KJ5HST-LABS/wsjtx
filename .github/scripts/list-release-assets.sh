@@ -11,7 +11,6 @@ version="$2"
 
 find "$artifacts_directory" -maxdepth 2 -type f \
   \( -path "$artifacts_directory/wsjtx-${version}-arm64-macOS.pkg/*.pkg" \
-     -o -path "$artifacts_directory/wsjtx-${version}-x86_64-macOS.pkg/*.pkg" \
      -o -path "$artifacts_directory/wsjtx-${version}-linux-*-AppImage/*.AppImage" \
      -o -path "$artifacts_directory/wsjtx-${version}-linux-*-deb/*.deb" \
      -o -path "$artifacts_directory/wsjtx-${version}-linux-*-rpm/*.rpm" \
