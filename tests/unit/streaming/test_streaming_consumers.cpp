@@ -1,10 +1,13 @@
 #include <limits>
+#include <cmath>
 
 #include <QJsonDocument>
+#include <QFile>
 #include <QJsonObject>
 #include <QProcess>
 #include <QTemporaryDir>
 #include <QtTest>
+#include <QtEndian>
 
 namespace
 {
@@ -235,6 +238,64 @@ class TestStreamingConsumers final : public QObject
   Q_OBJECT
 
 private slots:
+  void q65DecodesWaveform ()
+  {
+    QFile recording {QString::fromUtf8 (Q65_ENGINE_WAV)};
+    QVERIFY2 (recording.open (QIODevice::ReadOnly), qPrintable (recording.errorString ()));
+    auto const wav = recording.readAll ();
+    constexpr quint32 sampleBytes = 15 * 12000 * 2;
+    QCOMPARE (wav.size (), int (44 + sampleBytes));
+    QCOMPARE (wav.left (4), QByteArray {"RIFF"});
+    QCOMPARE (wav.mid (8, 8), QByteArray {"WAVEfmt "});
+    QCOMPARE (qFromLittleEndian<quint32> (wav.constData () + 16), quint32 (16));
+    QCOMPARE (qFromLittleEndian<quint16> (wav.constData () + 20), quint16 (1));
+    QCOMPARE (qFromLittleEndian<quint16> (wav.constData () + 22), quint16 (1));
+    QCOMPARE (qFromLittleEndian<quint32> (wav.constData () + 24), quint32 (12000));
+    QCOMPARE (qFromLittleEndian<quint16> (wav.constData () + 34), quint16 (16));
+    QCOMPARE (wav.mid (36, 4), QByteArray {"data"});
+    QCOMPARE (qFromLittleEndian<quint32> (wav.constData () + 40), sampleBytes);
+
+    QTemporaryDir directory;
+    QVERIFY (directory.isValid ());
+    auto const input = sessionHeader () + controlFrame (
+      R"({"t":"configure","mode":"Q65","trperiod":15,"submode":0,"depth_level":1,"nfa":1300,"nfb":1700,"rxfreq":1500,"utc":"00:15:00"})") +
+      frame (0x01u, wav.mid (44)) + controlFrame (R"({"t":"halt"})");
+    auto const result = runProcess (QString::fromUtf8 (JT9_EXECUTABLE),
+      {"-a", directory.path (), "-t", directory.path (), "--stream"}, input, directory.path ());
+    verifyCompleted (result, 0);
+    auto const events = verifyEvents (result);
+    QCOMPARE (eventsMatching (events.values, "error").size (), 0);
+    auto const decodes = eventsMatching (events.values, "decode");
+    QVERIFY2 (!decodes.isEmpty (), result.standardOutput.constData ());
+    bool found = false;
+    for (auto const& decode : decodes)
+      {
+        QCOMPARE (decode.value ("mode").toString (), QString {"Q65"});
+        QCOMPARE (decode.value ("time").toString (), QString {"001500"});
+        found |= decode.value ("message").toString ().trimmed () == "K1ABC W9XYZ FN42";
+      }
+    QVERIFY2 (found, result.standardOutput.constData ());
+    auto const completions = eventsMatching (events.values, "decode_finished");
+    QCOMPARE (completions.size (), 1);
+    QCOMPARE (completions.first ().value ("period_end").toString (), QString {"001500"});
+
+    QFile curves {directory.filePath ("red.dat")};
+    QVERIFY2 (curves.open (QIODevice::ReadOnly), qPrintable (curves.errorString ()));
+    auto const rows = curves.readAll ().trimmed ().split ('\n');
+    QVERIFY (rows.size () > 1);
+    for (auto const& row : rows)
+      {
+        auto const values = row.simplified ().split (' ');
+        QCOMPARE (values.size (), 3);
+        for (auto const& value : values)
+          {
+            bool ok;
+            auto const number = value.toDouble (&ok);
+            QVERIFY (ok && std::isfinite (number));
+          }
+      }
+  }
+
   void jt9RejectsOversizedFrames_data ()
   {
     QTest::addColumn<quint32> ("declaredLength");

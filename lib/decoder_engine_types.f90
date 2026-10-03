@@ -3,15 +3,17 @@ module decoder_engine_types
   implicit none
   private
   public :: ft8_signal_evidence, ft4_signal_evidence, superfox_evidence, superfox_observation
-  public :: jt9_result,jt65_result
+  public :: jt9_result,jt65_result,q65_result
   public :: engine_payload_none,engine_payload_decoded,engine_payload_hypothesis
   public :: sf_kind_cq,sf_kind_exchange,sf_kind_free_text,sf_kind_verification
   public :: engine_observation, engine_observation_sink, engine_superfox_sink
-  public :: engine_abi,engine_mode_ft8,engine_mode_ft4,engine_mode_jt9,engine_mode_jt65
-  public :: engine_support_ft8,engine_support_ft4,engine_support_jt9,engine_support_jt65
+  public :: engine_abi,engine_mode_ft8,engine_mode_ft4,engine_mode_jt9,engine_mode_jt65,engine_mode_q65
+  public :: engine_support_ft8,engine_support_ft4,engine_support_jt9,engine_support_jt65,engine_support_q65
 
-  integer(c_int), parameter :: engine_abi=5,engine_mode_ft8=8,engine_mode_ft4=5,engine_mode_jt9=9,engine_mode_jt65=65
+  integer(c_int), parameter :: engine_abi=6,engine_mode_ft8=8,engine_mode_ft4=5,engine_mode_jt9=9,engine_mode_jt65=65
   integer(c_int), parameter :: engine_support_ft8=1,engine_support_ft4=2,engine_support_jt9=4,engine_support_jt65=8
+
+  integer(c_int), parameter :: engine_mode_q65=66,engine_support_q65=16
 
   integer, parameter :: engine_payload_none=0,engine_payload_decoded=1,engine_payload_hypothesis=2
   integer, parameter :: sf_kind_cq=1,sf_kind_exchange=2,sf_kind_free_text=3,sf_kind_verification=4
@@ -53,6 +55,10 @@ module decoder_engine_types
      real(c_float) :: width_hz=0.0,drift_hz=0.0
   end type
 
+  type, bind(C) :: q65_result
+     integer(c_int) :: period_seconds=0,method=0,average_count=0,recovered_bit78=0
+  end type
+
   type, bind(C) :: engine_observation
      integer(c_int64_t) :: input_id=0,analysis_id=0
      integer(c_int) :: attempt_no=0,mode=engine_mode_ft8,variant=0
@@ -64,6 +70,7 @@ module decoder_engine_types
      type(superfox_evidence) :: superfox
      type(jt9_result) :: jt9
      type(jt65_result) :: jt65
+     type(q65_result) :: q65
   end type
 
   abstract interface

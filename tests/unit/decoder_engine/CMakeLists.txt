@@ -68,6 +68,41 @@ add_test (NAME test_decoder_engine_jt65_host COMMAND test_decoder_engine_jt65_ho
 set_tests_properties (test_decoder_engine_jt65_host PROPERTIES
   WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/jt65-host TIMEOUT 60)
 
+add_library (test_decoder_engine_q65_signal STATIC q65_engine_signal.f90)
+wsjt_link_common_fortran (test_decoder_engine_q65_signal)
+add_executable (test_decoder_engine_q65 test_decoder_engine_q65.c)
+set_target_properties (test_decoder_engine_q65 PROPERTIES LINKER_LANGUAGE CXX)
+target_include_directories (test_decoder_engine_q65 PRIVATE ${CMAKE_SOURCE_DIR})
+target_link_libraries (test_decoder_engine_q65 PRIVATE test_decoder_engine_q65_signal Threads::Threads)
+add_test (NAME test_decoder_engine_q65 COMMAND test_decoder_engine_q65 --smoke)
+set_tests_properties (test_decoder_engine_q65 PROPERTIES TIMEOUT 180)
+if (TARGET wsjt_fort)
+  add_test (NAME test_decoder_engine_q65_small_stack COMMAND test_decoder_engine_q65 --small-stack)
+  set_tests_properties (test_decoder_engine_q65_small_stack PROPERTIES TIMEOUT 180)
+else ()
+  set_tests_properties (test_decoder_engine_q65 PROPERTIES
+    ENVIRONMENT "OMP_DYNAMIC=FALSE;OMP_NUM_THREADS=1;OMP_THREAD_LIMIT=1;OMP_STACKSIZE=1M")
+endif ()
+add_test (NAME prepare_q65_engine_wav COMMAND test_decoder_engine_q65
+  --write-wav ${CMAKE_CURRENT_BINARY_DIR}/q65-engine.wav)
+set_tests_properties (prepare_q65_engine_wav PROPERTIES FIXTURES_SETUP q65_engine_wav TIMEOUT 15)
+add_test (NAME prepare_q65_engine_60s_wav COMMAND test_decoder_engine_q65
+  --write-wav ${CMAKE_CURRENT_BINARY_DIR}/261003_001500.wav 60)
+set_tests_properties (prepare_q65_engine_60s_wav PROPERTIES FIXTURES_SETUP q65_engine_60s_wav TIMEOUT 15)
+
+add_executable (test_decoder_engine_q65_host test_decoder_engine_q65_host.f90)
+set_target_properties (test_decoder_engine_q65_host PROPERTIES LINKER_LANGUAGE CXX)
+target_link_libraries (test_decoder_engine_q65_host PRIVATE test_decoder_engine_q65_signal)
+wsjt_link_common_fortran (test_decoder_engine_q65_host)
+file (MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/q65-host)
+add_test (NAME test_decoder_engine_q65_host COMMAND test_decoder_engine_q65_host)
+set_tests_properties (test_decoder_engine_q65_host PROPERTIES
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/q65-host TIMEOUT 360)
+file (MAKE_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/q65-host-contest)
+add_test (NAME test_decoder_engine_q65_host_contest COMMAND test_decoder_engine_q65_host --contest)
+set_tests_properties (test_decoder_engine_q65_host_contest PROPERTIES
+  WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/q65-host-contest TIMEOUT 90)
+
 if (TARGET wsjt_fort_omp)
   add_library (test_decoder_engine_signal_omp STATIC decoder_engine_signal.f90 jt9_engine_signal.f90)
   set_target_properties (test_decoder_engine_signal_omp PROPERTIES
@@ -125,4 +160,17 @@ if (TARGET wsjt_fort_omp)
     ENVIRONMENT "OMP_DYNAMIC=FALSE;OMP_NUM_THREADS=2;OMP_THREAD_LIMIT=2;OMP_STACKSIZE=1M"
     PROCESSORS 2
     TIMEOUT 360)
+
+  add_library (test_decoder_engine_q65_signal_omp STATIC q65_engine_signal.f90)
+  target_link_libraries (test_decoder_engine_q65_signal_omp PUBLIC wsjt_fort_omp wsjt_fortran_openmp)
+  add_executable (test_decoder_engine_q65_omp test_decoder_engine_q65.c)
+  set_target_properties (test_decoder_engine_q65_omp PROPERTIES LINKER_LANGUAGE CXX)
+  target_include_directories (test_decoder_engine_q65_omp PRIVATE ${CMAKE_SOURCE_DIR})
+  target_link_libraries (test_decoder_engine_q65_omp PRIVATE test_decoder_engine_q65_signal_omp Threads::Threads)
+  add_test (NAME test_decoder_engine_q65_omp COMMAND test_decoder_engine_q65_omp --smoke)
+  add_test (NAME test_decoder_engine_q65_omp_small_stack COMMAND test_decoder_engine_q65_omp --small-stack)
+  set_tests_properties (test_decoder_engine_q65_omp test_decoder_engine_q65_omp_small_stack PROPERTIES
+    ENVIRONMENT "OMP_DYNAMIC=FALSE;OMP_NUM_THREADS=2;OMP_THREAD_LIMIT=2;OMP_STACKSIZE=1M"
+    PROCESSORS 2
+    TIMEOUT 180)
 endif ()

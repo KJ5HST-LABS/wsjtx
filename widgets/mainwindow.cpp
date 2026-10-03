@@ -5271,6 +5271,13 @@ void MainWindow::decode (Ft8MtdDecodeCoordinator::Stage ft8Stage,
       showStatusMessage (tr ("Decoder is starting; decode request skipped."));
       return;
     }
+  if (m_mode == "Q65" && !dec_data.params.newdat
+      && !m_decoderSession.canReuseSamples (66, int (m_TRperiod)))
+    {
+      ui->DecodeButton->setChecked (false);
+      showStatusMessage (tr ("No completed Q65 reception is available to decode again."));
+      return;
+    }
   if (usesJt9Process () && !dec_data.params.newdat && !m_decoderSession.samples ())
     {
       dec_data.params.newdat = true;
@@ -5292,7 +5299,7 @@ void MainWindow::decode (Ft8MtdDecodeCoordinator::Stage ft8Stage,
   }
   if(!m_dataAvailable or m_TRperiod==0.0) return;
   ui->DecodeButton->setChecked (true);
-  if(!dec_data.params.nagain && m_diskData && m_TRperiod >= 60.) {
+  if(!dec_data.params.nagain && m_diskData && m_TRperiod >= 60. && m_mode != "Q65") {
     dec_data.params.nutc=dec_data.params.nutc/100;
   }
   if(dec_data.params.nagain==0 && dec_data.params.newdat==1 && (!m_diskData)) {
@@ -5302,7 +5309,7 @@ void MainWindow::decode (Ft8MtdDecodeCoordinator::Stage ft8Stage,
     m_dateTimeSeqStart = qt_truncate_date_time_to (QDateTime::currentDateTimeUtc (), m_TRperiod * 1.e3);
     auto t = m_dateTimeSeqStart.time ();
     dec_data.params.nutc = t.hour () * 100 + t.minute ();
-    if (m_TRperiod < 60.)
+    if (m_TRperiod < 60. || m_mode == "Q65")
       {
         dec_data.params.nutc = dec_data.params.nutc * 100 + t.second ();
       }
@@ -5386,7 +5393,10 @@ void MainWindow::decode (Ft8MtdDecodeCoordinator::Stage ft8Stage,
   dec_data.params.minw=0;
   dec_data.params.nclearave=m_nclearave;
   if (m_mode == "JT65" && m_jt65ClearAveragesPending) dec_data.params.nclearave=1;
-  if(dec_data.params.nclearave!=0) {
+  if (m_mode == "Q65") {
+    dec_data.params.nclearave = m_q65ClearAveragesPending ? 1 : 0;
+  }
+  if(dec_data.params.nclearave!=0 && m_mode != "Q65") {
     QFile f(m_config.temp_dir ().absoluteFilePath ("avemsg.txt"));
     f.remove();
   }
@@ -5554,6 +5564,9 @@ void MainWindow::decode (Ft8MtdDecodeCoordinator::Stage ft8Stage,
       decoderParams.newdat, ft8Stage, ft8Period);
     if (DecodePublishResult::Published == publishResult && m_mode == "JT65")
       m_jt65ClearAveragesPending = false;
+    if (DecodePublishResult::Published == publishResult && m_mode == "Q65") {
+      m_q65ClearAveragesPending = false;
+    }
     if (DecodePublishResult::Published == publishResult && scheduledFt8)
       {
         if (m_ft8MtdDecodeCoordinator.published (ft8Stage, ft8Period))
@@ -5590,9 +5603,11 @@ void MainWindow::decode (Ft8MtdDecodeCoordinator::Stage ft8Stage,
 #if defined (WSJT_ENABLE_LIVE_AUDIO_TEST)
 bool MainWindow::startWavDecodeTest (QString const& path)
 {
+  auto const fixtureMode = (m_mode == QStringLiteral ("JT9")
+                           || m_mode == QStringLiteral ("JT65")
+                           || m_mode == QStringLiteral ("Q65")) && m_TRperiod == 60.0;
   if (!m_automated_test || !m_config.is_dummy_rig ()
-      || (m_mode != QStringLiteral ("JT9") && m_mode != QStringLiteral ("JT65"))
-      || m_nSubMode != 0 || m_bFast9 || m_bFastMode || m_TRperiod != 60.0
+      || !fixtureMode || m_nSubMode != 0 || m_bFast9 || m_bFastMode
       || decoderBusy () || !decoderBackendRunning ()
       || !ui->actionOpen->isEnabled () || m_wav_load_coordinator.isLoading ())
     return false;

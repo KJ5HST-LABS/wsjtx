@@ -291,9 +291,11 @@ set (wsjt_FSRCS
   lib/77bit/packjt77_grammar.f90
   lib/77bit/packjt77.f90
   lib/qra/q65/q65_workspace.f90
+  lib/q65_codec.f90
   lib/qra/q65/q65_callers.F90
   lib/qra/q65/q65.f90
   lib/q65_decode.f90
+  lib/q65_host_support.f90
   lib/readwav.f90
   lib/timer_C_wrapper.f90
   lib/timer_impl.f90

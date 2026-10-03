@@ -46,7 +46,7 @@ program jt9
        bLowSidelobes = .false., nexp_decode_set = .false.,                   &
        have_ntol = .false.,multift8 = .false.,hidedupes = .false.,           &
        lft8lowth = .true.,lft8subpass = .true.,lwidedxcsearch = .true.,      &
-       stream_mode = .false., use_mtd_fft_plans = .false.
+       stream_mode = .false., use_mtd_fft_plans = .false., wav_utc_has_seconds
   type (option) :: long_options(43) = [                                      &
     option ('help', .false., 'h', 'Display this help message', ''),          &
     option ('version', .false., 'v', 'Display version and build revision', ''),&
@@ -390,7 +390,8 @@ program jt9
              ' Hz WAV sample rate for the selected mode'
         stop 2
      end if
-     call parse_wav_filename_nutc(infile, nutc)
+     call parse_wav_filename_nutc(infile, nutc, wav_utc_has_seconds)
+     if(mode.eq.66.and..not.wav_utc_has_seconds) nutc=100*nutc
      nsps=6912
      npts=TRperiod*12000.d0
      kstep=nsps/2
@@ -567,7 +568,7 @@ program jt9
      endif
 
 ! Normal decoding pass
-     if(mode.eq.8.or.mode.eq.9.or.mode.eq.65) then
+     if(mode.eq.8.or.mode.eq.9.or.mode.eq.65.or.mode.eq.66) then
         call run_engine_wav(shared_data%id2,engine_valid_samples)
      else if(mode.eq.5) then
         call run_engine_wav(shared_data%id2,72576)

@@ -1,6 +1,5 @@
-add_executable (test_q65_workspace
-  test_q65_workspace.f90
-  ${CMAKE_SOURCE_DIR}/lib/qra/q65/q65_workspace.f90)
+add_executable (test_q65_workspace test_q65_workspace.f90)
+wsjt_link_common_fortran (test_q65_workspace)
 
 add_test (NAME test_q65_workspace COMMAND test_q65_workspace)
 

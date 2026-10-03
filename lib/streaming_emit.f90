@@ -67,13 +67,14 @@ contains
   !   dt        : DT seconds (float)
   !   freq      : decode frequency offset in Hz (integer)
   !   msg       : decoded message text (gets JSON-escaped + trimmed)
-  subroutine streaming_emit_decode(mode_str, nutc, snr, dt, freq, msg)
+  subroutine streaming_emit_decode(mode_str, nutc, snr, dt, freq, msg, utc_is_hhmmss)
     character(len=*), intent(in) :: mode_str
     integer,          intent(in) :: nutc
     integer,          intent(in) :: snr
     real,             intent(in) :: dt
     integer,          intent(in) :: freq
     character(len=*), intent(in) :: msg
+    logical, optional, intent(in) :: utc_is_hhmmss
 
     character(len=8)   :: time_str
     character(len=320) :: msg_escaped
@@ -82,7 +83,7 @@ contains
 
     if (.not. enabled_) return
 
-    call format_utc_(nutc, time_str)
+    call format_utc_(nutc, time_str, utc_is_hhmmss)
     call json_escape_(msg, msg_escaped, msg_len)
     call format_dt_(dt, dt_str)
 
@@ -97,11 +98,12 @@ contains
     flush(output_unit)
   end subroutine streaming_emit_decode
 
-  subroutine streaming_emit_decode_finished(nutc)
+  subroutine streaming_emit_decode_finished(nutc, utc_is_hhmmss)
     integer, intent(in) :: nutc
+    logical, optional, intent(in) :: utc_is_hhmmss
     character(len=8)    :: time_str
     if (.not. enabled_) return
-    call format_utc_(nutc, time_str)
+    call format_utc_(nutc, time_str, utc_is_hhmmss)
     write(output_unit, '(3a)')                                             &
          '{"v":1,"t":"decode_finished","period_end":"', trim(time_str),    &
          '"}'
@@ -185,12 +187,16 @@ contains
 
   ! Format the integer nutc time as 6 chars. 4-digit HHMM gets
   ! zero-extended to HHMM00 so consumers always see a 6-char field.
-  subroutine format_utc_(nutc, str)
+  subroutine format_utc_(nutc, str, utc_is_hhmmss)
     integer,          intent(in)  :: nutc
     character(len=*), intent(out) :: str
+    logical, optional, intent(in) :: utc_is_hhmmss
     integer :: hh, mm, ss
+    logical :: full_time
+    full_time=.false.
+    if(present(utc_is_hhmmss)) full_time=utc_is_hhmmss
     str = '000000'
-    if (nutc .ge. 100000) then
+    if (full_time.or.nutc.ge.100000) then
        hh = nutc / 10000
        mm = mod(nutc/100, 100)
        ss = mod(nutc, 100)

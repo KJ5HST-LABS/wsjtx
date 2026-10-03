@@ -281,7 +281,12 @@ contains
     ! Per-period UTC. Producer sends a fresh nutc in each
     ! period's configure frame so streaming_emit_decode can format the time
     ! field correctly (instead of "000000").
-    if (in_cfg%nutc_set) params%nutc = in_cfg%nutc
+    if (in_cfg%nutc_set) then
+       params%nutc = in_cfg%nutc
+       ! Legacy numeric Q65 times may be HHMM; ISO UTC is always HHMMSS.
+       if (io_mode.eq.66.and.io_TRperiod.ge.60.and.params%nutc.le.2359) &
+            params%nutc=100*params%nutc
+    endif
     ! Phase 8 (RFC v1 §6.3/§4.1): utc (ISO "HH:MM:SS") is a SECOND route to nutc,
     ! kept alongside the legacy int nutc above. Applied AFTER nutc so utc WINS when
     ! a frame carries both (the richer ISO form). The apply order encodes the

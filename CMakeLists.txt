@@ -1291,8 +1291,22 @@ if (WSJT_ENABLE_TESTS AND WSJT_ENABLE_GUI_SMOKE_TESTS
     LABELS "gui;decoder;jt65;integration"
     PROCESSORS 1
     TIMEOUT 90)
+  add_test (
+    NAME test_wsjtx_q65_wav
+    COMMAND ${CMAKE_COMMAND}
+      "-DWSJTX=$<TARGET_FILE:wsjtx>"
+      "-DMODE=Q65"
+      "-DSAMPLE=${CMAKE_BINARY_DIR}/tests/unit/decoder_engine/261003_001500.wav"
+      "-DEXPECTED_MESSAGE=K1ABC W9XYZ FN42"
+      "-DWORK_DIR=${CMAKE_BINARY_DIR}/Testing/Q65Wav"
+      -P ${CMAKE_SOURCE_DIR}/tests/integration/decoder_engine/run_wav_gui.cmake)
+  set_tests_properties (test_wsjtx_q65_wav PROPERTIES
+    FIXTURES_REQUIRED q65_engine_60s_wav
+    LABELS "gui;decoder;q65;integration"
+    PROCESSORS 1
+    TIMEOUT 90)
   if (WSJT_ENABLE_TSAN)
-    set_tests_properties (test_wsjtx_jt9_wav test_wsjtx_jt65_wav PROPERTIES
+    set_tests_properties (test_wsjtx_jt9_wav test_wsjtx_jt65_wav test_wsjtx_q65_wav PROPERTIES
       ENVIRONMENT "TSAN_OPTIONS=${wsjt_tsan_gui_options}")
   endif ()
 

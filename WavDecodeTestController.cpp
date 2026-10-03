@@ -5,6 +5,7 @@
 #include <QApplication>
 #include <QFileInfo>
 #include <QSpinBox>
+#include <QTextEdit>
 #include <cstdlib>
 #include <iostream>
 #include <utility>
@@ -16,7 +17,8 @@ WavDecodeTestController::WavDecodeTestController (
   : QObject {parent}
   , m_window {window}
   , m_mode {mode}
-  , m_modeName {mode == Mode::Jt9 ? QStringLiteral ("JT9") : QStringLiteral ("JT65")}
+  , m_modeName {mode == Mode::Jt9 ? QStringLiteral ("JT9")
+                : mode == Mode::Jt65 ? QStringLiteral ("JT65") : QStringLiteral ("Q65")}
   , m_wavPath {std::move (wavPath)}
   , m_expectedMessage {expectedMessage.simplified ()}
 {
@@ -58,7 +60,31 @@ WavDecodeTestController::WavDecodeTestController (
   connect (m_window, &MainWindow::decodedMessageDisplayed, this,
            [this] (QString const& message) {
     if (m_activeGeneration && message.simplified () == m_expectedMessage)
-      m_observed = true;
+      {
+        if (m_mode == Mode::Q65)
+          {
+            auto * display = m_window->findChild<QTextEdit *> ("decodedTextBrowser");
+            bool found = false;
+            if (display)
+              for (auto const& line : display->toPlainText ().split ('\n'))
+                {
+                  auto const text = line.simplified ();
+                  if (!text.contains (m_expectedMessage)) continue;
+                  if (text.section (' ', 0, 0) != QStringLiteral ("0015"))
+                    {
+                      finish (tr ("Incorrect Q65 UTC in displayed line: %1").arg (text));
+                      return;
+                    }
+                  found = true;
+                }
+            if (!found)
+              {
+                finish (tr ("The Q65 message was absent from the decode display."));
+                return;
+              }
+          }
+        m_observed = true;
+      }
   });
   connect (m_window, &MainWindow::decodeCycleCompleted,
            this, &WavDecodeTestController::completeCycle);
@@ -80,7 +106,7 @@ void WavDecodeTestController::prepareWhenReady ()
 {
   if (m_finished || m_started) return;
   auto * mode = m_window->findChild<QAction *> (
-      m_mode == Mode::Jt9 ? "actionJT9" : "actionJT65");
+      QStringLiteral ("action") + m_modeName);
   auto * quick = m_window->findChild<QAction *> ("actionQuickDecode");
   auto * submode = m_window->findChild<QSpinBox *> ("sbSubmode");
   auto * fast = m_window->findChild<QAbstractButton *> ("cbFast9");
@@ -88,7 +114,8 @@ void WavDecodeTestController::prepareWhenReady ()
   auto * frequency = m_window->findChild<QSpinBox *> ("RxFreqSpinBox");
   auto * decode = m_window->findChild<QAbstractButton *> ("DecodeButton");
   auto * rigStatus = m_window->findChild<QAbstractButton *> ("readFreq");
-  if (!mode || !quick || !submode || !fast || !cqOnly || !frequency || !decode || !rigStatus)
+  auto * period = m_window->findChild<QSpinBox *> ("sbTR");
+  if (!mode || !quick || !submode || !fast || !cqOnly || !frequency || !decode || !rigStatus || !period)
     {
       finish (tr ("A required %1 GUI control was not found.").arg (m_modeName));
       return;
@@ -106,6 +133,7 @@ void WavDecodeTestController::prepareWhenReady ()
       mode->trigger ();
       quick->trigger ();
       submode->setValue (0);
+      if (m_mode == Mode::Q65) period->setValue (60);
       if (fast->isChecked ()) fast->click ();
       cqOnly->setChecked (false);
       frequency->setValue (1500);
@@ -115,6 +143,7 @@ void WavDecodeTestController::prepareWhenReady ()
     }
   if (!mode->isChecked () || !quick->isChecked ()
       || submode->value () != 0 || fast->isChecked ()
+      || (m_mode == Mode::Q65 && period->value () != 60)
       || !m_window->configureLiveAudioTestDecodeRange ())
     {
       finish (tr ("Unable to configure ordinary %1A decoding.").arg (m_modeName));

@@ -102,14 +102,16 @@ contains
     is_real_token = i > length
   end function is_real_token
 
-  subroutine parse_wav_filename_nutc(filename, nutc)
+  subroutine parse_wav_filename_nutc(filename, nutc, includes_seconds)
     character(len=*), intent(in) :: filename
     integer, intent(out) :: nutc
+    logical, optional, intent(out) :: includes_seconds
 
     integer :: dot, ios, length
     character(len=:), allocatable :: stem
 
     nutc = 0
+    if (present(includes_seconds)) includes_seconds = .false.
     length = len_trim(filename)
     if (length == 0) return
 
@@ -121,7 +123,10 @@ contains
     if (len(stem) >= 6) then
       if (all_digits(stem(len(stem) - 5:))) then
         read(stem(len(stem) - 5:), *, iostat=ios) nutc
-        if (ios == 0) return
+        if (ios == 0) then
+          if (present(includes_seconds)) includes_seconds = .true.
+          return
+        end if
       end if
     end if
     if (len(stem) >= 5) then

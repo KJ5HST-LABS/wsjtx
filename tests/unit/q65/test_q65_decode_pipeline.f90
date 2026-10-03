@@ -41,7 +41,6 @@ program test_q65_decode_pipeline
   use map65_mmdec_mod, only: map65_mmdec
   use q65_pipeline_callback
   use prog_args, only: data_dir,temp_dir
-  use q65, only: jz0
   use q65_decode, only: q65_decoder,cq0,msg0,nsnr0,nfreq0,xdt0
   use q65_test_fixture, only: make_q65_wave,q65_nsamples,q65_ntrperiod
   use types, only: q3list
@@ -78,7 +77,7 @@ program test_q65_decode_pipeline
 
   iwave=0_int16
   call run_direct_decode(decoder,iwave,0,0,ntrperiod=30)
-  if(jz0.ne.(30*12000-30*120)/(30*120/8)+1) then
+  if(decoder%state%jz0.ne.(30*12000-30*120)/(30*120/8)+1) then
      error stop 'Q65 spectra do not cover every complete input window'
   endif
 
@@ -97,18 +96,24 @@ program test_q65_decode_pipeline
   iwave=0_int16
   call run_map65_decode(iwave,0,.false.)
 
+  call decoder%destroy()
+  deallocate(iwave)
   write(*,'(a)') 'Q65 raw decoder and MAP65 handoff tests passed'
 
 contains
 
   subroutine check_q65_drift_compensation()
-    use q65, only: q65_dec0,s1a,s1w,iseq,iz0,j0,NSTEP,df,ncw,max_drift,drift
+    use q65, only: q65_dec0,q65_select,q65_work,q65_state, &
+         s1a,s1w,iseq,iz0,j0,NSTEP,df,ncw,max_drift,drift
+    type(q65_state), pointer :: previous_state
     integer, parameter :: drift_cases(3)=[-50,0,50]
     integer :: case_number,want_drift,k,i,j,peak_min,peak_max,dat4(13),idec
     real :: xdt,f0,snr1,width,snr2
 
     iwave=0_int16
     call run_direct_decode(decoder,iwave,0,0)
+    previous_state=>q65_work
+    call q65_select(decoder%state)
     ncw=0
     max_drift=50
     do case_number=1,size(drift_cases)
@@ -119,7 +124,8 @@ contains
           i=nint(1000.0/df)+nint(real(want_drift)*(k-43)/85.0)
           s1a(i,j,iseq)=100.0
        enddo
-       if(allocated(s1w)) deallocate(s1w)
+       if(associated(s1w)) deallocate(s1w)
+       nullify(q65_work%s1w)
        ! Averaged spectra without list candidates reach stage 5 without an earlier decode.
        call q65_dec0(1,iwave,q65_ntrperiod,1000,20,lclearave,2.5, &
             xdt,f0,snr1,width,dat4,snr2,idec,5)
@@ -127,7 +133,7 @@ contains
        if(abs(nint(drift/df)-want_drift).gt.1) then
           error stop 'Q65 synchronization missed the planted drift'
        endif
-       if(.not.allocated(s1w)) error stop 'Q65 stage-5 drift compensation did not run'
+       if(.not.associated(s1w)) error stop 'Q65 stage-5 drift compensation did not run'
        peak_min=iz0
        peak_max=1
        do k=1,85
@@ -141,6 +147,7 @@ contains
           error stop 'Q65 drift compensation depends on the receive horizon'
        endif
     enddo
+    call q65_select(previous_state)
     lclearave=.true.
   end subroutine check_q65_drift_compensation
 

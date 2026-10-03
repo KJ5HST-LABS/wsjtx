@@ -15,6 +15,8 @@ private Q_SLOTS:
   void compactSnapshotAndContextRefresh ();
   void preparedReuseRetainsCompletedInput_data ();
   void preparedReuseRetainsCompletedInput ();
+  void incompatibleSnapshotLeavesNextReceptionUntouched_data ();
+  void incompatibleSnapshotLeavesNextReceptionUntouched ();
   void diskPassesReserveAttemptNumbers ();
   void deferredSnapshotKeepsItsInputAfterRollover ();
   void reuseStartsNewAnalysisBeforeAttemptOverflow ();
@@ -167,6 +169,80 @@ void TestDecoderSession::compactSnapshotAndContextRefresh ()
   QCOMPARE (shared.payload.d2[0], short {73});
   QVERIFY (shared.payload.params.newdat);
   QVERIFY (!shared.payload.params.nagain);
+  session.shutdown ();
+}
+
+void TestDecoderSession::incompatibleSnapshotLeavesNextReceptionUntouched_data ()
+{
+  QTest::addColumn<int> ("previousMode");
+  QTest::addColumn<int> ("previousPeriod");
+  QTest::newRow ("no-snapshot") << 0 << 0;
+  QTest::newRow ("different-mode") << 65 << 60;
+  QTest::newRow ("different-period") << 66 << 30;
+}
+
+void TestDecoderSession::incompatibleSnapshotLeavesNextReceptionUntouched ()
+{
+  using namespace DecoderIpc;
+  QFETCH (int, previousMode);
+  QFETCH (int, previousPeriod);
+  Session session;
+  auto const key = QString {"decoder-session-%1"}.arg (QUuid::createUuid ().toString ());
+  QCOMPARE (session.open (key), Status::Ok);
+  QCOMPARE (session.acceptReady (DECODER_IPC_VERSION), Status::Ok);
+  QSharedMemory peer {key};
+  QVERIFY (peer.attach ());
+  auto& shared = *static_cast<shared_dec_data_t *> (peer.data ());
+  auto source = std::make_unique<dec_data_t> ();
+  qint32 generation {0};
+  if (previousMode)
+    {
+      source->params.nmode = previousMode;
+      source->params.ntrperiod = previousPeriod;
+      source->params.kin = previousPeriod * RX_SAMPLE_RATE;
+      source->params.newdat = true;
+      decoder_input_metadata_t metadata {7, 9, 1, source->params.kin};
+      QVERIFY (session.submit (Request::snapshot (*source, metadata)));
+      QVERIFY (claim (shared, generation));
+      QVERIFY (finish (shared, generation));
+      QCOMPARE (session.complete ({0, 0, 0, generation}), Status::Ok);
+      QVERIFY (session.canReuseSamples (previousMode, previousPeriod));
+    }
+
+  InputState inputs;
+  inputs.beginInput ();
+  auto const input = inputs.inputId ();
+  auto const analysis = inputs.analysisId ();
+  source->params.nmode = 66;
+  source->params.ntrperiod = 60;
+  source->params.kin = 10 * RX_SAMPLE_RATE;
+  source->params.newdat = false;
+  source->params.nagain = true;
+  QVERIFY (!session.canReuseSamples (66, 60));
+
+  source->params.kin = 56 * RX_SAMPLE_RATE;
+  source->params.newdat = true;
+  source->params.nagain = false;
+  auto const scheduled = session.prepareRequest (*source, true, inputs);
+  QCOMPARE (scheduled.metadata ().input_id, input);
+  QCOMPARE (scheduled.metadata ().analysis_id, analysis);
+  QCOMPARE (scheduled.metadata ().attempt_no, int32_t {1});
+  QCOMPARE (scheduled.metadata ().valid_samples, source->params.kin);
+  QVERIFY (session.submit (scheduled));
+  QCOMPARE (shared.metadata.valid_samples, 56 * RX_SAMPLE_RATE);
+  QVERIFY (claim (shared, generation));
+  QVERIFY (finish (shared, generation));
+  QCOMPARE (session.complete ({0, 0, 0, generation}), Status::Ok);
+  QVERIFY (session.canReuseSamples (66, 60));
+
+  source->params.kin = 59 * RX_SAMPLE_RATE;
+  source->params.newdat = false;
+  source->params.nagain = true;
+  auto const repeat = session.prepareRequest (*source, false, inputs);
+  QCOMPARE (repeat.metadata ().input_id, input);
+  QCOMPARE (repeat.metadata ().valid_samples, 56 * RX_SAMPLE_RATE);
+  QCOMPARE (repeat.options ().kin, 56 * RX_SAMPLE_RATE);
+  QVERIFY (!repeat.options ().newdat);
   session.shutdown ();
 }
 

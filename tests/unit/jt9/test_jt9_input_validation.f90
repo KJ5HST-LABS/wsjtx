@@ -4,7 +4,7 @@ program test_jt9_input_validation
 
   integer :: integer_value, nutc
   real(kind=8) :: real_value
-  logical :: ok
+  logical :: ok, includes_seconds
 
   call parse_integer('42', integer_value, ok)
   call assert_true(ok .and. integer_value == 42, 'integer parsing accepts integers')
@@ -38,6 +38,12 @@ program test_jt9_input_validation
 
   call parse_wav_filename_nutc('240101_123456.WAV', nutc)
   call assert_true(nutc == 123456, 'six-digit timestamp is read')
+
+  call parse_wav_filename_nutc('240101_001500.wav', nutc, includes_seconds)
+  call assert_true(nutc == 1500 .and. includes_seconds, 'midnight HHMMSS keeps its format')
+
+  call parse_wav_filename_nutc('240101_1500.wav', nutc, includes_seconds)
+  call assert_true(nutc == 1500 .and. .not. includes_seconds, 'HHMM remains distinguishable from HHMMSS')
 
   call parse_wav_filename_nutc('recording2026.wav', nutc)
   call assert_true(nutc == 0, 'four-digit suffix without separator defaults to midnight')

@@ -1,8 +1,8 @@
 if (NOT DEFINED MODE)
   set (MODE JT9)
 endif ()
-if (NOT MODE STREQUAL "JT9" AND NOT MODE STREQUAL "JT65")
-  message (FATAL_ERROR "MODE must be JT9 or JT65")
+if (NOT MODE STREQUAL "JT9" AND NOT MODE STREQUAL "JT65" AND NOT MODE STREQUAL "Q65")
+  message (FATAL_ERROR "MODE must be JT9, JT65, or Q65")
 endif ()
 string (TOLOWER "${MODE}" mode_option)
 

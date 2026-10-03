@@ -6,16 +6,16 @@ extern "C" {
 #endif
 
 typedef void *decoder_engine_handle;
-enum { DECODER_ENGINE_ABI = 5, DECODER_MODE_FT4 = 5, DECODER_MODE_FT8 = 8,
-       DECODER_MODE_JT9 = 9, DECODER_MODE_JT65 = 65 };
+enum { DECODER_ENGINE_ABI = 6, DECODER_MODE_FT4 = 5, DECODER_MODE_FT8 = 8,
+       DECODER_MODE_JT9 = 9, DECODER_MODE_JT65 = 65, DECODER_MODE_Q65 = 66 };
 enum { DECODER_SUPPORT_FT8 = 1, DECODER_SUPPORT_FT4 = 2, DECODER_SUPPORT_JT9 = 4,
-       DECODER_SUPPORT_JT65 = 8 };
+       DECODER_SUPPORT_JT65 = 8, DECODER_SUPPORT_Q65 = 16 };
 enum { DECODER_JT65_SYNC = 0, DECODER_JT65_MESSAGE = 1 };
 enum { DECODER_JT65_METHOD_NONE = 0, DECODER_JT65_METHOD_FEC = 1,
        DECODER_JT65_METHOD_DEEP_SEARCH = 2 };
 enum { DECODER_JT65_AVERAGE_CAPACITY = 64, DECODER_JT65_CALL_CAPACITY = 10000 };
 enum { DECODER_OK = 0, DECODER_INVALID = 1, DECODER_BUSY = 2,
-       DECODER_UNSUPPORTED = 3, DECODER_CAPACITY = 4 };
+       DECODER_UNSUPPORTED = 3, DECODER_CAPACITY = 4, DECODER_INTERNAL_ERROR = 5 };
 enum { DECODER_PHASE_EARLY = 1, DECODER_PHASE_NORMAL = 2, DECODER_PHASE_REPEAT = 3 };
 enum { DECODER_SOURCE_LIVE = 0, DECODER_SOURCE_FILE = 1 };
 enum { DECODER_FT8_CLASSIC = 0, DECODER_FT8_MTD = 1, DECODER_FT8_SUPERFOX = 2 };
@@ -133,6 +133,35 @@ typedef struct {
   float sync, dt_seconds;
 } decoder_jt65_average_entry;
 
+/* Submode 0..5 selects A..F. UTC is HHMMSS, including periods of one minute
+   or longer. Drift is measured
+   in symbol rates over a transmission. now_seconds supplies Unix time for caller
+   expiry; no clock is read by the engine. Frequencies and tolerance are bounded
+   to 0..5000 Hz; search_low_hz must be less than search_high_hz. */
+typedef struct {
+  int32_t utc, period_seconds, submode, receive_frequency_hz, tolerance_hz;
+  int32_t search_low_hz, search_high_hz, depth, max_drift_symbol_rates;
+  int32_t qso_progress, contest, averaging, auto_clear, single_decode;
+  int32_t extended_eme_search, pileup, ap_cq_only, now_seconds;
+  char mycall[12], hiscall[12], hisgrid[6];
+} decoder_q65_options;
+
+enum { DECODER_Q65_CALL_CAPACITY = 50 };
+/* Q65 contest history currently supports calls of up to six characters. */
+typedef struct {
+  char call[12], grid[4];
+  int32_t last_seen, frequency_hz;
+} decoder_q65_caller;
+
+/* Curves contain curve_count conditioned synchronization strengths; element i
+   is at (i + 1) * frequency_step_hz, with zero-based C indexing.
+   curve_average_count is the averaging count captured when the curves are
+   computed, before any automatic clearing. */
+typedef struct {
+  int32_t even_count, odd_count, curve_count, curve_average_count;
+  float frequency_step_hz, dt_seconds;
+} decoder_q65_snapshot;
+
 /* Only the options for mode are read. EARLY is an FT8 phase; other modes use
    NORMAL or REPEAT. Mode support is reported by supported_modes. */
 typedef struct {
@@ -142,6 +171,7 @@ typedef struct {
   decoder_ft4_options ft4;
   decoder_jt9_options jt9;
   decoder_jt65_options jt65;
+  decoder_q65_options q65;
 } decoder_attempt_request;
 
 /* Borrowed read-only mono signed PCM. Only sample_count samples are read.
@@ -150,7 +180,11 @@ typedef struct {
    Slow JT9 and JT65 accept 1..720000 samples (a one-minute period).
    JT65 analyzes up to 52 seconds and retains its silence-block rejection;
    short or gapped input may complete without observations.
-   Short inputs are zero-padded. Release input before changing its identity or mode. */
+   Q65 accepts up to period_seconds * 12000 samples, for periods of 15, 30, 60,
+   120, or 300 seconds.
+   Short inputs are zero-padded. Release input before changing its identity or mode.
+   Q65 caches preparation by input identity: its PCM and sample_count must remain
+   unchanged until release; repeated attempts may change decoding options. */
 typedef struct {
   const int16_t *samples;
   int32_t sample_count, sample_rate_hz;
@@ -203,11 +237,20 @@ typedef struct {
   float width_hz, drift_hz;
 } decoder_jt65_result;
 
+/* method is the displayed qN qualifier: 0 = no AP, 1 = CQ AP, 2 = own-call AP,
+   3 = both-call AP or list decoding, 4 = both calls and RRR AP,
+   5 = drift-compensated list decoding. */
+typedef struct {
+  int32_t period_seconds, method, average_count, recovered_bit78;
+} decoder_q65_result;
+
 /* dt_seconds retains the mode's operator-facing DT convention. Use the
    evidence's waveform_start_seconds for reconstruction when available.
    mode and variant select the result record; inactive records are zero.
    JT9 variant is its submode (0..7 for A..H); JT9 has no 77-bit evidence.
    JT65 variant is its submode (0..2 for A..C); JT65 has no waveform evidence.
+   Q65 variant is its submode (0..5 for A..F); Q65 has no waveform evidence.
+   For Q65, ap_type is an alias of q65.method.
    Availability flags and payload_origin govern fields in the active record. */
 typedef struct {
   int64_t input_id, analysis_id;
@@ -220,6 +263,7 @@ typedef struct {
   decoder_superfox_evidence superfox;
   decoder_jt9_result jt9;
   decoder_jt65_result jt65;
+  decoder_q65_result q65;
 } decoder_observation;
 
 typedef struct {
@@ -238,9 +282,9 @@ int32_t decoder_engine_decode(decoder_engine_handle, const decoder_attempt_reque
                              const decoder_audio_view *, decoder_observation_callback,
                              void *, decoder_attempt_outcome *);
 /* Released input IDs may be reused for a new reception.
-   Release retains JT65 averages and caller knowledge. Reset clears both while
-   retaining reusable capacity and plans. Submode/profile changes clear averages;
-   hosts must explicitly clear them when changing band or operating context. */
+   Release retains JT65/Q65 averages and caller knowledge. Reset clears both while
+   retaining reusable capacity and plans. Incompatible mode configuration clears
+   averages. Hosts clear JT65 averages when changing band or operating context. */
 int32_t decoder_engine_release_input(decoder_engine_handle, int64_t input_id);
 int32_t decoder_engine_reset_session(decoder_engine_handle);
 /* Replaces the copied deep-search list; count zero clears it. */
@@ -250,6 +294,16 @@ int32_t decoder_engine_set_jt65_calls(decoder_engine_handle, const decoder_jt65_
 int32_t decoder_engine_get_jt65_averages(decoder_engine_handle, decoder_jt65_average_entry *,
                                        int32_t capacity, int32_t *count);
 int32_t decoder_engine_clear_jt65_averages(decoder_engine_handle);
+/* Caller records are copied. A zero count clears the history. The getter follows
+   the same capacity/query convention as decoder_engine_get_jt65_averages. */
+int32_t decoder_engine_set_q65_callers(decoder_engine_handle, const decoder_q65_caller *, int32_t count);
+int32_t decoder_engine_get_q65_callers(decoder_engine_handle, decoder_q65_caller *, int32_t capacity, int32_t *count);
+/* capacity zero queries snapshot metadata without copying curves. Otherwise both
+   arrays receive up to capacity samples; insufficient capacity returns CAPACITY. */
+int32_t decoder_engine_get_q65_snapshot(decoder_engine_handle, decoder_q65_snapshot *,
+                                       float *instant, float *averaged, int32_t capacity);
+/* Clear does not re-add the current reception on a subsequent repeat. */
+int32_t decoder_engine_clear_q65_averages(decoder_engine_handle);
 int32_t decoder_engine_destroy(decoder_engine_handle);
 
 #ifdef __cplusplus

@@ -1067,6 +1067,7 @@ private:
   qint32  m_nSubMode;
   qint32  m_nclearave;
   bool m_jt65ClearAveragesPending {true};
+  bool m_q65ClearAveragesPending {true};
   qint32  m_minSync;
   qint32  m_dBm;
   qint32  m_nWSPRdecodes;

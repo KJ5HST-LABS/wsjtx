@@ -380,7 +380,8 @@ contains
        shared_data%params%nzhsym = 181
     end if
     shared_data%params%kin    = 64800
-    if (mode .eq. 5 .or. mode .eq. 9 .or. mode .eq. 65) shared_data%params%kin = period%k
+    if (mode .eq. 5 .or. mode .eq. 9 .or. mode .eq. 65 .or. mode .eq. 66) &
+         shared_data%params%kin = period%k
     if (mode .eq. 240) shared_data%params%kin = 720000
     if (mode .eq. 241) shared_data%params%kin = 720000
     if (mode .eq. 242) shared_data%params%kin = 720000
@@ -411,6 +412,7 @@ contains
        call multimode_decoder(shared_data%ss, shared_data%id2,         &
             shared_data%params, NFSAMPLE)
     end if
+    if(mode==66) shared_data%params%nclearave=.false.
   end subroutine run_period_decode
 
   ! Stop at the period boundary; body_left carries the remaining frame

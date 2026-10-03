@@ -235,6 +235,7 @@ void MainWindow::on_DecodeButton_clicked (bool /* checked */) //Decode request
 void MainWindow::on_ClrAvgButton_clicked()
 {
   m_nclearave=1;
+  if (m_mode == "Q65") m_q65ClearAveragesPending = true;
   if(m_mode=="Echo") {
     echocom_.nsum=0;
     m_echoGraph->clearAvg();

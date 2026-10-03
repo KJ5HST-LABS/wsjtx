@@ -219,12 +219,17 @@ void DecoderIpc::Session::detach ()
   if (memory_.isAttached ()) memory_.detach ();
 }
 
+bool DecoderIpc::Session::canReuseSamples (int mode, int period) const
+{
+  return completedSnapshot_ && completedSnapshot_.mode == mode
+    && completedSnapshot_.trPeriod == period;
+}
+
 DecoderIpc::Request DecoderIpc::Session::prepareRequest (
     dec_data_t const& source, bool copySamples, InputState& inputs) const
 {
-  auto const reuse = !copySamples && completedSnapshot_
-    && completedSnapshot_.mode == source.params.nmode
-    && completedSnapshot_.trPeriod == source.params.ntrperiod;
+  auto const reuse = !copySamples
+    && canReuseSamples (source.params.nmode, source.params.ntrperiod);
   auto request = reuse ? Request::reuse (source, completedSnapshot_.samples)
                        : Request::snapshot (source);
   if (!reuse && !copySamples)

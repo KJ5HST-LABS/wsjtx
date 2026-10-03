@@ -140,6 +140,7 @@ namespace DecoderIpc
     bool ready () const { return ready_; }
     void shutdown ();
     void detach ();
+    bool canReuseSamples (int mode, int period) const;
     Request prepareRequest (dec_data_t const& source, bool copySamples,
                             InputState& inputs) const;
     Submission submit (Request const& request);

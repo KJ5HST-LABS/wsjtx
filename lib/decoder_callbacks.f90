@@ -31,6 +31,7 @@ module decoder_callbacks
      procedure(engine_superfox_sink), pointer, nopass :: superfox_sink => null()
      type(c_ptr) :: sink_user = c_null_ptr
      logical :: render_legacy = .true.
+     logical :: utc_is_hhmmss = .false.
   end type decoder_callback_context
 
   type, extends(jt4_decoder) :: counting_jt4_decoder
@@ -798,16 +799,40 @@ contains
     integer, intent(in) :: ntrperiod
     integer, intent(in) :: iflagdec  !Recovered spare 78th bit (see genq65/q65_ap)
     character*4 cflags
-    integer context_ios13
+    integer context_ios13,display_utc,i
+    type(engine_observation) :: observation
+    type(decoder_callback_context) :: context
 
     select type (typed_this => this)
     type is (counting_q65_decoder)
        context_ios13 = typed_this%context%ios13
+       context=typed_this%context
     class default
        return
     end select
 
+    observation=engine_observation()
+    observation%mode=engine_mode_q65
+    observation%variant=context%submode
+    observation%snr_db=nsnr
+    observation%frequency_hz=freq
+    observation%dt_seconds=dt
+    observation%sync=snr1
+    observation%ap_type=idec
+    observation%q65%period_seconds=ntrperiod
+    observation%q65%method=idec
+    observation%q65%average_count=nused
+    observation%q65%recovered_bit78=iflagdec
+    do i=1,len_trim(decoded)
+       observation%message(i)=decoded(i:i)
+    enddo
+    if(associated(context%sink)) call context%sink(context%sink_user,observation)
+    display_utc=nutc
+    if(context%utc_is_hhmmss.and.ntrperiod>=60) display_utc=nutc/100
+
+    if(context%render_legacy) then
     cflags='    '
+
     if(idec.ge.0) then
        cflags='q   '
        write(cflags(2:2),'(i1)') idec
@@ -820,35 +845,36 @@ contains
 
     if(ntrperiod.lt.60) then
        if (streaming_emit_enabled()) then
-          call streaming_emit_decode("Q65", nutc, nsnr, dt, nint(freq), decoded)
+          call streaming_emit_decode("Q65", nutc, nsnr, dt, nint(freq), decoded,context%utc_is_hhmmss)
        else
           if(len_trim(cflags).gt.3) then
-             write(*,1005) nutc,nsnr,dt,nint(freq),decoded,cflags
+             write(*,1005) display_utc,nsnr,dt,nint(freq),decoded,cflags
           else
-             write(*,1001) nutc,nsnr,dt,nint(freq),decoded,cflags
+             write(*,1001) display_utc,nsnr,dt,nint(freq),decoded,cflags
           endif
        end if
 1001   format(i6.6,i4,f5.1,i5,' : ',1x,a37,1x,a3)
 1005   format(i6.6,i4,f5.1,i5,' : ',1x,a37,1x,a4)
-       if(context_ios13.eq.0) write(13,1002) nutc,nint(snr1),nsnr,dt,freq,0,decoded
+       if(context_ios13.eq.0) write(13,1002) display_utc,nint(snr1),nsnr,dt,freq,0,decoded
 1002   format(i6.6,i4,i5,f6.1,f8.0,i4,3x,a37,' Q65')
     else
        if (streaming_emit_enabled()) then
-          call streaming_emit_decode("Q65", nutc, nsnr, dt, nint(freq), decoded)
+          call streaming_emit_decode("Q65", nutc, nsnr, dt, nint(freq), decoded,context%utc_is_hhmmss)
        else
           if(len_trim(cflags).gt.3) then
-             write(*,1006) nutc,nsnr,dt,nint(freq),decoded,cflags
+             write(*,1006) display_utc,nsnr,dt,nint(freq),decoded,cflags
           else
-             write(*,1003) nutc,nsnr,dt,nint(freq),decoded,cflags
+             write(*,1003) display_utc,nsnr,dt,nint(freq),decoded,cflags
           endif
        end if
 1003   format(i4.4,i4,f5.1,i5,' : ',1x,a37,1x,a3)
 1006   format(i4.4,i4,f5.1,i5,' : ',1x,a37,1x,a4)
-       if(context_ios13.eq.0) write(13,1004) nutc,nint(snr1),nsnr,dt,freq,0,decoded
+       if(context_ios13.eq.0) write(13,1004) display_utc,nint(snr1),nsnr,dt,freq,0,decoded
 1004   format(i4.4,i4,i5,f6.1,f8.0,i4,3x,a37,' Q65')
     endif
     call flush(6)
     if(context_ios13.eq.0) call flush(13)
+    endif
 
     select type (typed_this => this)
     type is (counting_q65_decoder)

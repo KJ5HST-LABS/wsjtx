@@ -4,7 +4,12 @@ module decoder_engine
   use packjt77, only: pack77_state,initialize_pack77_state,reset_pack77_state
   use ft8_engine_kernel, only: ft8_kernel_state,params_block,run_ft8_kernel,reset_ft8_kernel,release_ft8_input
   use decoder_callbacks, only: decoder_callback_context,counting_ft4_decoder,ft4_decoded, &
-       counting_jt9_decoder,jt9_decoded,counting_jt65_decoder,jt65_decoded
+       counting_jt9_decoder,jt9_decoded,counting_jt65_decoder,jt65_decoded, &
+       counting_q65_decoder,q65_decoded
+  use q65_decode, only: q65_options
+  use q65_host_support, only: load_q65_history,save_q65_history,write_q65_curves,write_q65_diagnostic
+  use q65_callers, only: Q65_MAX_CALLERS
+  use types, only: q3list
   use jt65_decode, only: jt65_options,jt65_average_entry
   use jt65_host_support, only: load_jt65_calls,write_jt65_averages
   use decode_completion_module, only: decode_completion_result,set_decode_completion,write_decode_progress
@@ -13,7 +18,7 @@ module decoder_engine
   implicit none
   private
   public :: engine_host_decode
-  integer(c_int), parameter :: ok=0,invalid=1,busy=2,unsupported=3,capacity=4
+  integer(c_int), parameter :: ok=0,invalid=1,busy=2,unsupported=3,capacity=4,internal_error=5
   integer, parameter :: evidence_capacity=1024
 
   type, bind(C) :: engine_options
@@ -108,6 +113,21 @@ module decoder_engine
      integer(c_int) :: utc,frequency_hz,polarity,used
      real(c_float) :: sync,dt_seconds
   end type
+  type, bind(C) :: engine_q65_options
+     integer(c_int) :: utc=0,period_seconds=60,submode=0,receive_frequency_hz=0,tolerance_hz=0
+     integer(c_int) :: search_low_hz=0,search_high_hz=0,depth=0,max_drift_symbol_rates=0
+     integer(c_int) :: qso_progress=0,contest=0,averaging=0,auto_clear=0,single_decode=0
+     integer(c_int) :: extended_eme_search=0,pileup=0,ap_cq_only=0,now_seconds=0
+     character(c_char) :: mycall(12)=' ',hiscall(12)=' ',hisgrid(6)=' '
+  end type
+  type, bind(C) :: engine_q65_caller
+     character(c_char) :: call(12),grid(4)
+     integer(c_int) :: last_seen,frequency_hz
+  end type
+  type, bind(C) :: engine_q65_snapshot
+     integer(c_int) :: even_count=0,odd_count=0,curve_count=0,curve_average_count=0
+     real(c_float) :: frequency_step_hz=0,dt_seconds=0
+  end type
   type, bind(C) :: attempt_request
      integer(c_int64_t) :: input_id=0,analysis_id=0
      integer(c_int) :: attempt_no=0,mode=8,phase=2,source=0
@@ -115,6 +135,7 @@ module decoder_engine
      type(ft4_options) :: ft4
      type(jt9_options) :: jt9
      type(engine_jt65_options) :: jt65
+     type(engine_q65_options) :: q65
   end type
   type, bind(C) :: audio_view
      type(c_ptr) :: samples
@@ -137,11 +158,12 @@ module decoder_engine
      ! GCC 13 can finalize an uninitialized temporary for an embedded finalizable extension.
      type(counting_jt9_decoder), allocatable :: jt9
      type(counting_jt65_decoder), allocatable :: jt65
+     type(counting_q65_decoder), allocatable :: q65
      type(attempt_request) :: request
      type(engine_observation), allocatable :: evidence(:)
      integer(c_short), allocatable :: audio(:)
      integer(c_int64_t) :: input_id=0,analysis_id=0
-     integer :: input_mode=0
+     integer :: input_mode=0,input_sample_count=0
      integer :: last_attempt=0,retained=0,dropped=0,emitted=0
      logical :: running=.false.,render_legacy=.false.
      type(c_funptr) :: callback=c_null_funptr
@@ -156,8 +178,9 @@ module decoder_engine
 
 contains
 
-  pure integer function analysis_extent(mode) result(samples)
+  pure integer function analysis_extent(mode,period) result(samples)
     integer, intent(in) :: mode
+    integer, optional, intent(in) :: period
     select case(mode)
     case(engine_mode_ft4)
        samples=72576
@@ -165,6 +188,11 @@ contains
        samples=180000
     case(engine_mode_jt9,engine_mode_jt65)
        samples=720000
+    case(engine_mode_q65)
+       samples=0
+       if(present(period)) then
+          if(any(period==[15,30,60,120,300])) samples=period*12000
+       endif
     case default
        samples=0
     end select
@@ -174,6 +202,7 @@ contains
     type(engine_session), intent(inout) :: state
     allocate(state%jt9)
     allocate(state%jt65)
+    allocate(state%q65)
     allocate(state%audio(analysis_extent(engine_mode_ft8)),state%evidence(evidence_capacity))
     state%audio=0
     call initialize_pack77_state(state%knowledge)
@@ -204,7 +233,8 @@ contains
     type(c_ptr), value :: handle
     type(engine_capabilities), intent(out) :: caps
     caps=engine_capabilities(engine_abi, &
-         ior(ior(engine_support_ft8,engine_support_ft4),ior(engine_support_jt9,engine_support_jt65)), &
+         ior(ior(engine_support_ft8,engine_support_ft4), &
+         ior(ior(engine_support_jt9,engine_support_jt65),engine_support_q65)), &
          0,0,evidence_capacity)
     status=invalid
     if(valid_handle(handle)) status=ok
@@ -239,12 +269,12 @@ contains
     if(session%running) go to 900
     status=unsupported
     if(request%mode/=engine_mode_ft8.and.request%mode/=engine_mode_ft4.and. &
-         request%mode/=engine_mode_jt9.and.request%mode/=engine_mode_jt65) go to 900
+         request%mode/=engine_mode_jt9.and.request%mode/=engine_mode_jt65.and.request%mode/=engine_mode_q65) go to 900
     if(audio%sample_rate_hz/=12000) go to 900
     status=invalid
     if(request%input_id<=0.or.request%analysis_id<=0.or.request%attempt_no<=0) go to 900
     if(request%phase<1.or.request%phase>3.or.request%source<0.or.request%source>1) go to 900
-    analysis_samples=analysis_extent(request%mode)
+    analysis_samples=analysis_extent(request%mode,request%q65%period_seconds)
     if(audio%sample_count<1.or.audio%sample_count>analysis_samples) go to 900
     if(.not.c_associated(audio%samples)) go to 900
     if(request%mode==engine_mode_ft4) then
@@ -266,6 +296,9 @@ contains
     else if(request%mode==engine_mode_jt65) then
        if(request%phase==1) go to 900
        if(.not.valid_jt65_options(request%jt65)) go to 900
+    else if(request%mode==engine_mode_q65) then
+       if(request%phase==1) go to 900
+       if(.not.valid_q65_options(request%q65)) go to 900
     else
        if(request%ft8%search_low_hz<0.or.request%ft8%search_high_hz>6000.or. &
             request%ft8%search_low_hz>request%ft8%search_high_hz) go to 900
@@ -275,6 +308,9 @@ contains
     endif
     if(session%input_id/=0.and.session%input_id/=request%input_id) go to 900
     if(session%input_id/=0.and.session%input_mode/=request%mode) go to 900
+    if(request%mode==engine_mode_q65.and.session%input_id/=0) then
+       if(audio%sample_count/=session%input_sample_count) go to 900
+    endif
     if(session%analysis_id==request%analysis_id.and.request%attempt_no<=session%last_attempt) go to 900
 
     if(size(session%audio)<analysis_samples) then
@@ -285,6 +321,7 @@ contains
     session%request=request
     session%input_id=request%input_id
     session%input_mode=request%mode
+    session%input_sample_count=audio%sample_count
     session%analysis_id=request%analysis_id
     session%last_attempt=request%attempt_no
     session%callback=callback
@@ -294,6 +331,7 @@ contains
     call c_f_pointer(audio%samples,samples,[audio%sample_count])
     session%audio(1:audio%sample_count)=samples
     session%audio(audio%sample_count+1:analysis_samples)=0
+    status=ok
     context%sink=>collect_observation
     context%superfox_sink=>collect_superfox
     context%sink_user=handle
@@ -304,6 +342,8 @@ contains
        call run_jt9_attempt(request%jt9,request%phase,audio%sample_count,context,progress)
     else if(request%mode==engine_mode_jt65) then
        call run_jt65_attempt(request%jt65,request%phase,audio%sample_count,context,progress)
+    else if(request%mode==engine_mode_q65) then
+       call run_q65_attempt(request%q65,request%phase,audio%sample_count,context,progress,status)
     else
        call request_to_params(request,audio%sample_count,params)
        call run_ft8_kernel(session%kernel,session%knowledge,session%audio(:180000), &
@@ -315,7 +355,6 @@ contains
     session%callback=c_null_funptr
     session%user=c_null_ptr
     session%running=.false.
-    status=ok
 900 outcome%status=status
   end function
 
@@ -536,6 +575,191 @@ contains
     status=ok
   end function
 
+  logical function valid_q65_options(options) result(valid)
+    type(engine_q65_options), intent(in) :: options
+    integer :: hours,minutes,seconds
+    valid=.false.
+    if(.not.any(options%period_seconds==[15,30,60,120,300])) return
+    if(options%submode<0.or.options%submode>5) return
+    if(options%depth<1.or.options%depth>3) return
+    if(options%max_drift_symbol_rates<0.or.options%max_drift_symbol_rates>50) return
+    if(options%search_low_hz<0.or.options%search_high_hz>5000.or. &
+         options%search_low_hz>=options%search_high_hz) return
+    if(options%receive_frequency_hz<0.or.options%receive_frequency_hz>5000) return
+    if(options%tolerance_hz<0.or.options%tolerance_hz>5000) return
+    if(options%qso_progress<0.or.options%qso_progress>5) return
+    if(options%contest<0.or.options%contest>7) return
+    if(any([options%averaging,options%auto_clear,options%single_decode,options%extended_eme_search, &
+         options%pileup,options%ap_cq_only]<0)) return
+    if(any([options%averaging,options%auto_clear,options%single_decode,options%extended_eme_search, &
+         options%pileup,options%ap_cq_only]>1)) return
+    hours=options%utc/10000
+    minutes=mod(options%utc/100,100)
+    seconds=mod(options%utc,100)
+    if(options%utc<0.or.hours>23.or.minutes>59.or.seconds>59) return
+    valid=.true.
+  end function
+
+  subroutine run_q65_attempt(options,phase,sample_count,callback_context,progress,status)
+    type(engine_q65_options), intent(in) :: options
+    integer, intent(in) :: phase,sample_count,progress
+    type(decoder_callback_context), intent(in) :: callback_context
+    integer(c_int), intent(out) :: status
+    type(decoder_callback_context) :: context
+    type(q65_options) :: kernel_options
+    integer :: kernel_status,even_count,odd_count,count
+    real :: df,dt,empty_current(0),empty_average(0)
+
+    context=callback_context
+    context%nutc=options%utc
+    context%submode=options%submode
+    context%utc_is_hhmmss=.true.
+    context%ios13=-1
+    if(context%render_legacy) call open_legacy_output(phase,context%ios13)
+    session%q65%context=context
+    session%q65%decoded=0
+    nullify(session%q65%diagnostic)
+    if(context%render_legacy) session%q65%diagnostic=>write_q65_diagnostic
+    kernel_options%utc=options%utc
+    kernel_options%period=options%period_seconds
+    kernel_options%submode=options%submode
+    kernel_options%receive_frequency=options%receive_frequency_hz
+    kernel_options%tolerance=options%tolerance_hz
+    kernel_options%low_frequency=options%search_low_hz
+    kernel_options%high_frequency=options%search_high_hz
+    kernel_options%effort=options%depth
+    kernel_options%max_drift=options%max_drift_symbol_rates
+    kernel_options%qso_progress=options%qso_progress
+    kernel_options%contest=options%contest
+    kernel_options%now=options%now_seconds
+    kernel_options%repeat=phase==3
+    kernel_options%single_decode=options%single_decode/=0
+    kernel_options%average=options%averaging/=0
+    kernel_options%auto_clear=options%auto_clear/=0
+    kernel_options%eme=options%extended_eme_search/=0
+    kernel_options%pileup=options%pileup/=0
+    kernel_options%ap_cq_only=options%ap_cq_only/=0
+    kernel_options%mycall=transfer(options%mycall,kernel_options%mycall)
+    kernel_options%hiscall=transfer(options%hiscall,kernel_options%hiscall)
+    kernel_options%hisgrid=transfer(options%hisgrid,kernel_options%hisgrid)
+    call timer('dec_q65 ',0)
+    call session%q65%decode_pcm(q65_decoded,session%audio,sample_count,kernel_options, &
+         session%input_id,kernel_status)
+    call timer('dec_q65 ',1)
+    if(context%render_legacy) call write_q65_curves(session%q65,kernel_options)
+    if(context%ios13==0) close(13)
+    nullify(session%q65%diagnostic)
+    call session%q65%get_curves(even_count,odd_count,df,dt,empty_current,empty_average,count)
+    call set_decode_completion(session%completion,0,session%q65%decoded,1000*even_count+odd_count)
+    call write_decode_progress(progress)
+    status=ok
+    if(kernel_status/=0) status=internal_error
+  end subroutine
+
+  integer(c_int) function engine_set_q65_callers(handle,entries,count) &
+       bind(C,name='decoder_engine_set_q65_callers') result(status)
+    type(c_ptr), value :: handle,entries
+    integer(c_int), value :: count
+    type(engine_q65_caller), pointer :: records(:)
+    type(q3list) :: callers(Q65_MAX_CALLERS)
+    character(len=12) :: call
+    integer :: i
+    status=invalid
+    if(.not.valid_handle(handle)) return
+    status=busy
+    if(session%running) return
+    status=invalid
+    if(count<0.or.count>Q65_MAX_CALLERS) return
+    if(count>0.and..not.c_associated(entries)) return
+    callers=q3list('','',0,0,0)
+    if(count>0) then
+       call c_f_pointer(entries,records,[count])
+       do i=1,count
+          call=transfer(records(i)%call,call)
+          if(len_trim(call)>6) return
+          callers(i)%call=call
+          callers(i)%grid=transfer(records(i)%grid,callers(i)%grid)
+          callers(i)%nsec=records(i)%last_seen
+          callers(i)%nfreq=records(i)%frequency_hz
+          if(callers(i)%nfreq<0.or.callers(i)%nfreq>5000) return
+       enddo
+    endif
+    call session%q65%set_callers(callers,count)
+    status=ok
+  end function
+
+  integer(c_int) function engine_get_q65_callers(handle,entries,entry_capacity,count) &
+       bind(C,name='decoder_engine_get_q65_callers') result(status)
+    type(c_ptr), value :: handle,entries
+    integer(c_int), value :: entry_capacity
+    integer(c_int), intent(out) :: count
+    type(engine_q65_caller), pointer :: records(:)
+    type(q3list) :: callers(Q65_MAX_CALLERS)
+    character(len=12) :: call
+    integer :: i,n
+    count=0
+    status=invalid
+    if(.not.valid_handle(handle)) return
+    status=busy
+    if(session%running) return
+    status=invalid
+    if(entry_capacity<0) return
+    if(entry_capacity>0.and..not.c_associated(entries)) return
+    call session%q65%get_callers(callers,n)
+    count=n
+    if(entry_capacity>0) then
+       call c_f_pointer(entries,records,[entry_capacity])
+       do i=1,min(entry_capacity,n)
+          call=callers(i)%call
+          records(i)%call=transfer(call,records(i)%call)
+          records(i)%grid=transfer(callers(i)%grid,records(i)%grid)
+          records(i)%last_seen=callers(i)%nsec
+          records(i)%frequency_hz=callers(i)%nfreq
+       enddo
+    endif
+    status=ok
+    if(entry_capacity>0.and.entry_capacity<n) status=capacity
+  end function
+
+  integer(c_int) function engine_get_q65_snapshot(handle,snapshot,instant,averaged,curve_capacity) &
+       bind(C,name='decoder_engine_get_q65_snapshot') result(status)
+    type(c_ptr), value :: handle,instant,averaged
+    type(engine_q65_snapshot), intent(out) :: snapshot
+    integer(c_int), value :: curve_capacity
+    real(c_float), pointer :: current(:),average(:)
+    real :: empty_current(0),empty_average(0)
+    snapshot=engine_q65_snapshot()
+    status=invalid
+    if(.not.valid_handle(handle)) return
+    status=busy
+    if(session%running) return
+    status=invalid
+    if(curve_capacity<0) return
+    if(curve_capacity>0) then
+       if(.not.c_associated(instant).or..not.c_associated(averaged)) return
+       call c_f_pointer(instant,current,[curve_capacity])
+       call c_f_pointer(averaged,average,[curve_capacity])
+       call session%q65%get_curves(snapshot%even_count,snapshot%odd_count,snapshot%frequency_step_hz, &
+            snapshot%dt_seconds,current,average,snapshot%curve_count,snapshot%curve_average_count)
+    else
+       call session%q65%get_curves(snapshot%even_count,snapshot%odd_count,snapshot%frequency_step_hz, &
+            snapshot%dt_seconds,empty_current,empty_average,snapshot%curve_count,snapshot%curve_average_count)
+    endif
+    status=ok
+    if(curve_capacity>0.and.curve_capacity<snapshot%curve_count) status=capacity
+  end function
+
+  integer(c_int) function engine_clear_q65_averages(handle) &
+       bind(C,name='decoder_engine_clear_q65_averages') result(status)
+    type(c_ptr), value :: handle
+    status=invalid
+    if(.not.valid_handle(handle)) return
+    status=busy
+    if(session%running) return
+    call session%q65%clear_averages()
+    status=ok
+  end function
+
   subroutine collect_observation(user,observation)
     type(c_ptr), intent(in) :: user
     type(engine_observation), intent(in) :: observation
@@ -594,9 +818,10 @@ contains
     call release_ft8_input(session%kernel)
     call session%jt9%release_input()
     call session%jt65%release_input()
-    session%audio=0
+    call session%q65%release_input()
     session%input_id=0
     session%input_mode=0
+    session%input_sample_count=0
     session%analysis_id=0
     session%last_attempt=0
     session%retained=0
@@ -614,10 +839,11 @@ contains
     call session%ft4%reset()
     call session%jt9%reset()
     call session%jt65%reset()
+    call session%q65%reset()
     call reset_pack77_state(session%knowledge)
-    session%audio=0
     session%input_id=0
     session%input_mode=0
+    session%input_sample_count=0
     session%analysis_id=0
     session%last_attempt=0
     session%retained=0
@@ -712,6 +938,7 @@ contains
     type(attempt_outcome) :: outcome
     type(engine_options) :: options
     integer(c_int) :: status
+    integer :: time,history_status
     character(len=12), allocatable :: calls(:)
     character(len=4), allocatable :: grids(:)
     options%abi_version=engine_abi
@@ -734,7 +961,7 @@ contains
     if(input_id<=0.or.analysis_id<=0) then
        if(session%input_id==0.or.params%nutc/=fallback_utc.or.session%input_mode/=params%nmode.or. &
             ((params%nmode==engine_mode_ft4.or.params%nmode==engine_mode_jt9.or. &
-            params%nmode==engine_mode_jt65).and..not.params%nagain).or. &
+            params%nmode==engine_mode_jt65.or.params%nmode==engine_mode_q65).and..not.params%nagain).or. &
             (params%nzhsym==41.and..not.params%nagain)) then
           fallback_input=fallback_input+1
           fallback_analysis=fallback_analysis+1
@@ -805,6 +1032,31 @@ contains
           call load_jt65_calls(calls,grids)
           call session%jt65%set_calls(calls,grids)
        endif
+    else if(request%mode==engine_mode_q65) then
+       request%q65%utc=params%nutc
+       request%q65%period_seconds=params%ntr
+       request%q65%submode=params%nsubmode
+       request%q65%receive_frequency_hz=params%nfqso
+       request%q65%tolerance_hz=params%ntol
+       request%q65%search_low_hz=params%nfa
+       request%q65%search_high_hz=min(params%nfb,5000)
+       request%q65%depth=iand(params%ndepth,3)
+       request%q65%max_drift_symbol_rates=params%max_drift
+       request%q65%qso_progress=params%nQSOProgress
+       request%q65%contest=iand(params%nexp_decode,7)
+       request%q65%averaging=merge(1,0,iand(params%ndepth,16)/=0)
+       request%q65%auto_clear=merge(1,0,iand(params%ndepth,128)/=0)
+       request%q65%single_decode=merge(1,0,iand(params%nexp_decode,32)/=0)
+       request%q65%extended_eme_search=merge(1,0,params%emedelay>0)
+       request%q65%pileup=merge(1,0,iand(params%nexp_decode,128)/=0)
+       request%q65%ap_cq_only=merge(1,0,params%lapcqonly)
+       request%q65%now_seconds=time()
+       request%q65%mycall=params%mycall
+       request%q65%hiscall=params%hiscall
+       request%q65%hisgrid=params%hisgrid
+       if(params%nclearave) call session%q65%clear_averages()
+       history_status=0
+       if(request%q65%contest==1) call load_q65_history(session%q65,history_status)
     else
        request%ft8%reuse_spectrum=merge(0,1,params%newdat)
        request%ft8%half_symbol_stage=params%nzhsym
@@ -858,9 +1110,9 @@ contains
        request%ft8%hisgrid=params%hisgrid
     endif
     audio%samples=c_loc(id2(1))
-    audio%sample_count=min(analysis_extent(request%mode),valid_samples)
+    audio%sample_count=min(analysis_extent(request%mode,request%q65%period_seconds),valid_samples)
     if(valid_samples<=0.and.input_id<=0) then
-       audio%sample_count=analysis_extent(request%mode)
+       audio%sample_count=analysis_extent(request%mode,request%q65%period_seconds)
        if(request%mode==engine_mode_jt9.or.request%mode==engine_mode_jt65) audio%sample_count=624000
     endif
     if(request%mode==engine_mode_ft8) then
@@ -871,6 +1123,8 @@ contains
     audio%sample_rate_hz=nfsample
     status=decode_attempt(host_handle,request,audio,c_null_funptr,c_null_ptr,outcome,.true.,progress)
     if(status==ok) then
+       if(request%mode==engine_mode_q65.and.request%q65%contest==1) &
+            call save_q65_history(session%q65,history_status)
        completion=session%completion
     else
        call report_host_rejection(status,request,'decode')

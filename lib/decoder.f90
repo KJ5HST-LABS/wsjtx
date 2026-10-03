@@ -8,11 +8,9 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   use jt65_host_support, only: load_jt65_calls
   use jt9_decode
   use fst4_decode
-  use q65_decode
   use decoder_callbacks, only: decoder_callback_context,                     &
        counting_jt4_decoder, counting_jt65_decoder, counting_jt9_decoder,    &
-       counting_fst4_decoder,counting_q65_decoder,                           &
-       fst4_decoded, q65_decoded, jt4_decoded,                                &
+       counting_fst4_decoder,fst4_decoded,jt4_decoded,                       &
        jt4_average, jt65_decoded, jt9_decoded
   use streaming_emit, only: streaming_emit_enabled,                       &
        streaming_emit_decode
@@ -40,10 +38,9 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   external :: run_decoder_engine
   type(decoder_callback_context) :: callback_context
   real ss(184,NSMAX)
-  logical baddata,newdat65,newdat9,single_decode,bVHF,q65_pileup,bad0,ex
+  logical baddata,newdat65,newdat9,bVHF,bad0,ex
   logical lprinthash22
   integer*2 id2(NTMAX*12000)
-  integer nqf(20)
   real*4 dd(NTMAX*12000)
   character(len=20) :: datetime
   character(len=12) :: mycall, hiscall
@@ -57,12 +54,12 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   type(counting_jt65_decoder) :: my_jt65
   type(counting_jt9_decoder) :: my_jt9
   type(counting_fst4_decoder) :: my_fst4
-  type(counting_q65_decoder) :: my_q65  
 
-  if(params%nmode.eq.8.or.params%nmode.eq.5.or.params%nmode.eq.9.or.params%nmode.eq.65) then
+  if(params%nmode.eq.8.or.params%nmode.eq.5.or.params%nmode.eq.9.or.params%nmode.eq.65.or. &
+       params%nmode.eq.66) then
      call run_decoder_engine(id2,params,nfsample,completion,progress_generation, &
           0_c_int64_t,0_c_int64_t,0_c_int, &
-          merge(params%kin,0_c_int,params%nmode==5.or.params%nmode==9.or.params%nmode==65))
+          merge(params%kin,0_c_int,params%nmode==5.or.params%nmode==9.or.params%nmode==65.or.params%nmode==66))
      return
   endif
 
@@ -73,7 +70,6 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   my_jt65%decoded = 0
   my_jt9%decoded = 0
   my_fst4%decoded = 0
-  my_q65%decoded = 0
   nsynced=0
   navg0=0
 
@@ -105,9 +101,7 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   endif
 
   ncontest=iand(params%nexp_decode,7)
-  single_decode=iand(params%nexp_decode,32).ne.0
   bVHF=iand(params%nexp_decode,64).ne.0
-  q65_pileup=iand(params%nexp_decode,128).ne.0  ! bit 7 is reserved for Q65 Pileup
   if(mod(params%nranera,2).eq.0) ntrials=10**(params%nranera/2)
   if(mod(params%nranera,2).eq.1) ntrials=3*10**(params%nranera/2)
   if(params%nranera.eq.0) ntrials=0
@@ -138,46 +132,6 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   my_jt65%context = callback_context
   my_jt9%context = callback_context
   my_fst4%context = callback_context
-  my_q65%context = callback_context
-
-  if(params%nmode.eq.66) then        !NB: JT65 = 65, Q65 = 66.
-     ! We're in Q65 mode
-     open(17,file=trim(temp_dir)//'/red.dat',status='unknown')
-     open(14,file=trim(temp_dir)//'/avemsg.txt',status='unknown')
-     call timer('dec_q65 ',0)
-     nqd=1
-     call my_q65%decode(q65_decoded,id2,nqd,params%nutc,params%ntr,      &
-          params%nsubmode,params%nfqso,params%ntol,params%ndepth,        &
-          params%nfa,params%nfb,logical(params%nclearave),               &
-          single_decode,logical(params%nagain),params%max_drift,         &
-          logical(params%newdat),params%emedelay,mycall,hiscall,hisgrid, &
-          params%nQSOProgress,ncontest,q65_pileup,logical(params%lapcqonly),  &
-          navg0,nqf)
-     params%nclearave=.false.
-
-     if(.not.params%nagain) then
-                ! Go through identified candidates again, treating each as if it had been
-                ! double-clicked on the waterfall.
-        do k=1,20
-           if(nqf(k).eq.0) exit
-           if(params%nagain .and. abs(nqf(k)-params%nfqso).gt.params%ntol) cycle
-           nqd=1
-           navg0=0
-           ntol=5
-           call my_q65%decode(q65_decoded,id2,nqd,params%nutc,params%ntr,    &
-                params%nsubmode,nqf(k),ntol,params%ndepth,                   &
-                params%nfa,params%nfb,logical(params%nclearave),             &
-                .true.,.true.,params%max_drift,                              &
-                .false.,params%emedelay,mycall,hiscall,hisgrid,              &
-                params%nQSOProgress,ncontest,q65_pileup,                       &
-                logical(params%lapcqonly),navg0,nqf)
-        enddo
-     endif
-
-     call timer('dec_q65 ',1)
-     close(17)
-     go to 800
-  endif
 
   if(params%nmode.eq.240) then
      ! We're in FST4 mode
@@ -322,11 +276,11 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
 
 ! JT65 is not yet producing info for nsynced, ndecoded.
 800 ndecoded = my_jt4%decoded + my_jt65%decoded + my_jt9%decoded +       &
-         my_fst4%decoded + my_q65%decoded
+         my_fst4%decoded
   call set_decode_completion(completion,nsynced,ndecoded,navg0)
   call write_decode_progress(active_progress_generation)
   close(13)
-  if(params%nmode.eq.4 .or. params%nmode.eq.66) close(14)
+  if(params%nmode.eq.4) close(14)
   return
 end subroutine multimode_decoder_core
 
@@ -348,7 +302,7 @@ subroutine multimode_decoder(ss,id2,params,nfsample)
   if (.not. completion%available) return
 
   if (streaming_emit_enabled()) then
-     call streaming_emit_decode_finished(params%nutc)
+     call streaming_emit_decode_finished(params%nutc,params%nmode==66)
   else if (.not. lquiet) then
      call write_decode_completion(completion)
   end if
