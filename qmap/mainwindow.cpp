@@ -1134,13 +1134,19 @@ void MainWindow::CreateLiveCQ(QStringList cqliveText)
   QStringList bandInfo;
   bandInfo = ui->labFreq->text().split(".",SkipEmptyParts);
   QString bandFreq = bandInfo.at(0);
-  QString theDate = ui->labUTC->text().trimmed().mid(0,12);
+  auto const nowUtc = QDateTime::currentDateTimeUtc();
   QList<QStringList> decodeList;
 
   for (const QString &item : cqliveText) {
     QStringList const thePieces = item.split(" ",SkipEmptyParts);
     QMapLiveCQ::Record record;
     if (!QMapLiveCQ::parse(thePieces, freqOffset, record)) {
+      continue;
+    }
+    // Built from numbers only: going through the month name shown in labUTC
+    // failed on non-English Windows and uploaded an empty date.
+    auto const spotTime = QMapLiveCQ::spotTime(thePieces.at(0), nowUtc);
+    if (!spotTime.isValid()) {
       continue;
     }
     qDebug () << "item is: " << item;
@@ -1163,7 +1169,7 @@ void MainWindow::CreateLiveCQ(QStringList cqliveText)
       thePostLine.insert(8, theCall); //dx call
       thePostLine.insert(9, theGrid); //dx grid
       thePostLine.insert(10, m_myGrid.toUpper()); //myGrid
-      thePostLine.insert(11, theDate);  //the date
+      thePostLine.insert(11, spotTime.toString("yyyy-MM-ddTHH:mm:ss") + "Z");  //utc date and time
       thePostLine.insert(12, m_myCall.toUpper()); //myCall
       thePostLine.insert(13, "--"); //txpol
       decodeList.append(thePostLine);
@@ -1189,10 +1195,7 @@ void MainWindow::sendLiveCQData(QList<QStringList>decodeList)
 
   for (const QStringList &thePostLine : decodeList) {
 
-    QString utcdatetimestringOriginal = thePostLine.at(11) + " " + thePostLine.at(3);
-    QDateTime utcdatetimeUTC = QDateTime::fromString(utcdatetimestringOriginal, "yyyy MMM dd  HHmmss");
-    utcdatetimeUTC.setTimeSpec((Qt::UTC));
-    QString utcdatetimeUTCString = utcdatetimeUTC.toString("yyyy-MM-ddTHH:mm:ss") + "Z";
+    QString utcdatetimeUTCString = thePostLine.at(11);
 
     QUrlQuery query;
     query.addQueryItem("skedfreq", thePostLine.at(0));
