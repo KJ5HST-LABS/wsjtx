@@ -138,7 +138,7 @@ Use `cold_build=true` on a manually dispatched macOS or Windows build to bypass 
 
 ### Prepared Linux release images
 
-Before creating a candidate, run Prepare Release Dependencies from private `develop`, selecting `develop` or a `release/X.Y` source branch and an explicit validated image generation. The workflow resolves the selected branch to an exact commit before validating its recipes. Refresh incompatible or missing images through the existing Linux image publisher first.
+Before creating a candidate, run Prepare Release Dependencies from protected private `develop`, selecting a protected `develop` or `release/X.Y` source branch and an explicit validated image generation. The workflow resolves the selected branch to an exact commit before validating its recipes. Refresh incompatible or missing images through the existing Linux image publisher first.
 
 Preparation verifies all four images against the selected source recipes: x86_64, aarch64, and the ARMHF cross-builder/runtime pair. It copies them to `ghcr.io/wsjtx/wsjtx` without changing their digests and verifies anonymous access. Images contain dependency tooling, not WSJT-X application builds. Review changes to copied scripts and image metadata before public preparation; a digest-preserving copy retains the original OCI labels and build metadata.
 
