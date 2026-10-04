@@ -37,7 +37,6 @@ Directory::Directory (Configuration const * configuration
   : QTreeWidget {parent}
   , configuration_ {configuration}
   , network_manager_ {network_manager}
-  , http_only_ {false}
   , root_dir_ {configuration_->save_directory ()}
   , contents_ {this
         , network_manager_
@@ -95,7 +94,7 @@ void Directory::error (QString const& title, QString const& message)
   MessageBox::warning_message (this, title, message);
 }
 
-bool Directory::refresh (bool http_only)
+bool Directory::refresh ()
 {
   abort ();
   clear ();
@@ -103,7 +102,6 @@ bool Directory::refresh (bool http_only)
   root_dir_ = configuration_->save_directory ();
   QDir contents_dir {root_dir_.absoluteFilePath (samples_dir_name)};
   contents_.local_file_path (contents_dir.absoluteFilePath (contents_file_name));
-  contents_.http_only (http_only_ = http_only);
   QUrl url {url_root_.resolved (QDir {root_dir_.relativeFilePath (samples_dir_name)}.filePath (contents_file_name))};
   if (url.isValid ())
     {
@@ -179,7 +177,7 @@ void Directory::parse_entries (QJsonArray const& entries, QDir const& dir, QTree
                         {
                           auto node = new FileNode {parent, network_manager_
                                                     , QDir {root_dir_.filePath (dir.path ())}.absoluteFilePath (name)
-                                                    , url, http_only_};
+                                                    , url};
                           FileNode::sync_blocker b {node};
                           node->setIcon (0, file_icon_);
                           node->setCheckState (0, node->local () ? Qt::Checked : Qt::Unchecked);

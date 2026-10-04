@@ -87,6 +87,14 @@ target_include_directories (test_cloudlog_connection_check PRIVATE ${CMAKE_BINAR
 target_link_libraries (test_cloudlog_connection_check Boost::log Qt5::Test Qt5::Network Qt5::Widgets)
 add_test (NAME test_cloudlog_connection_check COMMAND test_cloudlog_connection_check)
 
+add_executable (test_sample_downloader
+  test_sample_downloader.cpp
+  ${CMAKE_SOURCE_DIR}/SampleDownloader/RemoteFile.cpp
+  )
+target_include_directories (test_sample_downloader PRIVATE ${CMAKE_BINARY_DIR})
+target_link_libraries (test_sample_downloader Qt5::Test Qt5::Network)
+add_test (NAME test_sample_downloader COMMAND test_sample_downloader)
+
 if (WSJT_ENABLE_TSAN)
   set (wsjt_tsan_network_test_environment
     "QT_QPA_PLATFORM=offscreen"
