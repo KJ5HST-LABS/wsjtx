@@ -22,7 +22,7 @@ jobs:
     outputs:
       version: ${{ steps.identity.outputs.version }}
       release_channel: ${{ steps.identity.outputs.channel }}
-      rc_number: ${{ steps.identity.outputs.rc_number }}
+      prerelease_number: ${{ steps.identity.outputs.prerelease_number }}
       macos_sign_mode: ${{ steps.identity.outputs.macos_sign_mode }}
       windows_signing: ${{ steps.identity.outputs.windows_signing }}
       image_tag: ${{ steps.linux-images.outputs.image_tag }}
@@ -56,7 +56,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ ! "$GITHUB_REF_NAME" =~ ^v(.+)$ ]]; then
-            echo "::error::Expected vX.Y.Z or vX.Y.Z-rcN"
+            echo "::error::Expected vX.Y.Z, vX.Y.Z-betaN, or vX.Y.Z-rcN"
             exit 1
           fi
           VERSION="${GITHUB_REF_NAME#v}"
@@ -64,7 +64,7 @@ jobs:
           {
             echo "version=$(jq -r .version <<<"$IDENTITY")"
             echo "channel=$(jq -r .channel <<<"$IDENTITY")"
-            echo "rc_number=$(jq -r .rc_number <<<"$IDENTITY")"
+            echo "prerelease_number=$(jq -r .prerelease_number <<<"$IDENTITY")"
             echo "windows_signing=$(jq -r .windows_signing <<<"$IDENTITY")"
           } >> "$GITHUB_OUTPUT"
           if [ "$MACOS_DISTRIBUTION_SIGNING_ENABLED" = true ]; then
@@ -96,8 +96,6 @@ jobs:
       arch: arm64
       runner: macos-15
       deployment_target: "11.0"
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
       signing_mode: ${{ needs.prepare.outputs.macos_sign_mode }}
 
   linux:
@@ -115,8 +113,6 @@ jobs:
       image_tag: ${{ needs.prepare.outputs.image_tag }}
       image_digest: ${{ needs.prepare.outputs.x86_64_digest }}
       build_packages: true
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
 
   linux-arm:
     needs: prepare
@@ -133,8 +129,6 @@ jobs:
       image_tag: ${{ needs.prepare.outputs.image_tag }}
       image_digest: ${{ needs.prepare.outputs.aarch64_digest }}
       build_packages: true
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
 
   linux-armhf:
     needs: prepare
@@ -152,8 +146,6 @@ jobs:
       image_digest: ${{ needs.prepare.outputs.armhf_digest }}
       armhf_cross_image_digest: ${{ needs.prepare.outputs.armhf_cross_digest }}
       build_packages: true
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
 
   windows:
     needs: prepare
@@ -164,7 +156,7 @@ jobs:
     with:
       version: ${{ needs.prepare.outputs.version }}
       release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
+      prerelease_number: ${{ needs.prepare.outputs.prerelease_number }}
       windows_signing: ${{ needs.prepare.outputs.windows_signing }}
 
   assemble:
@@ -359,7 +351,7 @@ jobs:
               exit 1
             fi
             EXPECTED_PRERELEASE=false
-            if [ "$CHANNEL" = RC ]; then
+            if [ "$CHANNEL" != GA ]; then
               EXPECTED_PRERELEASE=true
             fi
             if [ "$(jq -r .isPrerelease <<<"$RELEASE")" != "$EXPECTED_PRERELEASE" ]; then
@@ -409,7 +401,7 @@ jobs:
             echo "Existing assets satisfy the publication bundle policy."
           else
             FLAGS=()
-            if [ "$CHANNEL" = RC ]; then
+            if [ "$CHANNEL" != GA ]; then
               FLAGS+=(--prerelease)
             fi
             FLAGS+=("--latest=$LATEST")

@@ -15,27 +15,36 @@ from collections.abc import Callable
 from pathlib import Path
 
 
-VERSION_RE = re.compile(r"^(?P<numeric>\d+\.\d+\.\d+)(?:-rc(?P<rc>[1-9]\d*))?$")
+VERSION_RE = re.compile(r"^(?P<numeric>\d+\.\d+\.\d+)(?:-(?P<label>beta|rc)(?P<number>[1-9]\d*))?$")
 RELEASE_BRANCH_RE = re.compile(r"^release/(?P<major>\d+)\.(?P<minor>\d+)$")
 OBJECT_ID_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 MACOS_MODES = ("validation", "distribution")
 WINDOWS_MODES = ("signpath", "unsigned")
+CHANNEL_RANK = {"BETA": 0, "RC": 1, "GA": 2}
 
 
 def classify(version: str) -> dict[str, str]:
     match = VERSION_RE.fullmatch(version)
     if not match:
-        raise ValueError("version must be X.Y.Z or X.Y.Z-rcN")
-    rc = match.group("rc") or ""
+        raise ValueError("version must be X.Y.Z, X.Y.Z-betaN, or X.Y.Z-rcN")
+    label = match.group("label")
     numeric = match.group("numeric")
     major, minor, _ = numeric.split(".")
     return {
         "version": version,
         "numeric": numeric,
-        "channel": "RC" if rc else "GA",
-        "rc_number": rc,
+        "channel": label.upper() if label else "GA",
+        "prerelease_number": match.group("number") or "",
         "release_branch": f"release/{major}.{minor}",
     }
+
+
+def release_order(identity: dict[str, str]) -> tuple[int, ...]:
+    return (
+        *(int(part) for part in identity["numeric"].split(".")),
+        CHANNEL_RANK[identity["channel"]],
+        int(identity["prerelease_number"] or 0),
+    )
 
 
 def parse_public_ref_listing(output: str) -> tuple[dict[str, str], str]:
@@ -66,7 +75,7 @@ def parse_public_ref_listing(output: str) -> tuple[dict[str, str], str]:
 def public_release_line_policy(version: str, refs: dict[str, str]) -> dict[str, object]:
     identity = classify(version)
     ga_versions: list[tuple[int, int, int]] = []
-    line_tags: list[tuple[tuple[int, int, int, int, int], str, str]] = []
+    line_tags: list[tuple[tuple[int, ...], str, str]] = []
     release_branch_count = 0
     for name, sha in refs.items():
         if name.startswith("refs/heads/release/"):
@@ -82,11 +91,7 @@ def public_release_line_policy(version: str, refs: dict[str, str]) -> dict[str, 
             except ValueError as error:
                 raise ValueError(f"public version tag is malformed: {name}") from error
             numeric_version = tuple(int(part) for part in tag_identity["numeric"].split("."))
-            line_tags.append((
-                (*numeric_version, int(tag_identity["channel"] == "GA"), int(tag_identity["rc_number"] or 0)),
-                name.removeprefix("refs/tags/"),
-                sha,
-            ))
+            line_tags.append((release_order(tag_identity), name.removeprefix("refs/tags/"), sha))
             if tag_identity["channel"] == "GA":
                 ga_versions.append(numeric_version)
     if not ga_versions:
@@ -170,6 +175,15 @@ def plan_public_promotion(
         raise ValueError(
             f"public GA tags already reach {highest_candidate_line_version} on this line; "
             "a lower GA version cannot advance it"
+        )
+    latest_line_tag = line_policy["latest_public_tag_on_candidate_line"]
+    if (
+        not current_tag
+        and latest_line_tag
+        and release_order(identity) <= release_order(classify(latest_line_tag.removeprefix("v")))
+    ):
+        raise ValueError(
+            f"{latest_line_tag} is the latest public tag on this line; {public_tag} must sort above it"
         )
 
     advance_master = identity["channel"] == "GA" and line_policy["ga_line_is_newest"]
@@ -347,21 +361,23 @@ def parse_state(contents: str, *, expected_revision: str | None = None) -> dict[
         if not separator or key in state:
             raise ValueError("release-state.txt must contain unique key=value lines")
         state[key] = value
-    required_keys = {"version", "channel", "rc", "revision"}
+    required_keys = {"version", "channel", "prerelease", "revision"}
     if not required_keys <= set(state) or set(state) - required_keys - {"windows_signing"}:
-        raise ValueError("release-state.txt must define version, channel, rc, revision, and optionally windows_signing")
+        raise ValueError("release-state.txt must define version, channel, prerelease, revision, and optionally windows_signing")
     state.setdefault("windows_signing", "signpath")
     if state["windows_signing"] not in WINDOWS_MODES:
         raise ValueError("release-state.txt windows_signing must be signpath or unsigned")
-    if state["channel"] not in {"DEVEL", "RC", "GA"}:
-        raise ValueError("release-state.txt channel must be DEVEL, RC, or GA")
+    if state["channel"] not in {"DEVEL", "BETA", "RC", "GA"}:
+        raise ValueError("release-state.txt channel must be DEVEL, BETA, RC, or GA")
+    if state["channel"] == "BETA" and state["windows_signing"] != "unsigned":
+        raise ValueError("BETA release state requires windows_signing=unsigned")
     if not re.fullmatch(r"\d+\.\d+\.\d+", state["version"]):
         raise ValueError("release-state.txt version must be X.Y.Z")
-    if state["channel"] == "RC":
-        if not re.fullmatch(r"[1-9]\d*", state["rc"]):
-            raise ValueError("RC release state requires a positive RC number")
-    elif state["rc"]:
-        raise ValueError("DEVEL and GA release states require an empty RC number")
+    if state["channel"] in {"BETA", "RC"}:
+        if not re.fullmatch(r"[1-9]\d*", state["prerelease"]):
+            raise ValueError("BETA and RC release states require a positive prerelease number")
+    elif state["prerelease"]:
+        raise ValueError("DEVEL and GA release states require an empty prerelease number")
     required_revision = expected_revision or "$Format:%H$"
     if state["revision"].lower() != required_revision.lower():
         raise ValueError(f"release-state.txt revision must be {required_revision}")
@@ -383,8 +399,8 @@ def validate_source(root: Path, version: str) -> dict[str, str]:
         errors.append(f"release-state version {state['version']} does not match {identity['numeric']}")
     if state["channel"] != identity["channel"]:
         errors.append(f"release channel {state['channel']} does not match {identity['channel']}")
-    if state["rc"] != identity["rc_number"]:
-        errors.append(f"RC number {state['rc'] or '<empty>'} does not match {identity['rc_number'] or '<empty>'}")
+    if state["prerelease"] != identity["prerelease_number"]:
+        errors.append(f"prerelease number {state['prerelease'] or '<empty>'} does not match {identity['prerelease_number'] or '<empty>'}")
     if errors:
         raise ValueError("; ".join(errors))
     identity["windows_signing"] = state["windows_signing"]
@@ -417,7 +433,7 @@ def validate_archive(path: Path, version: str, commit: str) -> None:
         raise ValueError("source archive must not contain .git metadata")
     identity = classify(version)
     state = parse_state(release_state_contents, expected_revision=commit)
-    if state["version"] != identity["numeric"] or state["channel"] != identity["channel"] or state["rc"] != identity["rc_number"]:
+    if state["version"] != identity["numeric"] or state["channel"] != identity["channel"] or state["prerelease"] != identity["prerelease_number"]:
         raise ValueError("source archive release identity does not match its tag")
 
 

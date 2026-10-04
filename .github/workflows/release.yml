@@ -4,7 +4,7 @@ on:
   workflow_call:
     inputs:
       candidate_tag:
-        description: "Immutable internal tag (build/vX.Y.Z or build/vX.Y.Z-rcN)"
+        description: "Immutable internal tag (build/vX.Y.Z, build/vX.Y.Z-betaN, or build/vX.Y.Z-rcN)"
         required: true
         type: string
       expected_sha:
@@ -26,8 +26,6 @@ jobs:
     timeout-minutes: 10
     outputs:
       version: ${{ steps.identity.outputs.version }}
-      release_channel: ${{ steps.identity.outputs.channel }}
-      rc_number: ${{ steps.identity.outputs.rc_number }}
       windows_signing: ${{ steps.identity.outputs.windows_signing }}
       image_tag: ${{ steps.linux-images.outputs.image_tag }}
       x86_64_digest: ${{ steps.linux-images.outputs.x86_64_digest }}
@@ -47,7 +45,7 @@ jobs:
         run: |
           set -euo pipefail
           if [[ ! "$CANDIDATE_TAG" =~ ^build/v(.+)$ ]]; then
-            echo "::error::Expected build/vX.Y.Z or build/vX.Y.Z-rcN, got $CANDIDATE_TAG"
+            echo "::error::Expected build/vX.Y.Z, build/vX.Y.Z-betaN, or build/vX.Y.Z-rcN, got $CANDIDATE_TAG"
             exit 1
           fi
           ACTUAL_SHA=$(git rev-parse HEAD)
@@ -59,8 +57,6 @@ jobs:
           IDENTITY=$(python3 .github/scripts/release-policy.py validate-source "$VERSION")
           {
             echo "version=$(jq -r .version <<<"$IDENTITY")"
-            echo "channel=$(jq -r .channel <<<"$IDENTITY")"
-            echo "rc_number=$(jq -r .rc_number <<<"$IDENTITY")"
             echo "windows_signing=$(jq -r .windows_signing <<<"$IDENTITY")"
           } >> "$GITHUB_OUTPUT"
       - name: Validate prepared Linux images
@@ -78,8 +74,6 @@ jobs:
       arch: arm64
       runner: macos-15
       deployment_target: "11.0"
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
       signing_mode: validation
 
   linux:
@@ -94,8 +88,6 @@ jobs:
       image_tag: ${{ needs.prepare.outputs.image_tag }}
       save_ccache: true
       build_packages: true
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
 
   linux-arm:
     needs: prepare
@@ -109,8 +101,6 @@ jobs:
       image_tag: ${{ needs.prepare.outputs.image_tag }}
       save_ccache: true
       build_packages: true
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
 
   # Cross-compile on x86_64, then run target tests, packaging, and AppImage
   # validation in the paired ARMv7 runtime image under QEMU.
@@ -127,8 +117,6 @@ jobs:
       armhf_cross_image_digest: ${{ needs.prepare.outputs.armhf_cross_digest }}
       save_ccache: true
       build_packages: true
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
 
   windows:
     needs: prepare
@@ -136,8 +124,6 @@ jobs:
     with:
       version: ${{ needs.prepare.outputs.version }}
       hamlib_branch: "4.7.2"
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
 
   candidate-ready:
     needs: [prepare, macos, linux, linux-arm, linux-armhf, windows]

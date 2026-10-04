@@ -151,8 +151,8 @@ jobs:
                 echo "::error::Public release images may only be published by WSJTX/wsjtx"
                 exit 2
               fi
-              if [[ ! "$REQUEST_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-rc[1-9][0-9]*)?$ ]]; then
-                echo "::error::Public release images require an exact vX.Y.Z or vX.Y.Z-rcN tag"
+              if [[ ! "$REQUEST_REF" =~ ^refs/tags/v[0-9]+\.[0-9]+\.[0-9]+(-(beta|rc)[1-9][0-9]*)?$ ]]; then
+                echo "::error::Public release images require an exact vX.Y.Z, vX.Y.Z-betaN, or vX.Y.Z-rcN tag"
                 exit 2
               fi
               if [ "$MODE" != refresh ] || [ "$PROMOTE" != false ] || \
