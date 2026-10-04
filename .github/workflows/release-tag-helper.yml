@@ -1,4 +1,5 @@
 name: Prepare Release Candidate
+run-name: Prepare Release Candidate build/v${{ inputs.version }} (${{ inputs.operation }})
 
 on:
   workflow_dispatch:

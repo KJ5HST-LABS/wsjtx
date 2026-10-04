@@ -14,6 +14,12 @@ def step(workflow: str, name: str) -> str:
     return workflow[start:start + 1 + following.start()] if following else workflow[start:]
 
 
+def job(workflow: str, name: str) -> str:
+    start = workflow.index(f"\n  {name}:\n") + 1
+    following = re.search(r"\n  [A-Za-z0-9_-]+:\n", workflow[start:])
+    return workflow[start:start + following.start() + 1] if following else workflow[start:]
+
+
 class ReleaseWorkflowPolicyTests(unittest.TestCase):
     def test_public_release_marks_every_non_ga_channel_prerelease_and_latest_stays_ga_only(self):
         publish = step(PUBLIC, "Publish public GitHub Release")
@@ -26,6 +32,49 @@ class ReleaseWorkflowPolicyTests(unittest.TestCase):
         )
         self.assertEqual(publish.count("LATEST=true"), 1)
         self.assertIn('FLAGS+=("--latest=$LATEST")', publish)
+
+    def test_publication_environment_and_its_validation_follow_the_channel(self):
+        selected = "${{ needs.prepare.outputs.release_channel == 'BETA' && 'beta-release' || 'public-release' }}"
+        self.assertIn(f"    environment: {selected}\n", job(PUBLIC, "publish"))
+        guard = step(PUBLIC, "Validate final publication environment protection")
+        self.assertRegex(
+            guard,
+            r'ENVIRONMENT=public-release\s+POLICIES=\(\)\s+'
+            r'if \[ "\$CHANNEL" = BETA \]; then\s+ENVIRONMENT=beta-release',
+        )
+        self.assertIn('"repos/$GITHUB_REPOSITORY/environments/$ENVIRONMENT/deployment-branch-policies"', guard)
+        self.assertIn('"repos/$GITHUB_REPOSITORY/environments/$ENVIRONMENT"', guard)
+        self.assertIn('--channel "$CHANNEL" "${POLICIES[@]}"', guard)
+        self.assertLess(PUBLIC.index(guard), PUBLIC.index("\n  macos:\n"))
+
+    def test_betas_publish_validated_macos_packages_with_nothing_replaceable(self):
+        identity = step(PUBLIC, "Validate public release tag and source identity")
+        self.assertRegex(
+            identity,
+            r'if \[ "\$CHANNEL" = BETA \]; then\s+echo "macos_sign_mode=validation" >> "\$GITHUB_OUTPUT"',
+        )
+        self.assertLess(
+            identity.index('[ "$CHANNEL" = BETA ]'),
+            identity.index('[ "$MACOS_DISTRIBUTION_SIGNING_ENABLED" = true ]'),
+        )
+        recheck = step(PUBLIC, "Recheck bundle and immutable public tag")
+        self.assertRegex(recheck, r'if \[ "\$CHANNEL" = BETA \]; then\s+EXPECTED_MACOS_MODE=unsigned\s+elif')
+        publish = step(PUBLIC, "Publish public GitHub Release")
+        self.assertIn(".macos_signing.replaceable_assets[]", publish)
+        self.assertNotIn("MACOS_MODE", publish)
+
+    def test_a_rerun_compares_every_published_asset_except_the_manifests_replaceable_ones(self):
+        publish = step(PUBLIC, "Publish public GitHub Release")
+        self.assertIn("mapfile -t REPLACEABLE_NAMES < <(jq -r '.macos_signing.replaceable_assets[]' "
+                      "release-bundle/release-manifest.json)", publish)
+        preserve = [
+            "if printf '%s\\n' \"${REPLACEABLE_NAMES[@]}\" | grep -Fxq \"$name\"; then",
+            "if printf '%s\\n' \"${ACTUAL_NAMES[@]}\" | grep -Fxq \"$name\"; then",
+            "echo \"Preserving manually replaceable macOS asset: $name\"",
+        ]
+        self.assertRegex(publish, r"\s+".join(map(re.escape, preserve)))
+        self.assertEqual(len(re.findall(r"^\s+continue$", publish, re.M)), 1)
+        self.assertEqual(publish.count('cmp "$file"'), 1)
 
     def test_windows_signing_guard_admits_only_rc_and_ga(self):
         guard = step(SIGN, "Require a public RC or GA invocation")
