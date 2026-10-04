@@ -34,7 +34,8 @@ wsjt_read_release_state (
 
 if (EXPECT_ARCHIVE_REVISION)
   assert_equal ("${revision}" "${EXPECT_ARCHIVE_REVISION}" "archive revision")
-else ()
+elseif (EXISTS "${SOURCE_DIR}/.git")
+  # git archive expands the placeholder, so only a checkout must carry it.
   assert_equal ("${revision}" "" "working-tree archive placeholder")
 endif ()
 

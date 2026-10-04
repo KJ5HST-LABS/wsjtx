@@ -47,6 +47,7 @@
 #include "ExceptionCatchingApplication.hpp"
 #include "Logger.hpp"
 #include "PerformanceTrace.hpp"
+#include "prerelease_expiry.h"
 #include "revision_utils.hpp"
 #include "MetaDataRegistry.hpp"
 #include "qt_helpers.hpp"

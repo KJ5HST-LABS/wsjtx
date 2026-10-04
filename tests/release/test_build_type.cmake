@@ -95,10 +95,68 @@ assert_equal ("${expiry}" "0" "GA expiry")
 expect_rejected ("malformed SOURCE_DATE_EPOCH" -D CHECK_SOURCE_DATE_EPOCH=yesterday)
 unset (ENV{SOURCE_DATE_EPOCH})
 
+# The build-time step as revisiontag runs it, configured at 2020-09-13T12:26:40Z.
+function (write_expiry_header channel source_dir result_out)
+  execute_process (
+    COMMAND "${CMAKE_COMMAND}"
+      -D CHANNEL=${channel}
+      -D SOURCE_DIR=${source_dir}
+      -D OUTPUT_DIR=${TEST_BINARY_DIR}
+      -D GIT_EXECUTABLE=${GIT_EXECUTABLE}
+      -D CONFIGURE_EPOCH=1600000000
+      -P "${SOURCE_DIR}/CMake/prerelease_expiry.cmake"
+    RESULT_VARIABLE header_result
+    OUTPUT_QUIET
+    ERROR_VARIABLE header_error)
+  set (${result_out} "${header_result}" PARENT_SCOPE)
+  set (header_error "${header_error}" PARENT_SCOPE)
+endfunction ()
+
+function (expect_expiry_header channel source_dir expected description)
+  write_expiry_header (${channel} "${source_dir}" header_result)
+  if (NOT header_result EQUAL 0)
+    message (FATAL_ERROR "${description}: the build-time expiry step failed: ${header_error}")
+  endif ()
+  file (READ "${TEST_BINARY_DIR}/prerelease_expiry.h" header)
+  assert_equal ("${header}" "#define WSJT_PRERELEASE_EXPIRY ${expected}\n" "${description}")
+endfunction ()
+
+file (REMOVE "${TEST_BINARY_DIR}/prerelease_expiry.h")
+expect_expiry_header (BETA "${unversioned}" 1607817599 "build-time expiry without Git, from the configure time")
+set (ENV{SOURCE_DATE_EPOCH} 1700000000)
+expect_expiry_header (DEVEL "${unversioned}" 1707782399 "build-time expiry from SOURCE_DATE_EPOCH")
+file (TIMESTAMP "${TEST_BINARY_DIR}/prerelease_expiry.h" written "%s" UTC)
+execute_process (COMMAND "${CMAKE_COMMAND}" -E sleep 1)
+expect_expiry_header (RC "${unversioned}" 1707782399 "build-time expiry, unchanged")
+file (TIMESTAMP "${TEST_BINARY_DIR}/prerelease_expiry.h" rewritten "%s" UTC)
+assert_equal ("${rewritten}" "${written}" "an unchanged expiry rewrote the header")
+expect_expiry_header (GA "${unversioned}" 0 "build-time GA expiry")
+unset (ENV{SOURCE_DATE_EPOCH})
+foreach (channel "" ALPHA)
+  write_expiry_header ("${channel}" "${unversioned}" header_result)
+  if (header_result EQUAL 0)
+    message (FATAL_ERROR "The build-time expiry step accepted the channel \"${channel}\"")
+  endif ()
+endforeach ()
+
 if (GIT_EXECUTABLE)
   # Committed 2023-11-14T22:13:20Z; expires at 2024-02-12T23:59:59Z.
   wsjt_prerelease_expiry (RC "${checkout}" expiry)
   assert_equal ("${expiry}" "1707782399" "expiry from the commit date")
+  expect_expiry_header (RC "${checkout}" 1707782399 "build-time expiry from the commit date")
+
+  execute_process (
+    COMMAND "${CMAKE_COMMAND}" -E env
+      "GIT_AUTHOR_DATE=1759242000 +0000" "GIT_COMMITTER_DATE=1759242000 +0000"
+      ${git} commit -q --allow-empty -m "expiry 2"
+    RESULT_VARIABLE commit_result)
+  if (NOT commit_result EQUAL 0)
+    message (FATAL_ERROR "Could not add a commit to the expiry test checkout")
+  endif ()
+  expect_expiry_header (BETA "${checkout}" 1767052799 "build-time expiry after a new commit")
+  set (ENV{SOURCE_DATE_EPOCH} 1700000000)
+  expect_expiry_header (DEVEL "${checkout}" 1707782399 "build-time SOURCE_DATE_EPOCH over the commit date")
+  unset (ENV{SOURCE_DATE_EPOCH})
 endif ()
 
 string (TIMESTAMP before "%s" UTC)

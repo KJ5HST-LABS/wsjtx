@@ -76,12 +76,14 @@ if (POLICY CMP0075)
 endif ()
 
 include ("${CMAKE_CURRENT_LIST_DIR}/CMake/Modules/read_release_state.cmake")
+set (wsjt_release_state_file "${CMAKE_CURRENT_LIST_DIR}/release-state.txt")
 wsjt_read_release_state (
-  "${CMAKE_CURRENT_LIST_DIR}/release-state.txt"
+  "${wsjt_release_state_file}"
   WSJT_SOURCE_VERSION
   WSJT_SOURCE_RELEASE_CHANNEL
   WSJT_SOURCE_PRERELEASE_NUMBER
   WSJT_ARCHIVE_SOURCE_REVISION)
+set_property (DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${wsjt_release_state_file}")
 
 project (wsjtx
   VERSION ${WSJT_SOURCE_VERSION}.0
@@ -145,9 +147,6 @@ wsjt_set_release_channel_cache ("${WSJT_SOURCE_RELEASE_CHANNEL}" "${WSJT_SOURCE_
 set_build_type ()
 set (wsjtx_VERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}${BUILD_TYPE_REVISION}")
 set (wsjtx_PACKAGE_VERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}${BUILD_TYPE_PACKAGE_REVISION}")
-find_package (Git QUIET)
-wsjt_prerelease_expiry ("${WSJT_RELEASE_CHANNEL}" "${CMAKE_CURRENT_SOURCE_DIR}" wsjtx_PRERELEASE_EXPIRY)
-set_property (SOURCE main.cpp APPEND PROPERTY COMPILE_DEFINITIONS "WSJT_PRERELEASE_EXPIRY=${wsjtx_PRERELEASE_EXPIRY}")
 
 #
 # project information
@@ -710,7 +709,7 @@ if (WSJT_ENABLE_TESTS)
             -P ${CMAKE_SOURCE_DIR}/tests/unit/jt9/test_jt9_cli_validation.cmake)
 
   # Golden output is pinned to the required GNU/Linux x86-64 decoder path.
-  if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+  if (EXISTS "${CMAKE_SOURCE_DIR}/samples" AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
       CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
     # mode_args is one or more jt9 flags (e.g. -8, or --q65 -p 30 -f 1000 -d 3).
     # $<SEMICOLON> protects the list separators through the single -DMODE=...
@@ -903,7 +902,8 @@ if (WSJT_ENABLE_TESTS)
       test_wsprd_golden_150426_0918
       samples/WSPR/150426_0918.wav
       test/fixtures/wspr_150426_0918.expected.txt)
-  else ()
+  # Source archives omit samples/ (export-ignore), so decoder tests need a checkout.
+  elseif (EXISTS "${CMAKE_SOURCE_DIR}/samples")
     set (jt9_smoke_work_dir
       "${CMAKE_BINARY_DIR}/Testing/Smoke/test_jt9_ft8_callback_smoke")
     file (MAKE_DIRECTORY "${jt9_smoke_work_dir}")
@@ -1287,6 +1287,15 @@ if (WSJT_ENABLE_TESTS AND WSJT_ENABLE_GUI_SMOKE_TESTS
   endif ()
 endif ()
 
+# These GUI tests read samples/, which source archives omit.
+if (NOT EXISTS "${CMAKE_SOURCE_DIR}/samples")
+  foreach (sample_test test_wsjtx_live_audio_ft8 test_wsjtx_jt9_wav)
+    if (TEST ${sample_test})
+      set_tests_properties (${sample_test} PROPERTIES DISABLED TRUE)
+    endif ()
+  endforeach ()
+endif ()
+
 # make a library for WSJT-X UDP servers
 # add_library (wsjtx_udp SHARED ${UDP_library_CXXSRCS})
 add_library (wsjtx_udp-static STATIC ${UDP_library_CXXSRCS})
@@ -1366,7 +1375,12 @@ endif (UNIX)
 include (CMake/Install.cmake)
 
 
-# creates or updates ${PROJECT_BINARY_DIR}/scs_version.h using cmake script
+find_package (Git QUIET)
+# Without SOURCE_DATE_EPOCH or Git the expiry is fixed at configure time,
+# so a later install does not rebuild main.cpp.
+string (TIMESTAMP wsjtx_CONFIGURE_EPOCH "%s" UTC)
+# creates or updates ${PROJECT_BINARY_DIR}/scs_version.h and
+# prerelease_expiry.h using cmake scripts
 add_custom_target (revisiontag
   COMMAND ${CMAKE_COMMAND}
   -D SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
@@ -1374,14 +1388,22 @@ add_custom_target (revisiontag
   -D OUTPUT_DIR=${PROJECT_BINARY_DIR}
   -D SOURCE_REVISION=${WSJT_SOURCE_REVISION}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/CMake/getsvn.cmake
+  COMMAND ${CMAKE_COMMAND}
+  -D CHANNEL=${WSJT_RELEASE_CHANNEL}
+  -D SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+  -D OUTPUT_DIR=${PROJECT_BINARY_DIR}
+  -D GIT_EXECUTABLE=${GIT_EXECUTABLE}
+  -D CONFIGURE_EPOCH=${wsjtx_CONFIGURE_EPOCH}
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/CMake/prerelease_expiry.cmake
   VERBATIM
-  BYPRODUCTS scs_version.h
-  COMMENT "Getting source control system revision information"
+  BYPRODUCTS scs_version.h prerelease_expiry.h
+  COMMENT "Getting source control system revision and prerelease expiry information"
   )
 # explicitly say that the wsjt_qt depends on custom target, this is
 # done indirectly so that the revisiontag target gets built exactly
 # once per build
 add_dependencies (wsjt_qt revisiontag)
+add_dependencies (wsjtx revisiontag)
 add_dependencies (jt9 revisiontag)
 add_dependencies (wsprd revisiontag)
 
