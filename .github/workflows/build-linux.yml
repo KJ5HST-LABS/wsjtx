@@ -593,23 +593,13 @@ jobs:
             wsjtx-build/jt9
             wsjtx-build/wsprd
             wsjtx-build/wsjtx
-      - name: Package command-line tools archive
+      - name: Upload release tarballs
         if: inputs.build_packages && !inputs.armhf_build_only
-        run: |
-          .github/scripts/package-cli-tools.sh \
-            --platform linux \
-            --version "${{ inputs.version }}" \
-            --arch armhf \
-            --tools wsjtx-build/cli-tools.txt \
-            --source wsjtx-build \
-            --out tools-archive
-      - name: Upload command-line tools archive
-        if: inputs.build_packages && !inputs.armhf_build_only
-        uses: actions/upload-artifact@v7
+        uses: ./.github/actions/upload-release-tarballs
         with:
-          name: wsjtx-${{ inputs.version }}-linux-armhf-tools
-          path: tools-archive/wsjtx-${{ inputs.version }}-linux-armhf-tools.tar.gz
-          if-no-files-found: error
+          version: ${{ inputs.version }}
+          target: linux-armhf
+          directory: release-tarballs
       - name: Upload test results
         if: always() && !inputs.armhf_build_only
         uses: actions/upload-artifact@v7

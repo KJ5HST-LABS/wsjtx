@@ -1002,22 +1002,32 @@ jobs:
           name: individual-binaries-macos-${{ inputs.arch }}
           path: packages/*.tar.gz
 
-      - name: Package command-line tools archive
+      - name: Package release tarballs
         run: |
           .github/scripts/package-cli-tools.sh \
             --platform macos \
             --version "${{ inputs.version }}" \
             --arch "${{ inputs.arch }}" \
-            --tools wsjtx-build/cli-tools.txt \
+            --groups CMake/release-tarballs.txt \
             --source "${{ steps.collect.outputs.assets_dir }}" \
-            --out tools-archive
+            --out release-tarballs
 
-      - name: Upload command-line tools archive
-        uses: actions/upload-artifact@v7
+      - name: Smoke-test release tarballs
+        timeout-minutes: 5
+        run: |
+          .github/scripts/smoke-release-tarballs.sh \
+            --platform macos \
+            --version "${{ inputs.version }}" \
+            --target "${{ inputs.arch }}-macOS" \
+            --groups CMake/release-tarballs.txt \
+            --dir release-tarballs
+
+      - name: Upload release tarballs
+        uses: ./.github/actions/upload-release-tarballs
         with:
-          name: wsjtx-${{ inputs.version }}-${{ inputs.arch }}-macOS-tools
-          path: tools-archive/wsjtx-${{ inputs.version }}-${{ inputs.arch }}-macOS-tools.tar.gz
-          if-no-files-found: error
+          version: ${{ inputs.version }}
+          target: ${{ inputs.arch }}-macOS
+          directory: release-tarballs
 
       # Keep repository-built code after signing, notarization, cleanup, and
       # artifact publication so a detached child cannot reach later secrets.

@@ -152,6 +152,13 @@ class ArmhfCrossConfigurationTests(unittest.TestCase):
         )
         self.assertIn("armhf-static-ldd.sh", runtime_package)
         self.assertIn('PATH="/work/wsjtx-build/appimage-tools:$PATH"', runtime_package)
+        packaging = runtime_package[runtime_package.index("Package release tarballs"):]
+        self.assertLess(runtime_package.index("--output appimage"), runtime_package.index("package-cli-tools.sh"))
+        self.assertIn('exec "${ARMHF_QEMU_EXECUTABLE:?}" /work/linuxdeploy.AppImage "$@"', packaging)
+        self.assertIn('PATH="/work/wsjtx-build/appimage-tools:$PATH" .github/scripts/package-cli-tools.sh', packaging)
+        self.assertIn("--linuxdeploy /work/wsjtx-build/appimage-tools/linuxdeploy", packaging)
+        self.assertIn(".github/scripts/smoke-release-tarballs.sh", packaging)
+        self.assertNotIn("--ldd", packaging)
 
     def test_hybrid_is_the_only_armhf_build_implementation(self):
         workflow = self.read(".github/workflows/build-linux.yml")

@@ -450,13 +450,13 @@ Change the tracked state from `RC n` to `GA` in a metadata-only commit, wait for
 | `wsjtx-3.2.0-rc1-linux-aarch64.AppImage` | Linux aarch64 | No | Published with matching `.deb` and `.rpm` packages |
 | `wsjtx-3.2.0-rc1-linux-armhf.AppImage` | Linux armhf | No | Published with matching `.deb` and `.rpm` packages |
 | `wsjtx-3.2.0-rc1-win64.exe` | Windows x86_64 | Yes | SignPath Foundation Authenticode for RC and GA |
-| `wsjtx-3.2.0-rc1-arm64-macOS-tools.tar.gz` | macOS ARM64 | No (ad-hoc) | Command-line programs with their dylibs; remove the quarantine attribute before extracting (`xattr -d com.apple.quarantine`) |
-| `wsjtx-3.2.0-rc1-linux-x86_64-tools.tar.gz` | Linux x86_64 | No | Command-line programs that link the distribution's libraries |
-| `wsjtx-3.2.0-rc1-linux-aarch64-tools.tar.gz` | Linux aarch64 | No | Command-line programs that link the distribution's libraries |
-| `wsjtx-3.2.0-rc1-linux-armhf-tools.tar.gz` | Linux armhf | No | Command-line programs that link the distribution's libraries |
-| `wsjtx-3.2.0-rc1-windows-x86_64-tools.tar.gz` | Windows x86_64 | No | Command-line programs with the DLLs they import |
+| `wsjtx-3.2.0-rc1-arm64-macOS-<tarball>.tar.gz` | macOS ARM64 | No (ad-hoc) | Programs with their dylibs; remove the quarantine attribute before extracting (`xattr -d com.apple.quarantine`) |
+| `wsjtx-3.2.0-rc1-linux-<arch>-<tarball>.tar.gz` | Linux x86_64, aarch64, armhf | No | Programs with the libraries they load; `README.txt` names the oldest glibc and the host libraries they need |
+| `wsjtx-3.2.0-rc1-windows-x86_64-<tarball>.tar.gz` | Windows x86_64 | No | Programs with the DLLs they import |
 | `wsjtx-3.2.0-rc1-src.tar.gz` | Source | N/A | Project-created archive of the public tagged commit |
 | `SHA256SUMS` and release manifest | CI-managed assets | N/A | Bind immutable uploaded bytes to their public tag, commit, and build provenance |
+
+`<tarball>` is each release tarball `CMake/release-tarballs.txt` names.
 
 GitHub also adds automatic **Source code (zip)** and **Source code (tar.gz)** links from the public tag. They represent the same tagged source but are generated and compressed by GitHub, so their archive hashes need not equal the project-created `.tar.gz`. `SHA256SUMS` covers immutable assets uploaded by the project. In manual macOS signing mode it excludes the replaceable `.pkg` file, which the manifest identifies separately. A checksum detects changed bytes but is not a substitute for platform signatures or tag-to-commit checks.
 

@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import re
 import io
 import shutil
 import subprocess
@@ -964,10 +965,10 @@ class ReleasePolicyTest(unittest.TestCase):
             self.assertEqual(manifest["macos_signing"]["mode"], "distribution")
             self.assertEqual(manifest["macos_signing"]["replaceable_assets"], [])
             self.assertEqual(manifest["windows_signing"]["mode"], "signpath")
-            self.assertEqual(len(manifest["assets"]), 17)
-            self.assertEqual(
-                sorted(entry["name"] for entry in manifest["assets"] if entry["name"].endswith("-tools.tar.gz")),
-                sorted(f"{name}.tar.gz" for name in release_policy.tools_archives(version)),
+            self.assertEqual(len(manifest["assets"]), 32)
+            self.assertTrue(
+                {f"{name}.tar.gz" for name in release_policy.release_tarballs(version)}
+                <= {entry["name"] for entry in manifest["assets"]}
             )
 
     def test_manual_macos_assets_keep_release_names_without_immutable_hashes(self):
@@ -977,7 +978,7 @@ class ReleasePolicyTest(unittest.TestCase):
             for name in release_policy.public_expected_assets(version, "validation"):
                 target = root / name
                 target.mkdir()
-                if name.endswith("-tools"):
+                if name in release_policy.release_tarballs(version):
                     filename = f"{name}.tar.gz"
                 elif "macOS" in name:
                     filename = name.replace("-unsigned", "")
@@ -1021,8 +1022,8 @@ class ReleasePolicyTest(unittest.TestCase):
             self.assertTrue(replaceable.isdisjoint(immutable_names))
             self.assertTrue(replaceable.isdisjoint(checksum_names))
             self.assertIn("wsjtx-win64.exe", immutable_names)
-            tools = {f"{name}.tar.gz" for name in release_policy.tools_archives(version)}
-            self.assertTrue(tools <= immutable_names & checksum_names)
+            tarballs = {f"{name}.tar.gz" for name in release_policy.release_tarballs(version)}
+            self.assertTrue(tarballs <= immutable_names & checksum_names)
 
     def test_unsigned_windows_manifest_selects_and_hashes_installer(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1031,7 +1032,7 @@ class ReleasePolicyTest(unittest.TestCase):
             for name in release_policy.public_expected_assets(version, "validation", "unsigned"):
                 target = root / name
                 target.mkdir()
-                if name.endswith("-tools"):
+                if name in release_policy.release_tarballs(version):
                     filename = f"{name}.tar.gz"
                 elif "macOS" in name:
                     filename = name.replace("-unsigned", "")
@@ -1060,9 +1061,10 @@ class ReleasePolicyTest(unittest.TestCase):
             installer = f"wsjtx-{version}-win64.exe"
             self.assertEqual(manifest["windows_signing"]["mode"], "unsigned")
             self.assertIn(installer, {entry["name"] for entry in manifest["assets"]})
-            self.assertIn(
-                f"wsjtx-{version}-windows-x86_64-tools.tar.gz", {entry["name"] for entry in manifest["assets"]}
-            )
+            for group in ("jt9", "jt9stream", "wsprd", "utilities"):
+                self.assertIn(
+                    f"wsjtx-{version}-windows-x86_64-{group}.tar.gz", {entry["name"] for entry in manifest["assets"]}
+                )
             self.assertIn(installer, (root / "SHA256SUMS").read_text())
             installer_path = root / f"wsjtx-{version}-windows-x86_64-installer" / installer
             installer_path.rename(installer_path.with_name("unexpected.exe"))
@@ -1074,11 +1076,18 @@ class ReleasePolicyTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "signed Windows installer"):
                 release_policy.find_public_asset_files(root, version, "validation", "unsigned")
 
-    def test_tools_archives_are_required_by_candidate_and_public_gates(self):
+    def test_release_tarballs_are_required_by_candidate_and_public_gates(self):
         version = "3.2.0-rc1"
-        tools = release_policy.tools_archives(version)
-        self.assertEqual(len(tools), 5)
-        self.assertEqual([release_policy.asset_suffix(name) for name in tools], [".tar.gz"] * 5)
+        tools = release_policy.release_tarballs(version)
+        self.assertEqual(
+            tools,
+            [
+                f"wsjtx-{version}-{target}-{group}"
+                for target in ("arm64-macOS", "linux-x86_64", "linux-aarch64", "linux-armhf", "windows-x86_64")
+                for group in ("jt9", "jt9stream", "wsprd", "utilities")
+            ],
+        )
+        self.assertEqual([release_policy.asset_suffix(name) for name in tools], [".tar.gz"] * 20)
         self.assertEqual(
             [release_policy.asset_suffix(name) for name in release_policy.expected_assets(version, False)[:5]],
             [".pkg", ".AppImage", ".AppImage", ".AppImage", ".exe"],
@@ -1098,13 +1107,83 @@ class ReleasePolicyTest(unittest.TestCase):
                 (target / f"{name}{release_policy.asset_suffix(name)}").write_bytes(name.encode())
             files = release_policy.find_asset_files(root, version, False)
             self.assertEqual(
-                sorted(path.name for path in files if path.name.endswith("-tools.tar.gz")),
+                sorted(path.name for path in files if path.name.endswith(".tar.gz")),
                 sorted(f"{name}.tar.gz" for name in tools),
             )
-            armhf = root / f"wsjtx-{version}-linux-armhf-tools"
+            armhf = root / f"wsjtx-{version}-linux-armhf-jt9stream"
             (armhf / f"{armhf.name}.tar.gz").unlink()
-            with self.assertRaisesRegex(ValueError, "linux-armhf-tools must contain exactly one .tar.gz"):
+            with self.assertRaisesRegex(ValueError, "linux-armhf-jt9stream must contain exactly one .tar.gz"):
                 release_policy.find_asset_files(root, version, False)
+
+    def test_release_tarball_uploads_agree_with_the_group_file_and_the_policy(self):
+        root = SCRIPT.parents[2]
+        action = (root / ".github/actions/upload-release-tarballs/action.yml").read_text(encoding="utf-8")
+        prefix = r"wsjtx-\$\{\{ inputs\.version \}\}-\$\{\{ inputs\.target \}\}-"
+        names = re.findall(rf"\n        name: {prefix}(\S+)\n", action)
+        paths = re.findall(rf"\n        path: \$\{{\{{ inputs\.directory \}}\}}/{prefix}(\S+)\.tar\.gz\n", action)
+        self.assertEqual(names, release_policy.tarball_groups())
+        self.assertEqual(paths, names)
+        self.assertEqual(action.count("if-no-files-found: error"), len(names))
+
+        version = "3.3.0"
+        installers = []
+        for name in release_policy.public_expected_assets(version, "validation", "unsigned"):
+            if name not in release_policy.release_tarballs(version):
+                installers.append(re.sub(r"-(unsigned\.pkg|AppImage|installer)$", "", name.removeprefix(f"wsjtx-{version}-")).removesuffix(".pkg"))
+        self.assertEqual(installers, list(release_policy.RELEASE_TARGETS))
+        macos_arches = [target.removesuffix("-macOS") for target in installers if target.endswith("-macOS")]
+        linux_arches = [target.removeprefix("linux-") for target in installers if target.startswith("linux-")]
+
+        uploads = []
+        for path in (
+            ".github/workflows/build-macos.yml", ".github/workflows/build-windows.yml",
+            ".github/workflows/build-linux.yml", ".github/actions/build-linux-payload/action.yml",
+        ):
+            text = (root / path).read_text(encoding="utf-8")
+            calls = re.findall(
+                r"uses: \./\.github/actions/upload-release-tarballs\n\s+with:\n\s+version: \$\{\{ inputs\.version \}\}\n"
+                r"\s+target: (.+)\n\s+directory: release-tarballs\n",
+                text,
+            )
+            self.assertEqual(len(calls), text.count("upload-release-tarballs"), path)
+            uploads += [(path, target) for target in calls]
+        targets = {target for _, target in uploads if "${{" not in target}
+        for path, target in uploads:
+            if target == "${{ inputs.arch }}-macOS":
+                targets |= {f"{arch}-macOS" for arch in macos_arches}
+            elif target == "linux-${{ inputs.arch }}":
+                targets |= {f"linux-{arch}" for arch in linux_arches if f"linux-{arch}" not in targets}
+        self.assertEqual(targets, set(release_policy.RELEASE_TARGETS))
+
+    def test_tarball_groups_come_from_the_group_file(self):
+        self.assertEqual(release_policy.tarball_groups(), ["jt9", "jt9stream", "wsprd", "utilities"])
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "release-tarballs.txt"
+            path.write_bytes(b"# comment\r\njt9 jt9\r\n\r\nengine jt9stream wsprd\r\n")
+            self.assertEqual(release_policy.tarball_groups(path), ["jt9", "engine"])
+            for contents, message in (
+                ("", "must name each release tarball once"),
+                ("# only a comment\n", "must name each release tarball once"),
+                ("jt9 jt9\njt9 jt9stream\n", "must name each release tarball once"),
+                ("jt9 jt9\nutilities\n", "release tarball utilities names no programs"),
+                ("jt9 jt9\ninstaller wsprd\n", "release tarball name installer cannot name a release asset"),
+                ("jt9 jt9\nsrc wsprd\n", "release tarball name src cannot name a release asset"),
+                ("jt9 jt9\nAppImage wsprd\n", "release tarball name AppImage cannot name a release asset"),
+            ):
+                with self.subTest(contents=contents):
+                    path.write_text(contents, encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, message):
+                        release_policy.tarball_groups(path)
+
+    def test_asset_suffix_tells_tarballs_from_installers_on_every_target(self):
+        version = "3.3.0-beta1"
+        for name in release_policy.release_tarballs(version):
+            with self.subTest(name=name):
+                self.assertEqual(release_policy.asset_suffix(name), ".tar.gz")
+        self.assertEqual(
+            [release_policy.asset_suffix(name) for name in release_policy.public_expected_assets(version, "validation", "unsigned")[:5]],
+            [".pkg", ".AppImage", ".AppImage", ".AppImage", ".exe"],
+        )
 
     def test_beta_manifest_hashes_unsigned_macos_packages_as_immutable_assets(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1113,7 +1192,7 @@ class ReleasePolicyTest(unittest.TestCase):
             for name in release_policy.public_expected_assets(version, "validation", "unsigned"):
                 target = root / name
                 target.mkdir()
-                if name.endswith("-tools"):
+                if name in release_policy.release_tarballs(version):
                     filename = f"{name}.tar.gz"
                 elif "macOS" in name:
                     filename = name.replace("-unsigned", "")
@@ -1142,7 +1221,7 @@ class ReleasePolicyTest(unittest.TestCase):
 
             manifest = json.loads((root / "release-manifest.json").read_text())
             beta_assets = {f"wsjtx-{version}-arm64-macOS.pkg"}
-            beta_assets |= {f"{name}.tar.gz" for name in release_policy.tools_archives(version)}
+            beta_assets |= {f"{name}.tar.gz" for name in release_policy.release_tarballs(version)}
             immutable_names = {entry["name"] for entry in manifest["assets"]}
             checksum_names = {
                 line.split("  ", 1)[1]

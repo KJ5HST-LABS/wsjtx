@@ -22,6 +22,10 @@ MACOS_MODES = ("validation", "distribution")
 WINDOWS_MODES = ("signpath", "unsigned")
 CHANNEL_RANK = {"BETA": 0, "RC": 1, "GA": 2}
 BETA_TAG_PATTERN = "v*-beta*"
+RELEASE_TARGETS = ("arm64-macOS", "linux-x86_64", "linux-aarch64", "linux-armhf", "windows-x86_64")
+RELEASE_TARBALLS_FILE = Path(__file__).resolve().parents[2] / "CMake" / "release-tarballs.txt"
+# Artifact name endings that already mean another kind of release asset.
+RESERVED_ASSET_KINDS = ("deb", "rpm", "installer", "signed", "unsigned", "src")
 
 
 def classify(version: str) -> dict[str, str]:
@@ -461,14 +465,24 @@ def validate_archive(path: Path, version: str, commit: str) -> None:
         raise ValueError("source archive release identity does not match its tag")
 
 
-def tools_archives(version: str) -> list[str]:
-    return [
-        f"wsjtx-{version}-arm64-macOS-tools",
-        f"wsjtx-{version}-linux-x86_64-tools",
-        f"wsjtx-{version}-linux-aarch64-tools",
-        f"wsjtx-{version}-linux-armhf-tools",
-        f"wsjtx-{version}-windows-x86_64-tools",
-    ]
+def tarball_groups(path: Path = RELEASE_TARBALLS_FILE) -> list[str]:
+    groups = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        fields = line.split()
+        if not fields or fields[0].startswith("#"):
+            continue
+        if len(fields) < 2:
+            raise ValueError(f"release tarball {fields[0]} names no programs in {path.name}")
+        if not re.fullmatch(r"[a-z0-9]+", fields[0]) or fields[0] in RESERVED_ASSET_KINDS:
+            raise ValueError(f"release tarball name {fields[0]} cannot name a release asset")
+        groups.append(fields[0])
+    if not groups or len(groups) != len(set(groups)):
+        raise ValueError(f"{path.name} must name each release tarball once")
+    return groups
+
+
+def release_tarballs(version: str) -> list[str]:
+    return [f"wsjtx-{version}-{target}-{group}" for target in RELEASE_TARGETS for group in tarball_groups()]
 
 
 def expected_assets(version: str, distribution: bool) -> list[str]:
@@ -479,7 +493,7 @@ def expected_assets(version: str, distribution: bool) -> list[str]:
         f"wsjtx-{version}-linux-aarch64-AppImage",
         f"wsjtx-{version}-linux-armhf-AppImage",
         f"wsjtx-{version}-windows-x86_64-installer-signed" if distribution else f"wsjtx-{version}-windows-x86_64-installer",
-        *tools_archives(version),
+        *release_tarballs(version),
     ]
 
 
@@ -495,12 +509,12 @@ def public_expected_assets(version: str, macos_mode: str, windows_mode: str = "s
         f"wsjtx-{version}-linux-aarch64-AppImage",
         f"wsjtx-{version}-linux-armhf-AppImage",
         f"wsjtx-{version}-windows-x86_64-installer{'-signed' if windows_mode == 'signpath' else ''}",
-        *tools_archives(version),
+        *release_tarballs(version),
     ]
 
 
 def asset_suffix(artifact: str) -> str:
-    if artifact.endswith("-tools"):
+    if artifact.rsplit("-", 1)[-1] in tarball_groups():
         return ".tar.gz"
     return ".pkg" if "macOS" in artifact else ".AppImage" if "linux" in artifact else ".exe"
 
