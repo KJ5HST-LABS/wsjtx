@@ -207,7 +207,7 @@ class ArmhfCrossConfigurationTests(unittest.TestCase):
         properties = q65.split(
             "set_tests_properties (test_q65_decode_pipeline", 1
         )[1].split(")", 1)[0]
-        self.assertIn("TIMEOUT 180", properties)
+        self.assertIn("TIMEOUT 360", properties)
 
 
 if __name__ == "__main__":
