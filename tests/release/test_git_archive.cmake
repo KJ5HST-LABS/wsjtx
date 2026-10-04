@@ -36,6 +36,15 @@ execute_process (
 if (NOT state_result EQUAL 0)
   message (FATAL_ERROR "Extracted Git archive did not preserve release identity")
 endif ()
+execute_process (
+  COMMAND "${CMAKE_COMMAND}"
+    -D SOURCE_DIR=${extract_dir}
+    -D TEST_BINARY_DIR=${TEST_BINARY_DIR}/archive-ctest-fixtures
+    -P ${extract_dir}/tests/release/test_release_state.cmake
+  RESULT_VARIABLE state_result)
+if (NOT state_result EQUAL 0)
+  message (FATAL_ERROR "test_release_state fails when run from the extracted Git archive")
+endif ()
 
 include ("${extract_dir}/CMake/Modules/read_release_state.cmake")
 wsjt_read_release_state (

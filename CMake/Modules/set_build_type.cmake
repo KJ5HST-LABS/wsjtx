@@ -85,7 +85,9 @@ function (wsjt_prerelease_expiry channel source_dir expiry_out)
       OUTPUT_STRIP_TRAILING_WHITESPACE
       ERROR_QUIET)
   endif ()
-  if (NOT build_epoch MATCHES "^[0-9]+$")
+  if (NOT build_epoch MATCHES "^[0-9]+$" AND ARGC GREATER 3)
+    set (build_epoch "${ARGV3}")
+  elseif (NOT build_epoch MATCHES "^[0-9]+$")
     string (TIMESTAMP build_epoch "%s" UTC)
   endif ()
   # The last second (UTC) of the 90th day after the build date.
