@@ -421,6 +421,16 @@ def validate_archive(path: Path, version: str, commit: str) -> None:
         raise ValueError("source archive release identity does not match its tag")
 
 
+def tools_archives(version: str) -> list[str]:
+    return [
+        f"wsjtx-{version}-arm64-macOS-tools",
+        f"wsjtx-{version}-linux-x86_64-tools",
+        f"wsjtx-{version}-linux-aarch64-tools",
+        f"wsjtx-{version}-linux-armhf-tools",
+        f"wsjtx-{version}-windows-x86_64-tools",
+    ]
+
+
 def expected_assets(version: str, distribution: bool) -> list[str]:
     mac_suffix = "macOS.pkg" if distribution else "macOS-unsigned.pkg"
     return [
@@ -429,6 +439,7 @@ def expected_assets(version: str, distribution: bool) -> list[str]:
         f"wsjtx-{version}-linux-aarch64-AppImage",
         f"wsjtx-{version}-linux-armhf-AppImage",
         f"wsjtx-{version}-windows-x86_64-installer-signed" if distribution else f"wsjtx-{version}-windows-x86_64-installer",
+        *tools_archives(version),
     ]
 
 
@@ -444,7 +455,14 @@ def public_expected_assets(version: str, macos_mode: str, windows_mode: str = "s
         f"wsjtx-{version}-linux-aarch64-AppImage",
         f"wsjtx-{version}-linux-armhf-AppImage",
         f"wsjtx-{version}-windows-x86_64-installer{'-signed' if windows_mode == 'signpath' else ''}",
+        *tools_archives(version),
     ]
+
+
+def asset_suffix(artifact: str) -> str:
+    if artifact.endswith("-tools"):
+        return ".tar.gz"
+    return ".pkg" if "macOS" in artifact else ".AppImage" if "linux" in artifact else ".exe"
 
 
 def collect_asset_files(root: Path, expected: list[str]) -> list[Path]:
@@ -453,7 +471,7 @@ def collect_asset_files(root: Path, expected: list[str]) -> list[Path]:
         directory = root / artifact
         if not directory.is_dir():
             raise ValueError(f"missing artifact directory: {artifact}")
-        suffix = ".pkg" if "macOS" in artifact else ".AppImage" if "linux" in artifact else ".exe"
+        suffix = asset_suffix(artifact)
         matches = sorted(path for path in directory.rglob(f"*{suffix}") if path.is_file())
         if len(matches) != 1:
             raise ValueError(f"{artifact} must contain exactly one {suffix} file; found {len(matches)}")
@@ -475,13 +493,14 @@ def find_asset_files(root: Path, version: str, distribution: bool) -> list[Path]
 def find_public_asset_files(
     root: Path, version: str, macos_mode: str, windows_mode: str = "signpath"
 ) -> list[Path]:
-    files = collect_asset_files(root, public_expected_assets(version, macos_mode, windows_mode))
+    expected = public_expected_assets(version, macos_mode, windows_mode)
+    files = collect_asset_files(root, expected)
     if macos_mode == "distribution":
         unsigned = sorted(root.rglob("*-unsigned.pkg"))
         if unsigned:
             raise ValueError(f"unsigned macOS packages cannot be published: {unsigned[0]}")
     if windows_mode == "unsigned":
-        installer = files[-1]
+        installer = files[expected.index(f"wsjtx-{version}-windows-x86_64-installer")]
         if installer.name != f"wsjtx-{version}-win64.exe":
             raise ValueError(f"unexpected unsigned Windows installer: {installer.name}")
         if (root / f"wsjtx-{version}-windows-x86_64-installer-signed").exists():

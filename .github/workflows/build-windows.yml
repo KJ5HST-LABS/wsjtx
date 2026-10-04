@@ -367,6 +367,28 @@ jobs:
           WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
           .github/scripts/smoke-launch-windows.sh "${WORKSPACE}/stage-main/bin/jt9.exe" --help
 
+      - name: Package command-line tools archive
+        run: |
+          WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
+          .github/scripts/package-cli-tools.sh \
+            --platform windows \
+            --version "${VERSION}" \
+            --arch x86_64 \
+            --tools "${WORKSPACE}/wsjtx-build/cli-tools.txt" \
+            --source "${WORKSPACE}/wsjtx-build" \
+            --dll-dir "${WORKSPACE}/stage-main/bin" \
+            --system-dir "$(cygpath -S)" \
+            --out "${WORKSPACE}/tools-archive"
+
+      - name: Smoke-launch packaged tools (clean PATH)
+        run: |
+          WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
+          mkdir -p "${WORKSPACE}/tools-check"
+          tar -xzf "${WORKSPACE}/tools-archive/wsjtx-${VERSION}-windows-x86_64-tools.tar.gz" -C "${WORKSPACE}/tools-check"
+          TOOLS="${WORKSPACE}/tools-check/wsjtx-${VERSION}-windows-x86_64-tools"
+          .github/scripts/smoke-launch-windows.sh "${TOOLS}/jt9.exe" --help
+          .github/scripts/smoke-launch-windows.sh "${TOOLS}/encode77.exe" "CQ K1ABC FN42"
+
       # Emit an NSIS installer containing the full executable set
       # (wsjtx.exe, map65.exe, jt9, wsprd, fmtave, fcal, fmeasure + WSJT_BUILD_UTILS
       # ft8code/jt65code/... + rigctl wrappers + Qt runtime via bundle_fixup).
@@ -420,6 +442,13 @@ jobs:
             wsjtx-build/jt9.exe
             wsjtx-build/wsprd.exe
             wsjtx-build/wsjtx.exe
+
+      - name: Upload command-line tools archive
+        uses: actions/upload-artifact@v7
+        with:
+          name: wsjtx-${{ inputs.version }}-windows-x86_64-tools
+          path: tools-archive/wsjtx-${{ inputs.version }}-windows-x86_64-tools.tar.gz
+          if-no-files-found: error
 
       - name: Summarize native caches
         if: always()
