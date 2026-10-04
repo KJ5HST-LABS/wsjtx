@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version without v (X.Y.Z or X.Y.Z-rcN)"
+        description: "Version without v (X.Y.Z, X.Y.Z-betaN, or X.Y.Z-rcN)"
         required: true
         type: string
       expected_sha:

@@ -38,14 +38,29 @@ class ReleasePolicyTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "no immutable public vX.Y.Z GA tags"):
             release_policy.public_release_line_policy("3.2.0", {
                 "refs/tags/v3.2.0-rc1": "a" * 40,
+                "refs/tags/v3.3.0-beta1": "c" * 40,
                 "refs/heads/release/3.2": "b" * 40,
             })
         for refs in (
             {"refs/heads/release/next": "a" * 40},
-            {"refs/tags/v3.2.0-beta1": "a" * 40},
+            {"refs/tags/v3.2.0-beta0": "a" * 40},
+            {"refs/tags/v3.2.0-alpha1": "a" * 40},
         ):
             with self.subTest(refs=refs), self.assertRaisesRegex(ValueError, "malformed"):
                 release_policy.public_release_line_policy("3.2.0", refs)
+
+    def test_latest_line_tag_orders_beta_below_rc_below_ga_and_numbers_numerically(self):
+        for tags, latest in (
+            (("v3.3.0-beta9", "v3.3.0-beta10"), "v3.3.0-beta10"),
+            (("v3.3.0-beta10", "v3.3.0-rc1"), "v3.3.0-rc1"),
+            (("v3.3.0-rc2", "v3.3.0"), "v3.3.0"),
+            (("v3.3.0", "v3.3.1-beta1"), "v3.3.1-beta1"),
+        ):
+            refs = {"refs/tags/v3.0.2": "a" * 40}
+            refs.update({f"refs/tags/{tag}": "b" * 40 for tag in tags})
+            with self.subTest(tags=tags):
+                policy = release_policy.public_release_line_policy("3.3.2", refs)
+                self.assertEqual(policy["latest_public_tag_on_candidate_line"], latest)
 
     def test_public_ref_listing_resolves_annotated_tags_and_hashes_the_snapshot(self):
         refs, digest = release_policy.parse_public_ref_listing(
@@ -258,6 +273,152 @@ class ReleasePolicyTest(unittest.TestCase):
                 lambda ancestor, descendant: True,
             )
 
+    def test_first_beta_promotion_creates_line_branch_and_tag_without_master(self):
+        master = "a" * 40
+        plan = release_policy.plan_public_promotion(
+            "3.3.0-beta1",
+            "b" * 40,
+            {
+                "refs/heads/master": master,
+                "refs/tags/v3.0.2": master,
+                "refs/heads/release/3.2": "c" * 40,
+                "refs/tags/v3.2.0-rc1": "c" * 40,
+            },
+            lambda ancestor, descendant: False,
+        )
+        self.assertEqual(plan["channel"], "BETA")
+        self.assertEqual(plan["updates"], ["refs/heads/release/3.3", "refs/tags/v3.3.0-beta1"])
+        self.assertFalse(plan["advance_master"])
+        self.assertFalse(plan["ga_release_is_latest"])
+
+    def test_beta_on_the_newest_line_never_advances_master(self):
+        master = "a" * 40
+        beta1 = "b" * 40
+        candidate = "c" * 40
+        plan = release_policy.plan_public_promotion(
+            "3.3.0-beta2",
+            candidate,
+            {
+                "refs/heads/master": master,
+                "refs/tags/v3.2.0": master,
+                "refs/heads/release/3.3": beta1,
+                "refs/tags/v3.3.0-beta1": beta1,
+            },
+            lambda ancestor, descendant: (ancestor, descendant) in {(beta1, candidate), (master, candidate)},
+        )
+        self.assertTrue(plan["ga_line_is_newest"])
+        self.assertFalse(plan["advance_master"])
+        self.assertFalse(plan["ga_release_is_latest"])
+        self.assertEqual(plan["updates"], ["refs/heads/release/3.3", "refs/tags/v3.3.0-beta2"])
+
+    def test_promotion_requires_the_candidate_to_sort_above_the_latest_line_tag(self):
+        def refs(latest: str) -> dict:
+            line = latest[1:].rsplit(".", 1)[0]
+            return {
+                "refs/heads/master": "c" * 40,
+                "refs/tags/v3.0.2": "c" * 40,
+                f"refs/heads/release/{line}": "a" * 40,
+                f"refs/tags/{latest}": "a" * 40,
+            }
+
+        for version, latest in (
+            ("3.2.0-rc1", "v3.2.0-rc2"),
+            ("3.2.0-rc3", "v3.2.0"),
+            ("3.3.0-beta2", "v3.3.0-rc1"),
+            ("3.3.0-beta9", "v3.3.0-beta10"),
+        ):
+            with self.subTest(version=version, latest=latest), self.assertRaisesRegex(
+                ValueError, f"{latest} is the latest public tag on this line; v{version} must sort above it"
+            ):
+                release_policy.plan_public_promotion(
+                    version, "b" * 40, refs(latest), lambda ancestor, descendant: True
+                )
+        for version, latest in (
+            ("3.3.0-beta10", "v3.3.0-beta9"),
+            ("3.3.0-rc1", "v3.3.0-beta5"),
+            ("3.3.0", "v3.3.0-rc2"),
+            ("3.3.1-beta1", "v3.3.0"),
+        ):
+            with self.subTest(version=version, latest=latest):
+                plan = release_policy.plan_public_promotion(
+                    version, "b" * 40, refs(latest), lambda ancestor, descendant: True
+                )
+                self.assertIn(f"refs/tags/v{version}", plan["updates"])
+
+    def test_same_sha_beta_repromotion_is_idempotent(self):
+        candidate = "c" * 40
+        plan = release_policy.plan_public_promotion(
+            "3.3.0-beta1",
+            candidate,
+            {
+                "refs/heads/master": "a" * 40,
+                "refs/tags/v3.0.2": "a" * 40,
+                "refs/heads/release/3.3": candidate,
+                "refs/tags/v3.3.0-beta1": candidate,
+            },
+            lambda ancestor, descendant: ancestor == descendant,
+        )
+        self.assertTrue(plan["tag_exists"])
+        self.assertEqual(plan["updates"], ["refs/heads/release/3.3"])
+
+    def test_old_line_ga_and_rc_plans_with_public_beta_tags(self):
+        master = "a" * 40
+        rc1 = "b" * 40
+        beta1 = "d" * 40
+        candidate = "c" * 40
+        refs = {
+            "refs/heads/master": master,
+            "refs/tags/v3.0.2": master,
+            "refs/heads/release/3.2": rc1,
+            "refs/tags/v3.2.0-rc1": rc1,
+            "refs/heads/release/3.3": beta1,
+            "refs/tags/v3.3.0-beta1": beta1,
+        }
+        ancestry = {(rc1, candidate), (master, candidate)}
+
+        ga = release_policy.plan_public_promotion(
+            "3.2.0", candidate, refs, lambda ancestor, descendant: (ancestor, descendant) in ancestry
+        )
+        self.assertEqual(ga["newest_ga_line"], "3.0")
+        self.assertTrue(ga["ga_line_is_newest"])
+        self.assertTrue(ga["ga_release_is_latest"])
+        self.assertEqual(
+            ga["updates"],
+            ["refs/heads/release/3.2", "refs/tags/v3.2.0", "refs/heads/master"],
+        )
+
+        rc2 = release_policy.plan_public_promotion(
+            "3.2.0-rc2", candidate, refs, lambda ancestor, descendant: (ancestor, descendant) in ancestry
+        )
+        self.assertFalse(rc2["advance_master"])
+        self.assertEqual(rc2["updates"], ["refs/heads/release/3.2", "refs/tags/v3.2.0-rc2"])
+
+        self.assertFalse(release_policy.public_release_line_policy("3.2.0-rc2", refs)["ga_release_is_latest"])
+        beta2 = release_policy.public_release_line_policy("3.3.0-beta2", refs)
+        self.assertFalse(beta2["ga_release_is_latest"])
+        self.assertEqual(beta2["latest_public_tag_on_candidate_line"], "v3.3.0-beta1")
+
+    def test_older_line_ga_patch_with_newer_line_beta_tags_leaves_master(self):
+        newest = "a" * 40
+        branch = "b" * 40
+        candidate = "c" * 40
+        plan = release_policy.plan_public_promotion(
+            "3.2.1",
+            candidate,
+            {
+                "refs/heads/master": newest,
+                "refs/tags/v3.3.0": newest,
+                "refs/heads/release/3.2": branch,
+                "refs/tags/v3.2.0": branch,
+                "refs/tags/v3.4.0-beta1": "d" * 40,
+            },
+            lambda ancestor, descendant: (ancestor, descendant) == (branch, candidate),
+        )
+        self.assertEqual(plan["newest_ga_line"], "3.3")
+        self.assertFalse(plan["advance_master"])
+        self.assertFalse(plan["ga_release_is_latest"])
+        self.assertEqual(plan["updates"], ["refs/heads/release/3.2", "refs/tags/v3.2.1"])
+
     def test_public_promotion_fetches_legacy_line_tag_before_branch_bootstrap(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -430,6 +591,54 @@ class ReleasePolicyTest(unittest.TestCase):
             )
             self.assertNotEqual(missing_tag.returncode, 0)
 
+    def test_public_promotion_reads_annotated_public_beta_tags(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            bare = root / "public.git"
+            work = root / "source"
+            subprocess.run(["git", "init", "--bare", bare], check=True, capture_output=True)
+            subprocess.run(["git", "init", work], check=True, capture_output=True)
+            for key, value in (("user.name", "Release Test"), ("user.email", "release-test@example.invalid")):
+                subprocess.run(["git", "-C", work, "config", key, value], check=True)
+
+            def git(*arguments: str) -> str:
+                return subprocess.run(
+                    ["git", "-C", work, *arguments], check=True, capture_output=True, text=True
+                ).stdout.strip()
+
+            def commit(parent: str, subject: str) -> str:
+                if parent:
+                    git("checkout", "--detach", parent)
+                (work / "source.txt").write_text(subject, encoding="utf-8")
+                git("add", "source.txt")
+                git("commit", "-m", subject)
+                return git("rev-parse", "HEAD")
+
+            initial = commit("", "initial")
+            rc1 = commit(initial, "rc1")
+            beta1 = commit(rc1, "beta1")
+            git("tag", "-a", "v3.3.0-beta1", "-m", "beta1", beta1)
+            git("remote", "add", "public", str(bare))
+            for source, ref in (
+                (initial, "refs/heads/master"),
+                (initial, "refs/tags/v3.0.2"),
+                (rc1, "refs/heads/release/3.2"),
+                (rc1, "refs/tags/v3.2.0-rc1"),
+                (beta1, "refs/heads/release/3.3"),
+                ("refs/tags/v3.3.0-beta1", "refs/tags/v3.3.0-beta1"),
+            ):
+                git("push", "public", f"{source}:{ref}")
+
+            rc2 = commit(rc1, "rc2")
+            self.assertEqual(
+                release_policy.inspect_public_promotion("3.2.0-rc2", rc2, "public", cwd=work)["updates"],
+                ["refs/heads/release/3.2", "refs/tags/v3.2.0-rc2"],
+            )
+            beta2 = commit(beta1, "beta2")
+            plan = release_policy.inspect_public_promotion("3.3.0-beta2", beta2, "public", cwd=work)
+            self.assertEqual(plan["latest_public_tag_sha_on_candidate_line"], beta1)
+            self.assertEqual(plan["updates"], ["refs/heads/release/3.3", "refs/tags/v3.3.0-beta2"])
+
     def test_accepts_publication_environment_with_one_or_more_reviewers_and_self_review(self):
         release_policy.validate_publication_environment({
             "name": "public-release",
@@ -470,15 +679,24 @@ class ReleasePolicyTest(unittest.TestCase):
                     "protection_rules": [rule],
                 })
 
-    def test_classifies_ga_and_rc(self):
-        self.assertEqual(release_policy.classify("3.2.0")["channel"], "GA")
+    def test_classifies_ga_beta_and_rc(self):
+        ga = release_policy.classify("3.2.0")
+        self.assertEqual((ga["channel"], ga["prerelease_number"]), ("GA", ""))
         identity = release_policy.classify("3.2.0-rc2")
         self.assertEqual(identity["channel"], "RC")
-        self.assertEqual(identity["rc_number"], "2")
+        self.assertEqual(identity["prerelease_number"], "2")
         self.assertEqual(identity["release_branch"], "release/3.2")
+        beta = release_policy.classify("3.3.0-beta10")
+        self.assertEqual(
+            (beta["channel"], beta["prerelease_number"], beta["release_branch"]),
+            ("BETA", "10", "release/3.3"),
+        )
 
     def test_rejects_non_release_versions(self):
-        for version in ("v3.2.0", "3.2.0-beta1", "3.2", "3.2.0-rc0"):
+        for version in (
+            "v3.2.0", "3.2", "3.2.0-rc0", "3.2.0-beta0", "3.2.0-beta", "3.2.0-alpha1",
+            "3.2.0-beta1-rc1", "3.2.0-BETA1", "3.2.0-devel",
+        ):
             with self.subTest(version=version), self.assertRaises(ValueError):
                 release_policy.classify(version)
 
@@ -488,7 +706,7 @@ class ReleasePolicyTest(unittest.TestCase):
             (root / "release-state.txt").write_text(
                 "version=3.2.0\n"
                 "channel=RC\n"
-                "rc=1\n"
+                "prerelease=1\n"
                 "revision=$Format:%H$\n"
             )
             identity = release_policy.validate_source(root, "3.2.0-rc1")
@@ -497,18 +715,74 @@ class ReleasePolicyTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "release channel"):
                 release_policy.validate_source(root, "3.2.0")
             (root / "release-state.txt").write_text(
-                "version=3.2.0\nchannel=RC\nrc=1\nrevision=" + "a" * 40 + "\n"
+                "version=3.2.0\nchannel=RC\nprerelease=1\nrevision=" + "a" * 40 + "\n"
             )
             with self.assertRaisesRegex(ValueError, "revision"):
                 release_policy.validate_source(root, "3.2.0-rc1")
 
-    def test_read_state_cli_accepts_single_digit_rc(self):
+    def test_parse_state_prerelease_contract(self):
+        def state(channel: str, prerelease: str, *extra: str) -> str:
+            lines = ("version=3.3.0", f"channel={channel}", f"prerelease={prerelease}", "revision=$Format:%H$")
+            return "\n".join((*lines, *extra)) + "\n"
+
+        beta = release_policy.parse_state(state("BETA", "1", "windows_signing=unsigned"))
+        self.assertEqual(
+            (beta["channel"], beta["prerelease"], beta["windows_signing"]),
+            ("BETA", "1", "unsigned"),
+        )
+        self.assertEqual(release_policy.parse_state(state("RC", "2"))["windows_signing"], "signpath")
+        self.assertEqual(release_policy.parse_state(state("DEVEL", ""))["prerelease"], "")
+        for contents, message in (
+            (state("BETA", "1"), "BETA release state requires windows_signing=unsigned"),
+            (state("BETA", "1", "windows_signing=signpath"), "BETA release state requires windows_signing=unsigned"),
+            (state("BETA", "", "windows_signing=unsigned"), "positive prerelease number"),
+            (state("BETA", "0", "windows_signing=unsigned"), "positive prerelease number"),
+            (state("RC", "0"), "positive prerelease number"),
+            (state("DEVEL", "1"), "empty prerelease number"),
+            (state("GA", "1"), "empty prerelease number"),
+            (state("ALPHA", "1"), "channel must be DEVEL, BETA, RC, or GA"),
+            (state("RC", "1").replace("prerelease=", "rc="), "must define version, channel, prerelease, revision"),
+        ):
+            with self.subTest(contents=contents), self.assertRaisesRegex(ValueError, message):
+                release_policy.parse_state(contents)
+
+    def test_validates_beta_source_and_archive(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            state = (
+                "version=3.3.0\nchannel=BETA\nprerelease=1\n"
+                "revision=$Format:%H$\nwindows_signing=unsigned\n"
+            )
+            (root / "release-state.txt").write_text(state)
+            identity = release_policy.validate_source(root, "3.3.0-beta1")
+            self.assertEqual(
+                (identity["channel"], identity["prerelease_number"], identity["windows_signing"]),
+                ("BETA", "1", "unsigned"),
+            )
+            for version, message in (
+                ("3.3.0-beta2", "prerelease number 1 does not match 2"),
+                ("3.3.0-rc1", "release channel BETA does not match RC"),
+            ):
+                with self.subTest(version=version), self.assertRaisesRegex(ValueError, message):
+                    release_policy.validate_source(root, version)
+            commit = "e" * 40
+            archived_state = state.replace("$Format:%H$", commit).encode()
+            archive = root / "source.tar.gz"
+            with tarfile.open(archive, "w:gz") as output:
+                info = tarfile.TarInfo("wsjtx-3.3.0-beta1/release-state.txt")
+                info.size = len(archived_state)
+                output.addfile(info, io.BytesIO(archived_state))
+            release_policy.validate_archive(archive, "3.3.0-beta1", commit)
+            with self.assertRaisesRegex(ValueError, "release identity does not match"):
+                release_policy.validate_archive(archive, "3.3.0-beta2", commit)
+
+    def test_read_state_cli_accepts_single_digit_prerelease(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "release-state.txt").write_text(
                 "version=3.2.0\n"
                 "channel=RC\n"
-                "rc=1\n"
+                "prerelease=1\n"
                 "revision=$Format:%H$\n"
             )
             result = subprocess.run(
@@ -522,7 +796,7 @@ class ReleasePolicyTest(unittest.TestCase):
                 {
                     "version": "3.2.0",
                     "channel": "RC",
-                    "rc": "1",
+                    "prerelease": "1",
                     "revision": "$Format:%H$",
                     "windows_signing": "signpath",
                 },
@@ -531,7 +805,7 @@ class ReleasePolicyTest(unittest.TestCase):
             (root / "release-state.txt").write_text(
                 "version=3.2.0\n"
                 "channel=RC\n"
-                "rc=1beta\n"
+                "prerelease=1beta\n"
                 "revision=$Format:%H$\n"
             )
             result = subprocess.run(
@@ -540,13 +814,13 @@ class ReleasePolicyTest(unittest.TestCase):
                 text=True,
             )
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn("positive RC number", result.stderr)
+            self.assertIn("positive prerelease number", result.stderr)
 
     def test_source_pins_unsigned_mode_and_rejects_unknown_mode(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             state = (
-                "version=3.2.0\nchannel=RC\nrc=1\n"
+                "version=3.2.0\nchannel=RC\nprerelease=1\n"
                 "revision=$Format:%H$\nwindows_signing=unsigned\n"
             )
             (root / "release-state.txt").write_text(state)
@@ -569,7 +843,7 @@ class ReleasePolicyTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             commit = "b" * 40
-            state = f"version=3.2.0\nchannel=RC\nrc=1\nrevision={commit}\n".encode()
+            state = f"version=3.2.0\nchannel=RC\nprerelease=1\nrevision={commit}\n".encode()
             tar_path = root / "source.tar.gz"
             with tarfile.open(tar_path, "w:gz") as archive:
                 info = tarfile.TarInfo("wsjtx-3.2.0-rc1/release-state.txt")

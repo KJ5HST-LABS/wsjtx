@@ -27,16 +27,6 @@ on:
         required: false
         type: boolean
         default: false
-      release_channel:
-        description: "Build release channel: DEVEL, RC, or GA"
-        required: false
-        type: string
-        default: "DEVEL"
-      rc_number:
-        description: "Release candidate number when release_channel is RC"
-        required: false
-        type: string
-        default: ""
     outputs:
       installer-artifact-id:
         description: "Installer artifact id, for the SignPath submit step"
@@ -49,6 +39,8 @@ on:
   # what ci.yml / release.yml actually pass (4.7.2, not the workflow_call legacy
   # default), and version defaults to a clearly-marked devel string -- overridable
   # via `-f version=...` -- so a manual build is never mistaken for a release.
+  # release_channel and prerelease_number exist only here, to override
+  # release-state.txt.
   workflow_dispatch:
     inputs:
       version:
@@ -82,11 +74,12 @@ on:
         type: choice
         options:
           - DEVEL
+          - BETA
           - RC
           - GA
         default: "DEVEL"
-      rc_number:
-        description: "Release candidate number when release_channel is RC"
+      prerelease_number:
+        description: "Prerelease number when release_channel is BETA or RC"
         required: false
         type: string
         default: ""
@@ -104,7 +97,7 @@ jobs:
       VERSION: ${{ inputs.version }}
       HAMLIB_BRANCH: ${{ inputs.hamlib_branch }}
       WSJT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
-      WSJT_RC_NUMBER: ${{ inputs.rc_number }}
+      WSJT_PRERELEASE_NUMBER: ${{ inputs.prerelease_number }}
     defaults:
       run:
         shell: msys2 {0}
@@ -250,7 +243,7 @@ jobs:
             -DWSJT_ENABLE_GUI_SMOKE_TESTS=ON \
             -DWSJT_FORTRAN_LIBRARY_VARIANTS=OPENMP_ONLY \
             -DWSJT_RELEASE_CHANNEL="${WSJT_RELEASE_CHANNEL}" \
-            -DWSJT_RC_NUMBER="${WSJT_RC_NUMBER}" \
+            -DWSJT_PRERELEASE_NUMBER="${WSJT_PRERELEASE_NUMBER}" \
             -DPFUNIT_DIR="${{ steps.windows-deps.outputs.pfunit_dir }}" \
             -DGFTL_DIR="${{ steps.windows-deps.outputs.gftl_dir }}" \
             -DGFTL_SHARED_DIR="${{ steps.windows-deps.outputs.gftl_shared_dir }}" \

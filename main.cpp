@@ -672,11 +672,8 @@ int main(int argc, char *argv[])
 
       int result;
       bool startup_smoke_ready {false};
-      auto const prerelease_expiration = QDateTime {
-        {2026, 12, 31}, {23, 59, 59, 999}, Qt::UTC};
-      bool prerelease_notice_pending =
-        QCoreApplication::applicationVersion ().contains ("-devel")
-        || QCoreApplication::applicationVersion ().contains ("-rc");
+      auto const prerelease_expiration = QDateTime::fromSecsSinceEpoch (WSJT_PRERELEASE_EXPIRY, Qt::UTC);
+      bool prerelease_notice_pending = WSJT_PRERELEASE_EXPIRY > 0;
       auto const original_style_sheet = a.styleSheet ();
       auto const original_font = a.font ();
       auto const apply_application_appearance = [&] {
@@ -900,7 +897,7 @@ int main(int argc, char *argv[])
                       "available for testing purposes.  By design it will\n"
                       "be nonfunctional after " + expiration_date + ".");
                   }
-                if (QDateTime::currentDateTimeUtc () >= prerelease_expiration)
+                if (!automated_test && QDateTime::currentDateTimeUtc () >= prerelease_expiration)
                   {
                     w.close ();
                   }

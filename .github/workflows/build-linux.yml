@@ -67,16 +67,6 @@ on:
         required: false
         type: boolean
         default: false
-      release_channel:
-        description: "Build release channel: DEVEL, RC, or GA"
-        required: false
-        type: string
-        default: "DEVEL"
-      rc_number:
-        description: "Release candidate number when release_channel is RC"
-        required: false
-        type: string
-        default: ""
   # Also runnable on its own ("Run workflow" / gh workflow run) to build a single
   # Linux arch without dispatching the full ci.yml matrix. GitHub only exposes
   # workflow_dispatch when the trigger is on the default branch (develop), so this
@@ -84,7 +74,8 @@ on:
   # single-architecture diagnosis and candidate-image validation; ARMHF also joins
   # ci.yml's opt-in full-ci matrix. Inputs mirror workflow_call with standalone
   # defaults: hamlib_branch matches what ci.yml / release.yml pass (4.7.2), and
-  # version is overridable via `-f version=...`.
+  # version is overridable via `-f version=...`. release_channel and
+  # prerelease_number exist only here, to override release-state.txt.
   workflow_dispatch:
     inputs:
       version:
@@ -165,11 +156,12 @@ on:
         type: choice
         options:
           - DEVEL
+          - BETA
           - RC
           - GA
         default: "DEVEL"
-      rc_number:
-        description: "Release candidate number when release_channel is RC"
+      prerelease_number:
+        description: "Prerelease number when release_channel is BETA or RC"
         required: false
         type: string
         default: ""
@@ -317,7 +309,7 @@ jobs:
           WSJTX_VERSION: ${{ inputs.version }}
           HAMLIB_BRANCH: ${{ inputs.hamlib_branch }}
           WSJT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
-          WSJT_RC_NUMBER: ${{ inputs.rc_number }}
+          WSJT_PRERELEASE_NUMBER: ${{ inputs.prerelease_number }}
           ARCH: ${{ inputs.arch }}
           IMAGE_TAG: ${{ needs.resolve-image.outputs.image_tag }}
           VALIDATE_FORTRAN_FALLBACK: ${{ inputs.validate_fortran_fallback }}
@@ -333,7 +325,7 @@ jobs:
           validate_fortran_fallback: ${{ inputs.validate_fortran_fallback }}
           build_packages: ${{ inputs.build_packages }}
           release_channel: ${{ inputs.release_channel }}
-          rc_number: ${{ inputs.rc_number }}
+          prerelease_number: ${{ inputs.prerelease_number }}
           allow_stale_image: ${{ inputs.allow_stale_image }}
 
   build-aarch64:
@@ -355,7 +347,7 @@ jobs:
           WSJTX_VERSION: ${{ inputs.version }}
           HAMLIB_BRANCH: ${{ inputs.hamlib_branch }}
           WSJT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
-          WSJT_RC_NUMBER: ${{ inputs.rc_number }}
+          WSJT_PRERELEASE_NUMBER: ${{ inputs.prerelease_number }}
           ARCH: ${{ inputs.arch }}
           IMAGE_TAG: ${{ needs.resolve-image.outputs.image_tag }}
           VALIDATE_FORTRAN_FALLBACK: ${{ inputs.validate_fortran_fallback }}
@@ -371,7 +363,7 @@ jobs:
           validate_fortran_fallback: ${{ inputs.validate_fortran_fallback }}
           build_packages: ${{ inputs.build_packages }}
           release_channel: ${{ inputs.release_channel }}
-          rc_number: ${{ inputs.rc_number }}
+          prerelease_number: ${{ inputs.prerelease_number }}
           allow_stale_image: ${{ inputs.allow_stale_image }}
 
   build-armhf:
@@ -389,7 +381,7 @@ jobs:
       VERSION: ${{ inputs.version }}
       HAMLIB_BRANCH: ${{ inputs.hamlib_branch }}
       WSJT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
-      WSJT_RC_NUMBER: ${{ inputs.rc_number }}
+      WSJT_PRERELEASE_NUMBER: ${{ inputs.prerelease_number }}
     steps:
       # setup-qemu-action runs on the host (job has no `container:`),
       # mutating the host kernel's binfmt_misc table. With arm/v7
@@ -406,7 +398,7 @@ jobs:
           WSJTX_VERSION: ${{ inputs.version }}
           HAMLIB_BRANCH: ${{ inputs.hamlib_branch }}
           WSJT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
-          WSJT_RC_NUMBER: ${{ inputs.rc_number }}
+          WSJT_PRERELEASE_NUMBER: ${{ inputs.prerelease_number }}
           ARCH: armhf
           IMAGE_TAG: ${{ needs.resolve-image.outputs.image_tag }}
           VALIDATE_FORTRAN_FALLBACK: ${{ inputs.validate_fortran_fallback }}
@@ -517,7 +509,7 @@ jobs:
             -e HAMLIB_BRANCH \
             -e ARCH \
             -e WSJT_RELEASE_CHANNEL \
-            -e WSJT_RC_NUMBER \
+            -e WSJT_PRERELEASE_NUMBER \
             -e CCACHE_DIR=/work/.ccache-armhf \
             -e CCACHE_COMPILERCHECK \
             -e ARMHF_BUILD_ONLY \
@@ -541,8 +533,6 @@ jobs:
             -e VERSION \
             -e HAMLIB_BRANCH \
             -e ARCH \
-            -e WSJT_RELEASE_CHANNEL \
-            -e WSJT_RC_NUMBER \
             -e GITHUB_TOKEN \
             -e ARMHF_RUNTIME_PHASE \
             -e WSJTX_CI_IMAGE_ALLOW_RECIPE_MISMATCH \

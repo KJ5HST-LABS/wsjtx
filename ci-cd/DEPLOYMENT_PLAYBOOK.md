@@ -636,7 +636,7 @@ Only do this after CI is green on all five targets.
 
 ### Step 1: Prepare Release Metadata
 
-On `release/X.Y`, commit the numeric version and matching `DEVEL`, `RC n`, or `GA` state in `release-state.txt`. For `3.2.0-rc1`, use `version=3.2.0`, `channel=RC`, and `rc=1`. Leave its `$Format:%H$` revision placeholder intact so Git substitutes the source SHA when exporting an archive. Wait for branch CI before tagging. This metadata commit is required even when GA application source is otherwise identical to the last RC, because it makes builds from GitHub's source archives identify themselves correctly.
+On `release/X.Y`, commit the numeric version and matching `DEVEL`, `RC n`, or `GA` state in `release-state.txt`. For `3.3.0-rc1`, use `version=3.3.0`, `channel=RC`, and `prerelease=1`. Leave its `$Format:%H$` revision placeholder intact so Git substitutes the source SHA when exporting an archive. Wait for branch CI before tagging. This metadata commit is required even when GA application source is otherwise identical to the last RC, because it makes builds from GitHub's source archives identify themselves correctly.
 
 ### Step 2: Build the Private Candidate
 

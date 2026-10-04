@@ -80,7 +80,7 @@ wsjt_read_release_state (
   "${CMAKE_CURRENT_LIST_DIR}/release-state.txt"
   WSJT_SOURCE_VERSION
   WSJT_SOURCE_RELEASE_CHANNEL
-  WSJT_SOURCE_RC_NUMBER
+  WSJT_SOURCE_PRERELEASE_NUMBER
   WSJT_ARCHIVE_SOURCE_REVISION)
 
 project (wsjtx
@@ -141,10 +141,13 @@ message (STATUS "Building for for: ${CMAKE_SYSTEM_NAME}-${PROJECT_ARCHITECTURE}"
 message (STATUS "******************************************************")
 
 include (set_build_type)
-wsjt_set_source_default_cache (WSJT_RELEASE_CHANNEL "${WSJT_SOURCE_RELEASE_CHANNEL}" "Build release channel: DEVEL, RC, or GA.")
-wsjt_set_source_default_cache (WSJT_RC_NUMBER "${WSJT_SOURCE_RC_NUMBER}" "Release candidate number used when WSJT_RELEASE_CHANNEL is RC.")
+wsjt_set_release_channel_cache ("${WSJT_SOURCE_RELEASE_CHANNEL}" "${WSJT_SOURCE_PRERELEASE_NUMBER}")
 set_build_type ()
 set (wsjtx_VERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}${BUILD_TYPE_REVISION}")
+set (wsjtx_PACKAGE_VERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}${BUILD_TYPE_PACKAGE_REVISION}")
+find_package (Git QUIET)
+wsjt_prerelease_expiry ("${WSJT_RELEASE_CHANNEL}" "${CMAKE_CURRENT_SOURCE_DIR}" wsjtx_PRERELEASE_EXPIRY)
+set_property (SOURCE main.cpp APPEND PROPERTY COMPILE_DEFINITIONS "WSJT_PRERELEASE_EXPIRY=${wsjtx_PRERELEASE_EXPIRY}")
 
 #
 # project information
@@ -698,8 +701,9 @@ endif ()
 
 if (WSJT_ENABLE_TESTS)
   add_test (NAME test_jt9_version COMMAND $<TARGET_FILE:jt9> --version)
+  string (REPLACE "." "\\." wsjtx_version_pattern "${wsjtx_VERSION}")
   set_tests_properties (test_jt9_version PROPERTIES
-    PASS_REGULAR_EXPRESSION "^jt9 [0-9]+\\.[0-9]+\\.[0-9]+[^ ]* \\(revision ([0-9a-f]+(-dirty)?|unavailable)\\)"
+    PASS_REGULAR_EXPRESSION "^jt9 ${wsjtx_version_pattern} \\(revision ([0-9a-f]+(-dirty)?|unavailable)\\)"
     )
   add_test (NAME test_jt9_cli_validation
     COMMAND ${CMAKE_COMMAND} -DJT9=$<TARGET_FILE:jt9>
@@ -1485,6 +1489,7 @@ else ()
   endif (RPMBUILDER)
 endif ()
 
+set (CPACK_DEBIAN_PACKAGE_VERSION "${wsjtx_PACKAGE_VERSION}")
 set (CPACK_DEBIAN_PACKAGE_HOMEPAGE "${PROJECT_HOMEPAGE}")
 set (CPACK_DEBIAN_PACKAGE_SECTION "hamradio")
 set (CPACK_DEBIAN_PACKAGE_DEPENDS "libgfortran5 (>=8.3) | libgfortran4 (>=7.3) | libgfortran3 (>=6.3), libfftw3-single3 (>=3.3), libgomp1 (>=6), libqt5serialport5 (>=5.7), libqt5multimedia5-plugins (>=5.7), libqt5widgets5 (>=5.7), libqt5network5 (>=5.7), libqt5printsupport5 (>=5.7), libqt5websockets5 (>=5.7),  libqt5sql5-sqlite (>=5.7), libusb-1.0-0 (>=1.0.21), libboost-log1.62.0 (>=1.62.0) | libboost-log1.65.1 (>=1.65.1) | libboost-log1.67.0 (>=1.67.0) | libboost-log1.71.0 (>=1.71.0) | libboost-log1.74.0 (>=1.74.0) | libboost-log1.81.0 (>=1.81.0) | libboost-log1.83.0 (>=1.83.0) | libboost-log1.85.0 (>=1.85.0)")
@@ -1492,17 +1497,18 @@ set (CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 # The downstream WSJT-X Improved fork uses the same executable, data, and doc
 # paths as mainline. Replace its packages so the installations cannot mix,
 # while preserving dependencies such as `js8call` through virtual packages.
-set (CPACK_DEBIAN_PACKAGE_PROVIDES "wsjtx-data (= ${wsjtx_VERSION}), wsjtx-doc (= ${wsjtx_VERSION}), wsjtx-improved-data (= ${wsjtx_VERSION}), wsjtx-improved-doc (= ${wsjtx_VERSION})")
+set (CPACK_DEBIAN_PACKAGE_PROVIDES "wsjtx-data (= ${wsjtx_PACKAGE_VERSION}), wsjtx-doc (= ${wsjtx_PACKAGE_VERSION}), wsjtx-improved-data (= ${wsjtx_PACKAGE_VERSION}), wsjtx-improved-doc (= ${wsjtx_PACKAGE_VERSION})")
 set (CPACK_DEBIAN_PACKAGE_REPLACES "wsjtx-improved, wsjtx-data, wsjtx-doc, wsjtx-improved-data, wsjtx-improved-doc")
 # WSJT-X Improved is a downstream fork, not a versioned upgrade.
 # Its packages can compare newer than mainline despite incompatible binaries
 # and shared files, so these relationships must not be version-qualified.
 set (CPACK_DEBIAN_PACKAGE_BREAKS "wsjtx-improved, wsjtx-improved-data, wsjtx-improved-doc")
-set (CPACK_DEBIAN_PACKAGE_CONFLICTS "wsjtx-data (<< ${wsjtx_VERSION}), wsjtx-doc (<< ${wsjtx_VERSION})")
+set (CPACK_DEBIAN_PACKAGE_CONFLICTS "wsjtx-data (<< ${wsjtx_PACKAGE_VERSION}), wsjtx-doc (<< ${wsjtx_PACKAGE_VERSION})")
 
 if (NOT CPACK_RPM_PACKAGE_ARCHITECTURE)
   set (CPACK_RPM_PACKAGE_ARCHITECTURE ${CMAKE_SYSTEM_PROCESSOR})
 endif ()
+set (CPACK_RPM_PACKAGE_VERSION "${wsjtx_PACKAGE_VERSION}")
 set (CPACK_RPM_PACKAGE_REQUIRES "qt5-qtbase >= 5.9, qt5-qtserialport >= 5.9, qt5-qtmultimedia >= 5.9, qt5-qtwebsockets >= 5.9, qt5-qtsvg >= 5.9, libusbx >= 1.0.22, libgfortran >= 7, libgomp >= 7, fftw-libs-single >= 3.3, boost-log >= 1.62")
 set (CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION /usr/share/pixmaps /usr/share/applications /usr/share/man /usr/share/man1)
 
