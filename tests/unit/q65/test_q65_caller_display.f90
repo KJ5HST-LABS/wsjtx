@@ -81,6 +81,7 @@ program test_q65_caller_display
   call delete_file(path)
   call delete_file(other)
   call delete_file(malformed)
+  deallocate(before,after)
   print *, 'PASS Q65 caller display and removal'
 
 contains

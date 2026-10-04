@@ -5,6 +5,7 @@
 #include <QApplication>
 #include <QFileInfo>
 #include <QSpinBox>
+#include <QStatusBar>
 #include <QTextEdit>
 #include <cstdlib>
 #include <iostream>
@@ -181,6 +182,22 @@ void WavDecodeTestController::completeCycle (quint64 generation)
       {
         finish ();
         return;
+      }
+    if (m_mode == Mode::Q65)
+      {
+        auto * period = m_window->findChild<QSpinBox *> ("sbTR");
+        period->setValue (30);
+        m_window->statusBar ()->clearMessage ();
+        decode->click ();
+        if (m_finished) return;
+        if (m_window->decoderBusy () || m_activeGeneration || decode->isChecked ()
+            || m_window->statusBar ()->currentMessage ()
+                 != MainWindow::tr ("No completed Q65 reception is available to decode again."))
+          {
+            finish (tr ("Q65 accepted a repeat with an incompatible reception period."));
+            return;
+          }
+        period->setValue (60);
       }
     m_observed = false;
     m_awaitingCycle = true;
