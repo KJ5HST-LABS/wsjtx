@@ -6,6 +6,7 @@ import unittest
 ROOT = pathlib.Path(__file__).resolve().parents[3]
 PUBLIC = (ROOT / ".github/workflows/public-release.yml").read_text()
 SIGN = (ROOT / ".github/workflows/sign-windows-release.yml").read_text()
+PREPARE = (ROOT / ".github/workflows/prepare-release-dependencies.yml").read_text()
 
 
 def step(workflow: str, name: str) -> str:
@@ -82,6 +83,21 @@ class ReleaseWorkflowPolicyTests(unittest.TestCase):
         self.assertIn('test "$CHANNEL" = RC || test "$CHANNEL" = GA', guard)
         self.assertLess(SIGN.index(guard), SIGN.index("uses: signpath/github-action-submit-signing-request"))
 
+    def test_dependency_preparation_fails_unless_develop_and_the_source_branch_are_protected(self):
+        prepare = job(PREPARE, "prepare")
+        self.assertIn("github.ref == 'refs/heads/develop'", prepare.split("\n    steps:\n", 1)[0])
+        self.assertEqual(PREPARE.count("ref_protected"), 1)
+        self.assertNotIn("continue-on-error", prepare)
+        guard = step(PREPARE, "Require protected develop")
+        self.assertNotRegex(guard, r"\n        if:")
+        self.assertIn("REF_PROTECTED: ${{ github.ref_protected }}", guard)
+        self.assertRegex(guard, r'if \[ "\$REF_PROTECTED" != true \]; then\s+echo "::error::[^"]+"\s+exit 1')
+        self.assertLess(prepare.index("Require protected develop"), prepare.index("actions/checkout"))
+        source = step(PREPARE, "Resolve protected source branch to an exact commit")
+        self.assertRegex(
+            source,
+            r'if \[ "\$\(jq -r \'\.protected\' <<< "\$branch"\)" != true \]; then\s+echo "::error::[^"]+"\s+exit 1',
+        )
 
 if __name__ == "__main__":
     unittest.main()

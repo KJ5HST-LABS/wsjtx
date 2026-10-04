@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       source_branch:
-        description: Develop or release/X.Y branch whose recipes to validate
+        description: Protected develop or release/X.Y branch whose recipes to validate
         required: true
         type: string
       generation:
@@ -29,10 +29,18 @@ jobs:
       contents: read
       packages: write
     steps:
+      - name: Require protected develop
+        env:
+          REF_PROTECTED: ${{ github.ref_protected }}
+        run: |
+          if [ "$REF_PROTECTED" != true ]; then
+            echo "::error::develop is not protected"
+            exit 1
+          fi
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - name: Resolve source branch to an exact commit
+      - name: Resolve protected source branch to an exact commit
         id: source
         env:
           GH_TOKEN: ${{ github.token }}
@@ -44,6 +52,10 @@ jobs:
             exit 1
           fi
           branch="$(gh api "repos/${GITHUB_REPOSITORY}/branches/${SOURCE_BRANCH//\//%2F}")"
+          if [ "$(jq -r '.protected' <<< "$branch")" != true ]; then
+            echo "::error::$SOURCE_BRANCH is not protected"
+            exit 1
+          fi
           sha="$(jq -r '.commit.sha' <<< "$branch")"
           [[ "$sha" =~ ^[0-9a-f]{40}$ ]]
           echo "sha=$sha" >> "$GITHUB_OUTPUT"
