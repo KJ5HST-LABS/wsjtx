@@ -21,7 +21,8 @@ add_test (NAME test_q65_decode_pipeline COMMAND test_q65_decode_pipeline)
 set_tests_properties (test_q65_decode_pipeline PROPERTIES
   COST 10
   # Allow for hosted ARM emulation without leaving the test unbounded.
-  TIMEOUT 180)
+  # The full-period spectra and drift cases added about a third to the runtime.
+  TIMEOUT 360)
 if (WSJT_ENABLE_TSAN)
   set_tests_properties (test_q65_decode_pipeline PROPERTIES
     ENVIRONMENT "TSAN_OPTIONS=${wsjt_tsan_fortran_options}")
