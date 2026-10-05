@@ -19,6 +19,19 @@ SPEC.loader.exec_module(release_policy)
 
 
 class ReleasePolicyTest(unittest.TestCase):
+    def test_candidate_and_public_inventories_require_both_macos_architectures(self):
+        version = "3.2.0-rc1"
+        for distribution in (False, True):
+            mode = "distribution" if distribution else "validation"
+            suffix = "macOS.pkg" if distribution else "macOS-unsigned.pkg"
+            required = {f"wsjtx-{version}-{arch}-{suffix}" for arch in ("arm64", "x86_64")}
+            for inventory in (
+                release_policy.expected_assets(version, distribution),
+                release_policy.public_expected_assets(version, mode),
+            ):
+                with self.subTest(mode=mode, inventory=inventory):
+                    self.assertEqual({name for name in inventory if name.endswith(suffix)}, required)
+
     def test_newest_ga_line_uses_immutable_ga_tags_not_release_order_or_rc_line(self):
         refs = {
             "refs/tags/v2.7.0": "a" * 40,
