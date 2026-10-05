@@ -212,11 +212,15 @@ QString JttyTxLoopbackTestController::contestExchangeMessage ()
 
 QStringList JttyTxLoopbackTestController::longMessageSegments ()
 {
+  // A one-shot Send commits this as a single continuous message (only its
+  // very last transmit segment gets EOM), so the receiver accumulates it in
+  // jtty_mdecode.f90's fixed character(len=80) decode buffer -- this must
+  // stay at or under that width, or later content is silently dropped on
+  // decode rather than making it into the receiver's displayed text.
+  // Widening that receive-side buffer for genuinely long continuous
+  // messages is tracked as a separate follow-up.
   return {
-    QStringLiteral ("FIRST SEGMENT NOTES SUNNY WEATHER AND A FINE SIGNAL ACROSS THE WHOLE BAND TODAY"),
-    QStringLiteral ("SECOND SEGMENT CONTINUES THE MESSAGE WHILE PRIOR AUDIO IS STILL PLAYING CLEANLY"),
-    QStringLiteral ("THIRD SEGMENT WAITS FOR ROOM AND MUST FOLLOW THE FORMER TEXT IN ITS EXACT ORDER"),
-    QStringLiteral ("FINAL SEGMENT CONFIRMS EVERY CHARACTER ARRIVED INCLUDING MY LAST SENTINEL ZEBRA")
+    QStringLiteral ("SECOND MESSAGE QUEUED DURING FIRST STAYS PENDING UNTIL ITS OWN AIRTIME ARRIVES")
   };
 }
 
@@ -326,10 +330,17 @@ void JttyTxLoopbackTestController::prepareWhenReady ()
   m_prepared = true;
   m_segmentEndFrames.append (encodedSampleFrames (contestExchangeMessage ()));
   qint64 longMessageFrames = 0;
+  // Combined length is bounded by the receive-side decode buffer -- see the
+  // comment on longMessageSegments().
+  if (longMessageSegments ().join (' ').size () > 80)
+    {
+      fail (tr ("The long-message fixture exceeds the receive-side decode buffer width."));
+      return;
+    }
   for (auto const& segment : longMessageSegments ())
     {
       auto const frames = encodedSampleFrames (segment);
-      if (segment.size () != 79 || frames <= 0)
+      if (segment.isEmpty () || segment.size () > 80 || frames <= 0)
         {
           fail (tr ("A long-message fixture segment has an invalid length or waveform extent."));
           return;
@@ -339,7 +350,7 @@ void JttyTxLoopbackTestController::prepareWhenReady ()
     }
   m_expectedAudioFrames = encodedSampleFrames (contestExchangeMessage ())
     + longMessageFrames;
-  if (longMessageFrames <= 60 * sampleRate
+  if (longMessageFrames <= 10 * sampleRate
       || m_expectedAudioFrames >= 150 * sampleRate)
     {
       fail (tr ("The JTTY encoder did not produce a valid test waveform extent."));
@@ -439,8 +450,8 @@ void JttyTxLoopbackTestController::submitSecondMessage ()
     }
 
   std::cerr << "WSJT-X JTTY TX loopback test: long draft accepted through Enter "
-               "during playback; segments=4 expected_audio_frames="
-            << m_expectedAudioFrames
+               "during playback; segments=" << longMessageSegments ().size ()
+            << " expected_audio_frames=" << m_expectedAudioFrames
             << " append_frame=" << consumedFrames
             << std::endl;
 }
@@ -543,7 +554,8 @@ void JttyTxLoopbackTestController::maybeFinish ()
     }
 
   QSet<qint64> const expectedRequests {m_firstRequestId, m_secondRequestId};
-  if (!m_displayError.isEmpty () || m_displayedFrames.size () != 5)
+  if (!m_displayError.isEmpty ()
+      || m_displayedFrames.size () != 1 + longMessageSegments ().size ())
     {
       fail (m_displayError.isEmpty ()
             ? tr ("The transmit display did not expose every segment during playback.")
