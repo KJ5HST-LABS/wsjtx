@@ -41,7 +41,7 @@ if (APPLE)
       CACHE STRING "Earliest macOS version supported by the target architecture")
   endif ()
 
-  set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-headerpad_max_install_names")
+  set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-headerpad_max_install_names -Wl,-dead_strip_dylibs")
 endif (APPLE)
 
 if(APPLE)
@@ -991,6 +991,30 @@ if (WSJT_BUILD_JT9STREAM)
   endif ()
   # jt9stream NEVER links fort_qt — that is the Qt-free guarantee.
 endif (WSJT_BUILD_JT9STREAM)
+
+if (WSJT_ENABLE_TESTS AND (APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
+  if (APPLE)
+    find_program (WSJT_OTOOL NAMES otool)
+    set (wsjt_library_lister "${WSJT_OTOOL}")
+  else ()
+    set (wsjt_library_lister "${WSJT_READELF}")
+  endif ()
+  if (NOT wsjt_library_lister)
+    message (FATAL_ERROR "otool or readelf is required to verify the libraries programs load")
+  endif ()
+  foreach (program jt9stream ft4sim)
+    if (TARGET ${program})
+      add_test (NAME test_${program}_loads_only_used_libraries
+        COMMAND ${CMAKE_COMMAND}
+          -DLISTER=${wsjt_library_lister}
+          -DEXECUTABLE=$<TARGET_FILE:${program}>
+          -P ${CMAKE_SOURCE_DIR}/tests/integration/jt9/verify_loaded_libraries.cmake)
+      set_tests_properties (test_${program}_loads_only_used_libraries PROPERTIES
+        LABELS "build;linking"
+        TIMEOUT 30)
+    endif ()
+  endforeach ()
+endif ()
 
 find_package (Portaudio REQUIRED)
 add_subdirectory (map65)

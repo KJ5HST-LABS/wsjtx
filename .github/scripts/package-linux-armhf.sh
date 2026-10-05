@@ -134,4 +134,32 @@ run_packaged_appimage_startup_smoke \
   "./$OUTPUT" wsjtx-build/appimage-startup-smoke.log
 echo "::endgroup::"
 
+echo "::group::Package release tarballs"
+# shellcheck disable=SC2016 # variables expand when the generated wrapper runs
+printf '%s\n' \
+  '#!/bin/sh' \
+  'exec "${ARMHF_QEMU_EXECUTABLE:?}" /work/linuxdeploy.AppImage "$@"' \
+  > wsjtx-build/appimage-tools/linuxdeploy
+chmod +x wsjtx-build/appimage-tools/linuxdeploy
+PATH="/work/wsjtx-build/appimage-tools:$PATH" .github/scripts/package-cli-tools.sh \
+  --platform linux \
+  --version "$VERSION" \
+  --arch "$ARCH" \
+  --groups CMake/release-tarballs.txt \
+  --source wsjtx-build \
+  --linuxdeploy /work/wsjtx-build/appimage-tools/linuxdeploy \
+  --out release-tarballs
+echo "::endgroup::"
+
+# LD_LIBRARY_PATH, exported above, would hide a GCC runtime library missing
+# from a tarball; the smoke test unsets it for every program it runs.
+echo "::group::Smoke-test release tarballs"
+.github/scripts/smoke-release-tarballs.sh \
+  --platform linux \
+  --version "$VERSION" \
+  --target "linux-$ARCH" \
+  --groups CMake/release-tarballs.txt \
+  --dir release-tarballs
+echo "::endgroup::"
+
 echo "ARMHF package phase complete for version=$VERSION"

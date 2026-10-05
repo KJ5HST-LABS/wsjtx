@@ -1,0 +1,51 @@
+name: "Upload release tarballs"
+description: >-
+  Upload one target's release tarballs, one artifact each under the names
+  .github/scripts/release-policy.py requires. There is one step per line of
+  CMake/release-tarballs.txt.
+
+inputs:
+  version:
+    description: "WSJT-X version string"
+    required: true
+  target:
+    description: "Release target, for example linux-x86_64 or arm64-macOS"
+    required: true
+  directory:
+    description: "Directory that holds the target's release tarballs"
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: Upload jt9 tarball
+      uses: actions/upload-artifact@v7
+      with:
+        name: wsjtx-${{ inputs.version }}-${{ inputs.target }}-jt9
+        path: ${{ inputs.directory }}/wsjtx-${{ inputs.version }}-${{ inputs.target }}-jt9.tar.gz
+        if-no-files-found: error
+        compression-level: 0
+
+    - name: Upload jt9stream tarball
+      uses: actions/upload-artifact@v7
+      with:
+        name: wsjtx-${{ inputs.version }}-${{ inputs.target }}-jt9stream
+        path: ${{ inputs.directory }}/wsjtx-${{ inputs.version }}-${{ inputs.target }}-jt9stream.tar.gz
+        if-no-files-found: error
+        compression-level: 0
+
+    - name: Upload wsprd tarball
+      uses: actions/upload-artifact@v7
+      with:
+        name: wsjtx-${{ inputs.version }}-${{ inputs.target }}-wsprd
+        path: ${{ inputs.directory }}/wsjtx-${{ inputs.version }}-${{ inputs.target }}-wsprd.tar.gz
+        if-no-files-found: error
+        compression-level: 0
+
+    - name: Upload utilities tarball
+      uses: actions/upload-artifact@v7
+      with:
+        name: wsjtx-${{ inputs.version }}-${{ inputs.target }}-utilities
+        path: ${{ inputs.directory }}/wsjtx-${{ inputs.version }}-${{ inputs.target }}-utilities.tar.gz
+        if-no-files-found: error
+        compression-level: 0

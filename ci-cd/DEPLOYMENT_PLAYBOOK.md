@@ -150,7 +150,7 @@ Candidate and public builds consume the committed selection and build WSJT-X afr
 
 ### What the Release Produces
 
-Each approved public `v*` tag yields one installer and one command-line tools archive per target plus a source tarball on the public GitHub Release:
+Each approved public `v*` tag yields one installer and the command-line program tarballs per target plus a source tarball on the public GitHub Release:
 
 | Artifact | Produced by | Format |
 |----------|-------------|--------|
@@ -162,20 +162,22 @@ Each approved public `v*` tag yields one installer and one command-line tools ar
 | Linux aarch64 `.deb` and `.rpm` | `build-linux.yml` (aarch64 leg) | Distribution packages |
 | Linux armhf `.deb` and `.rpm` | `build-linux.yml` (armhf leg) | Distribution packages |
 | `wsjtx-<ver>-win64.exe` | `build-windows.yml` | SignPath Foundation Authenticode for both public RC and GA |
-| `wsjtx-<ver>-arm64-macOS-tools.tar.gz` | `build-macos.yml` | Command-line programs with their dylibs in `lib/`; ad-hoc signed, not notarized |
-| `wsjtx-<ver>-linux-<arch>-tools.tar.gz` | `build-linux.yml` (x86_64, aarch64 and armhf legs) | Command-line programs that link the distribution's libraries; unsigned |
-| `wsjtx-<ver>-windows-x86_64-tools.tar.gz` | `build-windows.yml` | Command-line programs with the DLLs they import; not Authenticode-signed |
+| `wsjtx-<ver>-arm64-macOS-<tarball>.tar.gz` | `build-macos.yml` | Programs with the dylibs they load in `lib/`; ad-hoc signed, not notarized |
+| `wsjtx-<ver>-linux-<arch>-<tarball>.tar.gz` | `build-linux.yml` (x86_64, aarch64 and armhf legs) | Programs in `bin/` with the libraries they load in `lib/`, except the host libraries linuxdeploy leaves out; unsigned |
+| `wsjtx-<ver>-windows-x86_64-<tarball>.tar.gz` | `build-windows.yml` | Programs with the DLLs they import; not Authenticode-signed |
 | `wsjtx-<ver>-src.tar.gz` | Public release workflow | Source tarball from the public tag |
 
-`CMake/Install.cmake` defines the command-line programs in two lists. Every installer carries `wsjt_installed_cli_tools`: the install rules cover it, and the macOS package stages `/usr/local/wsjtx` from the build's `installed-cli-tools.txt`; unless `/usr/local/wsjtx` is a symbolic link, its postinstall removes programs there that the package does not ship, with their `/usr/local/bin` links, and leaves `lib/` alone. Each tools archive carries both lists, read from the build's `cli-tools.txt`. Staging and packaging fail if a listed program is missing; packaging also fails if a Linux program has an RPATH or RUNPATH entry inside the build tree, or if a Windows program imports a DLL found neither in the staged installation nor in the Windows system directory, or `objdump` cannot read it.
+`CMake/Install.cmake` defines the command-line programs every installer carries, `wsjt_installed_cli_tools`: the install rules cover it, and the macOS package stages `/usr/local/wsjtx` from the build's `installed-cli-tools.txt`; unless `/usr/local/wsjtx` is a symbolic link, its postinstall removes programs there that the package does not ship, with their `/usr/local/bin` links, and leaves `lib/` alone. Staging fails if a listed program is missing.
+
+`CMake/release-tarballs.txt` defines the release tarballs, one per line: `jt9`; `jt9stream`, the decoder for other front ends, which does not use Qt; `wsprd`; and `utilities`, which holds `wsprcode`, `encode77` and the signal simulators that no installer carries. `release-policy.py` reads the same file for the asset names, and `CMake/Install.cmake` adds its programs, whatever the build options, to the build's `cli-tools.txt`, from which the macOS build collects the programs it packages. `.github/scripts/package-cli-tools.sh` gives each tarball the libraries its programs load beyond the operating system's: on macOS the dylibs reached through `@rpath`, on Windows the import closure from the staged installation, and on Linux what linuxdeploy deploys outside its excludelist (`.github/scripts/linuxdeploy-excludelist.txt`), with RUNPATH `$ORIGIN/../lib` on programs and `$ORIGIN` on libraries, and the Debian copyright files of the libraries that come from Debian packages. Each tarball also holds `README.txt`, which gives the layout, the writable directories the programs need, the WSJT-X copyright notice from `doc/common/license.adoc` and, on Linux, the oldest glibc and the host libraries the programs need; `COPYING`; and `THIRD-PARTY.txt`, which names each bundled library's component and license from `.github/scripts/third-party-libraries.tsv`. Packaging fails if a listed program is missing, a dependency resolves neither inside the tarball nor to the operating system, a Linux RUNPATH entry is not relative to `$ORIGIN`, or a bundled library is missing from that table. Each build then runs every program from its own extracted tarball with the library search variables unset (`smoke-release-tarballs.sh`) before it uploads the tarballs.
 
 The project-created source tarball is assembled from the public tag. GitHub also generates its own zip and tar.gz source archives for that tag; they contain the tagged tree but may have different compressed hashes. `SHA256SUMS` covers immutable payload assets uploaded by the workflow. In manual macOS signing mode it excludes the replaceable `.pkg` file, which the release manifest identifies separately. The manifest also records the tag, source commit, workflow run, and builder provenance. Checksums detect changed bytes; platform signatures establish signer identity and must be verified separately.
 
 ### All-Platforms-Ready Gate
 
-Before publishing, the release workflow requires each platform build to produce its expected installer and tools archive artifacts. This prevents a structurally successful build job from creating a partial release.
+Before publishing, the release workflow requires each platform build to produce its expected installer and release tarball artifacts. This prevents a structurally successful build job from creating a partial release.
 
-The gate checks for one installer and one tools archive per platform:
+The gate checks for one installer per platform and every release tarball:
 
 | Platform | Expected artifact pattern |
 |----------|---------------------------|
@@ -185,7 +187,7 @@ The gate checks for one installer and one tools archive per platform:
 | Linux armhf | `artifacts/wsjtx-<ver>-linux-armhf-AppImage/*.AppImage` |
 | Linux packages | One non-empty `.deb` and `.rpm` under each architecture's artifact directory |
 | Windows x86_64 | `artifacts/wsjtx-<ver>-windows-x86_64-installer-signed/*.exe` |
-| Tools archives | One non-empty `.tar.gz` in `artifacts/wsjtx-<ver>-<target>-tools/` for each target: `arm64-macOS`, `linux-x86_64`, `linux-aarch64`, `linux-armhf`, `windows-x86_64` |
+| Release tarballs | One non-empty `.tar.gz` in `artifacts/wsjtx-<ver>-<target>-<tarball>/` for each target (`arm64-macOS`, `linux-x86_64`, `linux-aarch64`, `linux-armhf`, `windows-x86_64`) and each tarball in `CMake/release-tarballs.txt` |
 
 If any pattern matches zero files, the release job stops before publishing.
 
@@ -341,7 +343,7 @@ The workflow uses two identities with different responsibilities:
 
 Notarization uses the App Store Connect API key in §5.3 rather than either certificate password. Rotate a certificate's `.p12` and password together. Rotate the notarization key on the team's schedule, when access changes, or after suspected exposure.
 
-The command-line tools archives are not Developer ID-signed or notarized in either signing mode: their programs and `lib/` dylibs carry the build's ad-hoc signatures, and `SHA256SUMS` and the release manifest bind the archive bytes to the tag and source commit. Browsers mark downloads with the `com.apple.quarantine` attribute, and macOS blocks quarantined programs that are not notarized, so remove the attribute from the archive before extracting it: `xattr -d com.apple.quarantine wsjtx-<ver>-arm64-macOS-tools.tar.gz`.
+The command-line program tarballs are not Developer ID-signed or notarized in either signing mode: their programs and `lib/` dylibs carry the build's ad-hoc signatures, and `SHA256SUMS` and the release manifest bind the tarball bytes to the tag and source commit. Browsers mark downloads with the `com.apple.quarantine` attribute, and macOS blocks quarantined programs that are not notarized, so remove the attribute from a tarball before extracting it: `xattr -d com.apple.quarantine wsjtx-<ver>-arm64-macOS-jt9stream.tar.gz`.
 
 #### Preparing the .p12 files
 
@@ -438,7 +440,7 @@ Set repository variable `MACOS_DISTRIBUTION_SIGNING_ENABLED=false` until the ful
 
 > **How it works.** SignPath Foundation signs OSS artifacts built from the public repository, so the signature attests public-source provenance as well as identity. A promoted `vX.Y.Z` or `vX.Y.Z-rcN` tag triggers the public build, submits the unsigned installer under the `release-signing` policy, verifies the returned Authenticode signature and timestamp, and makes that verified installer eligible for publication. A failed or rejected request blocks the release. The certificate's private key lives in SignPath's HSM; there is no `.pfx` to export or store in GitHub.
 
-SignPath signs only the installer. The Windows command-line tools archive is not submitted: its programs and DLLs carry no Authenticode signature, and `SHA256SUMS` and the release manifest bind the archive bytes to the tag and source commit.
+SignPath signs only the installer. The Windows command-line program tarballs are not submitted: their programs and DLLs carry no Authenticode signature, and `SHA256SUMS` and the release manifest bind the tarball bytes to the tag and source commit.
 
 #### The one secret
 

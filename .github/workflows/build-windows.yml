@@ -361,27 +361,28 @@ jobs:
           WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
           .github/scripts/smoke-launch-windows.sh "${WORKSPACE}/stage-main/bin/jt9.exe" --help
 
-      - name: Package command-line tools archive
+      - name: Package release tarballs
         run: |
           WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
           .github/scripts/package-cli-tools.sh \
             --platform windows \
             --version "${VERSION}" \
             --arch x86_64 \
-            --tools "${WORKSPACE}/wsjtx-build/cli-tools.txt" \
+            --groups "${WORKSPACE}/CMake/release-tarballs.txt" \
             --source "${WORKSPACE}/wsjtx-build" \
             --dll-dir "${WORKSPACE}/stage-main/bin" \
             --system-dir "$(cygpath -S)" \
-            --out "${WORKSPACE}/tools-archive"
+            --out "${WORKSPACE}/release-tarballs"
 
-      - name: Smoke-launch packaged tools (clean PATH)
+      - name: Smoke-launch release tarballs (clean PATH)
         run: |
           WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")
-          mkdir -p "${WORKSPACE}/tools-check"
-          tar -xzf "${WORKSPACE}/tools-archive/wsjtx-${VERSION}-windows-x86_64-tools.tar.gz" -C "${WORKSPACE}/tools-check"
-          TOOLS="${WORKSPACE}/tools-check/wsjtx-${VERSION}-windows-x86_64-tools"
-          .github/scripts/smoke-launch-windows.sh "${TOOLS}/jt9.exe" --help
-          .github/scripts/smoke-launch-windows.sh "${TOOLS}/encode77.exe" "CQ K1ABC FN42"
+          .github/scripts/smoke-release-tarballs.sh \
+            --platform windows \
+            --version "${VERSION}" \
+            --target windows-x86_64 \
+            --groups "${WORKSPACE}/CMake/release-tarballs.txt" \
+            --dir "${WORKSPACE}/release-tarballs"
 
       # Emit an NSIS installer containing the full executable set
       # (wsjtx.exe, map65.exe, jt9, wsprd, fmtave, fcal, fmeasure + WSJT_BUILD_UTILS
@@ -437,12 +438,12 @@ jobs:
             wsjtx-build/wsprd.exe
             wsjtx-build/wsjtx.exe
 
-      - name: Upload command-line tools archive
-        uses: actions/upload-artifact@v7
+      - name: Upload release tarballs
+        uses: ./.github/actions/upload-release-tarballs
         with:
-          name: wsjtx-${{ inputs.version }}-windows-x86_64-tools
-          path: tools-archive/wsjtx-${{ inputs.version }}-windows-x86_64-tools.tar.gz
-          if-no-files-found: error
+          version: ${{ inputs.version }}
+          target: windows-x86_64
+          directory: release-tarballs
 
       - name: Summarize native caches
         if: always()

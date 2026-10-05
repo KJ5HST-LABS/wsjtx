@@ -444,25 +444,46 @@ runs:
           wsjtx-build/wsprd
           wsjtx-build/wsjtx
 
-    - name: Package command-line tools archive
+    # linuxdeploy.AppImage is the pinned copy the AppImage step downloaded
+    # and checked.
+    - name: Package release tarballs
       if: inputs.build_packages == 'true'
       shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        ARCH: ${{ inputs.arch }}
       run: |
         .github/scripts/package-cli-tools.sh \
           --platform linux \
-          --version "${{ inputs.version }}" \
-          --arch "${{ inputs.arch }}" \
-          --tools wsjtx-build/cli-tools.txt \
+          --version "$VERSION" \
+          --arch "$ARCH" \
+          --groups CMake/release-tarballs.txt \
           --source wsjtx-build \
-          --out tools-archive
+          --linuxdeploy ./linuxdeploy.AppImage \
+          --out release-tarballs
 
-    - name: Upload command-line tools archive
+    - name: Smoke-test release tarballs
       if: inputs.build_packages == 'true'
-      uses: actions/upload-artifact@v7
+      shell: bash
+      env:
+        VERSION: ${{ inputs.version }}
+        ARCH: ${{ inputs.arch }}
+      run: |
+        .github/scripts/smoke-release-tarballs.sh \
+          --platform linux \
+          --version "$VERSION" \
+          --target "linux-$ARCH" \
+          --groups CMake/release-tarballs.txt \
+          --dir release-tarballs \
+          --ldd
+
+    - name: Upload release tarballs
+      if: inputs.build_packages == 'true'
+      uses: ./.github/actions/upload-release-tarballs
       with:
-        name: wsjtx-${{ inputs.version }}-linux-${{ inputs.arch }}-tools
-        path: tools-archive/wsjtx-${{ inputs.version }}-linux-${{ inputs.arch }}-tools.tar.gz
-        if-no-files-found: error
+        version: ${{ inputs.version }}
+        target: linux-${{ inputs.arch }}
+        directory: release-tarballs
 
     - name: Report suppressed ccache save
       if: inputs.save_ccache == 'true' && steps.image.outputs.recipe_match != 'true'

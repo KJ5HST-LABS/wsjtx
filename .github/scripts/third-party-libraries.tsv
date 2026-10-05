@@ -1,0 +1,27 @@
+# Tab-separated: file pattern, component, license as upstream states it, license address.
+# Every library a release tarball bundles must match a pattern (case is
+# ignored; the first match wins); package-cli-tools.sh lists them in each
+# tarball's THIRD-PARTY.txt. @<platform> rows name code linked statically
+# into every tarball of that platform.
+QtCore	Qt 5 Core, with the third-party code https://doc.qt.io/qt-5/licenses-used-in-qt.html lists	LGPL-3.0, GPL-2.0, or GPL-3.0 or a later version approved by the KDE Free Qt Foundation, at the recipient's choice	https://github.com/qt/qtbase/blob/v5.15.18-lts-lgpl/LICENSE.LGPL3
+Qt5Core.dll	Qt 5 Core, with the third-party code https://doc.qt.io/qt-5/licenses-used-in-qt.html lists	LGPL-3.0, GPL-2.0, or GPL-3.0 or a later version approved by the KDE Free Qt Foundation, at the recipient's choice	https://github.com/qt/qtbase/blob/v5.15.18-lts-lgpl/LICENSE.LGPL3
+libQt5Core.so.*	Qt 5 Core, with the third-party code https://doc.qt.io/qt-5/licenses-used-in-qt.html lists	LGPL-3.0, GPL-2.0, or GPL-3.0 or a later version approved by the KDE Free Qt Foundation, at the recipient's choice	https://github.com/qt/qtbase/blob/v5.15.18-lts-lgpl/LICENSE.LGPL3
+libicu*.so.72	ICU 72	Unicode, Inc. License Agreement - Data Files and Software, with third-party terms in the same file	https://github.com/unicode-org/icu/blob/release-72-1/icu4c/LICENSE
+libicu*.so.74	ICU 74	Unicode License V3 (Unicode-3.0), with third-party terms in the same file	https://github.com/unicode-org/icu/blob/release-74-1/LICENSE
+libicu*.dll	ICU	Unicode License V3 (Unicode-3.0), with third-party terms in the same file	https://github.com/unicode-org/icu/blob/main/LICENSE
+libdouble-conversion*	double-conversion	BSD-3-Clause	https://github.com/google/double-conversion/blob/master/LICENSE
+libpcre2-*	PCRE2	BSD-3-Clause WITH PCRE2-exception	https://github.com/PCRE2Project/pcre2/blob/master/LICENCE.md
+libzstd*	Zstandard	BSD-3-Clause or GPL-2.0, at the recipient's choice	https://github.com/facebook/zstd/blob/dev/LICENSE
+zlib1.dll	zlib	Zlib	https://zlib.net/zlib_license.html
+libglib-2.0*	GLib	LGPL-2.1-or-later	https://gitlab.gnome.org/GNOME/glib/-/blob/main/LICENSES/LGPL-2.1-or-later.txt
+libgfortran*	GCC runtime libraries	GPL-3.0-or-later WITH GCC-exception-3.1	https://www.gnu.org/licenses/gcc-exception-3.1.html
+libgomp*	GCC runtime libraries	GPL-3.0-or-later WITH GCC-exception-3.1	https://www.gnu.org/licenses/gcc-exception-3.1.html
+libstdc++*	GCC runtime libraries	GPL-3.0-or-later WITH GCC-exception-3.1	https://www.gnu.org/licenses/gcc-exception-3.1.html
+libgcc_s*	GCC runtime libraries	GPL-3.0-or-later WITH GCC-exception-3.1	https://www.gnu.org/licenses/gcc-exception-3.1.html
+libquadmath*	libquadmath (GCC)	LGPL-2.1-or-later	https://github.com/gcc-mirror/gcc/blob/master/libquadmath/COPYING.LIB
+libwinpthread*	mingw-w64 winpthreads	MIT and BSD-3-Clause	https://github.com/mingw-w64/mingw-w64/blob/master/mingw-w64-libraries/winpthreads/COPYING
+libfftw3f*	FFTW 3	GPL-2.0-or-later	https://www.fftw.org/doc/License-and-Copyright.html
+libboost_*	Boost	BSL-1.0	https://www.boost.org/LICENSE_1_0.txt
+@macos	GCC runtime libraries	GPL-3.0-or-later WITH GCC-exception-3.1	https://www.gnu.org/licenses/gcc-exception-3.1.html
+@macos	libquadmath (GCC)	LGPL-2.1-or-later	https://github.com/gcc-mirror/gcc/blob/master/libquadmath/COPYING.LIB
+@windows	mingw-w64 runtime	ZPL-2.1, with the other terms the file lists	https://github.com/mingw-w64/mingw-w64/blob/master/COPYING.MinGW-w64-runtime/COPYING.MinGW-w64-runtime.txt

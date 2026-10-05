@@ -7,6 +7,13 @@ add_test (
     -D TEST_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/release-state
     -P ${CMAKE_SOURCE_DIR}/tests/release/test_release_state.cmake)
 
+add_test (
+  NAME test_release_tarballs
+  COMMAND ${CMAKE_COMMAND}
+    -D SOURCE_DIR=${CMAKE_SOURCE_DIR}
+    -D TEST_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/release-tarballs
+    -P ${CMAKE_SOURCE_DIR}/tests/release/test_release_tarballs.cmake)
+
 get_property (release_configure_depends DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY CMAKE_CONFIGURE_DEPENDS)
 string (REPLACE ";" "|" release_configure_depends "${release_configure_depends}")
 add_test (
