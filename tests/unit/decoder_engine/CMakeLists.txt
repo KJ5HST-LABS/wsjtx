@@ -38,9 +38,17 @@ add_executable (test_decoder_engine_jt65 test_decoder_engine_jt65.c)
 set_target_properties (test_decoder_engine_jt65 PROPERTIES LINKER_LANGUAGE CXX)
 target_include_directories (test_decoder_engine_jt65 PRIVATE ${CMAKE_SOURCE_DIR})
 target_link_libraries (test_decoder_engine_jt65 PRIVATE test_decoder_engine_jt65_signal Threads::Threads)
-add_test (NAME test_decoder_engine_jt65 COMMAND test_decoder_engine_jt65)
-add_test (NAME test_decoder_engine_jt65_small_stack COMMAND test_decoder_engine_jt65 --small-stack)
-set_tests_properties (test_decoder_engine_jt65 test_decoder_engine_jt65_small_stack PROPERTIES TIMEOUT 360)
+# Full behavioral coverage belongs to one constrained-stack test per archive.
+add_test (NAME test_decoder_engine_jt65 COMMAND test_decoder_engine_jt65 --smoke)
+set_tests_properties (test_decoder_engine_jt65 PROPERTIES TIMEOUT 360)
+if (TARGET wsjt_fort)
+  add_test (NAME test_decoder_engine_jt65_small_stack COMMAND test_decoder_engine_jt65 --small-stack)
+  set_tests_properties (test_decoder_engine_jt65_small_stack PROPERTIES TIMEOUT 360)
+else ()
+  # The common target also uses wsjt_fort_omp; retain a one-thread smoke.
+  set_tests_properties (test_decoder_engine_jt65 PROPERTIES
+    ENVIRONMENT "OMP_DYNAMIC=FALSE;OMP_NUM_THREADS=1;OMP_THREAD_LIMIT=1;OMP_STACKSIZE=1M")
+endif ()
 add_test (NAME prepare_jt65_engine_wav COMMAND test_decoder_engine_jt65
   --write-wav ${CMAKE_CURRENT_BINARY_DIR}/jt65-engine.wav)
 set_tests_properties (prepare_jt65_engine_wav PROPERTIES FIXTURES_SETUP jt65_engine_wav TIMEOUT 15)
@@ -104,7 +112,7 @@ if (TARGET wsjt_fort_omp)
   set_target_properties (test_decoder_engine_jt65_omp PROPERTIES LINKER_LANGUAGE CXX)
   target_include_directories (test_decoder_engine_jt65_omp PRIVATE ${CMAKE_SOURCE_DIR})
   target_link_libraries (test_decoder_engine_jt65_omp PRIVATE test_decoder_engine_jt65_signal_omp Threads::Threads)
-  add_test (NAME test_decoder_engine_jt65_omp COMMAND test_decoder_engine_jt65_omp)
+  add_test (NAME test_decoder_engine_jt65_omp COMMAND test_decoder_engine_jt65_omp --smoke)
   add_test (NAME test_decoder_engine_jt65_omp_small_stack COMMAND test_decoder_engine_jt65_omp --small-stack)
   set_tests_properties (test_decoder_engine_jt65_omp test_decoder_engine_jt65_omp_small_stack PROPERTIES
     ENVIRONMENT "OMP_DYNAMIC=FALSE;OMP_NUM_THREADS=2;OMP_THREAD_LIMIT=2;OMP_STACKSIZE=1M"

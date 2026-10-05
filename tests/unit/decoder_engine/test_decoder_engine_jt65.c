@@ -177,19 +177,50 @@ static void weak_reception(fixture *f, int utc)
   f->request.jt65.averaging = 1;
 }
 
-static void run_tests(void)
+static void create_fixture(fixture *f)
 {
   decoder_engine_options options = {DECODER_ENGINE_ABI};
-  decoder_attempt_outcome outcome;
   decoder_engine_capabilities capabilities;
-  fixture f = {0};
-  f.samples = malloc(SAMPLE_COUNT * sizeof *f.samples);
-  f.before = malloc(SAMPLE_COUNT * sizeof *f.before);
-  CHECK(f.samples && f.before);
-  f.audio.samples = f.samples;
-  CHECK(decoder_engine_create(&options, &f.engine) == DECODER_OK);
-  CHECK(decoder_engine_get_capabilities(f.engine, &capabilities) == DECODER_OK);
+  f->samples = malloc(SAMPLE_COUNT * sizeof *f->samples);
+  f->before = malloc(SAMPLE_COUNT * sizeof *f->before);
+  CHECK(f->samples && f->before);
+  f->audio.samples = f->samples;
+  CHECK(decoder_engine_create(&options, &f->engine) == DECODER_OK);
+  CHECK(decoder_engine_get_capabilities(f->engine, &capabilities) == DECODER_OK);
   CHECK(capabilities.supported_modes & DECODER_SUPPORT_JT65);
+}
+
+static void check_lifecycle_and_destroy(fixture *f)
+{
+  decoder_engine_options options = {DECODER_ENGINE_ABI};
+  CHECK(decoder_engine_reset_session(f->engine) == DECODER_OK);
+  CHECK(average_count(f) == 0);
+  prepare(f, 0, 0, 9);
+  decode(f, 1);
+  CHECK(decoder_engine_destroy(f->engine) == DECODER_OK);
+  CHECK(decoder_engine_create(&options, &f->engine) == DECODER_OK);
+  prepare(f, 0, 0, 11);
+  decode(f, 1);
+  CHECK(decoder_engine_destroy(f->engine) == DECODER_OK);
+  free(f->before);
+  free(f->samples);
+}
+
+static void run_smoke(void)
+{
+  fixture f = {0};
+  create_fixture(&f);
+  prepare(&f, 0, 0, 1);
+  decode(&f, 1);
+  release(&f);
+  check_lifecycle_and_destroy(&f);
+}
+
+static void run_tests(void)
+{
+  decoder_attempt_outcome outcome;
+  fixture f = {0};
+  create_fixture(&f);
 
   prepare(&f, 0, 0, 1);
   f.request.jt65.single_decode = 0;
@@ -447,17 +478,7 @@ static void run_tests(void)
       CHECK(outcome.status == DECODER_INVALID && outcome.observation_count == 0);
     }
   }
-  CHECK(decoder_engine_reset_session(f.engine) == DECODER_OK);
-  CHECK(average_count(&f) == 0);
-  prepare(&f, 0, 0, 9);
-  decode(&f, 1);
-  CHECK(decoder_engine_destroy(f.engine) == DECODER_OK);
-  CHECK(decoder_engine_create(&options, &f.engine) == DECODER_OK);
-  prepare(&f, 0, 0, 11);
-  decode(&f, 1);
-  CHECK(decoder_engine_destroy(f.engine) == DECODER_OK);
-  free(f.before);
-  free(f.samples);
+  check_lifecycle_and_destroy(&f);
 }
 
 static void write_le(FILE *file, uint32_t value, unsigned bytes)
@@ -517,6 +538,8 @@ int main(int argc, char **argv)
 {
   if (argc == 3 && !strcmp(argv[1], "--write-wav")) {
     write_wav(argv[2]);
+  } else if (argc == 2 && !strcmp(argv[1], "--smoke")) {
+    run_smoke();
   } else if (argc == 1) {
     run_tests();
   } else {
