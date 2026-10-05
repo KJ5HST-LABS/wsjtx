@@ -98,7 +98,7 @@ static void observe(const decoder_observation *record, void *opaque)
   CHECK(decoder_engine_set_jt65_calls(f->engine, NULL, 0) == DECODER_BUSY);
 }
 
-static void prepare(fixture *f, int submode, int kind, int utc)
+static void initialize_request(fixture *f, int submode, int kind, int utc)
 {
   static int64_t next_id = 100;
   memset(&f->request, 0, sizeof f->request);
@@ -126,6 +126,11 @@ static void prepare(fixture *f, int submode, int kind, int utc)
   f->expected_kind = kind;
   f->audio.sample_count = SAMPLE_COUNT;
   f->audio.sample_rate_hz = 12000;
+}
+
+static void prepare(fixture *f, int submode, int kind, int utc)
+{
+  initialize_request(f, submode, kind, utc);
   decoder_engine_test_jt65_signal(submode, kind, utc, f->samples);
 }
 
@@ -458,14 +463,14 @@ static void run_tests(void)
   CHECK(f.method == 1 && f.ap_type > 0);
   release(&f);
 
-  prepare(&f, 0, 0, 7);
+  initialize_request(&f, 0, 0, 7);
+  memset(f.samples, 0, SAMPLE_COUNT * sizeof *f.samples);
   f.request.phase = DECODER_PHASE_EARLY;
   CHECK(decoder_engine_decode(f.engine, &f.request, &f.audio, observe, &f, &outcome) == DECODER_INVALID);
   f.request.phase = DECODER_PHASE_NORMAL;
   f.audio.sample_count = SAMPLE_COUNT + 1;
   CHECK(decoder_engine_decode(f.engine, &f.request, &f.audio, observe, &f, &outcome) == DECODER_INVALID);
   f.audio.sample_count = SAMPLE_COUNT;
-  memset(f.samples, 0, SAMPLE_COUNT * sizeof *f.samples);
   const int32_t trial_limits[] = {-1, 0, 1000000, 1000001, INT32_MAX};
   for (unsigned i = 0; i < sizeof trial_limits / sizeof *trial_limits; ++i) {
     f.request.jt65.trials = trial_limits[i];
