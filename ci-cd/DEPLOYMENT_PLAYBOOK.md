@@ -669,13 +669,13 @@ Both entitlements are currently applied as one set, including to executables tha
 
 Bundle signing re-signs the main executable, so it must receive the entitlement file again after nested code is signed. `codesign --verify` validates signature integrity but does not prove that required entitlements are present. Inspect the effective entitlements and exercise audio capture and a decoder cycle when validating a release.
 
-### `Darwin/com.wsjtx.sysctl.plist`
+### macOS decoder shared memory
 
-The macOS installer package copies this into `/Library/LaunchDaemons/` to configure shared memory limits (required for WSJT-X interprocess communication). Check if it exists:
-
-```bash
-ls -la Darwin/com.wsjtx.sysctl.plist
-```
+The decoder uses native POSIX shared memory. The installer does not ship a
+System V sysctl launch daemon or change system shared-memory limits, and CI
+runs decoder and GUI tests without raising those limits. Existing settings
+from older installations are left in place for applications that may still
+need them.
 
 ### OmniRig type-library input
 
@@ -1220,7 +1220,6 @@ gh secret set CROSS_REPO_TOKEN --repo WSJTX/wsjtx-internal --env source-promotio
 | `.github/workflows/build-windows.yml` | Windows x86_64 build | None |
 | `.github/workflows/hamlib-upstream-check.yml` | Scheduled (weekly cron + `workflow_dispatch`) poll of Hamlib upstream tags; files a tracking issue when a newer 4.x release is available. No platform builds; self-contained. | None |
 | `entitlements.plist` | macOS app entitlements | None (if not already in repo) |
-| `Darwin/com.wsjtx.sysctl.plist` | macOS shared memory config | None (if not already in repo) |
 | `release-state.txt` | Tracked version, channel, prerelease number, optional Windows signing mode, and archival revision | Set before each RC or GA candidate; the line-start commit and the scheduler set beta states |
 | `.github/scripts/release-policy.py` | Release identity, asset, archive, signing-report, manifest, and public ref promotion policy | None |
 | `.github/scripts/beta-scheduler.py` | Beta scheduler state machine, dispatches, and failure alerts | None |

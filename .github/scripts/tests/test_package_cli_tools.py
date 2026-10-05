@@ -690,7 +690,7 @@ class MacosPostinstallTests(unittest.TestCase):
         indent = len(lines[start]) - len(lines[start].lstrip())
         end = next(i for i in range(start + 1, len(lines)) if lines[i] == " " * indent + "SCRIPT")
         body = [line[indent:] for line in lines[start + 1:end]]
-        body = [":" if line.startswith(("/bin/launchctl", "/usr/sbin/sysctl")) else line for line in body]
+        self.assertFalse(any("launchctl" in line or "sysctl" in line for line in body))
         self.assertTrue(any(line.startswith('root="${3%/}"') for line in body))
         for line in body:
             for prefix in line.split("/usr/local")[:-1]:

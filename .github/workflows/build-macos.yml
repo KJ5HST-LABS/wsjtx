@@ -582,39 +582,6 @@ jobs:
           path: .ccache
           key: ${{ steps.ccache.outputs.cache-primary-key }}
 
-      - name: Apply WSJT-X shared memory limits
-        run: |
-          python3 - <<'PY'
-          import plistlib
-          import subprocess
-
-          expected_arguments = [
-              "/usr/sbin/sysctl",
-              "kern.sysv.shmmax=52428800",
-              "kern.sysv.shmall=25600",
-          ]
-
-          with open("Darwin/com.wsjtx.sysctl.plist", "rb") as source:
-              configuration = plistlib.load(source)
-
-          if (
-              configuration.get("Program") != expected_arguments[0]
-              or configuration.get("ProgramArguments") != expected_arguments
-          ):
-              raise SystemExit("shared memory plist does not match CI expectations")
-
-          subprocess.run(["/usr/bin/sudo", *expected_arguments], check=True)
-          subprocess.run(
-              [expected_arguments[0], "kern.sysv.shmmax", "kern.sysv.shmall"], check=True
-          )
-          PY
-
-      - name: Raise shared memory total for parallel GUI tests
-        run: |
-          # Three decoder segments require 35,359 pages; leave headroom for other IPC.
-          sudo /usr/sbin/sysctl kern.sysv.shmall=40960
-          /usr/sbin/sysctl kern.sysv.shmmax kern.sysv.shmall
-
       - name: Run tests
         id: ctest
         run: ctest --parallel 3 --output-on-failure --output-junit ctest-results.xml
@@ -846,7 +813,7 @@ jobs:
 
           PAYLOAD="$RUNNER_TEMP/pkg-payload"
           SCRIPTS="$RUNNER_TEMP/pkg-scripts"
-          mkdir -p "${PAYLOAD}/Applications" "${PAYLOAD}/Library/LaunchDaemons" "${SCRIPTS}"
+          mkdir -p "${PAYLOAD}/Applications" "${SCRIPTS}"
 
           cp -R "${STAGE}/wsjtx.app" "${PAYLOAD}/Applications/"
 
@@ -866,13 +833,9 @@ jobs:
           fi
           [ -d "${STAGE}/lib" ] && cp -R "${STAGE}/lib/"* "${PAYLOAD}/usr/local/wsjtx/lib/"
 
-          cp "Darwin/com.wsjtx.sysctl.plist" "${PAYLOAD}/Library/LaunchDaemons/"
-
           cp wsjtx-build/installed-cli-tools.txt "${SCRIPTS}/"
           cat > "${SCRIPTS}/postinstall" << 'SCRIPT'
           #!/bin/bash
-          /bin/launchctl load /Library/LaunchDaemons/com.wsjtx.sysctl.plist 2>/dev/null || true
-          /usr/sbin/sysctl kern.sysv.shmmax=52428800 kern.sysv.shmall=25600 2>/dev/null || true
           root="${3%/}"   # $3 is the installation's target volume
           shipped="$(dirname "$0")/installed-cli-tools.txt"
           mkdir -p "$root/usr/local/bin"
