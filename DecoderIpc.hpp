@@ -3,7 +3,8 @@
 
 #include <QByteArray>
 #include <QtGlobal>
-#include <QSharedMemory>
+#include <QString>
+#include "lib/NativeSharedMemory.hpp"
 
 #include <array>
 
@@ -131,7 +132,9 @@ namespace DecoderIpc
   class Session
   {
   public:
-    Status open (QString const& key);
+    Status open (QString const& key, QString const& workerLockPath);
+    QString name () const { return name_; }
+    QString workerLockPath () const { return workerLockPath_; }
     QString errorString () const { return error_; }
     qint64 size () const { return memory_.size (); }
     bool reset ();
@@ -153,7 +156,9 @@ namespace DecoderIpc
   private:
     shared_dec_data_t * storage ();
     shared_dec_data_t const * storage () const;
-    QSharedMemory memory_;
+    NativeSharedMemory memory_;
+    QString name_;
+    QString workerLockPath_;
     QString error_;
     qint32 lastGeneration_ {0};
     Generation activeGeneration_;
@@ -163,6 +168,7 @@ namespace DecoderIpc
     bool ready_ {false};
   };
 
+  QString memoryName (QString const& lockIdentity);
   qint32 nextGeneration (qint32 current);
   bool hasUsableSize (qint64 size);
   qint32 state (shared_dec_data_t const& shared);

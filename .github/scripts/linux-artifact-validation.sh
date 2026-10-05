@@ -70,6 +70,7 @@ validate_elf_executable() {
   local file_output
   local header_output
   local program_output
+  local dynamic_output
 
   if [ ! -x "$path" ]; then
     linux_validation_error "Required executable is missing: $path"
@@ -80,7 +81,14 @@ validate_elf_executable() {
   header_output=$(readelf -hW -- "$path") || return
   program_output=$(readelf -lW -- "$path") || return
   echo "$file_output"
-  validate_elf_metadata "$arch" "$path" "$file_output" "$header_output" "$program_output"
+  validate_elf_metadata "$arch" "$path" "$file_output" "$header_output" "$program_output" || return
+  if [ "${path##*/}" = jt9 ]; then
+    dynamic_output=$(readelf -dW -- "$path") || return
+    if printf '%s\n' "$dynamic_output" | awk '/\(NEEDED\)/ && /\[libQt/ { found=1 } END { exit found ? 0 : 1 }'; then
+      linux_validation_error "$path must not depend on Qt"
+      return 1
+    fi
+  fi
 }
 
 validate_linux_build_executables() {

@@ -47,10 +47,11 @@ program jt9
        have_ntol = .false.,multift8 = .false.,hidedupes = .false.,           &
        lft8lowth = .true.,lft8subpass = .true.,lwidedxcsearch = .true.,      &
        stream_mode = .false., use_mtd_fft_plans = .false., wav_utc_has_seconds
-  type (option) :: long_options(43) = [                                      &
+  type (option) :: long_options(44) = [                                      &
     option ('help', .false., 'h', 'Display this help message', ''),          &
     option ('version', .false., 'v', 'Display version and build revision', ''),&
-    option ('shmem',.true.,'s','Use shared memory for sample data','KEY'),   &
+    option ('shmem',.true.,'s','Use native shared memory for sample data','NAME'), &
+    option ('ipc-lock', .true., '1', 'Shared-memory worker lifetime lock', 'PATH'), &
     option ('stream', .false., '0',                                          &
         'Read framed PCM samples from stdin',                                &
         ''),                                                                 &
@@ -136,7 +137,7 @@ program jt9
   TRperiod=60.d0
 
   do
-     call getopt('hvs:e:a:b:r:m:p:d:f:F:w:t:9876543WYqkTMUSZL:S:H:c:G:x:g:X:Q:C:R:N:E:D:',    &
+     call getopt('hvs:e:a:b:r:m:p:d:f:F:w:t:9876543WYqkTMUSZL:S:H:c:G:x:g:X:Q:C:R:N:E:D:1:',    &
           long_options,c,optarg,arglen,stat,offset,remain,.true.)
      if (stat .ne. 0) then
         exit
@@ -149,6 +150,8 @@ program jt9
         case ('s')
            read_files = .false.
            shm_key = optarg(:arglen)
+        case ('1')
+           ipc_lock_path = optarg(:arglen)
         case ('0')
            read_files = .false.
            stream_mode = .true.
@@ -257,7 +260,7 @@ program jt9
      print *, '       Reads data from *.wav files.'
      print *, ''
      print *, '       jt9 -s <key> [-w patience] [-m threads] [-e path] [-a path] [-t path] [-r path]'
-     print *, '       Gets data from shared memory region with key==<key>'
+     print *, '       Gets data from the native shared memory name supplied with -s'
      print *, ''
      print *, '       cat <pcm-stream> | jt9 --stream'
      print *, '       Reads framed PCM samples from stdin.'

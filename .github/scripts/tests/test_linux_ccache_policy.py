@@ -152,7 +152,7 @@ class LinuxCcachePolicyTests(unittest.TestCase):
             workflow.count(
                 "RUNTIME_IMAGE: ${{ needs.resolve-image.outputs.image_reference }}"
             ),
-            3,
+            4,
         )
         self.assertIn("build-linux-armhf-cross.sh", workflow)
         self.assertIn("validate-linux-armhf-runtime.sh", workflow)

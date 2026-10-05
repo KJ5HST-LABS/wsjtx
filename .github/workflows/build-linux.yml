@@ -300,6 +300,7 @@ jobs:
     timeout-minutes: 65
     container:
       image: ${{ needs.resolve-image.outputs.image_reference }}
+      options: --shm-size=1g
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -338,6 +339,7 @@ jobs:
     # glibc 2.36 and pre-t64 runtime baseline (issue #49).
     container:
       image: ${{ needs.resolve-image.outputs.image_reference }}
+      options: --shm-size=1g
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
@@ -664,6 +666,7 @@ jobs:
           ARMHF_RUNTIME_PHASE: ${{ inputs.build_packages && 'all' || 'test' }}
         run: |
           GITHUB_TOKEN="${{ github.token }}" docker run --rm --platform linux/arm/v7 \
+            --shm-size=1g \
             -v "${GITHUB_WORKSPACE}:/work" \
             -w /work \
             -e VERSION \
@@ -674,6 +677,22 @@ jobs:
             -e WSJTX_CI_IMAGE_ALLOW_RECIPE_MISMATCH \
             "$RUNTIME_IMAGE" \
             bash .github/scripts/validate-linux-armhf-runtime.sh
+
+      - name: Test shared-memory allocation failure on native ARMv7
+        env:
+          RUNTIME_IMAGE: ${{ needs.resolve-image.outputs.image_reference }}
+        run: |
+          docker run --rm --platform linux/arm/v7 \
+            --shm-size=16m \
+            -v "${GITHUB_WORKSPACE}:/work" \
+            -w /work \
+            -e WSJTX_TEST_SMALL_SHM=1 \
+            "$RUNTIME_IMAGE" \
+            bash -euo pipefail -c '
+              source .github/scripts/armhf-ci-image-config.sh
+              LD_LIBRARY_PATH="$ARMHF_RUNTIME_PREFIX" \
+                wsjtx-build/tests/unit/decoder_ipc/test_decoder_ipc_handshake insufficientLinuxSharedMemory
+            '
 
       - name: Publish armhf test summary
         if: always()

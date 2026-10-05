@@ -38,8 +38,14 @@ for exe in "$@"; do
   fi
 
   echo "::group::DLL imports for $exe"
+  if ! import_metadata=$(objdump -p "$exe"); then
+    echo "::error::Could not inspect DLL imports for $exe"
+    echo "::endgroup::"
+    fail=1
+    continue
+  fi
   imports=$(
-    objdump -p "$exe" |
+    printf '%s\n' "$import_metadata" |
       awk '/DLL Name:/ {print $3}' |
       sort -u
   )
@@ -50,8 +56,16 @@ for exe in "$@"; do
     echo "(none)"
   fi
 
+  if [ "$(basename "$exe" | tr '[:upper:]' '[:lower:]')" = jt9.exe ]; then
+    qt_imports=$(printf '%s\n' "$imports" | awk 'tolower($0) ~ /^qt.*\.dll$/')
+    if [ -n "$qt_imports" ]; then
+      echo "::error::$exe must not depend on Qt: $qt_imports"
+      fail=1
+    fi
+  fi
+
   win7_blocked_imports=$(
-    objdump -p "$exe" |
+    printf '%s\n' "$import_metadata" |
       awk '
         /DLL Name:/ { dll=tolower($3) }
         /api-ms-win-core-synch-l1-2-0\.dll/ { print "api-ms-win-core-synch-l1-2-0.dll" }

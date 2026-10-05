@@ -4,11 +4,6 @@
 # so CMAKE_CURRENT_SOURCE_DIR stays the project root and all paths below
 # remain relative to it, exactly as when this content was inline.
 #
-set (fort_qt_CXXSRCS
-  lib/shmem.cpp
-  lib/decoder_ipc_layout.cpp
-  )
-
 set (wsjt_qt_CXXSRCS
   ActiveStationList.cpp
   DecDataMutex.cpp
@@ -128,6 +123,8 @@ set (wsjt_qtmm_CXXSRCS
 
 set (jt9_FSRCS
   lib/jt9.f90
+  lib/shmem.f90
+  lib/shmem.cpp
   lib/decoder_ipc_layout.f90
   lib/jt9a.f90
   lib/streaming_io.f90
@@ -136,8 +133,7 @@ set (jt9_FSRCS
   lib/jt9_version.c
   )
 
-# jt9stream sources: the Qt-free streaming decoder (B2). Same jt9.f90 main as
-# jt9 but ALWAYS the jt9a stub (hard-coded, not jt9a.f90) so it links zero Qt.
+# jt9stream uses the same main as jt9 with shared-memory worker mode disabled.
 set (jt9stream_FSRCS
   lib/jt9.f90
   lib/jt9a_stub.f90
@@ -187,7 +183,6 @@ set (wsjtx_CXXSRCS
   HoundTransmissionPolicy.cpp
   SuperFoxTxPlanner.cpp
   DecoderIpc.cpp
-  lib/decoder_ipc_layout.cpp
   Ft8MtdDecodeScheduler.cpp
   OperatingFrequency.cpp
   Ft8MtdDecodeCoordinator.cpp
@@ -231,6 +226,9 @@ endif ()
 set (wsjt_CXXSRCS
   Logger.cpp
   lib/decoder_ipc_control.cpp
+  lib/decoder_ipc_layout.cpp
+  lib/NativeSharedMemory.cpp
+  lib/DecoderWorkerLock.cpp
   lib/crc10.cpp
   lib/crc13.cpp
   lib/crc14.cpp
@@ -264,7 +262,6 @@ set (wsjt_FSRCS
   lib/jt9_input_validation.f90
   lib/msk_spectrum.f90
   lib/jpl_ephemeris_status.f90
-  lib/shmem.f90
   lib/crc.f90
   lib/fftw3mod.f90
   lib/hashing.f90
@@ -782,7 +779,6 @@ set (qcp_CXXSRCS
 
 set (all_CXXSRCS
   ${wsjt_CXXSRCS}
-  ${fort_qt_CXXSRCS}
   ${wsjt_qt_CXXSRCS}
   ${wsjt_qtmm_CXXSRCS}
   ${wsjtx_CXXSRCS}

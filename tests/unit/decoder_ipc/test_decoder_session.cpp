@@ -1,17 +1,22 @@
 #include <QtTest>
-#include <QSharedMemory>
 #include <QUuid>
+#include <QTemporaryDir>
+#include <QFile>
+#include <QScopeGuard>
+#include <QTextCodec>
 
 #include <memory>
 #include <limits>
 
 #include "DecoderIpc.hpp"
+#include "lib/NativeSharedMemory.hpp"
 
 class TestDecoderSession final : public QObject
 {
   Q_OBJECT
 private Q_SLOTS:
   void ownsGenerationsAndSamples ();
+  void sharedLockUsesNativePath ();
   void compactSnapshotAndContextRefresh ();
   void preparedReuseRetainsCompletedInput_data ();
   void preparedReuseRetainsCompletedInput ();
@@ -23,19 +28,42 @@ private Q_SLOTS:
   void resetRejectsCorruption ();
 };
 
+void TestDecoderSession::sharedLockUsesNativePath ()
+{
+#ifdef Q_OS_WIN
+  QSKIP ("The native worker lock is POSIX-only");
+#else
+  QTemporaryDir directory;
+  QVERIFY (directory.isValid ());
+  auto * previousCodec = QTextCodec::codecForLocale ();
+  auto restoreCodec = qScopeGuard ([&] { QTextCodec::setCodecForLocale (previousCodec); });
+#ifndef Q_OS_DARWIN
+  QTextCodec::setCodecForLocale (QTextCodec::codecForName ("ISO-8859-1"));
+#endif
+  auto const path = directory.filePath (QString::fromUtf8 ("décoder.lock"));
+  auto cleanup = qScopeGuard ([&] { QFile::remove (path); });
+  DecoderIpc::Session session;
+  auto const name = DecoderIpc::memoryName (QUuid::createUuid ().toString ());
+  QCOMPARE (session.open (name, path), DecoderIpc::Status::Ok);
+  QVERIFY (QFile::exists (path));
+#endif
+}
+
 void TestDecoderSession::ownsGenerationsAndSamples ()
 {
   using namespace DecoderIpc;
+  QTemporaryDir directory;
+  QVERIFY (directory.isValid ());
   Session session;
-  auto const key = QString {"decoder-session-%1"}.arg (QUuid::createUuid ().toString ());
-  QCOMPARE (session.open (key), Status::Ok);
+  auto const key = memoryName (QUuid::createUuid ().toString ());
+  QCOMPARE (session.open (key, directory.filePath ("worker.lock")), Status::Ok);
   QVERIFY (!session.ready ());
   auto unavailable = std::make_unique<dec_data_t> ();
   QCOMPARE (session.submit (Request::snapshot (*unavailable)).status, Status::Unavailable);
   QCOMPARE (session.acceptReady (DECODER_IPC_VERSION - 1), Status::Incompatible);
   QCOMPARE (session.acceptReady (DECODER_IPC_VERSION), Status::Ok);
-  QSharedMemory peer {key};
-  QVERIFY (peer.attach ());
+  NativeSharedMemory peer;
+  QVERIFY2 (peer.attach (key.toStdString ()), peer.errorString ().c_str ());
   auto& shared = *static_cast<shared_dec_data_t *> (peer.data ());
   auto source = std::make_unique<dec_data_t> ();
   source->params.nmode = 8;
@@ -121,12 +149,14 @@ void TestDecoderSession::ownsGenerationsAndSamples ()
 void TestDecoderSession::compactSnapshotAndContextRefresh ()
 {
   using namespace DecoderIpc;
+  QTemporaryDir directory;
+  QVERIFY (directory.isValid ());
   Session session;
-  auto const key = QString {"decoder-session-%1"}.arg (QUuid::createUuid ().toString ());
-  QCOMPARE (session.open (key), Status::Ok);
+  auto const key = memoryName (QUuid::createUuid ().toString ());
+  QCOMPARE (session.open (key, directory.filePath ("worker.lock")), Status::Ok);
   QCOMPARE (session.acceptReady (DECODER_IPC_VERSION), Status::Ok);
-  QSharedMemory peer {key};
-  QVERIFY (peer.attach ());
+  NativeSharedMemory peer;
+  QVERIFY2 (peer.attach (key.toStdString ()), peer.errorString ().c_str ());
   auto& shared = *static_cast<shared_dec_data_t *> (peer.data ());
   auto compact = std::make_unique<Ft8MtdPayload> ();
   compact->params.nmode = 8;
@@ -186,12 +216,14 @@ void TestDecoderSession::incompatibleSnapshotLeavesNextReceptionUntouched ()
   using namespace DecoderIpc;
   QFETCH (int, previousMode);
   QFETCH (int, previousPeriod);
+  QTemporaryDir directory;
+  QVERIFY (directory.isValid ());
   Session session;
-  auto const key = QString {"decoder-session-%1"}.arg (QUuid::createUuid ().toString ());
-  QCOMPARE (session.open (key), Status::Ok);
+  auto const key = memoryName (QUuid::createUuid ().toString ());
+  QCOMPARE (session.open (key, directory.filePath ("worker.lock")), Status::Ok);
   QCOMPARE (session.acceptReady (DECODER_IPC_VERSION), Status::Ok);
-  QSharedMemory peer {key};
-  QVERIFY (peer.attach ());
+  NativeSharedMemory peer;
+  QVERIFY2 (peer.attach (key.toStdString ()), peer.errorString ().c_str ());
   auto& shared = *static_cast<shared_dec_data_t *> (peer.data ());
   auto source = std::make_unique<dec_data_t> ();
   qint32 generation {0};
@@ -264,12 +296,14 @@ void TestDecoderSession::preparedReuseRetainsCompletedInput ()
   QFETCH (int, mode);
   QFETCH (bool, rollover);
   QFETCH (bool, again);
+  QTemporaryDir directory;
+  QVERIFY (directory.isValid ());
   Session session;
-  auto const key = QString {"decoder-session-%1"}.arg (QUuid::createUuid ().toString ());
-  QCOMPARE (session.open (key), Status::Ok);
+  auto const key = memoryName (QUuid::createUuid ().toString ());
+  QCOMPARE (session.open (key, directory.filePath ("worker.lock")), Status::Ok);
   QCOMPARE (session.acceptReady (DECODER_IPC_VERSION), Status::Ok);
-  QSharedMemory peer {key};
-  QVERIFY (peer.attach ());
+  NativeSharedMemory peer;
+  QVERIFY2 (peer.attach (key.toStdString ()), peer.errorString ().c_str ());
   auto& shared = *static_cast<shared_dec_data_t *> (peer.data ());
   InputState inputs;
   auto source = std::make_unique<dec_data_t> ();
@@ -360,12 +394,14 @@ void TestDecoderSession::preparedReuseRetainsCompletedInput ()
 void TestDecoderSession::diskPassesReserveAttemptNumbers ()
 {
   using namespace DecoderIpc;
+  QTemporaryDir directory;
+  QVERIFY (directory.isValid ());
   Session session;
-  auto const key = QString {"decoder-session-%1"}.arg (QUuid::createUuid ().toString ());
-  QCOMPARE (session.open (key), Status::Ok);
+  auto const key = memoryName (QUuid::createUuid ().toString ());
+  QCOMPARE (session.open (key, directory.filePath ("worker.lock")), Status::Ok);
   QCOMPARE (session.acceptReady (DECODER_IPC_VERSION), Status::Ok);
-  QSharedMemory peer {key};
-  QVERIFY (peer.attach ());
+  NativeSharedMemory peer;
+  QVERIFY2 (peer.attach (key.toStdString ()), peer.errorString ().c_str ());
   auto& shared = *static_cast<shared_dec_data_t *> (peer.data ());
   InputState inputs;
   auto source = std::make_unique<dec_data_t> ();
@@ -408,12 +444,14 @@ void TestDecoderSession::diskPassesReserveAttemptNumbers ()
 void TestDecoderSession::deferredSnapshotKeepsItsInputAfterRollover ()
 {
   using namespace DecoderIpc;
+  QTemporaryDir directory;
+  QVERIFY (directory.isValid ());
   Session session;
-  auto const key = QString {"decoder-session-%1"}.arg (QUuid::createUuid ().toString ());
-  QCOMPARE (session.open (key), Status::Ok);
+  auto const key = memoryName (QUuid::createUuid ().toString ());
+  QCOMPARE (session.open (key, directory.filePath ("worker.lock")), Status::Ok);
   QCOMPARE (session.acceptReady (DECODER_IPC_VERSION), Status::Ok);
-  QSharedMemory peer {key};
-  QVERIFY (peer.attach ());
+  NativeSharedMemory peer;
+  QVERIFY2 (peer.attach (key.toStdString ()), peer.errorString ().c_str ());
   auto& shared = *static_cast<shared_dec_data_t *> (peer.data ());
   InputState inputs;
   auto source = std::make_unique<dec_data_t> ();
@@ -460,12 +498,14 @@ void TestDecoderSession::deferredSnapshotKeepsItsInputAfterRollover ()
 void TestDecoderSession::reuseStartsNewAnalysisBeforeAttemptOverflow ()
 {
   using namespace DecoderIpc;
+  QTemporaryDir directory;
+  QVERIFY (directory.isValid ());
   Session session;
-  auto const key = QString {"decoder-session-%1"}.arg (QUuid::createUuid ().toString ());
-  QCOMPARE (session.open (key), Status::Ok);
+  auto const key = memoryName (QUuid::createUuid ().toString ());
+  QCOMPARE (session.open (key, directory.filePath ("worker.lock")), Status::Ok);
   QCOMPARE (session.acceptReady (DECODER_IPC_VERSION), Status::Ok);
-  QSharedMemory peer {key};
-  QVERIFY (peer.attach ());
+  NativeSharedMemory peer;
+  QVERIFY2 (peer.attach (key.toStdString ()), peer.errorString ().c_str ());
   auto& shared = *static_cast<shared_dec_data_t *> (peer.data ());
   InputState inputs;
   inputs.beginInput ();
@@ -492,18 +532,20 @@ void TestDecoderSession::reuseStartsNewAnalysisBeforeAttemptOverflow ()
 void TestDecoderSession::resetRejectsCorruption ()
 {
   using namespace DecoderIpc;
+  QTemporaryDir directory;
+  QVERIFY (directory.isValid ());
   Session session;
-  auto const key = QString {"decoder-session-%1"}.arg (QUuid::createUuid ().toString ());
-  QCOMPARE (session.open (key), Status::Ok);
+  auto const key = memoryName (QUuid::createUuid ().toString ());
+  QCOMPARE (session.open (key, directory.filePath ("worker.lock")), Status::Ok);
   QCOMPARE (session.acceptReady (DECODER_IPC_VERSION), Status::Ok);
-  QSharedMemory peer {key};
-  QVERIFY (peer.attach ());
+  NativeSharedMemory peer;
+  QVERIFY2 (peer.attach (key.toStdString ()), peer.errorString ().c_str ());
   auto& shared = *static_cast<shared_dec_data_t *> (peer.data ());
   --shared.layout.payload_bytes;
-  QByteArray const before {static_cast<char const *> (peer.constData ()), peer.size ()};
+  QByteArray const before {static_cast<char const *> (peer.data ()), static_cast<int> (peer.size ())};
   QVERIFY (!session.reset ());
   session.shutdown ();
-  QCOMPARE (QByteArray (static_cast<char const *> (peer.constData ()), peer.size ()), before);
+  QCOMPARE (QByteArray (static_cast<char const *> (peer.data ()), static_cast<int> (peer.size ())), before);
 }
 
 QTEST_GUILESS_MAIN (TestDecoderSession)

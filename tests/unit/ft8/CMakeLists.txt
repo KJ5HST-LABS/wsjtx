@@ -11,14 +11,12 @@ add_executable (test_ft8_mtd_decode_coordinator
   ${CMAKE_SOURCE_DIR}/Ft8MtdDecodeCoordinator.cpp
   ${CMAKE_SOURCE_DIR}/Ft8MtdDecodeScheduler.cpp
   ${CMAKE_SOURCE_DIR}/DecoderIpc.cpp
-  ${CMAKE_SOURCE_DIR}/lib/decoder_ipc_control.cpp
-  ${CMAKE_SOURCE_DIR}/lib/decoder_ipc_layout.cpp
 )
 target_include_directories (test_ft8_mtd_decode_coordinator PRIVATE
   ${CMAKE_SOURCE_DIR}
   ${CMAKE_SOURCE_DIR}/lib
 )
-target_link_libraries (test_ft8_mtd_decode_coordinator Qt5::Test)
+target_link_libraries (test_ft8_mtd_decode_coordinator wsjt_cxx Qt5::Test)
 add_test (NAME test_ft8_mtd_decode_coordinator COMMAND test_ft8_mtd_decode_coordinator)
 
 add_executable (test_ft8_decode_ranges

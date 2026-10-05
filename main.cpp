@@ -283,9 +283,6 @@ int main(int argc, char *argv[])
   Radio::register_types ();
   register_types ();
 
-  // Multiple instances communicate with jt9 via this
-  DecoderIpc::Session decoderSession;
-
   if (test_mode_requested (argc, argv)) QStandardPaths::setTestModeEnabled (true);
   QApplication::setAttribute (Qt::AA_EnableHighDpiScaling);
 
@@ -622,6 +619,9 @@ int main(int argc, char *argv[])
             }
         }
 
+      // Release the mapping before the instance lock, including on startup failure.
+      DecoderIpc::Session decoderSession;
+
       // load UI translations
       L10nLoader l10n {&a, locale, parser.value (lang_option)};
 
@@ -778,7 +778,8 @@ int main(int argc, char *argv[])
               sys_lg.push_record (boost::move (rec));
             }
 
-          auto const sessionStatus = decoderSession.open (a.applicationName ());
+          auto const sessionStatus = decoderSession.open (DecoderIpc::memoryName (instance_lock_path),
+                                                        instance_lock_path + QStringLiteral (".decoder"));
           if (DecoderIpc::Status::Ok != sessionStatus)
             {
               std::cerr << "WSJT-X startup: " << decoderSession.errorString ().toStdString ()

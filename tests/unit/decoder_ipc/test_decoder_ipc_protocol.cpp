@@ -1,7 +1,7 @@
 #include <QtTest>
 #include <QProcess>
-#include <QSharedMemory>
 #include <QUuid>
+#include <QTemporaryDir>
 
 #include <cstring>
 #include <limits>
@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "DecoderIpc.hpp"
+#include "lib/NativeSharedMemory.hpp"
 #include "lib/decoder_ipc_control.h"
 
 extern "C"
@@ -355,10 +356,9 @@ void TestDecoderIpcProtocol::compatibleShutdownReleasesWorkers ()
 
 void TestDecoderIpcProtocol::rejectedEngineRequestCompletes ()
 {
-  auto const key = QStringLiteral ("jt9-reject-")
-    + QUuid::createUuid ().toString (QUuid::WithoutBraces);
-  QSharedMemory memory {key};
-  QVERIFY2 (memory.create (sizeof (shared_dec_data_t)), qPrintable (memory.errorString ()));
+  auto const key = DecoderIpc::memoryName (QUuid::createUuid ().toString ());
+  NativeSharedMemory memory;
+  QVERIFY2 (memory.create (key.toStdString (), sizeof (shared_dec_data_t)), memory.errorString ().c_str ());
   auto * shared = static_cast<shared_dec_data_t *> (memory.data ());
   DecoderIpc::initialize (*shared);
   auto payload = std::make_unique<dec_data_t> ();
@@ -369,12 +369,15 @@ void TestDecoderIpcProtocol::rejectedEngineRequestCompletes ()
   payload->params.nfa = -1;
   payload->params.nfb = 4000;
 
+  QTemporaryDir directory;
+  QVERIFY (directory.isValid ());
   QProcess decoder;
   QByteArray output;
   connect (&decoder, &QProcess::readyReadStandardOutput, this, [&] {
       output += decoder.readAllStandardOutput ();
     });
-  decoder.start (QString::fromLocal8Bit (JT9_TEST_EXECUTABLE), {"-s", key});
+  decoder.start (QString::fromLocal8Bit (JT9_TEST_EXECUTABLE), {"-s", key, "--ipc-lock", directory.filePath ("worker.lock"),
+                 "-a", directory.path (), "-t", directory.path ()});
   QVERIFY (decoder.waitForStarted ());
   QTRY_VERIFY_WITH_TIMEOUT (output.contains ("<DecoderReady>"), 5000);
   QVERIFY (DecoderIpc::publish (*shared, *payload, true, 7, {11, 12, 1, 180000}));
@@ -408,11 +411,10 @@ void TestDecoderIpcProtocol::sharedMemoryWorkerExitsOnShutdown ()
 {
   QFETCH (bool, explicitMode);
 
-  auto const key = QStringLiteral ("jt9-exit-")
-    + QUuid::createUuid ().toString (QUuid::WithoutBraces);
-  QSharedMemory memory {key};
-  QVERIFY2 (memory.create (sizeof (shared_dec_data_t)),
-            qPrintable (memory.errorString ()));
+  auto const key = DecoderIpc::memoryName (QUuid::createUuid ().toString ());
+  NativeSharedMemory memory;
+  QVERIFY2 (memory.create (key.toStdString (), sizeof (shared_dec_data_t)),
+            memory.errorString ().c_str ());
 
   auto * shared = static_cast<shared_dec_data_t *> (memory.data ());
   DecoderIpc::initialize (*shared);
@@ -422,7 +424,11 @@ void TestDecoderIpcProtocol::sharedMemoryWorkerExitsOnShutdown ()
   if (explicitMode) args << QStringLiteral ("-8");
   args << QStringLiteral ("-s") << key;
 
+  QTemporaryDir directory;
+  QVERIFY (directory.isValid ());
   QProcess decoder;
+  args << "--ipc-lock" << directory.filePath ("worker.lock")
+       << "-a" << directory.path () << "-t" << directory.path ();
   decoder.start (QString::fromLocal8Bit (JT9_TEST_EXECUTABLE), args);
   if (!decoder.waitForFinished (15000))
     {

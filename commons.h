@@ -10,7 +10,6 @@
 
 #ifdef __cplusplus
 #include <cstddef>
-#include <QString>
 #else
 #include <stdbool.h>
 #endif

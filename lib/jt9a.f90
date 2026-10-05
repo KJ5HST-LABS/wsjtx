@@ -30,14 +30,17 @@ subroutine jt9a()
   type(decode_completion_result) :: completion
 
   layout_status=0
-  call init_timer (trim(data_dir)//'/timer.out')
 !  open(23,file=trim(data_dir)//'/CALL3.TXT',status='unknown')
 
 !  limtrace=-1                            !Disable all calls to timer()
 
-! Multiple instances: set the shared memory key before attaching
-  call shmem_setkey(trim(shm_key)//c_null_char)
-  ok=shmem_attach()
+  ok=shmem_lock_worker(trim(ipc_lock_path)//c_null_char)
+  if(.not.ok) then
+     write(*,'(a)') '<DecoderError> status=worker-lock'
+     call flush(6)
+     stop 1
+  endif
+  ok=shmem_attach(trim(shm_key)//c_null_char)
   if(.not.ok) then
      layout_status=DECODER_IPC_LAYOUT_ATTACH
      call decoder_ipc_report_layout_error(layout_status,c_null_ptr,0_c_size_t)
@@ -45,15 +48,13 @@ subroutine jt9a()
   endif
   msdelay=10
   shared_address=shmem_address()
-  nbytes=shmem_size()
-  available_bytes=0_c_size_t
-  if(nbytes.gt.0) available_bytes=int(nbytes,c_size_t)
+  available_bytes=shmem_size()
   layout_status=decoder_ipc_fortran_validate(shared_address,available_bytes)
   if(layout_status.ne.0) then
      call decoder_ipc_report_layout_error(layout_status,shared_address,available_bytes)
-     ok=shmem_detach()
      go to 999
   endif
+  call init_timer (trim(data_dir)//'/timer.out')
   call c_f_pointer(shared_address,shared_memory)
 
   call decoder_ipc_progress_bind(shared_memory%control%generation, &
@@ -67,27 +68,23 @@ subroutine jt9a()
 10 layout_status=decoder_ipc_fortran_validate(shared_address,available_bytes)
   if(layout_status.ne.0) then
      call decoder_ipc_report_layout_error(layout_status,shared_address,available_bytes)
-     ok=shmem_detach()
      go to 999
   endif
   claim_result=decoder_ipc_control_try_claim( &
        shared_memory%control%generation, shared_memory%control%state, &
        shared_memory%control%version, active_generation)
   if(claim_result.eq.DECODER_IPC_CLAIM_SHUTDOWN) then
-     ok=shmem_detach()
      go to 999
   endif
   if(claim_result.eq.DECODER_IPC_CLAIM_INCOMPATIBLE) then
      layout_status=DECODER_IPC_LAYOUT_VERSION
      call decoder_ipc_report_layout_error(layout_status,shared_address,available_bytes)
-     ok=shmem_detach()
      go to 999
   endif
   if(claim_result.eq.DECODER_IPC_CLAIM_INVALID) then
      layout_status=DECODER_IPC_CLAIM_INVALID
      write(*,'(a)') '<DecoderError> status=invalid-generation'
      call flush(6)
-     ok=shmem_detach()
      go to 999
   endif
   if(claim_result.eq.DECODER_IPC_CLAIM_NONE) then

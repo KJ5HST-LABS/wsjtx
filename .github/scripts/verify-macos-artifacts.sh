@@ -9,6 +9,7 @@ Verifies Mach-O files under PATH for:
   * expected architecture
   * deployment target not newer than --target
   * no package-manager runtime library references
+  * no Qt load dependencies in jt9
 
 Package-manager paths are always rejected:
   /opt/homebrew, /usr/local/Cellar, /usr/local/opt, /opt/local
@@ -146,9 +147,20 @@ check_file() {
   fi
 
   install_name=$(otool -arch "$arch" -D "$file" 2>/dev/null | awk 'NR == 2 { print $1 }' || true)
-  refs=$(otool -arch "$arch" -L "$file" 2>/dev/null | awk 'NR > 1 { print $1 }' || true)
+  if ! refs=$(otool -arch "$arch" -L "$file" 2>/dev/null | awk 'NR > 1 { print $1 }'); then
+    echo "::error file=${file}::Could not inspect Mach-O load dependencies"
+    return 1
+  fi
   while IFS= read -r ref; do
     [ -n "$ref" ] || continue
+    if [ "${file##*/}" = jt9 ]; then
+      case "${ref##*/}" in
+        Qt*|libQt*)
+          echo "::error file=${file}::jt9 must not depend on Qt: ${ref}"
+          fail=1
+          ;;
+      esac
+    fi
     if [ "$ref" = "$install_name" ]; then
       case "$ref" in
         */*) ;;

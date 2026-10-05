@@ -79,6 +79,7 @@ jobs:
     continue-on-error: ${{ inputs.advisory }}
     container:
       image: ${{ inputs.sanitizer == 'tsan' && format('ghcr.io/wsjtx/wsjtx-internal/linux-tsan-noble:{0}', needs.resolve-image.outputs.image_tag) || format('ghcr.io/wsjtx/wsjtx-internal/linux-noble:{0}', needs.resolve-image.outputs.image_tag) }}
+      options: --shm-size=1g
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}

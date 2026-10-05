@@ -5816,7 +5816,8 @@ void MainWindow::startDecoderProcess ()
   m_decoderOutputFramer.reset ();
   m_decoderSession.beginStartup ();
   QStringList jt9Args {
-    "-s", QApplication::applicationName (), // shared memory key, includes rig
+    "-s", m_decoderSession.name (),
+    "--ipc-lock", m_decoderSession.workerLockPath (),
     "-w", "1", // FFTW planning patience
     // The number  of threads for  FFTW specified here is  chosen as
     // three because  that gives  the best  throughput of  the large

@@ -223,7 +223,7 @@ option (WSJT_ENABLE_GUI_SMOKE_TESTS
   "Register GUI-driven smoke tests with CTest." OFF)
 option (WSJT_ENABLE_ASAN_UBSAN "Instrument in-tree code with AddressSanitizer and UndefinedBehaviorSanitizer." OFF)
 option (WSJT_ENABLE_TSAN "Instrument in-tree code with ThreadSanitizer." OFF)
-option (WSJT_BUILD_JT9STREAM "Build the Qt-free streaming decoder jt9stream alongside jt9 (uses the jt9a stub, never links fort_qt)." ON)
+option (WSJT_BUILD_JT9STREAM "Build the Qt-free streaming decoder jt9stream alongside jt9 (uses the jt9a stub)." ON)
 set (WSJT_FORTRAN_LIBRARY_VARIANTS "AUTO" CACHE STRING
   "Fortran library variants to build: AUTO, BOTH, OPENMP_ONLY, or NON_OPENMP_ONLY.")
 set_property (CACHE WSJT_FORTRAN_LIBRARY_VARIANTS PROPERTY STRINGS
@@ -426,6 +426,18 @@ endif ()
 # build a library of package functionality (without and optionally with OpenMP support)
 add_library (wsjt_cxx STATIC ${wsjt_CSRCS} ${wsjt_CXXSRCS})
 target_link_libraries (wsjt_cxx Boost::log_setup ${LIBM_LIBRARIES})
+if (UNIX)
+  include (CheckCXXSymbolExists)
+  check_cxx_symbol_exists (shm_open "sys/mman.h" WSJT_SHM_OPEN_IN_LIBC)
+  if (NOT WSJT_SHM_OPEN_IN_LIBC)
+    include (CheckLibraryExists)
+    check_library_exists (rt shm_open "" WSJT_SHM_OPEN_IN_LIBRT)
+    if (NOT WSJT_SHM_OPEN_IN_LIBRT)
+      message (FATAL_ERROR "POSIX shared memory requires shm_open in libc or librt")
+    endif ()
+    target_link_libraries (wsjt_cxx rt)
+  endif ()
+endif ()
 
 # build Fortran library routines without and optionally with OpenMP support
 if (WSJT_BUILD_FORTRAN_NON_OPENMP)
@@ -663,10 +675,6 @@ target_link_libraries (wsjt_qt Hamlib::Hamlib Boost::log qcp Qt5::Widgets Qt5::N
 if (WIN32)
   target_link_libraries (wsjt_qt Qt5::AxContainer Qt5::AxBase)
 endif (WIN32)
-
-# build a library of package Qt functionality used in Fortran utilities
-add_library (fort_qt STATIC ${fort_qt_CXXSRCS})
-target_link_libraries (fort_qt PRIVATE Qt5::Core)
 
 # build a library of WSJT Qt multimedia components
 add_library (wsjt_qtmm STATIC ${wsjt_qtmm_CXXSRCS} ${wsjt_qtmm_GENUISRCS})
@@ -954,18 +962,16 @@ endif ()
 
 if (WSJT_BUILD_FORTRAN_OPENMP)
   wsjt_link_fortran_openmp (jt9)
-  target_link_libraries (jt9 wsjt_cxx fort_qt)
+  target_link_libraries (jt9 wsjt_cxx)
   if (WIN32)
     set_property (TARGET jt9 APPEND_STRING PROPERTY
       LINK_FLAGS " -Wl,--stack,16777216")
   endif ()
 else ()
-  target_link_libraries (jt9 wsjt_fort wsjt_cxx fort_qt)
+  target_link_libraries (jt9 wsjt_fort wsjt_cxx)
 endif ()
 
-# build jt9stream: the Qt-free streaming decoder (B2). Same jt9.f90 main as jt9,
-# but ALWAYS compiled with the jt9a stub and NEVER linked against fort_qt, so it
-# links zero Qt. Mirrors develop's jt9 OpenMP/APPLE/WIN32 structure exactly.
+# Build jt9stream with shared-memory worker mode disabled.
 if (WSJT_BUILD_JT9STREAM)
   generate_version_info (jt9stream_VERSION_RESOURCES
     NAME jt9stream
@@ -989,7 +995,6 @@ if (WSJT_BUILD_JT9STREAM)
   else ()
     target_link_libraries (jt9stream wsjt_fort wsjt_cxx)
   endif ()
-  # jt9stream NEVER links fort_qt — that is the Qt-free guarantee.
 endif (WSJT_BUILD_JT9STREAM)
 
 if (WSJT_ENABLE_TESTS AND (APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
@@ -1165,9 +1170,7 @@ if (WSJT_ENABLE_TESTS AND WSJT_ENABLE_GUI_SMOKE_TESTS
       (CMAKE_SYSTEM_NAME STREQUAL "Linux"
         AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")))
 
-  # Each full WSJT-X process allocates about 48 MiB of System V shared memory.
-  # The macOS CI pool is sized for three concurrent instances, so keep GUI
-  # process concurrency at three unless that limit is raised as well.
+  # Keep GUI concurrency within the macOS CI pool's three-instance capacity.
 
   set (wsjtx_live_audio_test_root
     "${CMAKE_BINARY_DIR}/Testing/LiveAudio/test_wsjtx_live_audio_ft8")

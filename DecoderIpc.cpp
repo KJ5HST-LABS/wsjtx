@@ -1,7 +1,11 @@
 #include "DecoderIpc.hpp"
 
 #include "lib/decoder_ipc_control.h"
+#include <QCryptographicHash>
+#include <QFile>
 #include <QThread>
+#include <QElapsedTimer>
+#include "lib/DecoderWorkerLock.hpp"
 
 #include <algorithm>
 #include <cstring>
@@ -129,47 +133,88 @@ decoder_params_t const& DecoderIpc::Request::options () const
   return options_;
 }
 
-DecoderIpc::Status DecoderIpc::Session::open (QString const& key)
+QString DecoderIpc::memoryName (QString const& lockIdentity)
+{
+  auto const token = QCryptographicHash::hash (lockIdentity.toUtf8 (), QCryptographicHash::Sha256)
+    .toHex ().left (24);
+#ifdef Q_OS_WIN
+  return QStringLiteral ("Local\\wsjt-") + QString::fromLatin1 (token);
+#else
+  return QStringLiteral ("/wsjt-") + QString::fromLatin1 (token);
+#endif
+}
+
+DecoderIpc::Status DecoderIpc::Session::open (QString const& key, QString const& workerLockPath)
 {
   detach ();
   error_.clear ();
-  memory_.setKey (key);
-  for (int attempt = 0; attempt < 3; ++attempt)
+  name_ = key;
+  workerLockPath_ = workerLockPath;
+  auto const nativeName = key.toStdString ();
+  auto stopExisting = [&] {
+    if (memory_.attach (nativeName))
+      {
+        if (DECODER_IPC_LAYOUT_OK == decoder_ipc_validate_layout (
+              memory_.data (), memory_.size (), nullptr))
+          DecoderIpc::shutdown (*static_cast<shared_dec_data_t *> (memory_.data ()));
+        memory_.detach ();
+      }
+  };
+#ifdef Q_OS_WIN
+  for (int attempt = 0; ; ++attempt)
     {
-      if (!memory_.attach ()) break;
-      auto const status = decoder_ipc_validate_layout (
-          memory_.constData (), memory_.size (), nullptr);
-      if (DECODER_IPC_LAYOUT_OK != status)
+      if (memory_.create (nativeName, sizeof (shared_dec_data_t))) break;
+      error_ = QString::fromStdString (memory_.errorString ());
+      if (!memory_.alreadyExists ()) return Status::CreateFailed;
+      if (attempt == 3)
         {
-          error_ = QStringLiteral ("Decoder shared memory rejected: %1 (expected version %2, header %3, payload %4 bytes)")
-            .arg (decoder_ipc_layout_status_name (status)).arg (DECODER_IPC_VERSION)
-            .arg (offsetof (shared_dec_data_t, payload)).arg (sizeof (dec_data_t));
-          memory_.detach ();
-          return Status::Incompatible;
+          error_.prepend (QStringLiteral ("Previous jt9 decoder shared memory remained after shutdown attempts; wait for it to exit, then retry: "));
+          return Status::Orphaned;
         }
-      DecoderIpc::shutdown (*static_cast<shared_dec_data_t *> (memory_.data ()));
-      memory_.detach ();
+      stopExisting ();
       QThread::sleep (1);
     }
-  if (memory_.attach ())
+#else
+  stopExisting ();
+  DecoderWorkerLock workerLock {QFile::encodeName (workerLockPath).constData ()};
+  QElapsedTimer deadline;
+  deadline.start ();
+  while (!workerLock.tryLock ())
     {
-      error_ = QStringLiteral ("Orphaned decoder shared memory remained after shutdown attempts");
-      memory_.detach ();
-      return Status::Orphaned;
+      if (!workerLock.busy ())
+        {
+          error_ = QStringLiteral ("Cannot lock decoder worker: %1")
+            .arg (QString::fromStdString (workerLock.errorString ()));
+          return Status::CreateFailed;
+        }
+      if (deadline.elapsed () >= 3000)
+        {
+          error_ = QStringLiteral ("Previous jt9 decoder is still running after the shutdown wait. Wait for it to exit, then retry.");
+          return Status::Orphaned;
+        }
+      QThread::msleep (50);
     }
-  if (!memory_.create (sizeof (shared_dec_data_t)))
+  std::string error;
+  if (!NativeSharedMemory::remove (nativeName, &error))
     {
-      error_ = memory_.errorString ();
+      error_ = QString::fromStdString (error);
       return Status::CreateFailed;
     }
+  if (!memory_.create (nativeName, sizeof (shared_dec_data_t)))
+    {
+      error_ = QString::fromStdString (memory_.errorString ());
+      return Status::CreateFailed;
+    }
+#endif
+  error_.clear ();
   initialize (*static_cast<shared_dec_data_t *> (memory_.data ()));
   return Status::Ok;
 }
 
 shared_dec_data_t const * DecoderIpc::Session::storage () const
 {
-  if (!hasUsableSize (memory_.size ()) || !memory_.constData ()) return nullptr;
-  auto const * shared = static_cast<shared_dec_data_t const *> (memory_.constData ());
+  if (!hasUsableSize (memory_.size ()) || !memory_.data ()) return nullptr;
+  auto const * shared = static_cast<shared_dec_data_t const *> (memory_.data ());
   return hasCurrentProtocol (*shared) ? shared : nullptr;
 }
 
