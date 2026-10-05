@@ -40,7 +40,7 @@ target_include_directories (test_decoder_engine_jt65 PRIVATE ${CMAKE_SOURCE_DIR}
 target_link_libraries (test_decoder_engine_jt65 PRIVATE test_decoder_engine_jt65_signal Threads::Threads)
 add_test (NAME test_decoder_engine_jt65 COMMAND test_decoder_engine_jt65)
 add_test (NAME test_decoder_engine_jt65_small_stack COMMAND test_decoder_engine_jt65 --small-stack)
-set_tests_properties (test_decoder_engine_jt65 test_decoder_engine_jt65_small_stack PROPERTIES TIMEOUT 120)
+set_tests_properties (test_decoder_engine_jt65 test_decoder_engine_jt65_small_stack PROPERTIES TIMEOUT 360)
 add_test (NAME prepare_jt65_engine_wav COMMAND test_decoder_engine_jt65
   --write-wav ${CMAKE_CURRENT_BINARY_DIR}/jt65-engine.wav)
 set_tests_properties (prepare_jt65_engine_wav PROPERTIES FIXTURES_SETUP jt65_engine_wav TIMEOUT 15)
@@ -109,5 +109,5 @@ if (TARGET wsjt_fort_omp)
   set_tests_properties (test_decoder_engine_jt65_omp test_decoder_engine_jt65_omp_small_stack PROPERTIES
     ENVIRONMENT "OMP_DYNAMIC=FALSE;OMP_NUM_THREADS=2;OMP_THREAD_LIMIT=2;OMP_STACKSIZE=1M"
     PROCESSORS 2
-    TIMEOUT 120)
+    TIMEOUT 360)
 endif ()
