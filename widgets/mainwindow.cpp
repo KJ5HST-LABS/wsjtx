@@ -3628,8 +3628,6 @@ void MainWindow::auto_tx_mode (bool state)
 
 void MainWindow::keyPressEvent (QKeyEvent * e)
 {
-  fprintf (stderr, "JTTYTXDEBUG keyPressEvent key=%d mode=%s\n",
-           e->key (), m_mode.toLatin1 ().constData ());
   if(SpecOp::FOX == m_specOp) {
     switch (e->key()) {
       case Qt::Key_Return:
