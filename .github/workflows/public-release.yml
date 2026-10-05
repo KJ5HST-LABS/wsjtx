@@ -22,7 +22,7 @@ jobs:
     outputs:
       version: ${{ steps.identity.outputs.version }}
       release_channel: ${{ steps.identity.outputs.channel }}
-      rc_number: ${{ steps.identity.outputs.rc_number }}
+      prerelease_number: ${{ steps.identity.outputs.prerelease_number }}
       macos_sign_mode: ${{ steps.identity.outputs.macos_sign_mode }}
       windows_signing: ${{ steps.identity.outputs.windows_signing }}
       image_tag: ${{ steps.linux-images.outputs.image_tag }}
@@ -39,16 +39,31 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          CHANNEL=$(python3 .github/scripts/release-policy.py classify "${GITHUB_REF_NAME#v}" | jq -r .channel)
+          ENVIRONMENT=public-release
+          POLICIES=()
+          if [ "$CHANNEL" = BETA ]; then
+            ENVIRONMENT=beta-release
+            if ! gh api \
+              -H "Accept: application/vnd.github+json" \
+              -H "X-GitHub-Api-Version: 2022-11-28" \
+              "repos/$GITHUB_REPOSITORY/environments/$ENVIRONMENT/deployment-branch-policies" \
+              > "$RUNNER_TEMP/publication-deployment-policies.json"; then
+              echo "::error::Unable to read $ENVIRONMENT deployment policies."
+              exit 1
+            fi
+            POLICIES=(--deployment-policies "$RUNNER_TEMP/publication-deployment-policies.json")
+          fi
           if ! gh api \
             -H "Accept: application/vnd.github+json" \
             -H "X-GitHub-Api-Version: 2022-11-28" \
-            "repos/$GITHUB_REPOSITORY/environments/public-release" \
-            > "$RUNNER_TEMP/public-release-environment.json"; then
-            echo "::error::Unable to read public-release environment protection rules."
+            "repos/$GITHUB_REPOSITORY/environments/$ENVIRONMENT" \
+            > "$RUNNER_TEMP/publication-environment.json"; then
+            echo "::error::Unable to read $ENVIRONMENT environment protection rules."
             exit 1
           fi
           python3 .github/scripts/release-policy.py validate-publication-environment \
-            "$RUNNER_TEMP/public-release-environment.json"
+            "$RUNNER_TEMP/publication-environment.json" --channel "$CHANNEL" "${POLICIES[@]}"
       - name: Validate public release tag and source identity
         id: identity
         env:
@@ -56,18 +71,22 @@ jobs:
         run: |
           set -euo pipefail
           if [[ ! "$GITHUB_REF_NAME" =~ ^v(.+)$ ]]; then
-            echo "::error::Expected vX.Y.Z or vX.Y.Z-rcN"
+            echo "::error::Expected vX.Y.Z, vX.Y.Z-betaN, or vX.Y.Z-rcN"
             exit 1
           fi
           VERSION="${GITHUB_REF_NAME#v}"
           IDENTITY=$(python3 .github/scripts/release-policy.py validate-source "$VERSION")
+          CHANNEL=$(jq -r .channel <<<"$IDENTITY")
           {
             echo "version=$(jq -r .version <<<"$IDENTITY")"
-            echo "channel=$(jq -r .channel <<<"$IDENTITY")"
-            echo "rc_number=$(jq -r .rc_number <<<"$IDENTITY")"
+            echo "channel=$CHANNEL"
+            echo "prerelease_number=$(jq -r .prerelease_number <<<"$IDENTITY")"
             echo "windows_signing=$(jq -r .windows_signing <<<"$IDENTITY")"
           } >> "$GITHUB_OUTPUT"
-          if [ "$MACOS_DISTRIBUTION_SIGNING_ENABLED" = true ]; then
+          if [ "$CHANNEL" = BETA ]; then
+            echo "macos_sign_mode=validation" >> "$GITHUB_OUTPUT"
+            echo "::notice::Betas publish the validated unsigned macOS packages as immutable assets."
+          elif [ "$MACOS_DISTRIBUTION_SIGNING_ENABLED" = true ]; then
             echo "macos_sign_mode=distribution" >> "$GITHUB_OUTPUT"
           else
             echo "macos_sign_mode=validation" >> "$GITHUB_OUTPUT"
@@ -96,8 +115,6 @@ jobs:
       arch: arm64
       runner: macos-15
       deployment_target: "11.0"
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
       signing_mode: ${{ needs.prepare.outputs.macos_sign_mode }}
 
   macos-intel:
@@ -112,8 +129,6 @@ jobs:
       arch: x86_64
       runner: macos-15-intel
       deployment_target: "10.13"
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
       signing_mode: ${{ needs.prepare.outputs.macos_sign_mode }}
 
   linux:
@@ -131,8 +146,6 @@ jobs:
       image_tag: ${{ needs.prepare.outputs.image_tag }}
       image_digest: ${{ needs.prepare.outputs.x86_64_digest }}
       build_packages: true
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
 
   linux-arm:
     needs: prepare
@@ -149,8 +162,6 @@ jobs:
       image_tag: ${{ needs.prepare.outputs.image_tag }}
       image_digest: ${{ needs.prepare.outputs.aarch64_digest }}
       build_packages: true
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
 
   linux-armhf:
     needs: prepare
@@ -168,8 +179,6 @@ jobs:
       image_digest: ${{ needs.prepare.outputs.armhf_digest }}
       armhf_cross_image_digest: ${{ needs.prepare.outputs.armhf_cross_digest }}
       build_packages: true
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
 
   windows:
     needs: prepare
@@ -180,7 +189,7 @@ jobs:
     with:
       version: ${{ needs.prepare.outputs.version }}
       release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
+      prerelease_number: ${{ needs.prepare.outputs.prerelease_number }}
       windows_signing: ${{ needs.prepare.outputs.windows_signing }}
 
   assemble:
@@ -198,6 +207,9 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
+      # build-linux.yml hands this tree between its ARMHF jobs; it is no asset.
+      - name: Drop the ARMHF build tree
+        run: rm -rf artifacts/armhf-build-tree
       - name: Build corresponding source archive
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
@@ -312,7 +324,7 @@ jobs:
     needs: [prepare, assemble]
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    environment: public-release
+    environment: ${{ needs.prepare.outputs.release_channel == 'BETA' && 'beta-release' || 'public-release' }}
     permissions:
       actions: read
       contents: write
@@ -327,6 +339,7 @@ jobs:
       - name: Recheck bundle and immutable public tag
         env:
           VERSION: ${{ needs.prepare.outputs.version }}
+          CHANNEL: ${{ needs.prepare.outputs.release_channel }}
           MACOS_MODE: ${{ needs.prepare.outputs.macos_sign_mode }}
           WINDOWS_MODE: ${{ needs.prepare.outputs.windows_signing }}
         run: |
@@ -337,7 +350,9 @@ jobs:
           test "$(jq -r .commit release-bundle/release-manifest.json)" = "$GITHUB_SHA"
           test "$(jq -r '.assets | length' release-bundle/release-manifest.json)" -gt 0
           EXPECTED_MACOS_MODE=distribution
-          if [ "$MACOS_MODE" = validation ]; then
+          if [ "$CHANNEL" = BETA ]; then
+            EXPECTED_MACOS_MODE=unsigned
+          elif [ "$MACOS_MODE" = validation ]; then
             EXPECTED_MACOS_MODE=manual
           fi
           test "$(jq -r .macos_signing.mode release-bundle/release-manifest.json)" = "$EXPECTED_MACOS_MODE"
@@ -353,11 +368,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.prepare.outputs.version }}
           CHANNEL: ${{ needs.prepare.outputs.release_channel }}
-          MACOS_MODE: ${{ needs.prepare.outputs.macos_sign_mode }}
         run: |
           set -euo pipefail
           mapfile -t FILES < <(find release-bundle -maxdepth 1 -type f -print | sort)
           mapfile -t EXPECTED_NAMES < <(printf '%s\n' "${FILES[@]}" | xargs -n1 basename | sort)
+          mapfile -t REPLACEABLE_NAMES < <(jq -r '.macos_signing.replaceable_assets[]' release-bundle/release-manifest.json)
           LINE_POLICY=$(python3 .github/scripts/release-policy.py \
             public-release-line "$VERSION" --remote origin)
           GA_RELEASE_IS_LATEST=$(jq -r .ga_release_is_latest <<<"$LINE_POLICY")
@@ -375,7 +390,7 @@ jobs:
               exit 1
             fi
             EXPECTED_PRERELEASE=false
-            if [ "$CHANNEL" = RC ]; then
+            if [ "$CHANNEL" != GA ]; then
               EXPECTED_PRERELEASE=true
             fi
             if [ "$(jq -r .isPrerelease <<<"$RELEASE")" != "$EXPECTED_PRERELEASE" ]; then
@@ -395,7 +410,7 @@ jobs:
             MISSING=()
             for file in "${FILES[@]}"; do
               name=$(basename "$file")
-              if [ "$MACOS_MODE" = validation ] && [[ "$name" == wsjtx-*-macOS.pkg ]]; then
+              if printf '%s\n' "${REPLACEABLE_NAMES[@]}" | grep -Fxq "$name"; then
                 if printf '%s\n' "${ACTUAL_NAMES[@]}" | grep -Fxq "$name"; then
                   echo "Preserving manually replaceable macOS asset: $name"
                 else
@@ -425,7 +440,7 @@ jobs:
             echo "Existing assets satisfy the publication bundle policy."
           else
             FLAGS=()
-            if [ "$CHANNEL" = RC ]; then
+            if [ "$CHANNEL" != GA ]; then
               FLAGS+=(--prerelease)
             fi
             FLAGS+=("--latest=$LATEST")

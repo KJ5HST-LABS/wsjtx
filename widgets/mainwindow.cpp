@@ -506,7 +506,7 @@ namespace
 }
 
 QRegExp const MainWindow::message_alphabet {"[- @A-Za-z0-9+./?#<>;$]*"};
-QRegularExpression const MainWindow::grid_regexp {"\\A(?![Rr]{2}73)[A-Ra-r]{2}[0-9]{2}([A-Xa-x]{2}){0,1}\\z"};
+QRegularExpression const MainWindow::grid_regexp {Radio::decoded_grid_pattern()};
 QRegularExpression const MainWindow::non_r_db_regexp {"\\A[-+]{1}[0-9]{1,2}\\z"};
 constexpr int MainWindow::MaxActiveStationRows;
 constexpr int MainWindow::MaxQ65PileupCallers;
@@ -700,7 +700,8 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
   qApp->setFont (m_config.text_font ());
   ui->setupUi(this);
   updateJttySendButton ();
-  ui->Tx_Message->setToolTip (tr ("Press Enter to send. Long messages are split automatically; new messages follow pending text."));
+  ui->Tx_Message->setToolTip (tr ("Ctrl+K sends. Ctrl+Shift+K clears the box. Long messages are split automatically; new text follows pending text."));
+  ui->Tx_Message->installEventFilter (this);
   configureModeControlsLayout ();
   // A non-editable QComboBox always left-aligns its closed-box text, so fake a
   // centered "label" via a read-only editable line edit; the dropdown list's
@@ -712,17 +713,42 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
   for (int i = 0; i < ui->comboBoxJttyStyle->count (); ++i) {
     ui->comboBoxJttyStyle->setItemData (i, Qt::AlignCenter, Qt::TextAlignmentRole);
   }
-  connect (ui->Tx_Message, &QLineEdit::textChanged, this,
-           [this] { m_jttyDraftAcceptanceTracker.noteDraftChanged (); });
-  connect (this, &MainWindow::jttyTextAccepted, this, [this] (qint64 requestId) {
-    if (m_jttyDraftAcceptanceTracker.accept (requestId)) {
-      ui->Tx_Message->clear ();
+  connect (ui->Tx_Message, &QPlainTextEdit::textChanged, this,
+           &MainWindow::guardJttyLiveEntryLock);
+  connect (ui->Tx_Message, &QPlainTextEdit::textChanged, this,
+           &MainWindow::autoAdvanceJttyLiveEntry);
+  connect (ui->Tx_Message, &QPlainTextEdit::textChanged, this,
+           &MainWindow::updateJttyLiveEntryFrameLabel);
+  // Acceptance leaves the span in m_jttyLiveEntryPending; only jttyTextCompleted (below) removes it.
+  connect (this, &MainWindow::jttyTextCompleted, this, [this] (qint64 requestId) {
+    for (int i = 0; i < m_jttyLiveEntryPending.size (); ++i) {
+      if (m_jttyLiveEntryPending[i].requestId == requestId) {
+        m_jttyLiveEntryFramesSent += m_jttyLiveEntryPending[i].totalFrames;
+        m_jttyLiveEntryPending.remove (i);
+        m_guardingJttyLiveEntryLock = true;
+        applyJttyLiveEntryFormatting ();
+        m_guardingJttyLiveEntryLock = false;
+        updateJttyLiveEntryFrameLabel ();
+        break;
+      }
     }
   });
   connect (this, &MainWindow::jttyTextRejected, this,
             [this] (qint64 requestId, JttyTxRejectReason) {
-              m_jttyDraftAcceptanceTracker.reject (requestId);
-            });
+    for (int i = 0; i < m_jttyLiveEntryPending.size (); ++i) {
+      if (m_jttyLiveEntryPending[i].requestId != requestId) continue;
+      auto const entry = m_jttyLiveEntryPending[i];
+      m_jttyLiveEntryPending.remove (i);
+      // Only the most recently committed span can be cleanly reopened for editing.
+      if (entry.end == m_jttyLiveEntryCommitted) {
+        m_guardingJttyLiveEntryLock = true;
+        m_jttyLiveEntryCommitted = entry.start;
+        applyJttyLiveEntryFormatting ();
+        m_guardingJttyLiveEntryLock = false;
+      }
+      break;
+    }
+  });
   m_tx_message_button_group = new QButtonGroup {this};
   m_tx_message_button_group->addButton (ui->txrb1, 1);
   m_tx_message_button_group->addButton (ui->txrb2, 2);
@@ -4157,6 +4183,28 @@ bool MainWindow::eventFilter (QObject * object, QEvent * event)
           }
 
         auto const key_event = static_cast<QKeyEvent *> (event);
+        if (object == ui->Tx_Message && !key_event->isAutoRepeat ()
+            && key_event->key () == Qt::Key_K
+            && key_event->modifiers () == (Qt::ControlModifier | Qt::ShiftModifier))
+          {
+            clearJttyLiveEntry ();
+            return true;
+          }
+        if (object == ui->Tx_Message && !key_event->isAutoRepeat ()
+            && key_event->key () == Qt::Key_K
+            && key_event->modifiers () == Qt::ControlModifier)
+          {
+            commitJttyLiveEntry ();
+            return true;
+          }
+        // An undo reaching into locked text can't be fixed by guardJttyLiveEntryLock's own undo() (wrong direction), so block the shortcuts outright while anything is locked.
+        if (object == ui->Tx_Message && !key_event->isAutoRepeat ()
+            && m_jttyLiveEntryCommitted > 0
+            && (key_event->matches (QKeySequence::Undo)
+                || key_event->matches (QKeySequence::Redo)))
+          {
+            return true;
+          }
         auto const handled = switchMainWindowTab (key_event) || switchTxNextMessage (key_event);
         tx_watchdog (false);
         if (handled) return true;
@@ -5312,7 +5360,8 @@ void MainWindow::decode (Ft8MtdDecodeCoordinator::Stage ft8Stage,
   dec_data.params.nsubmode=m_nSubMode;
   dec_data.params.minw=0;
   dec_data.params.nclearave=m_nclearave;
-  if(m_nclearave!=0) {
+  if (m_mode == "JT65" && m_jt65ClearAveragesPending) dec_data.params.nclearave=1;
+  if(dec_data.params.nclearave!=0) {
     QFile f(m_config.temp_dir ().absoluteFilePath ("avemsg.txt"));
     f.remove();
   }
@@ -5478,6 +5527,8 @@ void MainWindow::decode (Ft8MtdDecodeCoordinator::Stage ft8Stage,
 
     auto const publishResult = publishDecodeRequest (
       decoderParams.newdat, ft8Stage, ft8Period);
+    if (DecodePublishResult::Published == publishResult && m_mode == "JT65")
+      m_jt65ClearAveragesPending = false;
     if (DecodePublishResult::Published == publishResult && scheduledFt8)
       {
         if (m_ft8MtdDecodeCoordinator.published (ft8Stage, ft8Period))
@@ -5512,6 +5563,22 @@ void MainWindow::decode (Ft8MtdDecodeCoordinator::Stage ft8Stage,
 }
 
 #if defined (WSJT_ENABLE_LIVE_AUDIO_TEST)
+bool MainWindow::startWavDecodeTest (QString const& path)
+{
+  if (!m_automated_test || !m_config.is_dummy_rig ()
+      || (m_mode != QStringLiteral ("JT9") && m_mode != QStringLiteral ("JT65"))
+      || m_nSubMode != 0 || m_bFast9 || m_bFastMode || m_TRperiod != 60.0
+      || decoderBusy () || !decoderBackendRunning ()
+      || !ui->actionOpen->isEnabled () || m_wav_load_coordinator.isLoading ())
+    return false;
+  monitor (false);
+  m_path = path;
+  m_diskData = true;
+  on_stopButton_clicked ();
+  read_wav_file (path);
+  return true;
+}
+
 bool MainWindow::configureLiveAudioTestDecodeRange ()
 {
   // FT8's 1500/2048 Hz bins make 956 pixels at 4 bins/pixel span 200-3000 Hz.
@@ -9388,15 +9455,7 @@ void MainWindow::abortQSO()
 
 bool MainWindow::stdCall(QString const& w)
 {
-  static QRegularExpression standard_call_re {
-    R"(
-        ^\s*                                      # optional leading spaces
-        ( [A-Z]{0,2} | [A-Z][0-9] | [0-9][A-Z] )  # part 1
-        ( [0-9][A-Z]{0,3} )                       # part 2
-        (/R | /P)?                                # optional suffix
-        \s*$                                      # optional trailing spaces
-    )", QRegularExpression::CaseInsensitiveOption | QRegularExpression::ExtendedPatternSyntaxOption};
-  return standard_call_re.match (w).hasMatch ();
+  return Radio::is_standard_callsign(w);
 }
 
 bool MainWindow::is77BitMode () const
@@ -11338,6 +11397,7 @@ void MainWindow::on_actionJT65_triggered()
   });
   on_actionJT9_triggered();
   m_mode="JT65";
+  m_jt65ClearAveragesPending = true;
   if(m_specOp==SpecOp::HOUND) {
     m_config.setSpecial_None();
     m_specOp=m_config.special_op_id();
@@ -12599,6 +12659,7 @@ void MainWindow::applyOperatingFrequencyTransition (OperatingFrequency::Transiti
   if (transition.before.rx != transition.after.rx)
     {
       if (m_mode == "JTTY") updateJttyReceiveContext();
+      if (m_mode == "JT65") m_jt65ClearAveragesPending = true;
       cancelPendingFt8Decode ("dial frequency changed");
       genCQMsg ();
     }

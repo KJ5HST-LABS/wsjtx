@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       version:
-        description: "Version without v (X.Y.Z or X.Y.Z-rcN)"
+        description: "Version without v (X.Y.Z, X.Y.Z-betaN, or X.Y.Z-rcN)"
         required: true
         type: string
       candidate_run_id:
@@ -155,7 +155,7 @@ jobs:
             elif [ "$CHANNEL" = GA ]; then
               echo "- Public master: leave unchanged; this is an older-line GA"
             else
-              echo "- Public master: leave unchanged for an RC"
+              echo "- Public master: leave unchanged for a beta or RC"
             fi
           } >> "$GITHUB_STEP_SUMMARY"
 

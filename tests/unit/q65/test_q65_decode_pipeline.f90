@@ -41,6 +41,7 @@ program test_q65_decode_pipeline
   use map65_mmdec_mod, only: map65_mmdec
   use q65_pipeline_callback
   use prog_args, only: data_dir,temp_dir
+  use q65, only: jz0
   use q65_decode, only: q65_decoder,cq0,msg0,nsnr0,nfreq0,xdt0
   use q65_test_fixture, only: make_q65_wave,q65_nsamples,q65_ntrperiod
   use types, only: q3list
@@ -75,6 +76,14 @@ program test_q65_decode_pipeline
      call run_direct_decode(decoder,iwave,nsubmode,1,want_iflagdec=0)
   enddo
 
+  iwave=0_int16
+  call run_direct_decode(decoder,iwave,0,0,ntrperiod=30)
+  if(jz0.ne.(30*12000-30*120)/(30*120/8)+1) then
+     error stop 'Q65 spectra do not cover every complete input window'
+  endif
+
+  call check_q65_drift_compensation()
+
   ! The direct decoder loop owns exhaustive submode coverage. MAP65 is a thin
   ! handoff, so exercise both ends of its forwarded submode range.
   do isubmode=1,size(map65_submodes)
@@ -91,6 +100,49 @@ program test_q65_decode_pipeline
   write(*,'(a)') 'Q65 raw decoder and MAP65 handoff tests passed'
 
 contains
+
+  subroutine check_q65_drift_compensation()
+    use q65, only: q65_dec0,s1a,s1w,iseq,iz0,j0,NSTEP,df,ncw,max_drift,drift
+    integer, parameter :: drift_cases(3)=[-50,0,50]
+    integer :: case_number,want_drift,k,i,j,peak_min,peak_max,dat4(13),idec
+    real :: xdt,f0,snr1,width,snr2
+
+    iwave=0_int16
+    call run_direct_decode(decoder,iwave,0,0)
+    ncw=0
+    max_drift=50
+    do case_number=1,size(drift_cases)
+       want_drift=drift_cases(case_number)
+       s1a(:,:,iseq)=0.0
+       do k=1,85
+          j=j0+NSTEP*(k-1)+1
+          i=nint(1000.0/df)+nint(real(want_drift)*(k-43)/85.0)
+          s1a(i,j,iseq)=100.0
+       enddo
+       if(allocated(s1w)) deallocate(s1w)
+       ! Averaged spectra without list candidates reach stage 5 without an earlier decode.
+       call q65_dec0(1,iwave,q65_ntrperiod,1000,20,lclearave,2.5, &
+            xdt,f0,snr1,width,dat4,snr2,idec,5)
+       ! Integer bin rounding makes zero drift indistinguishable from a one-bin sweep.
+       if(abs(nint(drift/df)-want_drift).gt.1) then
+          error stop 'Q65 synchronization missed the planted drift'
+       endif
+       if(.not.allocated(s1w)) error stop 'Q65 stage-5 drift compensation did not run'
+       peak_min=iz0
+       peak_max=1
+       do k=1,85
+          j=j0+NSTEP*(k-1)+1
+          if(maxval(s1w(:,j)).lt.99.0) error stop 'Q65 drift compensation lost a symbol'
+          i=maxloc(s1w(:,j),dim=1)
+          peak_min=min(peak_min,i)
+          peak_max=max(peak_max,i)
+       enddo
+       if(peak_max-peak_min.gt.1) then
+          error stop 'Q65 drift compensation depends on the receive horizon'
+       endif
+    enddo
+    lclearave=.true.
+  end subroutine check_q65_drift_compensation
 
   subroutine check_q65_ap_flag_masks()
     integer :: apsym0(58),apmask(78),apsymbols(78),iaptype
@@ -147,7 +199,6 @@ contains
     if(ncw.ne.0) error stop 'Q65 Pileup accepted an oversized caller count'
   end subroutine check_q65_ap_flag_masks
 
-
   subroutine check_caller_codewords(codewords,mycall,dxcall,grid)
     integer, intent(in) :: codewords(63,10)
     character(len=*), intent(in) :: mycall,dxcall,grid
@@ -177,11 +228,12 @@ contains
     enddo
   end subroutine check_caller_codewords
 
-  subroutine run_direct_decode(decoder,samples,nsubmode,want_callback,want_iflagdec)
+  subroutine run_direct_decode(decoder,samples,nsubmode,want_callback,want_iflagdec,ntrperiod)
     type(q65_decoder), intent(inout) :: decoder
     integer(int16), intent(in) :: samples(:)
     integer, intent(in) :: nsubmode,want_callback
-    integer, intent(in), optional :: want_iflagdec
+    integer, intent(in), optional :: want_iflagdec,ntrperiod
+    integer :: decode_period
     logical :: want_success
 
     callback_count=0
@@ -196,7 +248,9 @@ contains
     callback_freq=0.0
     callback_iflagdec=-1
     want_success=want_callback.ne.0
-    call decoder%decode(capture_callback,samples,1,100,q65_ntrperiod,nsubmode, &
+    decode_period=q65_ntrperiod
+    if(present(ntrperiod)) decode_period=ntrperiod
+    call decoder%decode(capture_callback,samples,1,100,decode_period,nsubmode, &
          1000,150,3,850,1150,lclearave,single_decode,lagain,0,lnewdat,2.5, &
          mycall,hiscall,hisgrid,0,0,.false.,lapcqonly,navg0,nqf)
     if(want_success) then
@@ -204,7 +258,7 @@ contains
        if(trim(callback_message).ne.'K1ABC W9XYZ FN42') then
           error stop 'direct Q65 decoder returned the wrong message'
        endif
-       if(callback_idec.lt.0 .or. callback_ntrperiod.ne.q65_ntrperiod) then
+       if(callback_idec.lt.0 .or. callback_ntrperiod.ne.decode_period) then
           error stop 'direct Q65 callback metadata changed'
        endif
        if(abs(callback_freq-1000.0).gt.8.0) error stop 'direct Q65 frequency changed'

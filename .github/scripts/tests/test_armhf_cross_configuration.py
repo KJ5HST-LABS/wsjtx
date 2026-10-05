@@ -30,7 +30,7 @@ class ArmhfCrossConfigurationTests(unittest.TestCase):
             self.assertIn(setting, config)
         self.assertNotIn("CT_CC_GCC_LIBQUADMATH=y", config)
 
-        image_config = self.read(".github/scripts/armhf-ci-image-config.sh")
+        image_config = self.read(".github/scripts/armhf-toolchain-config.sh")
         self.assertIn("ARMHF_GCC_VERSION=13.4.0", image_config)
         self.assertIn("ARMHF_GLIBC_VERSION=2.36", image_config)
         self.assertIn("ARMHF_TARGET_TRIPLET=arm-linux-gnueabihf", image_config)
@@ -41,6 +41,44 @@ class ArmhfCrossConfigurationTests(unittest.TestCase):
         self.assertIn("unexpectedly depends on libquadmath", audit)
         self.assertIn("reject_private_glibc_dependency", verifier)
         self.assertIn("private glibc symbol", audit)
+
+    def test_toolchain_stage_is_independent_of_image_refresh_inputs(self):
+        builder = self.read(".github/images/linux-ci/Dockerfile.armhf-cross")
+        toolchain, image = builder.split("FROM debian:bookworm AS cross_builder", 1)
+        self.assertRegex(
+            toolchain.splitlines()[0],
+            r"^FROM debian:bookworm@sha256:[0-9a-f]{64} AS toolchain$",
+        )
+        for unrelated_input in (
+            "IMAGE_REFRESH_EPOCH",
+            "IMAGE_RECIPE_SHA256",
+            "IMAGE_GENERATION",
+            "armhf-ci-image-config.sh",
+            "linux-ci-image-config.sh",
+            "build-hamlib-armhf-cross.sh",
+        ):
+            self.assertNotIn(unrelated_input, toolchain)
+        self.assertLess(
+            toolchain.index('test -n "$ARMHF_TOOLCHAIN_REBUILD_REVISION"'),
+            toolchain.index("run-apt-get update"),
+        )
+        self.assertIn("armhf-cross-toolchain.config", toolchain)
+        self.assertNotIn("target=/tmp/wsjtx-ctng-build", toolchain)
+        self.assertIn('mkdir "$build_dir"', toolchain)
+        self.assertIn('rm -rf "$build_dir"', toolchain)
+        self.assertIn(
+            "COPY --from=toolchain /opt/wsjtx/armhf-toolchain "
+            "/opt/wsjtx/armhf-toolchain", image,
+        )
+        self.assertIn("IMAGE_REFRESH_EPOCH", image)
+        self.assertIn("IMAGE_RECIPE_SHA256", image)
+
+    def test_shared_toolchain_config_is_copied_to_both_image_roles(self):
+        config = self.read(".github/scripts/armhf-ci-image-config.sh")
+        self.assertIn('. "$_armhf_config_dir/armhf-toolchain-config.sh"', config)
+        for role in ("cross", "runtime"):
+            dockerfile = self.read(f".github/images/linux-ci/Dockerfile.armhf-{role}")
+            self.assertIn(".github/scripts/armhf-toolchain-config.sh", dockerfile)
 
     def test_armhf_cache_identity_parsing_fails_closed(self):
         workflow = self.read(".github/workflows/build-linux.yml")
@@ -84,7 +122,7 @@ class ArmhfCrossConfigurationTests(unittest.TestCase):
     def test_builder_and_runtime_keep_distinct_native_architectures(self):
         builder = self.read(".github/images/linux-ci/Dockerfile.armhf-cross")
         runtime = self.read(".github/images/linux-ci/Dockerfile.armhf-runtime")
-        self.assertTrue(builder.startswith("FROM debian:bookworm\n"))
+        self.assertIn("FROM debian:bookworm AS cross_builder\n", builder)
         self.assertIn("--architectures=armhf", builder)
         self.assertIn("qemu-user-static", builder)
         self.assertIn("normalize-armhf-sysroot-symlinks.sh", builder)
@@ -108,12 +146,19 @@ class ArmhfCrossConfigurationTests(unittest.TestCase):
         self.assertIn("cpack -G RPM", runtime_package)
         self.assertIn("CPACK_INSTALL_CMAKE_PROJECTS=", runtime_package)
         self.assertIn("CPACK_INSTALLED_DIRECTORIES=/work/AppDir;/", runtime_package)
-        self.assertIn('"$ARMHF_QEMU_EXECUTABLE"', runtime_package)
-        self.assertIn(
-            'LINUX_APPIMAGE_RUNNER="$ARMHF_QEMU_EXECUTABLE"', runtime_package
-        )
+        self.assertNotIn("qemu", runtime_package.lower())
+        self.assertNotIn("LINUX_APPIMAGE_RUNNER", runtime_package)
+        self.assertIn("  ./linuxdeploy.AppImage --appimage-extract-and-run \\\n", runtime_package)
+        self.assertIn('./"$OUTPUT" --appimage-extract >/dev/null', runtime_package)
+        self.assertIn("-o linuxdeploy-plugin-qt.AppImage", runtime_package)
         self.assertIn("armhf-static-ldd.sh", runtime_package)
         self.assertIn('PATH="/work/wsjtx-build/appimage-tools:$PATH"', runtime_package)
+        packaging = runtime_package[runtime_package.index("Package release tarballs"):]
+        self.assertLess(runtime_package.index("--output appimage"), runtime_package.index("package-cli-tools.sh"))
+        self.assertIn('PATH="/work/wsjtx-build/appimage-tools:$PATH" .github/scripts/package-cli-tools.sh', packaging)
+        self.assertIn("--linuxdeploy /work/linuxdeploy.AppImage", packaging)
+        self.assertIn(".github/scripts/smoke-release-tarballs.sh", packaging)
+        self.assertNotIn("--ldd", packaging)
 
     def test_hybrid_is_the_only_armhf_build_implementation(self):
         workflow = self.read(".github/workflows/build-linux.yml")
@@ -169,7 +214,7 @@ class ArmhfCrossConfigurationTests(unittest.TestCase):
         properties = q65.split(
             "set_tests_properties (test_q65_decode_pipeline", 1
         )[1].split(")", 1)[0]
-        self.assertIn("TIMEOUT 180", properties)
+        self.assertIn("TIMEOUT 360", properties)
 
 
 if __name__ == "__main__":

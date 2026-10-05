@@ -224,6 +224,14 @@ add_executable (test_frequency_editors
 target_link_libraries (test_frequency_editors wsjt_qt Boost::log_setup Qt5::Test Qt5::Widgets)
 add_test (NAME test_frequency_editors COMMAND test_frequency_editors)
 
+add_executable (test_frequency_suggestions
+  test_frequency_suggestions.cpp
+  ${CMAKE_SOURCE_DIR}/Logger.cpp
+)
+target_link_libraries (test_frequency_suggestions wsjt_qt Boost::log_setup Qt5::Test Qt5::Widgets)
+add_test (NAME test_frequency_suggestions COMMAND test_frequency_suggestions)
+set_tests_properties (test_frequency_suggestions PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+
 add_executable (test_decoded_message_reaction
   test_decoded_message_reaction.cpp
 )

@@ -88,9 +88,9 @@ subroutine q65_dec0(iavg,iwave,ntrperiod,nfqso,ntol,lclearave,  &
   df=12000.0/nfft                        !Freq resolution = baud
   istep=nsps/NSTEP
   iz=5000.0/df                           !Uppermost frequency bin, at 5000 Hz
-  txt=85.0*nsps/12000.0
-  jz=(txt+1.0)*12000.0/istep             !Number of symbol/NSTEP bins
-  if(nsps.ge.6912) jz=(txt+2.0)*12000.0/istep   !For TR 60 s and higher
+  ! Cover every complete symbol FFT window in the received period.
+  ! Keep jz odd: q65_symspec interpolates even columns between odd ones.
+  jz=(ntrperiod*12000-nsps)/istep + 1
   ftol=ntol
   ia=ntol/df
   ia2=max(ia,10*mode_q65,nint(100.0/df))
@@ -218,7 +218,8 @@ subroutine q65_dec0(iavg,iwave,ntrperiod,nfqso,ntol,lclearave,  &
      s1w=s1
      do w3t=1,jz
         do w3f=1,iz
-           mm=w3f + nint(drift*w3t/(jz*df))
+           ! Drift is measured over the 85-symbol transmission.
+           mm=w3f + nint(drift*w3t/(85*NSTEP*df))
            if(mm.ge.1 .and. mm.le.iz) then
               s1w(w3f,w3t)=s1(mm,w3t)
            endif

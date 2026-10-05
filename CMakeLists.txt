@@ -41,7 +41,7 @@ if (APPLE)
       CACHE STRING "Earliest macOS version supported by the target architecture")
   endif ()
 
-  set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-headerpad_max_install_names")
+  set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-headerpad_max_install_names -Wl,-dead_strip_dylibs")
 endif (APPLE)
 
 if(APPLE)
@@ -76,12 +76,14 @@ if (POLICY CMP0075)
 endif ()
 
 include ("${CMAKE_CURRENT_LIST_DIR}/CMake/Modules/read_release_state.cmake")
+set (wsjt_release_state_file "${CMAKE_CURRENT_LIST_DIR}/release-state.txt")
 wsjt_read_release_state (
-  "${CMAKE_CURRENT_LIST_DIR}/release-state.txt"
+  "${wsjt_release_state_file}"
   WSJT_SOURCE_VERSION
   WSJT_SOURCE_RELEASE_CHANNEL
-  WSJT_SOURCE_RC_NUMBER
+  WSJT_SOURCE_PRERELEASE_NUMBER
   WSJT_ARCHIVE_SOURCE_REVISION)
+set_property (DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${wsjt_release_state_file}")
 
 project (wsjtx
   VERSION ${WSJT_SOURCE_VERSION}.0
@@ -141,10 +143,10 @@ message (STATUS "Building for for: ${CMAKE_SYSTEM_NAME}-${PROJECT_ARCHITECTURE}"
 message (STATUS "******************************************************")
 
 include (set_build_type)
-wsjt_set_source_default_cache (WSJT_RELEASE_CHANNEL "${WSJT_SOURCE_RELEASE_CHANNEL}" "Build release channel: DEVEL, RC, or GA.")
-wsjt_set_source_default_cache (WSJT_RC_NUMBER "${WSJT_SOURCE_RC_NUMBER}" "Release candidate number used when WSJT_RELEASE_CHANNEL is RC.")
+wsjt_set_release_channel_cache ("${WSJT_SOURCE_RELEASE_CHANNEL}" "${WSJT_SOURCE_PRERELEASE_NUMBER}")
 set_build_type ()
 set (wsjtx_VERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}${BUILD_TYPE_REVISION}")
+set (wsjtx_PACKAGE_VERSION "${PROJECT_VERSION_MAJOR}.${PROJECT_VERSION_MINOR}.${PROJECT_VERSION_PATCH}${BUILD_TYPE_PACKAGE_REVISION}")
 
 #
 # project information
@@ -156,8 +158,7 @@ set (PROJECT_COPYRIGHT "Copyright (C) 2001-2026 by Joe Taylor, K1JT")
 set (PROJECT_HOMEPAGE https://wsjtx.github.io/wsjtx/)
 set (PROJECT_MANUAL wsjtx-main)
 set (PROJECT_ONLINE_MANUAL_URL https://wsjtx.github.io/wsjtx/guide-full.html)
-set (PROJECT_SAMPLES_URL http://downloads.sourceforge.net/project/wsjt/)
-set (PROJECT_SAMPLES_UPLOAD_DEST frs.sourceforge.net:/home/frs/project/wsjt/)
+set (PROJECT_SAMPLES_URL https://wsjtx.github.io/wsjtx/)
 
 # make sure that the default configuration is a RELEASE
 if (NOT CMAKE_BUILD_TYPE)
@@ -698,15 +699,29 @@ endif ()
 
 if (WSJT_ENABLE_TESTS)
   add_test (NAME test_jt9_version COMMAND $<TARGET_FILE:jt9> --version)
+  string (REPLACE "." "\\." wsjtx_version_pattern "${wsjtx_VERSION}")
   set_tests_properties (test_jt9_version PROPERTIES
-    PASS_REGULAR_EXPRESSION "^jt9 [0-9]+\\.[0-9]+\\.[0-9]+[^ ]* \\(revision ([0-9a-f]+(-dirty)?|unavailable)\\)"
+    PASS_REGULAR_EXPRESSION "^jt9 ${wsjtx_version_pattern} \\(revision ([0-9a-f]+(-dirty)?|unavailable)\\)"
     )
   add_test (NAME test_jt9_cli_validation
     COMMAND ${CMAKE_COMMAND} -DJT9=$<TARGET_FILE:jt9>
             -P ${CMAKE_SOURCE_DIR}/tests/unit/jt9/test_jt9_cli_validation.cmake)
 
+  find_package (Python3 COMPONENTS Interpreter QUIET)
+  if (Python3_Interpreter_FOUND)
+    add_test (NAME test_jt65_stream
+      COMMAND ${Python3_EXECUTABLE}
+        ${CMAKE_SOURCE_DIR}/tests/integration/jt65/check_stream.py
+        $<TARGET_FILE:jt9>
+        ${CMAKE_SOURCE_DIR}/test/wav_to_stream_harness.py
+        ${CMAKE_BINARY_DIR}/tests/unit/decoder_engine/jt65-engine.wav
+        ${CMAKE_BINARY_DIR}/Testing/Jt65Stream)
+    set_tests_properties (test_jt65_stream PROPERTIES
+      FIXTURES_REQUIRED jt65_engine_wav TIMEOUT 75 LABELS "decoder;jt65;integration")
+  endif ()
+
   # Golden output is pinned to the required GNU/Linux x86-64 decoder path.
-  if (CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
+  if (EXISTS "${CMAKE_SOURCE_DIR}/samples" AND CMAKE_SYSTEM_NAME STREQUAL "Linux" AND
       CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")
     # mode_args is one or more jt9 flags (e.g. -8, or --q65 -p 30 -f 1000 -d 3).
     # $<SEMICOLON> protects the list separators through the single -DMODE=...
@@ -899,7 +914,8 @@ if (WSJT_ENABLE_TESTS)
       test_wsprd_golden_150426_0918
       samples/WSPR/150426_0918.wav
       test/fixtures/wspr_150426_0918.expected.txt)
-  else ()
+  # Source archives omit samples/ (export-ignore), so decoder tests need a checkout.
+  elseif (EXISTS "${CMAKE_SOURCE_DIR}/samples")
     set (jt9_smoke_work_dir
       "${CMAKE_BINARY_DIR}/Testing/Smoke/test_jt9_ft8_callback_smoke")
     file (MAKE_DIRECTORY "${jt9_smoke_work_dir}")
@@ -975,6 +991,30 @@ if (WSJT_BUILD_JT9STREAM)
   endif ()
   # jt9stream NEVER links fort_qt — that is the Qt-free guarantee.
 endif (WSJT_BUILD_JT9STREAM)
+
+if (WSJT_ENABLE_TESTS AND (APPLE OR CMAKE_SYSTEM_NAME STREQUAL "Linux"))
+  if (APPLE)
+    find_program (WSJT_OTOOL NAMES otool)
+    set (wsjt_library_lister "${WSJT_OTOOL}")
+  else ()
+    set (wsjt_library_lister "${WSJT_READELF}")
+  endif ()
+  if (NOT wsjt_library_lister)
+    message (FATAL_ERROR "otool or readelf is required to verify the libraries programs load")
+  endif ()
+  foreach (program jt9stream ft4sim)
+    if (TARGET ${program})
+      add_test (NAME test_${program}_loads_only_used_libraries
+        COMMAND ${CMAKE_COMMAND}
+          -DLISTER=${wsjt_library_lister}
+          -DEXECUTABLE=$<TARGET_FILE:${program}>
+          -P ${CMAKE_SOURCE_DIR}/tests/integration/jt9/verify_loaded_libraries.cmake)
+      set_tests_properties (test_${program}_loads_only_used_libraries PROPERTIES
+        LABELS "build;linking"
+        TIMEOUT 30)
+    endif ()
+  endforeach ()
+endif ()
 
 find_package (Portaudio REQUIRED)
 add_subdirectory (map65)
@@ -1225,6 +1265,37 @@ if (WSJT_ENABLE_TESTS AND WSJT_ENABLE_GUI_SMOKE_TESTS
         AND CMAKE_SYSTEM_PROCESSOR MATCHES "^(x86_64|amd64|AMD64)$")))
   add_dependencies (wsjtx sjtty)
 
+  add_test (
+    NAME test_wsjtx_jt9_wav
+    COMMAND ${CMAKE_COMMAND}
+      "-DWSJTX=$<TARGET_FILE:wsjtx>"
+      "-DSAMPLE=${CMAKE_SOURCE_DIR}/samples/JT9/130418_1742.wav"
+      "-DEXPECTED_MESSAGE=JA1KAU PD0JAC -23"
+      "-DWORK_DIR=${CMAKE_BINARY_DIR}/Testing/Jt9Wav"
+      -P ${CMAKE_SOURCE_DIR}/tests/integration/decoder_engine/run_wav_gui.cmake)
+  set_tests_properties (test_wsjtx_jt9_wav PROPERTIES
+    LABELS "gui;decoder;jt9;integration"
+    PROCESSORS 1
+    TIMEOUT 90)
+  add_test (
+    NAME test_wsjtx_jt65_wav
+    COMMAND ${CMAKE_COMMAND}
+      "-DWSJTX=$<TARGET_FILE:wsjtx>"
+      "-DMODE=JT65"
+      "-DSAMPLE=${CMAKE_BINARY_DIR}/tests/unit/decoder_engine/jt65-engine.wav"
+      "-DEXPECTED_MESSAGE=K1ABC W9XYZ FN42"
+      "-DWORK_DIR=${CMAKE_BINARY_DIR}/Testing/Jt65Wav"
+      -P ${CMAKE_SOURCE_DIR}/tests/integration/decoder_engine/run_wav_gui.cmake)
+  set_tests_properties (test_wsjtx_jt65_wav PROPERTIES
+    FIXTURES_REQUIRED jt65_engine_wav
+    LABELS "gui;decoder;jt65;integration"
+    PROCESSORS 1
+    TIMEOUT 90)
+  if (WSJT_ENABLE_TSAN)
+    set_tests_properties (test_wsjtx_jt9_wav test_wsjtx_jt65_wav PROPERTIES
+      ENVIRONMENT "TSAN_OPTIONS=${wsjt_tsan_gui_options}")
+  endif ()
+
   set (live_test "test_wsjtx_live_audio_jtty")
   set (loopback_test "test_wsjtx_jtty_tx_loopback")
   set (wsjtx_jtty_tests ${live_test} ${loopback_test})
@@ -1264,6 +1335,15 @@ if (WSJT_ENABLE_TESTS AND WSJT_ENABLE_GUI_SMOKE_TESTS
       ${wsjtx_jtty_tests}
       PROPERTIES ENVIRONMENT "TSAN_OPTIONS=${wsjt_tsan_gui_options}")
   endif ()
+endif ()
+
+# These GUI tests read samples/, which source archives omit.
+if (NOT EXISTS "${CMAKE_SOURCE_DIR}/samples")
+  foreach (sample_test test_wsjtx_live_audio_ft8 test_wsjtx_jt9_wav)
+    if (TEST ${sample_test})
+      set_tests_properties (${sample_test} PROPERTIES DISABLED TRUE)
+    endif ()
+  endforeach ()
 endif ()
 
 # make a library for WSJT-X UDP servers
@@ -1345,7 +1425,12 @@ endif (UNIX)
 include (CMake/Install.cmake)
 
 
-# creates or updates ${PROJECT_BINARY_DIR}/scs_version.h using cmake script
+find_package (Git QUIET)
+# Without SOURCE_DATE_EPOCH or Git the expiry is fixed at configure time,
+# so a later install does not rebuild main.cpp.
+string (TIMESTAMP wsjtx_CONFIGURE_EPOCH "%s" UTC)
+# creates or updates ${PROJECT_BINARY_DIR}/scs_version.h and
+# prerelease_expiry.h using cmake scripts
 add_custom_target (revisiontag
   COMMAND ${CMAKE_COMMAND}
   -D SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
@@ -1353,14 +1438,22 @@ add_custom_target (revisiontag
   -D OUTPUT_DIR=${PROJECT_BINARY_DIR}
   -D SOURCE_REVISION=${WSJT_SOURCE_REVISION}
   -P ${CMAKE_CURRENT_SOURCE_DIR}/CMake/getsvn.cmake
+  COMMAND ${CMAKE_COMMAND}
+  -D CHANNEL=${WSJT_RELEASE_CHANNEL}
+  -D SOURCE_DIR=${CMAKE_CURRENT_SOURCE_DIR}
+  -D OUTPUT_DIR=${PROJECT_BINARY_DIR}
+  -D GIT_EXECUTABLE=${GIT_EXECUTABLE}
+  -D CONFIGURE_EPOCH=${wsjtx_CONFIGURE_EPOCH}
+  -P ${CMAKE_CURRENT_SOURCE_DIR}/CMake/prerelease_expiry.cmake
   VERBATIM
-  BYPRODUCTS scs_version.h
-  COMMENT "Getting source control system revision information"
+  BYPRODUCTS scs_version.h prerelease_expiry.h
+  COMMENT "Getting source control system revision and prerelease expiry information"
   )
 # explicitly say that the wsjt_qt depends on custom target, this is
 # done indirectly so that the revisiontag target gets built exactly
 # once per build
 add_dependencies (wsjt_qt revisiontag)
+add_dependencies (wsjtx revisiontag)
 add_dependencies (jt9 revisiontag)
 add_dependencies (wsprd revisiontag)
 
@@ -1468,6 +1561,7 @@ else ()
   endif (RPMBUILDER)
 endif ()
 
+set (CPACK_DEBIAN_PACKAGE_VERSION "${wsjtx_PACKAGE_VERSION}")
 set (CPACK_DEBIAN_PACKAGE_HOMEPAGE "${PROJECT_HOMEPAGE}")
 set (CPACK_DEBIAN_PACKAGE_SECTION "hamradio")
 set (CPACK_DEBIAN_PACKAGE_DEPENDS "libgfortran5 (>=8.3) | libgfortran4 (>=7.3) | libgfortran3 (>=6.3), libfftw3-single3 (>=3.3), libgomp1 (>=6), libqt5serialport5 (>=5.7), libqt5multimedia5-plugins (>=5.7), libqt5widgets5 (>=5.7), libqt5network5 (>=5.7), libqt5printsupport5 (>=5.7), libqt5websockets5 (>=5.7),  libqt5sql5-sqlite (>=5.7), libusb-1.0-0 (>=1.0.21), libboost-log1.62.0 (>=1.62.0) | libboost-log1.65.1 (>=1.65.1) | libboost-log1.67.0 (>=1.67.0) | libboost-log1.71.0 (>=1.71.0) | libboost-log1.74.0 (>=1.74.0) | libboost-log1.81.0 (>=1.81.0) | libboost-log1.83.0 (>=1.83.0) | libboost-log1.85.0 (>=1.85.0)")
@@ -1475,17 +1569,18 @@ set (CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 # The downstream WSJT-X Improved fork uses the same executable, data, and doc
 # paths as mainline. Replace its packages so the installations cannot mix,
 # while preserving dependencies such as `js8call` through virtual packages.
-set (CPACK_DEBIAN_PACKAGE_PROVIDES "wsjtx-data (= ${wsjtx_VERSION}), wsjtx-doc (= ${wsjtx_VERSION}), wsjtx-improved-data (= ${wsjtx_VERSION}), wsjtx-improved-doc (= ${wsjtx_VERSION})")
+set (CPACK_DEBIAN_PACKAGE_PROVIDES "wsjtx-data (= ${wsjtx_PACKAGE_VERSION}), wsjtx-doc (= ${wsjtx_PACKAGE_VERSION}), wsjtx-improved-data (= ${wsjtx_PACKAGE_VERSION}), wsjtx-improved-doc (= ${wsjtx_PACKAGE_VERSION})")
 set (CPACK_DEBIAN_PACKAGE_REPLACES "wsjtx-improved, wsjtx-data, wsjtx-doc, wsjtx-improved-data, wsjtx-improved-doc")
 # WSJT-X Improved is a downstream fork, not a versioned upgrade.
 # Its packages can compare newer than mainline despite incompatible binaries
 # and shared files, so these relationships must not be version-qualified.
 set (CPACK_DEBIAN_PACKAGE_BREAKS "wsjtx-improved, wsjtx-improved-data, wsjtx-improved-doc")
-set (CPACK_DEBIAN_PACKAGE_CONFLICTS "wsjtx-data (<< ${wsjtx_VERSION}), wsjtx-doc (<< ${wsjtx_VERSION})")
+set (CPACK_DEBIAN_PACKAGE_CONFLICTS "wsjtx-data (<< ${wsjtx_PACKAGE_VERSION}), wsjtx-doc (<< ${wsjtx_PACKAGE_VERSION})")
 
 if (NOT CPACK_RPM_PACKAGE_ARCHITECTURE)
   set (CPACK_RPM_PACKAGE_ARCHITECTURE ${CMAKE_SYSTEM_PROCESSOR})
 endif ()
+set (CPACK_RPM_PACKAGE_VERSION "${wsjtx_PACKAGE_VERSION}")
 set (CPACK_RPM_PACKAGE_REQUIRES "qt5-qtbase >= 5.9, qt5-qtserialport >= 5.9, qt5-qtmultimedia >= 5.9, qt5-qtwebsockets >= 5.9, qt5-qtsvg >= 5.9, libusbx >= 1.0.22, libgfortran >= 7, libgomp >= 7, fftw-libs-single >= 3.3, boost-log >= 1.62")
 set (CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION /usr/share/pixmaps /usr/share/applications /usr/share/man /usr/share/man1)
 

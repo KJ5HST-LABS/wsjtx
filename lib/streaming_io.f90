@@ -380,7 +380,7 @@ contains
        shared_data%params%nzhsym = 181
     end if
     shared_data%params%kin    = 64800
-    if (mode .eq. 5) shared_data%params%kin = period%k
+    if (mode .eq. 5 .or. mode .eq. 9 .or. mode .eq. 65) shared_data%params%kin = period%k
     if (mode .eq. 240) shared_data%params%kin = 720000
     if (mode .eq. 241) shared_data%params%kin = 720000
     if (mode .eq. 242) shared_data%params%kin = 720000
@@ -436,7 +436,7 @@ contains
              nhsym0 = nhsym0 + 1
              if (nhsym0 .lt. 1) cycle
              nhsym = nhsym0
-             if (mode .eq. 9 .or. mode .eq. 74) then
+             if (mode .eq. 74) then
                 call timer('symspec ', 0)
                 call symspec(shared_data, nhsym*kstep + 2048, nsps,        &
                      ingain, bLowSidelobes, nminw, pxdb, s, df3,           &

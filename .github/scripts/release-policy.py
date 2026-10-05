@@ -15,27 +15,41 @@ from collections.abc import Callable
 from pathlib import Path
 
 
-VERSION_RE = re.compile(r"^(?P<numeric>\d+\.\d+\.\d+)(?:-rc(?P<rc>[1-9]\d*))?$")
+VERSION_RE = re.compile(r"^(?P<numeric>\d+\.\d+\.\d+)(?:-(?P<label>beta|rc)(?P<number>[1-9]\d*))?$")
 RELEASE_BRANCH_RE = re.compile(r"^release/(?P<major>\d+)\.(?P<minor>\d+)$")
 OBJECT_ID_RE = re.compile(r"^(?:[0-9a-f]{40}|[0-9a-f]{64})$")
 MACOS_MODES = ("validation", "distribution")
 WINDOWS_MODES = ("signpath", "unsigned")
+CHANNEL_RANK = {"BETA": 0, "RC": 1, "GA": 2}
+BETA_TAG_PATTERN = "v*-beta*"
+RELEASE_TARGETS = ("arm64-macOS", "x86_64-macOS", "linux-x86_64", "linux-aarch64", "linux-armhf", "windows-x86_64")
+RELEASE_TARBALLS_FILE = Path(__file__).resolve().parents[2] / "CMake" / "release-tarballs.txt"
+# Artifact name endings that already mean another kind of release asset.
+RESERVED_ASSET_KINDS = ("deb", "rpm", "installer", "signed", "unsigned", "src")
 
 
 def classify(version: str) -> dict[str, str]:
     match = VERSION_RE.fullmatch(version)
     if not match:
-        raise ValueError("version must be X.Y.Z or X.Y.Z-rcN")
-    rc = match.group("rc") or ""
+        raise ValueError("version must be X.Y.Z, X.Y.Z-betaN, or X.Y.Z-rcN")
+    label = match.group("label")
     numeric = match.group("numeric")
     major, minor, _ = numeric.split(".")
     return {
         "version": version,
         "numeric": numeric,
-        "channel": "RC" if rc else "GA",
-        "rc_number": rc,
+        "channel": label.upper() if label else "GA",
+        "prerelease_number": match.group("number") or "",
         "release_branch": f"release/{major}.{minor}",
     }
+
+
+def release_order(identity: dict[str, str]) -> tuple[int, ...]:
+    return (
+        *(int(part) for part in identity["numeric"].split(".")),
+        CHANNEL_RANK[identity["channel"]],
+        int(identity["prerelease_number"] or 0),
+    )
 
 
 def parse_public_ref_listing(output: str) -> tuple[dict[str, str], str]:
@@ -66,7 +80,7 @@ def parse_public_ref_listing(output: str) -> tuple[dict[str, str], str]:
 def public_release_line_policy(version: str, refs: dict[str, str]) -> dict[str, object]:
     identity = classify(version)
     ga_versions: list[tuple[int, int, int]] = []
-    line_tags: list[tuple[tuple[int, int, int, int, int], str, str]] = []
+    line_tags: list[tuple[tuple[int, ...], str, str]] = []
     release_branch_count = 0
     for name, sha in refs.items():
         if name.startswith("refs/heads/release/"):
@@ -82,11 +96,7 @@ def public_release_line_policy(version: str, refs: dict[str, str]) -> dict[str, 
             except ValueError as error:
                 raise ValueError(f"public version tag is malformed: {name}") from error
             numeric_version = tuple(int(part) for part in tag_identity["numeric"].split("."))
-            line_tags.append((
-                (*numeric_version, int(tag_identity["channel"] == "GA"), int(tag_identity["rc_number"] or 0)),
-                name.removeprefix("refs/tags/"),
-                sha,
-            ))
+            line_tags.append((release_order(tag_identity), name.removeprefix("refs/tags/"), sha))
             if tag_identity["channel"] == "GA":
                 ga_versions.append(numeric_version)
     if not ga_versions:
@@ -170,6 +180,15 @@ def plan_public_promotion(
         raise ValueError(
             f"public GA tags already reach {highest_candidate_line_version} on this line; "
             "a lower GA version cannot advance it"
+        )
+    latest_line_tag = line_policy["latest_public_tag_on_candidate_line"]
+    if (
+        not current_tag
+        and latest_line_tag
+        and release_order(identity) <= release_order(classify(latest_line_tag.removeprefix("v")))
+    ):
+        raise ValueError(
+            f"{latest_line_tag} is the latest public tag on this line; {public_tag} must sort above it"
         )
 
     advance_master = identity["channel"] == "GA" and line_policy["ga_line_is_newest"]
@@ -309,16 +328,39 @@ def inspect_public_release_line(
     }
 
 
-def validate_publication_environment(environment: object) -> None:
-    if not isinstance(environment, dict) or environment.get("name") != "public-release":
-        raise ValueError("public-release environment response is malformed")
+def publication_environment(channel: str) -> str:
+    return "beta-release" if channel == "BETA" else "public-release"
+
+
+def validate_publication_environment(
+    environment: object, channel: str = "GA", deployment_policies: object = None
+) -> None:
+    name = publication_environment(channel)
+    if not isinstance(environment, dict) or environment.get("name") != name:
+        raise ValueError(f"{name} environment response is malformed")
     rules = environment.get("protection_rules")
     if not isinstance(rules, list):
-        raise ValueError("public-release environment has no protection_rules list")
+        raise ValueError(f"{name} environment has no protection_rules list")
     reviewer_rules = [
         rule for rule in rules
         if isinstance(rule, dict) and rule.get("type") == "required_reviewers"
     ]
+    if channel == "BETA":
+        if reviewer_rules:
+            raise ValueError("beta-release environment must not require reviewers")
+        if environment.get("deployment_branch_policy") != {
+            "protected_branches": False, "custom_branch_policies": True
+        }:
+            raise ValueError("beta-release environment must restrict deployments to custom deployment patterns")
+        policies = deployment_policies.get("branch_policies") if isinstance(deployment_policies, dict) else None
+        if (
+            not isinstance(policies, list)
+            or len(policies) != 1
+            or not isinstance(policies[0], dict)
+            or (policies[0].get("name"), policies[0].get("type")) != (BETA_TAG_PATTERN, "tag")
+        ):
+            raise ValueError(f"beta-release environment must admit exactly the {BETA_TAG_PATTERN} tag pattern")
+        return
     if len(reviewer_rules) != 1:
         raise ValueError("public-release environment must have one required-reviewers rule")
     rule = reviewer_rules[0]
@@ -347,21 +389,23 @@ def parse_state(contents: str, *, expected_revision: str | None = None) -> dict[
         if not separator or key in state:
             raise ValueError("release-state.txt must contain unique key=value lines")
         state[key] = value
-    required_keys = {"version", "channel", "rc", "revision"}
+    required_keys = {"version", "channel", "prerelease", "revision"}
     if not required_keys <= set(state) or set(state) - required_keys - {"windows_signing"}:
-        raise ValueError("release-state.txt must define version, channel, rc, revision, and optionally windows_signing")
+        raise ValueError("release-state.txt must define version, channel, prerelease, revision, and optionally windows_signing")
     state.setdefault("windows_signing", "signpath")
     if state["windows_signing"] not in WINDOWS_MODES:
         raise ValueError("release-state.txt windows_signing must be signpath or unsigned")
-    if state["channel"] not in {"DEVEL", "RC", "GA"}:
-        raise ValueError("release-state.txt channel must be DEVEL, RC, or GA")
+    if state["channel"] not in {"DEVEL", "BETA", "RC", "GA"}:
+        raise ValueError("release-state.txt channel must be DEVEL, BETA, RC, or GA")
+    if state["channel"] == "BETA" and state["windows_signing"] != "unsigned":
+        raise ValueError("BETA release state requires windows_signing=unsigned")
     if not re.fullmatch(r"\d+\.\d+\.\d+", state["version"]):
         raise ValueError("release-state.txt version must be X.Y.Z")
-    if state["channel"] == "RC":
-        if not re.fullmatch(r"[1-9]\d*", state["rc"]):
-            raise ValueError("RC release state requires a positive RC number")
-    elif state["rc"]:
-        raise ValueError("DEVEL and GA release states require an empty RC number")
+    if state["channel"] in {"BETA", "RC"}:
+        if not re.fullmatch(r"[1-9]\d*", state["prerelease"]):
+            raise ValueError("BETA and RC release states require a positive prerelease number")
+    elif state["prerelease"]:
+        raise ValueError("DEVEL and GA release states require an empty prerelease number")
     required_revision = expected_revision or "$Format:%H$"
     if state["revision"].lower() != required_revision.lower():
         raise ValueError(f"release-state.txt revision must be {required_revision}")
@@ -383,8 +427,8 @@ def validate_source(root: Path, version: str) -> dict[str, str]:
         errors.append(f"release-state version {state['version']} does not match {identity['numeric']}")
     if state["channel"] != identity["channel"]:
         errors.append(f"release channel {state['channel']} does not match {identity['channel']}")
-    if state["rc"] != identity["rc_number"]:
-        errors.append(f"RC number {state['rc'] or '<empty>'} does not match {identity['rc_number'] or '<empty>'}")
+    if state["prerelease"] != identity["prerelease_number"]:
+        errors.append(f"prerelease number {state['prerelease'] or '<empty>'} does not match {identity['prerelease_number'] or '<empty>'}")
     if errors:
         raise ValueError("; ".join(errors))
     identity["windows_signing"] = state["windows_signing"]
@@ -417,8 +461,28 @@ def validate_archive(path: Path, version: str, commit: str) -> None:
         raise ValueError("source archive must not contain .git metadata")
     identity = classify(version)
     state = parse_state(release_state_contents, expected_revision=commit)
-    if state["version"] != identity["numeric"] or state["channel"] != identity["channel"] or state["rc"] != identity["rc_number"]:
+    if state["version"] != identity["numeric"] or state["channel"] != identity["channel"] or state["prerelease"] != identity["prerelease_number"]:
         raise ValueError("source archive release identity does not match its tag")
+
+
+def tarball_groups(path: Path = RELEASE_TARBALLS_FILE) -> list[str]:
+    groups = []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        fields = line.split()
+        if not fields or fields[0].startswith("#"):
+            continue
+        if len(fields) < 2:
+            raise ValueError(f"release tarball {fields[0]} names no programs in {path.name}")
+        if not re.fullmatch(r"[a-z0-9]+", fields[0]) or fields[0] in RESERVED_ASSET_KINDS:
+            raise ValueError(f"release tarball name {fields[0]} cannot name a release asset")
+        groups.append(fields[0])
+    if not groups or len(groups) != len(set(groups)):
+        raise ValueError(f"{path.name} must name each release tarball once")
+    return groups
+
+
+def release_tarballs(version: str) -> list[str]:
+    return [f"wsjtx-{version}-{target}-{group}" for target in RELEASE_TARGETS for group in tarball_groups()]
 
 
 def expected_assets(version: str, distribution: bool) -> list[str]:
@@ -430,6 +494,7 @@ def expected_assets(version: str, distribution: bool) -> list[str]:
         f"wsjtx-{version}-linux-aarch64-AppImage",
         f"wsjtx-{version}-linux-armhf-AppImage",
         f"wsjtx-{version}-windows-x86_64-installer-signed" if distribution else f"wsjtx-{version}-windows-x86_64-installer",
+        *release_tarballs(version),
     ]
 
 
@@ -446,7 +511,14 @@ def public_expected_assets(version: str, macos_mode: str, windows_mode: str = "s
         f"wsjtx-{version}-linux-aarch64-AppImage",
         f"wsjtx-{version}-linux-armhf-AppImage",
         f"wsjtx-{version}-windows-x86_64-installer{'-signed' if windows_mode == 'signpath' else ''}",
+        *release_tarballs(version),
     ]
+
+
+def asset_suffix(artifact: str) -> str:
+    if artifact.rsplit("-", 1)[-1] in tarball_groups():
+        return ".tar.gz"
+    return ".pkg" if "macOS" in artifact else ".AppImage" if "linux" in artifact else ".exe"
 
 
 def collect_asset_files(root: Path, expected: list[str]) -> list[Path]:
@@ -455,7 +527,7 @@ def collect_asset_files(root: Path, expected: list[str]) -> list[Path]:
         directory = root / artifact
         if not directory.is_dir():
             raise ValueError(f"missing artifact directory: {artifact}")
-        suffix = ".pkg" if "macOS" in artifact else ".AppImage" if "linux" in artifact else ".exe"
+        suffix = asset_suffix(artifact)
         matches = sorted(path for path in directory.rglob(f"*{suffix}") if path.is_file())
         if len(matches) != 1:
             raise ValueError(f"{artifact} must contain exactly one {suffix} file; found {len(matches)}")
@@ -477,13 +549,14 @@ def find_asset_files(root: Path, version: str, distribution: bool) -> list[Path]
 def find_public_asset_files(
     root: Path, version: str, macos_mode: str, windows_mode: str = "signpath"
 ) -> list[Path]:
-    files = collect_asset_files(root, public_expected_assets(version, macos_mode, windows_mode))
+    expected = public_expected_assets(version, macos_mode, windows_mode)
+    files = collect_asset_files(root, expected)
     if macos_mode == "distribution":
         unsigned = sorted(root.rglob("*-unsigned.pkg"))
         if unsigned:
             raise ValueError(f"unsigned macOS packages cannot be published: {unsigned[0]}")
     if windows_mode == "unsigned":
-        installer = files[-1]
+        installer = files[expected.index(f"wsjtx-{version}-windows-x86_64-installer")]
         if installer.name != f"wsjtx-{version}-win64.exe":
             raise ValueError(f"unexpected unsigned Windows installer: {installer.name}")
         if (root / f"wsjtx-{version}-windows-x86_64-installer-signed").exists():
@@ -596,10 +669,13 @@ def write_manifest(args: argparse.Namespace) -> None:
     for arch, digest in digests.items():
         if not re.fullmatch(r"sha256:[0-9a-f]{64}", digest):
             raise ValueError(f"Linux {arch} builder digest is not an immutable sha256 digest")
+    beta = classify(args.version)["channel"] == "BETA"
+    if beta and args.macos_mode != "validation":
+        raise ValueError("BETA releases publish the validated unsigned macOS packages")
     files = release_files(root, args.version, args.macos_mode, args.windows_mode)
     replaceable_macos = (
         {f"wsjtx-{args.version}-{arch}-macOS.pkg" for arch in ("arm64", "x86_64")}
-        if args.macos_mode == "validation"
+        if args.macos_mode == "validation" and not beta
         else set()
     )
     entries = [
@@ -615,7 +691,7 @@ def write_manifest(args: argparse.Namespace) -> None:
         "workflow_run": args.run_id,
         "linux_builders": digests,
         "macos_signing": {
-            "mode": "manual" if args.macos_mode == "validation" else "distribution",
+            "mode": "unsigned" if beta else "manual" if args.macos_mode == "validation" else "distribution",
             "replaceable_assets": sorted(replaceable_macos),
         },
         "windows_signing": {"mode": args.windows_mode},
@@ -649,6 +725,8 @@ def main() -> int:
     promote_parser.add_argument("--expected-refs-digest", required=True)
     environment_parser = subparsers.add_parser("validate-publication-environment")
     environment_parser.add_argument("environment_json")
+    environment_parser.add_argument("--channel", choices=sorted(CHANNEL_RANK), required=True)
+    environment_parser.add_argument("--deployment-policies")
     state_parser = subparsers.add_parser("read-state")
     state_parser.add_argument("--root", default=".")
     validate_parser = subparsers.add_parser("validate-source")
@@ -701,8 +779,18 @@ def main() -> int:
                 args.version, args.sha, args.remote, args.expected_refs_digest
             )))
         elif args.command == "validate-publication-environment":
-            validate_publication_environment(json.loads(Path(args.environment_json).read_text(encoding="utf-8")))
-            print("Validated public-release required-reviewer protection")
+            policies = (
+                json.loads(Path(args.deployment_policies).read_text(encoding="utf-8"))
+                if args.deployment_policies
+                else None
+            )
+            validate_publication_environment(
+                json.loads(Path(args.environment_json).read_text(encoding="utf-8")), args.channel, policies
+            )
+            if args.channel == "BETA":
+                print(f"Validated beta-release: no reviewer, deployments only from {BETA_TAG_PATTERN} tags")
+            else:
+                print("Validated public-release required-reviewer protection")
         elif args.command == "read-state":
             print(json.dumps(read_state(Path(args.root))))
         elif args.command == "validate-source":

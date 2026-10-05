@@ -4,8 +4,13 @@ set -euo pipefail
 VERSION="${VERSION:?missing}"
 ARCH="${ARCH:?missing}"
 HAMLIB_BRANCH="${HAMLIB_BRANCH:?missing}"
-WSJT_RELEASE_CHANNEL="${WSJT_RELEASE_CHANNEL:-DEVEL}"
-WSJT_RC_NUMBER="${WSJT_RC_NUMBER:-}"
+WSJT_RELEASE_CHANNEL="${WSJT_RELEASE_CHANNEL:-}"
+WSJT_PRERELEASE_NUMBER="${WSJT_PRERELEASE_NUMBER:-}"
+ARMHF_BUILD_ONLY="${ARMHF_BUILD_ONLY:-false}"
+case "$ARMHF_BUILD_ONLY" in
+  true|false) ;;
+  *) echo "ARMHF_BUILD_ONLY must be true or false" >&2; exit 2 ;;
+esac
 if [ "$ARCH" != armhf ]; then
   echo "build-linux-armhf-cross.sh supports only arch=armhf" >&2
   exit 2
@@ -42,7 +47,7 @@ cmake -S . -B wsjtx-build \
   -DWSJT_ENABLE_TESTS=ON \
   -DWSJT_FORTRAN_LIBRARY_VARIANTS=OPENMP_ONLY \
   -DWSJT_RELEASE_CHANNEL="$WSJT_RELEASE_CHANNEL" \
-  -DWSJT_RC_NUMBER="$WSJT_RC_NUMBER" \
+  -DWSJT_PRERELEASE_NUMBER="$WSJT_PRERELEASE_NUMBER" \
   -Wno-dev
 cmake --build wsjtx-build --parallel "$(nproc)"
 ended="$(date +%s)"
@@ -55,6 +60,10 @@ ccache --show-stats
 
 validate_linux_build_executables wsjtx-build "$ARCH"
 .github/scripts/audit-armhf-cross-build.sh wsjtx-build
+if [ "$ARMHF_BUILD_ONLY" = true ]; then
+  echo "ARMHF build-only compilation and binary audits complete for version=$VERSION"
+  exit 0
+fi
 echo "::group::Prepare ARMHF AppDir"
 cmake --install wsjtx-build --prefix /work/AppDir/usr
 validate_linux_application_tree AppDir appdir "$ARCH"

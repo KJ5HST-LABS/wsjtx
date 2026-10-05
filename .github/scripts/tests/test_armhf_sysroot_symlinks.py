@@ -23,7 +23,7 @@ class ArmhfSysrootSymlinkTests(unittest.TestCase):
             subprocess.run(["bash", str(NORMALIZER), str(sysroot)], check=True)
 
             self.assertFalse(os.readlink(link).startswith("/"))
-            self.assertEqual(link.resolve(), target)
+            self.assertEqual(link.resolve(), target.resolve())
 
     def test_relative_links_remain_unchanged(self):
         with tempfile.TemporaryDirectory() as temporary:

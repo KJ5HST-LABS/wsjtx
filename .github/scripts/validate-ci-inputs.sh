@@ -9,7 +9,8 @@
 #
 # Only variables that are set are checked, so each workflow can pass
 # the subset it uses. Empty values are rejected except for
-# WSJT_RC_NUMBER, which is optional.
+# WSJT_RELEASE_CHANNEL, where empty selects release-state.txt, and
+# WSJT_PRERELEASE_NUMBER, which is optional.
 #
 # Usage:
 #   WSJTX_VERSION=... HAMLIB_BRANCH=... .github/scripts/validate-ci-inputs.sh
@@ -57,18 +58,18 @@ validate_inputs() {
 
   if [ -n "${WSJT_RELEASE_CHANNEL+x}" ]; then
     case "$WSJT_RELEASE_CHANNEL" in
-      DEVEL|RC|GA) ;;
+      ''|DEVEL|BETA|RC|GA) ;;
       *)
-        fail "Invalid release_channel '${WSJT_RELEASE_CHANNEL}': use DEVEL, RC, or GA"
+        fail "Invalid release_channel '${WSJT_RELEASE_CHANNEL}': use DEVEL, BETA, RC, GA, or empty"
         ;;
     esac
   fi
 
-  if [ -n "${WSJT_RC_NUMBER+x}" ]; then
-    case "$WSJT_RC_NUMBER" in
+  if [ -n "${WSJT_PRERELEASE_NUMBER+x}" ]; then
+    case "$WSJT_PRERELEASE_NUMBER" in
       ''|*[!0-9]*)
-        if [ -n "$WSJT_RC_NUMBER" ]; then
-          fail "Invalid rc_number '${WSJT_RC_NUMBER}': use digits only"
+        if [ -n "$WSJT_PRERELEASE_NUMBER" ]; then
+          fail "Invalid prerelease_number '${WSJT_PRERELEASE_NUMBER}': use digits only"
         fi
         ;;
     esac
@@ -123,7 +124,7 @@ validate_inputs() {
 
 run_isolated() {
   env -u WSJTX_VERSION -u HAMLIB_BRANCH -u WSJT_RELEASE_CHANNEL \
-    -u WSJT_RC_NUMBER -u ARCH -u IMAGE_TAG -u DEPLOYMENT_TARGET -u RUNNER \
+    -u WSJT_PRERELEASE_NUMBER -u ARCH -u IMAGE_TAG -u DEPLOYMENT_TARGET -u RUNNER \
     -u VALIDATE_FORTRAN_FALLBACK \
     "$@" "$0"
 }
@@ -140,15 +141,21 @@ expect_failure() {
 if [ "${1:-}" = "--self-test" ]; then
   run_isolated \
     env WSJTX_VERSION="3.2.0-devel" HAMLIB_BRANCH="4.7.2" \
-        WSJT_RELEASE_CHANNEL="DEVEL" WSJT_RC_NUMBER="" \
+        WSJT_RELEASE_CHANNEL="DEVEL" WSJT_PRERELEASE_NUMBER="" \
     >/dev/null
   run_isolated \
+    env WSJTX_VERSION="3.3.0-beta1" \
+        WSJT_RELEASE_CHANNEL="BETA" WSJT_PRERELEASE_NUMBER="1" \
+    >/dev/null
+  run_isolated env WSJT_RELEASE_CHANNEL="" WSJT_PRERELEASE_NUMBER="" >/dev/null
+  run_isolated \
     env WSJTX_VERSION="3.0.1-rc1" HAMLIB_BRANCH="4.7.2" \
-        WSJT_RELEASE_CHANNEL="RC" WSJT_RC_NUMBER="1" \
+        WSJT_RELEASE_CHANNEL="RC" WSJT_PRERELEASE_NUMBER="1" \
         ARCH="x86_64" DEPLOYMENT_TARGET="10.13" RUNNER="macos-15-intel" \
         IMAGE_TAG="candidate-123-1" \
         VALIDATE_FORTRAN_FALLBACK="true" \
     >/dev/null
+  run_isolated env ARCH="arm64" DEPLOYMENT_TARGET="11.0" RUNNER="macos-15" >/dev/null
   run_isolated env HAMLIB_BRANCH="integration/4.7" VALIDATE_FORTRAN_FALLBACK="false" >/dev/null
 
   expect_failure 'command substitution in version' WSJTX_VERSION='3.1.0$(id)'
@@ -157,7 +164,7 @@ if [ "${1:-}" = "--self-test" ]; then
   expect_failure 'command substitution in hamlib_branch' HAMLIB_BRANCH='4.7.2$(touch /tmp/x)'
   expect_failure 'shell metacharacters in hamlib_branch' HAMLIB_BRANCH='4.7.2; id'
   expect_failure 'invalid channel' WSJT_RELEASE_CHANNEL='dev'
-  expect_failure 'non-numeric rc' WSJT_RC_NUMBER='1a'
+  expect_failure 'non-numeric prerelease number' WSJT_PRERELEASE_NUMBER='1a'
   expect_failure 'empty version' WSJTX_VERSION=''
   expect_failure 'invalid arch' ARCH='x86_64; id'
   expect_failure 'slash in image tag' IMAGE_TAG='candidate/unsafe'

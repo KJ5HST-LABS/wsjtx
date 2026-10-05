@@ -23,6 +23,7 @@
 #include <QResizeEvent>
 
 #include "Configuration.hpp"
+#include "Radio.hpp"
 #include "Decoder/decodedtext.h"
 #include "Network/LotWUsers.hpp"
 #include "models/DecodeHighlightingModel.hpp"
@@ -49,7 +50,6 @@ bool muted = false;
 namespace
 {
   QRegularExpression const message_73_regexp {"^(73|RR73)$"};
-  QRegularExpression const grid_regexp {"\\A(?![Rr]{2}73)[A-Ra-r]{2}[0-9]{2}([A-Xa-x]{2}){0,1}\\z"};
   // Trailing #? matches Q65's "copied last Tx" flag marker (e.g. "q3#"),
   // appended after the usual AP-type/averaging-count qualifier.
   QRegularExpression const ap_regexp {R"((?:\?\s)?(?:a[0-9]|q[0-9][0-9*]?#?)$)"};
@@ -745,7 +745,7 @@ bool DisplayText::displayDecodedText(DecodedText const& decodedText, QString con
   QString dxCall;
   QString dxGrid;
   decodedText.deCallAndGrid (/*out*/ dxCall, dxGrid);
-  if(!dxGrid.contains(grid_regexp)) dxGrid="";
+  if(!dxGrid.contains(Radio::decoded_grid_pattern())) dxGrid="";
   message = message.left (message.indexOf (QChar::Nbsp)).trimmed (); // strip appended info
   QString extra;
   QString state;    // NJ0A -- populated only when GridMap() is enabled; drives

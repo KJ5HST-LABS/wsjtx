@@ -50,8 +50,6 @@ jobs:
     timeout-minutes: 10
     outputs:
       version: ${{ steps.v.outputs.version }}
-      release_channel: ${{ steps.v.outputs.release_channel }}
-      rc_number: ${{ steps.v.outputs.rc_number }}
       linux_image_tag: ${{ steps.linux-image.outputs.image_tag }}
       armhf_image_tag: ${{ steps.armhf-image.outputs.image_tag }}
       save_linux_ccache: ${{ steps.ccache-policy.outputs.save_ccache }}
@@ -74,14 +72,8 @@ jobs:
         run: |
           STATE=$(python3 .github/scripts/release-policy.py read-state)
           VERSION=$(jq -r .version <<<"$STATE")
-          CHANNEL=$(jq -r .channel <<<"$STATE")
-          RC_NUMBER=$(jq -r .rc <<<"$STATE")
           echo "Derived version from release-state.txt: $VERSION"
-          {
-            echo "version=$VERSION"
-            echo "release_channel=$CHANNEL"
-            echo "rc_number=$RC_NUMBER"
-          } >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
       # PRs can consume develop caches, so only trusted develop executions may
       # publish the Linux cache shared with later pull-request builds.
       - id: ccache-policy
@@ -149,8 +141,6 @@ jobs:
       runner: "macos-15"
       deployment_target: "11.0"
       recache: ${{ inputs.recache || false }}
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
 
   macos-intel:
     needs: [prepare, linux]
@@ -166,8 +156,6 @@ jobs:
       runner: "macos-15-intel"
       deployment_target: "10.13"
       recache: ${{ inputs.recache || false }}
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
 
   linux:
     needs: [prepare]
@@ -182,8 +170,6 @@ jobs:
       save_ccache: ${{ needs.prepare.outputs.save_linux_ccache == 'true' }}
       validate_fortran_fallback: ${{ github.event_name == 'workflow_dispatch' || contains(github.event.pull_request.labels.*.name, 'full-ci') }}
       build_packages: ${{ needs.prepare.outputs.build_linux_packages == 'true' }}
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
     secrets: inherit
 
   linux-sanitizers:
@@ -228,13 +214,11 @@ jobs:
       recache: ${{ inputs.recache || false }}
       save_ccache: ${{ needs.prepare.outputs.save_linux_ccache == 'true' }}
       build_packages: ${{ needs.prepare.outputs.build_linux_packages == 'true' }}
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
     secrets: inherit
 
   linux-armhf:
     needs: [prepare, linux]
-    # Opt-in only -- target tests and runtime validation execute under QEMU.
+    # Opt-in only, like the other targets beyond Linux x86_64.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       contains(github.event.pull_request.labels.*.name, 'full-ci')
@@ -248,8 +232,6 @@ jobs:
       recache: ${{ inputs.recache || false }}
       save_ccache: ${{ needs.prepare.outputs.save_linux_ccache == 'true' }}
       build_packages: ${{ needs.prepare.outputs.build_linux_packages == 'true' }}
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}
     secrets: inherit
 
   windows:
@@ -263,5 +245,3 @@ jobs:
       version: ${{ needs.prepare.outputs.version }}
       hamlib_branch: "4.7.2"
       recache: ${{ inputs.recache || false }}
-      release_channel: ${{ needs.prepare.outputs.release_channel }}
-      rc_number: ${{ needs.prepare.outputs.rc_number }}

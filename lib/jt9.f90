@@ -407,7 +407,7 @@ program jt9
      if(mode.eq.5) npts=21*3456
      if(mode.eq.66) npts=TRperiod*12000
      nblocks=npts/kstep
-     if(mode.eq.4) nblocks=(npts+kstep-1)/kstep
+     if(mode.eq.4.or.mode.eq.9) nblocks=(npts+kstep-1)/kstep
      do iblk=1,nblocks
         k0=(iblk-1)*kstep
         k=min(iblk*kstep,npts)
@@ -423,13 +423,13 @@ program jt9
            stop 2
         end if
         if (samples_read == 0) then
-           print*,'EOF on input file ',trim(infile)
+           if(mode.ne.9.or.engine_valid_samples.eq.0) print*,'EOF on input file ',trim(infile)
            exit
         end if
-        engine_valid_samples=min(180000,k0+samples_read)
+        engine_valid_samples=k0+samples_read
         nhsym=(k-2048)/kstep
         if(nhsym.ge.1 .and. nhsym.ne.nhsym0) then
-           if(mode.eq.9 .or. mode.eq.74) then
+           if(mode.eq.74) then
 ! Compute rough symbol spectra for the JT9 decoder
               ingain=0
               call timer('symspec ',0)
@@ -439,11 +439,11 @@ program jt9
               call timer('symspec ',1)
            endif
            nhsym0=nhsym
-           if(nhsym.ge.181 .and. mode.ne.240 .and. mode.ne.241 .and. &
+           if(nhsym.ge.181 .and. mode.ne.9 .and. mode.ne.240 .and. mode.ne.241 .and. &
               mode.ne.242 .and. mode.ne.66) exit
         endif
         if (samples_read < k-k0) then
-           print*,'EOF on input file ',trim(infile)
+           if(mode.ne.9) print*,'EOF on input file ',trim(infile)
            exit
         end if
      enddo
@@ -567,7 +567,7 @@ program jt9
      endif
 
 ! Normal decoding pass
-     if(mode.eq.8) then
+     if(mode.eq.8.or.mode.eq.9.or.mode.eq.65) then
         call run_engine_wav(shared_data%id2,engine_valid_samples)
      else if(mode.eq.5) then
         call run_engine_wav(shared_data%id2,72576)
@@ -595,7 +595,6 @@ program jt9
      call filbigvar(-1.,0,0.,0,0.,0.,0)       !used for FFT plans for FT8 multithread detector
   else
      call four2a(a,-1,1,1,1)
-     call filbig(a,-1,1,0.0,0,0,0,0,0)        !used for all other FFT plans
   endif
   call fftwf_cleanup_threads()
   call fftwf_cleanup()
@@ -609,7 +608,7 @@ contains
     type(decode_completion_result) :: completion
 
     engine_attempt_no=engine_attempt_no+1
-    call run_decoder_engine(shared_data%ss,samples,shared_data%params, &
+    call run_decoder_engine(samples,shared_data%params, &
          nfsample,completion,0,engine_input_id,engine_input_id, &
          engine_attempt_no,min(engine_valid_samples,pass_samples))
     if(.not.completion%available) return

@@ -51,11 +51,14 @@ class RetentionPlanTests(unittest.TestCase):
             version(1, 100, ("stable", "build-20260101-1-1"), self.now),
             version(2, 100, ("debug",), self.now),
             version(3, 100, (), self.now),
+            version(4, 100, ("buildcache",), self.now),
         ]
         plan = self.plan(versions, keep=1)
         self.assertEqual(plan[1].reason, "stable")
         self.assertEqual(plan[2].reason, "unknown-or-untagged")
         self.assertEqual(plan[3].reason, "unknown-or-untagged")
+        self.assertEqual(plan[4].reason, "unknown-or-untagged")
+        self.assertFalse(plan[4].delete)
 
     def test_prepared_release_tags_are_not_disposable_generations(self):
         plan = self.plan([

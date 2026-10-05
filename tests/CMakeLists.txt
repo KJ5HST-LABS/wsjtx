@@ -7,8 +7,24 @@ add_test (
     -D TEST_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/release-state
     -P ${CMAKE_SOURCE_DIR}/tests/release/test_release_state.cmake)
 
+add_test (
+  NAME test_release_tarballs
+  COMMAND ${CMAKE_COMMAND}
+    -D SOURCE_DIR=${CMAKE_SOURCE_DIR}
+    -D TEST_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/release-tarballs
+    -P ${CMAKE_SOURCE_DIR}/tests/release/test_release_tarballs.cmake)
+
+get_property (release_configure_depends DIRECTORY ${CMAKE_SOURCE_DIR} PROPERTY CMAKE_CONFIGURE_DEPENDS)
+string (REPLACE ";" "|" release_configure_depends "${release_configure_depends}")
+add_test (
+  NAME test_release_state_dependency
+  COMMAND ${CMAKE_COMMAND}
+    -D SOURCE_DIR=${CMAKE_SOURCE_DIR}
+    -D CONFIGURE_DEPENDS=${release_configure_depends}
+    -P ${CMAKE_SOURCE_DIR}/tests/release/test_release_state_dependency.cmake)
+
 find_package (Git QUIET)
-if (GIT_FOUND)
+if (GIT_FOUND AND EXISTS "${CMAKE_SOURCE_DIR}/.git")
   add_test (
     NAME test_release_git_archive
     COMMAND ${CMAKE_COMMAND}
@@ -17,6 +33,37 @@ if (GIT_FOUND)
       -D GIT_EXECUTABLE=${GIT_EXECUTABLE}
       -P ${CMAKE_SOURCE_DIR}/tests/release/test_git_archive.cmake)
 endif ()
+
+add_test (
+  NAME test_release_build_type
+  COMMAND ${CMAKE_COMMAND}
+    -D SOURCE_DIR=${CMAKE_SOURCE_DIR}
+    -D TEST_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/release-build-type
+    -D GIT_EXECUTABLE=${GIT_EXECUTABLE}
+    -P ${CMAKE_SOURCE_DIR}/tests/release/test_build_type.cmake)
+
+# A cross-compiled tree runs its tests in another container than the one that built it.
+if (NOT CMAKE_CROSSCOMPILING)
+  add_test (
+    NAME test_release_expiry_build_step
+    COMMAND ${CMAKE_COMMAND}
+      -D SOURCE_DIR=${CMAKE_SOURCE_DIR}
+      -D BINARY_DIR=${CMAKE_BINARY_DIR}
+      -D TEST_BINARY_DIR=${CMAKE_CURRENT_BINARY_DIR}/release-expiry-build-step
+      -P ${CMAKE_SOURCE_DIR}/tests/release/test_expiry_build_step.cmake)
+  set_tests_properties (test_release_expiry_build_step PROPERTIES RUN_SERIAL TRUE)
+endif ()
+
+foreach (package_tool dpkg rpm)
+  add_test (
+    NAME test_release_package_order_${package_tool}
+    COMMAND ${CMAKE_COMMAND}
+      -D SOURCE_DIR=${CMAKE_SOURCE_DIR}
+      -D TOOL=${package_tool}
+      -P ${CMAKE_SOURCE_DIR}/tests/release/test_package_version_order.cmake)
+  set_tests_properties (test_release_package_order_${package_tool} PROPERTIES
+    SKIP_REGULAR_EXPRESSION "Skipped: ${package_tool} is not installed")
+endforeach ()
 
 add_compile_options ("$<$<COMPILE_LANGUAGE:Fortran>:-Wall;-Wno-conversion;-fno-second-underscore;-fno-f2c>")
 add_compile_options ("$<$<AND:$<COMPILE_LANGUAGE:Fortran>,$<CONFIG:Debug>>:-fbounds-check>")

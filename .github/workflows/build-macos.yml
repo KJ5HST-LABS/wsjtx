@@ -42,16 +42,6 @@ on:
         required: false
         type: boolean
         default: false
-      release_channel:
-        description: "Build release channel: DEVEL, RC, or GA"
-        required: false
-        type: string
-        default: "DEVEL"
-      rc_number:
-        description: "Release candidate number when release_channel is RC"
-        required: false
-        type: string
-        default: ""
       signing_mode:
         description: "Package signing policy: validation or distribution"
         required: false
@@ -137,11 +127,12 @@ on:
         type: choice
         options:
           - DEVEL
+          - BETA
           - RC
           - GA
         default: "DEVEL"
-      rc_number:
-        description: "Release candidate number when release_channel is RC"
+      prerelease_number:
+        description: "Prerelease number when release_channel is BETA or RC"
         required: false
         type: string
         default: ""
@@ -181,7 +172,7 @@ jobs:
       VERSION: ${{ inputs.version }}
       HAMLIB_BRANCH: ${{ inputs.hamlib_branch }}
       WSJT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
-      WSJT_RC_NUMBER: ${{ inputs.rc_number }}
+      WSJT_PRERELEASE_NUMBER: ${{ inputs.prerelease_number }}
       SIGNING_MODE: ${{ inputs.signing_mode }}
       ARCH: ${{ inputs.arch }}
       BOOST_VERSION: 1.85.0
@@ -573,7 +564,7 @@ jobs:
             -DPFUNIT_DIR="${{ steps.pfunit.outputs.dir }}" \
             -DWSJT_SOURCE_REVISION="${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || '' }}" \
             -DWSJT_RELEASE_CHANNEL="${WSJT_RELEASE_CHANNEL}" \
-            -DWSJT_RC_NUMBER="${WSJT_RC_NUMBER}" \
+            -DWSJT_PRERELEASE_NUMBER="${WSJT_PRERELEASE_NUMBER}" \
             -Wno-dev
 
       - name: Build and test targets
@@ -690,13 +681,19 @@ jobs:
             fi
           done
 
-          for bin in jt9 wsprd wsprcode jt65code jt4code ft8code q65code encode77 fcal hash22calc; do
-            [ -f "${BUILD}/${bin}" ] && cp "${BUILD}/${bin}" "${ASSETS}/"
-          done
-
-          for bin in ft4sim jt4sim jt65sim cwsim sfoxsim echosim EchoCallSim; do
-            [ -f "${BUILD}/${bin}" ] && cp "${BUILD}/${bin}" "${ASSETS}/"
-          done
+          missing=()
+          while IFS= read -r bin; do
+            [ -n "${bin}" ] || continue
+            if [ -f "${BUILD}/${bin}" ]; then
+              cp "${BUILD}/${bin}" "${ASSETS}/"
+            else
+              missing+=("${bin}")
+            fi
+          done < "${BUILD}/cli-tools.txt"
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::CLI tools listed in ${BUILD}/cli-tools.txt were not built: ${missing[*]}"
+            exit 1
+          fi
 
           echo "stage_dir=${STAGE}" >> "$GITHUB_OUTPUT"
           echo "assets_dir=${ASSETS}" >> "$GITHUB_OUTPUT"
@@ -854,20 +851,49 @@ jobs:
           cp -R "${STAGE}/wsjtx.app" "${PAYLOAD}/Applications/"
 
           mkdir -p "${PAYLOAD}/usr/local/wsjtx/lib"
-          for bin in "${STAGE}"/*; do
-            [ -f "$bin" ] && [ -x "$bin" ] && cp "$bin" "${PAYLOAD}/usr/local/wsjtx/"
-          done
+          missing=()
+          while IFS= read -r bin; do
+            [ -n "${bin}" ] || continue
+            if [ -f "${STAGE}/${bin}" ]; then
+              cp "${STAGE}/${bin}" "${PAYLOAD}/usr/local/wsjtx/"
+            else
+              missing+=("${bin}")
+            fi
+          done < wsjtx-build/installed-cli-tools.txt
+          if [ "${#missing[@]}" -gt 0 ]; then
+            echo "::error::CLI tools listed in wsjtx-build/installed-cli-tools.txt are missing from ${STAGE}: ${missing[*]}"
+            exit 1
+          fi
           [ -d "${STAGE}/lib" ] && cp -R "${STAGE}/lib/"* "${PAYLOAD}/usr/local/wsjtx/lib/"
 
           cp "Darwin/com.wsjtx.sysctl.plist" "${PAYLOAD}/Library/LaunchDaemons/"
 
+          cp wsjtx-build/installed-cli-tools.txt "${SCRIPTS}/"
           cat > "${SCRIPTS}/postinstall" << 'SCRIPT'
           #!/bin/bash
           /bin/launchctl load /Library/LaunchDaemons/com.wsjtx.sysctl.plist 2>/dev/null || true
           /usr/sbin/sysctl kern.sysv.shmmax=52428800 kern.sysv.shmall=25600 2>/dev/null || true
-          mkdir -p /usr/local/bin
-          for bin in /usr/local/wsjtx/*; do
-            [ -f "$bin" ] && [ -x "$bin" ] && ln -sf "$bin" "/usr/local/bin/$(basename "$bin")"
+          root="${3%/}"   # $3 is the installation's target volume
+          shipped="$(dirname "$0")/installed-cli-tools.txt"
+          mkdir -p "$root/usr/local/bin"
+          if [ -s "$shipped" ] && [ ! -L "$root/usr/local/wsjtx" ]; then
+            for bin in "$root"/usr/local/wsjtx/*; do
+              [ -f "$bin" ] && [ -x "$bin" ] || continue
+              name=$(basename "$bin")
+              grep -qxF -- "$name" "$shipped" && continue
+              rm -f "$bin"
+              link="$root/usr/local/bin/$name"
+              if [ -L "$link" ] && [ ! -e "$link" ]; then
+                case "$(readlink "$link")" in
+                  "$root"/usr/local/wsjtx/*) rm -f "$link" ;;
+                esac
+              fi
+            done
+          fi
+          for bin in "$root"/usr/local/wsjtx/*; do
+            if [ -f "$bin" ] && [ -x "$bin" ]; then
+              ln -sf "$bin" "$root/usr/local/bin/$(basename "$bin")"
+            fi
           done
           SCRIPT
           chmod +x "${SCRIPTS}/postinstall"
@@ -1004,6 +1030,33 @@ jobs:
         with:
           name: individual-binaries-macos-${{ inputs.arch }}
           path: packages/*.tar.gz
+
+      - name: Package release tarballs
+        run: |
+          .github/scripts/package-cli-tools.sh \
+            --platform macos \
+            --version "${{ inputs.version }}" \
+            --arch "${{ inputs.arch }}" \
+            --groups CMake/release-tarballs.txt \
+            --source "${{ steps.collect.outputs.assets_dir }}" \
+            --out release-tarballs
+
+      - name: Smoke-test release tarballs
+        timeout-minutes: 5
+        run: |
+          .github/scripts/smoke-release-tarballs.sh \
+            --platform macos \
+            --version "${{ inputs.version }}" \
+            --target "${{ inputs.arch }}-macOS" \
+            --groups CMake/release-tarballs.txt \
+            --dir release-tarballs
+
+      - name: Upload release tarballs
+        uses: ./.github/actions/upload-release-tarballs
+        with:
+          version: ${{ inputs.version }}
+          target: ${{ inputs.arch }}-macOS
+          directory: release-tarballs
 
       # Keep repository-built code after signing, notarization, cleanup, and
       # artifact publication so a detached child cannot reach later secrets.

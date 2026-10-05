@@ -27,6 +27,20 @@ def job(name: str, workflow: str = PUBLISH) -> str:
 
 
 class LinuxImagePublicationPolicyTests(unittest.TestCase):
+    def test_armhf_cross_cache_import_and_export_share_registry_destination(self):
+        metadata = job("metadata")
+        for package_root in ("ghcr.io/wsjtx/wsjtx", "ghcr.io/wsjtx/wsjtx-internal"):
+            self.assertIn(
+                f"armhf_cross_cache_from=type=registry,ref={package_root}/linux-armhf-cross-bookworm:buildcache",
+                metadata,
+            )
+        cross = job("build-armhf-cross")
+        self.assertIn("cache-from: ${{ needs.metadata.outputs.armhf_cross_cache_from }}", cross)
+        self.assertIn(
+            "cache-to: type=registry,ref=${{ needs.metadata.outputs.package_root }}/linux-armhf-cross-bookworm:buildcache,mode=max",
+            cross,
+        )
+
     def select_warmers(self, event, *, target="", schedule="", paths=()):
         selector = re.search(
             r"        run: \|\n(?P<body>.*?)(?=^  refresh-linux-images:)",
@@ -66,6 +80,28 @@ git() {
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             return dict(line.split("=", 1) for line in output.read_text().splitlines())
 
+    def test_macos_warmer_selection_routes_both_architectures(self):
+        cases = [
+            ({"event": "workflow_dispatch", "target": "macos-x86_64"}, "false", "true"),
+            ({"event": "workflow_dispatch", "target": "macos-arm64"}, "true", "false"),
+            ({"event": "workflow_dispatch", "target": "macos"}, "true", "true"),
+            ({"event": "workflow_dispatch", "target": "all"}, "true", "true"),
+            ({"event": "workflow_dispatch", "target": "linux"}, "false", "false"),
+            ({"event": "schedule", "schedule": "23 10 * * 1"}, "true", "true"),
+        ]
+        for path in (
+            ".github/workflows/build-macos.yml", ".github/actions/warm-macos-deps/action.yml",
+            ".github/scripts/install-xpack-gfortran-macos.sh", ".github/scripts/build-qt-macos.sh",
+            ".github/scripts/macos-qt-cache-key.sh", ".github/scripts/verify-macos-static-archives.sh",
+            ".github/workflows/ci.yml", ".github/workflows/release.yml",
+        ):
+            cases.append(({"event": "push", "paths": [path]}, "true", "true"))
+        for inputs, arm, intel in cases:
+            with self.subTest(inputs=inputs):
+                outputs = self.select_warmers(**inputs)
+                self.assertEqual(outputs["macos_arm64"], arm)
+                self.assertEqual(outputs["macos_x86_64"], intel)
+
     def test_asan_warmer_selection(self):
         cases = [
             ({"event": "schedule", "schedule": "23 10 * * 1"}, "true", "none"),
@@ -82,6 +118,69 @@ git() {
                 outputs = self.select_warmers(**arguments)
                 self.assertEqual(outputs["linux_asan_ubsan"], selected)
                 self.assertEqual(outputs["image_set"], image_set)
+
+    def test_armhf_warmer_selection(self):
+        cases = [
+            ({"event": "schedule", "schedule": "23 10 * * 1"}, "true", "none"),
+            ({"event": "workflow_dispatch", "target": "linux-armhf"}, "true", "none"),
+            ({"event": "workflow_dispatch", "target": "all"}, "true", "normal"),
+            ({"event": "workflow_dispatch", "target": "linux-tsan"}, "false", "tsan"),
+            ({"event": "push", "paths": [".github/images/linux-ci/Dockerfile.armhf-cross"]}, "false", "normal"),
+            ({"event": "push", "paths": ["mainwindow.cpp"]}, "false", "none"),
+        ]
+        for arguments, selected, image_set in cases:
+            with self.subTest(arguments=arguments):
+                outputs = self.select_warmers(**arguments)
+                self.assertEqual(outputs["linux_armhf"], selected)
+                self.assertEqual(outputs["image_set"], image_set)
+
+    def test_armhf_build_inputs_select_warming(self):
+        push_filters = re.findall(r'^      - "([^"]+)"$', WARM.split("  schedule:", 1)[0], re.MULTILINE)
+        for path in (
+            ".github/workflows/build-linux.yml",
+            ".github/scripts/build-linux-armhf-cross.sh",
+            ".github/scripts/audit-armhf-cross-build.sh",
+            ".github/cmake/armhf-toolchain.cmake",
+            ".github/scripts/linux-artifact-validation.sh",
+            "CMakeLists.txt", "CMake/Sources.cmake", "tests/unit/CMakeLists.txt",
+        ):
+            with self.subTest(path=path):
+                self.assertTrue(any(fnmatch.fnmatchcase(path, pattern) for pattern in push_filters))
+                outputs = self.select_warmers("push", paths=[path])
+                self.assertEqual(outputs["linux_armhf"], "true")
+                self.assertEqual(outputs["image_set"], "none")
+
+    def test_armhf_warmers_share_configuration_and_serialize(self):
+        standalone = job("warm-linux-armhf-ccache", WARM)
+        published = job("warm-armhf-ccache")
+        for warmer in (standalone, published):
+            for required in (
+                "github.ref == 'refs/heads/develop'",
+                "uses: ./.github/workflows/build-linux.yml", "arch: armhf",
+                "armhf_build_only: true", "allow_stale_image: false",
+                "recache: false", "save_ccache: true",
+                "group: armhf-ccache-develop", "cancel-in-progress: false",
+                "contents: read", "packages: read",
+            ):
+                self.assertIn(required, warmer)
+            self.assertNotIn("packages: write", warmer)
+        for condition in (
+            "needs.detect.outputs.linux_armhf == 'true'",
+            "needs.detect.outputs.image_set != 'normal'",
+            "needs.detect.outputs.image_set != 'normal-and-tsan'",
+        ):
+            self.assertIn(condition, standalone)
+        self.assertIn("- warm-linux-armhf-ccache", job("summary", WARM))
+        for condition in (
+            "needs.promote.result == 'success'", "inputs.publication_target == 'internal'",
+            "inputs.mode == 'refresh'", "inputs.promote", "inputs.include_armhf",
+            "(inputs.image_set == 'normal' || inputs.image_set == 'normal-and-tsan')",
+            "image_tag: ${{ needs.metadata.outputs.build_tag }}",
+        ):
+            self.assertIn(condition, published)
+        self.assertIn("- metadata", published)
+        self.assertIn("- promote", published)
+        self.assertNotIn("warm-armhf-ccache", job("promote"))
 
     def test_sanitizer_build_inputs_select_warming(self):
         push_filters = re.findall(
@@ -311,7 +410,10 @@ git() {
             self.assertNotIn("resolve-linux-ci-image-tag.py", workflow)
         self.assertNotIn("publish-linux-ci-images.yml", public)
         self.assertNotIn("packages: write", public)
-        self.assertIn("environment: public-release", public)
+        self.assertIn(
+            "environment: ${{ needs.prepare.outputs.release_channel == 'BETA' && 'beta-release' || 'public-release' }}",
+            public,
+        )
         self.assertIn("linux_images: $linux_images", candidate)
         self.assertIn("release-linux-images.py provenance release-linux-images.json", candidate)
         self.assertIn("release-linux-images.py verify-provenance", promotion)

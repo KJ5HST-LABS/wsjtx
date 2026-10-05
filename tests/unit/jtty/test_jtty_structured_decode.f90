@@ -1,9 +1,10 @@
 program test_jtty_structured_decode
 
   use iso_c_binding, only: c_int,c_char,c_null_char,c_sizeof
-  use iso_fortran_env, only: int16,int32
+  use iso_fortran_env, only: int16,int32,real32
   use jtty_fec, only: is13,PAYLOAD_BITS,TOTAL_K,tbcc_encode
   use jtty_tbcc_code_profiles
+  use jtty_tbcc_decoder, only: jtty_tbcc_decode
   use jtty_mdec, only: npending,pending_updates,nactive,discard_pending_updates,display_message_text
   use jtty_mod, only: jtty_source_atom,jtty_source_atom_c,jtty_call_atom, &
        jtty_exch_num_atom,unpack_jtty,MAX_FRAMES,JTTY_CALL_CALL,JTTY_ROLE_FULL, &
@@ -25,11 +26,10 @@ program test_jtty_structured_decode
        integer(c_int), intent(out) :: tones(*),nsym
        integer(c_int) :: status
      end function jtty_cpp_n1mm_smoke
-     function jtty_cpp_cq_smoke(tones,nsym,text,chained) result(status) bind(C)
+     function jtty_cpp_cq_smoke(tones,nsym,text) result(status) bind(C)
        import :: c_int,c_char
        integer(c_int), intent(out) :: tones(*),nsym
        character(kind=c_char), intent(out) :: text(*)
-       integer(c_int), value :: chained
        integer(c_int) :: status
      end function jtty_cpp_cq_smoke
      function jtty_cpp_rtty_smoke(tones,nsym) result(status) bind(C)
@@ -80,13 +80,7 @@ contains
     call expect(status.eq.JTTY_ENCODE_OK .and. nsymbols.eq.frame_symbols, &
          'C++ RTTY profile text matches native F8 while unknown text uses two frames',count)
     if(status.ne.JTTY_ENCODE_OK .or. nsymbols.ne.frame_symbols) return
-    call decode_waveform(tones,int(nsymbols))
-    call expect(npending.eq.1,'RTTY serial text produces one update',count)
-    if(npending.eq.1) then
-       call expect(trim(normalized(pending_updates(1)%decoded)).eq.'599 123' .and. &
-            pending_updates(1)%complete .and. nactive.eq.0, &
-            'RTTY serial text uses canonical rendering and completes',count)
-    endif
+    call expect_noiseless_message(tones,int(nsymbols),'599 123','RTTY serial text',count)
   end subroutine decode_profile_text
 
   subroutine decode_compact_text(count)
@@ -94,29 +88,21 @@ contains
     integer(c_int) :: native_tones(MAX_FRAMES*frame_symbols),native_nsymbols,status
     character(kind=c_char) :: c_text(80)
     character(len=80) :: text
-    integer :: tones(MAX_FRAMES*frame_symbols),nsymbols,chained,i
+    integer :: tones(MAX_FRAMES*frame_symbols),nsymbols,i
 
-    do chained=0,1
-       status=jtty_cpp_cq_smoke(native_tones,native_nsymbols,c_text,int(chained,c_int))
-       call expect(status.eq.JTTY_ENCODE_OK .and. native_nsymbols.eq.frame_symbols, &
-            'native F1 generates one frame',count)
-       if(status.ne.JTTY_ENCODE_OK .or. native_nsymbols.ne.frame_symbols) return
-       do i=1,len(text)
-          text(i:i)=c_text(i)
-       enddo
-       call genjtty(text,tones,nsymbols)
-       call expect(nsymbols.eq.native_nsymbols,'GUI CQ text generates one frame',count)
-       if(nsymbols.ne.native_nsymbols) return
-       call expect(all(tones(1:nsymbols).eq.native_tones(1:nsymbols)), &
-            'GUI CQ text and native F1 generate identical channel symbols',count)
+    status=jtty_cpp_cq_smoke(native_tones,native_nsymbols,c_text)
+    call expect(status.eq.JTTY_ENCODE_OK .and. native_nsymbols.eq.frame_symbols, &
+         'native F1 generates one frame',count)
+    if(status.ne.JTTY_ENCODE_OK .or. native_nsymbols.ne.frame_symbols) return
+    do i=1,len(text)
+       text(i:i)=c_text(i)
     enddo
-    call decode_waveform(tones,nsymbols)
-    call expect(npending.eq.1,'compact CQ produces one update',count)
-    if(npending.eq.1) then
-       call expect(trim(normalized(pending_updates(1)%decoded)).eq.'CQ K1ABC CQ' .and. &
-            pending_updates(1)%complete .and. nactive.eq.0, &
-            'compact CQ preserves text and completes',count)
-    endif
+    call genjtty(text,tones,nsymbols)
+    call expect(nsymbols.eq.native_nsymbols,'GUI CQ text generates one frame',count)
+    if(nsymbols.ne.native_nsymbols) return
+    call expect(all(tones(1:nsymbols).eq.native_tones(1:nsymbols)), &
+         'GUI CQ text and native F1 generate identical channel symbols',count)
+    call expect_noiseless_message(native_tones,int(native_nsymbols),'CQ K1ABC CQ','compact CQ',count)
 
     text='TEST WB9XYZ 599 123 QSL TU'
     call genjtty(text,tones,nsymbols)
@@ -160,15 +146,7 @@ contains
          'native call plus serial generates two frames',count)
     if(nsymbols.le.0) return
 
-    call decode_waveform(tones,nsymbols)
-
-    call expect(npending.eq.1, &
-         'native call plus serial produces one update',count)
-    if(npending.ne.1) return
-    call expect(trim(normalized(pending_updates(1)%decoded)).eq.'WB9XYZ 599 1234', &
-         'merged native atoms use canonical call and serial rendering',count)
-    call expect(pending_updates(1)%complete .and. nactive.eq.0, &
-         'final native atom completes and releases the message',count)
+    call expect_noiseless_message(tones,nsymbols,'WB9XYZ 599 1234','native call plus serial',count)
   end subroutine decode_native_call_and_serial
 
   subroutine decode_c_adapter_atoms(count)
@@ -194,14 +172,8 @@ contains
     call expect(status.eq.JTTY_ENCODE_OK,'C adapter reports successful encoding',count)
     if(nsymbols.le.0) return
 
-    call decode_waveform(tones,int(nsymbols))
-    call expect(npending.eq.1,'C adapter atoms produce one update',count)
-    if(npending.ne.1) return
-    call expect(trim(normalized(pending_updates(1)%decoded)).eq. &
-         'K1ABC 599 012 599 CA 1D EMA 10A CT FN42 QSL TU', &
-         'C adapter atoms retain canonical structured rendering',count)
-    call expect(pending_updates(1)%complete .and. nactive.eq.0, &
-         'final C adapter atom completes and releases the message',count)
+    call expect_noiseless_message(tones,int(nsymbols), &
+         'K1ABC 599 012 599 CA 1D EMA 10A CT FN42 QSL TU','C adapter atoms',count)
   end subroutine decode_c_adapter_atoms
 
   subroutine reject_invalid_c_descriptors(count)
@@ -309,6 +281,45 @@ contains
     call expect(npending.eq.0 .and. nactive.eq.0, &
          'CRC/FEC-valid source-invalid frame creates no message or update',count)
   end subroutine reject_reserved_struct_family
+
+  subroutine expect_noiseless_message(tones,nsymbols,expected,description,count)
+    integer, intent(in) :: tones(:),nsymbols
+    character(len=*), intent(in) :: expected,description
+    integer, intent(inout) :: count
+    complex(real32) :: correlations(0:3,TOTAL_K),halves(0:3,TOTAL_K)
+    integer(int32) :: payload(PAYLOAD_BITS)
+    character(len=34) :: frames(MAX_FRAMES)
+    character(len=80) :: decoded
+    integer :: iframe,nframes,offset,symbol
+    logical :: success,source_valid,is_last_frame
+
+    nframes=nsymbols/frame_symbols
+    call expect(nframes.ge.1 .and. nframes.le.MAX_FRAMES .and. &
+         nsymbols.eq.nframes*frame_symbols,description//': complete channel frames',count)
+    if(nframes.lt.1 .or. nframes.gt.MAX_FRAMES .or. nsymbols.ne.nframes*frame_symbols) return
+    frames=''
+    halves=cmplx(0.0_real32,0.0_real32,real32)
+    do iframe=1,nframes
+       offset=(iframe-1)*frame_symbols
+       call expect(all(tones(offset+1:offset+size(is13)).eq.is13),description//': sync symbols',count)
+       offset=offset+size(is13)
+       call expect(all(tones(offset+1:offset+TOTAL_K).ge.0) .and. &
+            all(tones(offset+1:offset+TOTAL_K).le.3),description//': payload tones',count)
+       if(any(tones(offset+1:offset+TOTAL_K).lt.0) .or. any(tones(offset+1:offset+TOTAL_K).gt.3)) return
+       correlations=cmplx(0.0_real32,0.0_real32,real32)
+       do symbol=1,TOTAL_K
+          correlations(tones(offset+symbol),symbol)=cmplx(100.0_real32,0.0_real32,real32)
+       enddo
+       call jtty_tbcc_decode(correlations,halves,payload,success)
+       call expect(success,description//': TBCC payload recovery',count)
+       if(.not.success) return
+       write(frames(iframe),'(34i1)') payload
+       call unpack_jtty(frames,iframe,decoded,is_last_frame=is_last_frame,source_valid=source_valid)
+       call expect(source_valid,description//': source-valid prefix',count)
+       call expect(is_last_frame.eqv.(iframe.eq.nframes),description//': final-frame marker',count)
+    enddo
+    call expect(trim(normalized(decoded)).eq.expected,description//': canonical text and ordering',count)
+  end subroutine expect_noiseless_message
 
   subroutine decode_waveform(tones,nsymbols,channel_width)
     integer, intent(in) :: tones(:),nsymbols

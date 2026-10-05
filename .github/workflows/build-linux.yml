@@ -62,16 +62,11 @@ on:
         required: false
         type: boolean
         default: true
-      release_channel:
-        description: "Build release channel: DEVEL, RC, or GA"
+      armhf_build_only:
+        description: "Compile and audit ARMHF production and test targets without runtime tests or packaging"
         required: false
-        type: string
-        default: "DEVEL"
-      rc_number:
-        description: "Release candidate number when release_channel is RC"
-        required: false
-        type: string
-        default: ""
+        type: boolean
+        default: false
   # Also runnable on its own ("Run workflow" / gh workflow run) to build a single
   # Linux arch without dispatching the full ci.yml matrix. GitHub only exposes
   # workflow_dispatch when the trigger is on the default branch (develop), so this
@@ -79,7 +74,8 @@ on:
   # single-architecture diagnosis and candidate-image validation; ARMHF also joins
   # ci.yml's opt-in full-ci matrix. Inputs mirror workflow_call with standalone
   # defaults: hamlib_branch matches what ci.yml / release.yml pass (4.7.2), and
-  # version is overridable via `-f version=...`.
+  # version is overridable via `-f version=...`. release_channel and
+  # prerelease_number exist only here, to override release-state.txt.
   workflow_dispatch:
     inputs:
       version:
@@ -149,17 +145,23 @@ on:
         required: false
         type: boolean
         default: true
+      armhf_build_only:
+        description: "Compile and audit ARMHF production and test targets without runtime tests or packaging"
+        required: false
+        type: boolean
+        default: false
       release_channel:
         description: "Build release channel"
         required: false
         type: choice
         options:
           - DEVEL
+          - BETA
           - RC
           - GA
         default: "DEVEL"
-      rc_number:
-        description: "Release candidate number when release_channel is RC"
+      prerelease_number:
+        description: "Prerelease number when release_channel is BETA or RC"
         required: false
         type: string
         default: ""
@@ -173,9 +175,10 @@ on:
 #   aarch64 — validated GCC 13.4 Bookworm container on ubuntu-24.04-arm. This keeps the
 #            Bookworm glibc 2.36 + pre-t64 library baseline while using GCC 13
 #            (issue #49).
-#   armhf  — native x86_64-to-ARMHF GCC 13.4 cross-build followed by target
-#            tests and packaging in a Bookworm arm/v7 container under QEMU
-#            (issue #51). DigiPi / Pi Zero 2W class.
+#   armhf  — native x86_64-to-ARMHF GCC 13.4 cross-build, then target tests
+#            and packaging in a Bookworm arm/v7 container on ubuntu-24.04-arm,
+#            which runs 32-bit ARM code natively (issue #51). DigiPi / Pi Zero
+#            2W class.
 #
 # The native jobs use the build-linux-payload composite action. ARMHF needs
 # separate host-build and target-runtime phases, but shares their artifact
@@ -201,6 +204,7 @@ jobs:
           REQUESTED_TAG: ${{ inputs.image_tag }}
           ARMHF_BUILD: ${{ inputs.arch == 'armhf' }}
           ARCH: ${{ inputs.arch }}
+          ARMHF_BUILD_ONLY: ${{ inputs.armhf_build_only }}
           IMAGE_SOURCE: ${{ inputs.image_source }}
           IMAGE_DIGEST: ${{ inputs.image_digest }}
           ARMHF_CROSS_IMAGE_DIGEST: ${{ inputs.armhf_cross_image_digest }}
@@ -208,6 +212,10 @@ jobs:
           ALLOW_STALE_IMAGE: ${{ inputs.allow_stale_image }}
         shell: bash
         run: |
+          if [ "$ARMHF_BUILD_ONLY" = true ] && [ "$ARCH" != armhf ]; then
+            echo "::error::armhf_build_only is valid only for ARMHF builds"
+            exit 2
+          fi
           case "$ARCH" in
             x86_64) package=linux-noble; cross_package= ;;
             aarch64) package=linux-arm64-bookworm; cross_package= ;;
@@ -302,7 +310,7 @@ jobs:
           WSJTX_VERSION: ${{ inputs.version }}
           HAMLIB_BRANCH: ${{ inputs.hamlib_branch }}
           WSJT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
-          WSJT_RC_NUMBER: ${{ inputs.rc_number }}
+          WSJT_PRERELEASE_NUMBER: ${{ inputs.prerelease_number }}
           ARCH: ${{ inputs.arch }}
           IMAGE_TAG: ${{ needs.resolve-image.outputs.image_tag }}
           VALIDATE_FORTRAN_FALLBACK: ${{ inputs.validate_fortran_fallback }}
@@ -318,7 +326,7 @@ jobs:
           validate_fortran_fallback: ${{ inputs.validate_fortran_fallback }}
           build_packages: ${{ inputs.build_packages }}
           release_channel: ${{ inputs.release_channel }}
-          rc_number: ${{ inputs.rc_number }}
+          prerelease_number: ${{ inputs.prerelease_number }}
           allow_stale_image: ${{ inputs.allow_stale_image }}
 
   build-aarch64:
@@ -340,7 +348,7 @@ jobs:
           WSJTX_VERSION: ${{ inputs.version }}
           HAMLIB_BRANCH: ${{ inputs.hamlib_branch }}
           WSJT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
-          WSJT_RC_NUMBER: ${{ inputs.rc_number }}
+          WSJT_PRERELEASE_NUMBER: ${{ inputs.prerelease_number }}
           ARCH: ${{ inputs.arch }}
           IMAGE_TAG: ${{ needs.resolve-image.outputs.image_tag }}
           VALIDATE_FORTRAN_FALLBACK: ${{ inputs.validate_fortran_fallback }}
@@ -356,31 +364,29 @@ jobs:
           validate_fortran_fallback: ${{ inputs.validate_fortran_fallback }}
           build_packages: ${{ inputs.build_packages }}
           release_channel: ${{ inputs.release_channel }}
-          rc_number: ${{ inputs.rc_number }}
+          prerelease_number: ${{ inputs.prerelease_number }}
           allow_stale_image: ${{ inputs.allow_stale_image }}
 
   build-armhf:
     needs: resolve-image
     if: inputs.arch == 'armhf'
     runs-on: ubuntu-24.04
-    timeout-minutes: 160
-    # Compile natively on x86_64 with a pinned GCC 13.4 cross-toolchain, then
-    # execute target tests and packaging in a clean Bookworm ARMv7 runtime.
+    timeout-minutes: 60
+    # Compile natively on x86_64 with a pinned GCC 13.4 cross-toolchain;
+    # test-armhf then runs the target tests and packaging on an ARM runner.
     #
     # Keep JavaScript actions on the host: the runner's x86_64 Node runtime
-    # cannot execute in the ARMv7 container. Both explicit containers mount
-    # the checkout at /work so CTest paths remain stable across phases.
+    # cannot execute in the ARMv7 container. Every explicit container mounts
+    # the checkout at /work so CTest paths stay valid in test-armhf.
     env:
       VERSION: ${{ inputs.version }}
       HAMLIB_BRANCH: ${{ inputs.hamlib_branch }}
       WSJT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
-      WSJT_RC_NUMBER: ${{ inputs.rc_number }}
+      WSJT_PRERELEASE_NUMBER: ${{ inputs.prerelease_number }}
     steps:
       # setup-qemu-action runs on the host (job has no `container:`),
-      # mutating the host kernel's binfmt_misc table. With arm/v7
-      # registered, subsequent `docker run --platform linux/arm/v7`
-      # invocations execute the container's arm/v7 init + binaries via
-      # qemu-arm-static.
+      # mutating the host kernel's binfmt_misc table, so the image pair
+      # check below can run the ARMv7 runtime image's smoke programs.
       - uses: docker/setup-qemu-action@v4
         with:
           image: tonistiigi/binfmt:qemu-v10.2.3-68@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
@@ -391,7 +397,7 @@ jobs:
           WSJTX_VERSION: ${{ inputs.version }}
           HAMLIB_BRANCH: ${{ inputs.hamlib_branch }}
           WSJT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
-          WSJT_RC_NUMBER: ${{ inputs.rc_number }}
+          WSJT_PRERELEASE_NUMBER: ${{ inputs.prerelease_number }}
           ARCH: armhf
           IMAGE_TAG: ${{ needs.resolve-image.outputs.image_tag }}
           VALIDATE_FORTRAN_FALLBACK: ${{ inputs.validate_fortran_fallback }}
@@ -482,10 +488,12 @@ jobs:
             ccache-linux-armhf-${{ steps.image.outputs.ccache_compatibility_id }}-
 
       - name: Cross-build ARMHF binaries
+        id: cross-build
         env:
           ARCH: armhf
           CROSS_BUILDER_IMAGE: ${{ needs.resolve-image.outputs.cross_image_reference }}
           RECACHE: ${{ inputs.recache }}
+          ARMHF_BUILD_ONLY: ${{ inputs.armhf_build_only }}
           CCACHE_COMPILERCHECK: ${{ steps.image.outputs.ccache_compiler_check }}
           WSJTX_CI_IMAGE_ALLOW_RECIPE_MISMATCH: ${{ inputs.allow_stale_image }}
         run: |
@@ -500,15 +508,154 @@ jobs:
             -e HAMLIB_BRANCH \
             -e ARCH \
             -e WSJT_RELEASE_CHANNEL \
-            -e WSJT_RC_NUMBER \
+            -e WSJT_PRERELEASE_NUMBER \
             -e CCACHE_DIR=/work/.ccache-armhf \
             -e CCACHE_COMPILERCHECK \
+            -e ARMHF_BUILD_ONLY \
             -e WSJTX_CI_IMAGE_ALLOW_RECIPE_MISMATCH \
             "${ccache_args[@]}" \
             "$CROSS_BUILDER_IMAGE" \
             bash .github/scripts/build-linux-armhf-cross.sh
 
-      - name: Test and package under ARMv7 QEMU
+      - name: Report suppressed armhf ccache save
+        if: inputs.save_ccache && steps.image.outputs.recipe_match != 'true'
+        run: echo "::notice::Not saving armhf ccache because this build used a stale Linux CI image recipe"
+
+      - name: Save armhf ccache
+        id: save-ccache
+        if: inputs.save_ccache && (!inputs.armhf_build_only || github.ref == 'refs/heads/develop') && steps.image.outputs.recipe_match == 'true' && steps.ccache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: .ccache-armhf
+          key: ${{ steps.ccache.outputs.cache-primary-key }}
+
+      # test-armhf runs the tests and packaging on an ARM runner from this
+      # tree. tar keeps the modes, links and times upload-artifact drops;
+      # objects and static libraries are only needed to link.
+      - name: Pack ARMHF build tree
+        if: ${{ !inputs.armhf_build_only }}
+        run: |
+          sudo tar --create --file armhf-build-tree.tar --exclude='wsjtx-build/*.o' --exclude='wsjtx-build/*.a' wsjtx-build AppDir
+          ls -l armhf-build-tree.tar
+
+      # Kept one day: re-running test-armhf alone works within that window.
+      - name: Upload ARMHF build tree
+        if: ${{ !inputs.armhf_build_only }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: armhf-build-tree
+          path: armhf-build-tree.tar
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Summarize ARMHF compiler cache
+        if: always()
+        env:
+          CACHE_STEPS: ${{ toJSON(steps) }}
+          SAVE_CCACHE: ${{ inputs.save_ccache }}
+          ARMHF_BUILD_ONLY: ${{ inputs.armhf_build_only }}
+        run: |
+          python3 - <<'PY' >> "$GITHUB_STEP_SUMMARY"
+          import json
+          import os
+          from pathlib import Path
+
+          steps = json.loads(os.environ["CACHE_STEPS"])
+          cache = steps.get("ccache", {})
+          outputs = cache.get("outputs", {})
+          restore = "exact hit" if outputs.get("cache-hit") == "true" else "fallback restore" if outputs.get("cache-matched-key") else "miss"
+          if cache.get("outcome") != "success":
+              restore = cache.get("outcome", "not run")
+          image = steps.get("image", {}).get("outputs", {})
+          build_only = os.environ["ARMHF_BUILD_ONLY"] == "true"
+          save = steps.get("save-ccache", {}).get("outcome", "skipped")
+          timing = Path("wsjtx-build/armhf-cross-build-timing.env")
+          duration = "unavailable"
+          if timing.exists():
+              duration = dict(line.split("=", 1) for line in timing.read_text().splitlines()).get("duration_seconds", duration)
+          if os.environ["SAVE_CCACHE"] != "true":
+              publication = "disabled"
+          elif build_only and os.environ["GITHUB_REF"] != "refs/heads/develop":
+              publication = "skipped: build-only cache writes require develop"
+          elif image.get("recipe_match") == "false":
+              publication = "skipped: image recipe mismatch"
+          elif save != "skipped":
+              publication = f"attempted (step: {save}); see cache action log for upload confirmation"
+          elif any(step.get("outcome") in ("failure", "cancelled") for step in steps.values()):
+              publication = "skipped: preceding failure or cancellation"
+          elif outputs.get("cache-hit") == "true":
+              publication = "skipped: exact cache already exists"
+          else:
+              publication = "not attempted"
+          print("### ARMHF compiler cache\n")
+          print("| Field | Value |\n| --- | --- |")
+          rows = {
+              "Source SHA": os.environ["GITHUB_SHA"],
+              "Image generation": image.get("generation", "unavailable"),
+              "Requested/save key": outputs.get("cache-primary-key", "unavailable"),
+              "Matched key": outputs.get("cache-matched-key") or "none",
+              "Restore": restore,
+              "Compilation and binary audits": steps.get("cross-build", {}).get("outcome", "not run"),
+              "Compilation duration (seconds)": duration,
+              "Cache publication": publication,
+          }
+          for label, value in rows.items():
+              print(f"| {label} | {value} |")
+          PY
+
+  test-armhf:
+    needs: [resolve-image, build-armhf]
+    if: inputs.arch == 'armhf' && !inputs.armhf_build_only
+    # ubuntu-24.04-arm executes 32-bit ARM code natively, so the runtime
+    # image runs here without QEMU.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ inputs.version }}
+      HAMLIB_BRANCH: ${{ inputs.hamlib_branch }}
+      WSJT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
+      WSJT_PRERELEASE_NUMBER: ${{ inputs.prerelease_number }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # A CPU without 32-bit ARM support cannot run the image, and a registered
+      # qemu-arm handler would run it emulated without saying so.
+      - name: Require native 32-bit ARM execution
+        env:
+          RUNTIME_IMAGE: ${{ needs.resolve-image.outputs.image_reference }}
+        run: |
+          lscpu | grep -E '^(Model name|CPU op-mode)'
+          if ! lscpu | grep -Eq '^CPU op-mode\(s\):.*32-bit'; then
+            echo "::error::This runner cannot execute 32-bit ARM code"
+            exit 1
+          fi
+          if [ -e /proc/sys/fs/binfmt_misc/qemu-arm ]; then
+            echo "::error::A qemu-arm binfmt handler is registered, so ARMHF would run emulated"
+            exit 1
+          fi
+          bits=$(docker run --rm --platform linux/arm/v7 "$RUNTIME_IMAGE" getconf LONG_BIT)
+          if [ "$bits" != 32 ]; then
+            echo "::error::The ARMHF runtime image reports LONG_BIT=${bits}"
+            exit 1
+          fi
+
+      - name: Download ARMHF build tree
+        uses: actions/download-artifact@v8
+        with:
+          name: armhf-build-tree
+
+      - name: Unpack ARMHF build tree
+        run: |
+          sudo tar --extract --file armhf-build-tree.tar
+          rm armhf-build-tree.tar
+
+      - name: Test and package on native ARMv7
         id: armhf-runtime
         env:
           ARCH: armhf
@@ -522,8 +669,6 @@ jobs:
             -e VERSION \
             -e HAMLIB_BRANCH \
             -e ARCH \
-            -e WSJT_RELEASE_CHANNEL \
-            -e WSJT_RC_NUMBER \
             -e GITHUB_TOKEN \
             -e ARMHF_RUNTIME_PHASE \
             -e WSJTX_CI_IMAGE_ALLOW_RECIPE_MISMATCH \
@@ -584,6 +729,13 @@ jobs:
             wsjtx-build/jt9
             wsjtx-build/wsprd
             wsjtx-build/wsjtx
+      - name: Upload release tarballs
+        if: inputs.build_packages
+        uses: ./.github/actions/upload-release-tarballs
+        with:
+          version: ${{ inputs.version }}
+          target: linux-armhf
+          directory: release-tarballs
       - name: Upload test results
         if: always()
         uses: actions/upload-artifact@v7
@@ -591,14 +743,3 @@ jobs:
           name: ctest-results-linux-armhf
           path: wsjtx-build/ctest-results.xml
           if-no-files-found: ignore
-
-      - name: Report suppressed armhf ccache save
-        if: inputs.save_ccache && steps.image.outputs.recipe_match != 'true'
-        run: echo "::notice::Not saving armhf ccache because this build used a stale Linux CI image recipe"
-
-      - name: Save armhf ccache
-        if: inputs.save_ccache && steps.image.outputs.recipe_match == 'true' && steps.ccache.outputs.cache-hit != 'true'
-        uses: actions/cache/save@v6
-        with:
-          path: .ccache-armhf
-          key: ${{ steps.ccache.outputs.cache-primary-key }}

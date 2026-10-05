@@ -82,6 +82,8 @@ if [ "${1:-}" = "--self-test" ]; then
   expect_non_input normal-noble ".github/images/linux-ci/install-armhf-runtime-packages.sh"
   expect_input armhf-cross-bookworm ".github/images/linux-ci/armhf-cross-toolchain.config"
   expect_non_input armhf-runtime-bookworm ".github/images/linux-ci/armhf-cross-toolchain.config"
+  expect_input armhf-cross-bookworm ".github/scripts/armhf-toolchain-config.sh"
+  expect_input armhf-runtime-bookworm ".github/scripts/armhf-toolchain-config.sh"
   expect_input normal-noble ".github/scripts/build-hamlib-linux.sh"
   expect_non_input tsan-noble ".github/scripts/build-hamlib-linux.sh"
   expect_input tsan-noble ".github/scripts/build-qt-tsan-linux.sh"

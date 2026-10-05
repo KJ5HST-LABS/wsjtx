@@ -8,6 +8,8 @@
 #include <array>
 #include <cstdint>
 
+#include "JttyReceiveTiming.hpp"
+
 extern "C" {
 std::int32_t jtty_rx_create ();
 void jtty_rx_destroy (std::int32_t handle);
@@ -61,7 +63,7 @@ public:
   bool valid () const { return handle_ != 0; }
 
   void begin (qint64 sessionId, qint64 gridOrigin, qint64 firstSearch,
-              int samplesPerSymbol = 384)
+              int samplesPerSymbol = receiveSamplesPerSymbol)
   {
     jtty_rx_begin (handle_, sessionId, gridOrigin, firstSearch, samplesPerSymbol);
   }

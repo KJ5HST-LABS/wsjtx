@@ -3,13 +3,15 @@ module decoder_engine_types
   implicit none
   private
   public :: ft8_signal_evidence, ft4_signal_evidence, superfox_evidence, superfox_observation
+  public :: jt9_result,jt65_result
   public :: engine_payload_none,engine_payload_decoded,engine_payload_hypothesis
   public :: sf_kind_cq,sf_kind_exchange,sf_kind_free_text,sf_kind_verification
   public :: engine_observation, engine_observation_sink, engine_superfox_sink
-  public :: engine_abi,engine_mode_ft8,engine_mode_ft4,engine_support_ft8,engine_support_ft4
+  public :: engine_abi,engine_mode_ft8,engine_mode_ft4,engine_mode_jt9,engine_mode_jt65
+  public :: engine_support_ft8,engine_support_ft4,engine_support_jt9,engine_support_jt65
 
-  integer(c_int), parameter :: engine_abi=3,engine_mode_ft8=8,engine_mode_ft4=5
-  integer(c_int), parameter :: engine_support_ft8=1,engine_support_ft4=2
+  integer(c_int), parameter :: engine_abi=5,engine_mode_ft8=8,engine_mode_ft4=5,engine_mode_jt9=9,engine_mode_jt65=65
+  integer(c_int), parameter :: engine_support_ft8=1,engine_support_ft4=2,engine_support_jt9=4,engine_support_jt65=8
 
   integer, parameter :: engine_payload_none=0,engine_payload_decoded=1,engine_payload_hypothesis=2
   integer, parameter :: sf_kind_cq=1,sf_kind_exchange=2,sf_kind_free_text=3,sf_kind_verification=4
@@ -40,6 +42,17 @@ module decoder_engine_types
      integer(c_int) :: legacy_line_length=0
   end type
 
+  type, bind(C) :: jt9_result
+     integer(c_int) :: has_drift=0
+     real(c_float) :: drift_hz_per_minute=0.0
+  end type
+
+  type, bind(C) :: jt65_result
+     integer(c_int) :: kind=0,method=0,average_count=0,sync_polarity=0,smoothing=0
+     integer(c_int) :: has_width=0,has_drift=0
+     real(c_float) :: width_hz=0.0,drift_hz=0.0
+  end type
+
   type, bind(C) :: engine_observation
      integer(c_int64_t) :: input_id=0,analysis_id=0
      integer(c_int) :: attempt_no=0,mode=engine_mode_ft8,variant=0
@@ -49,6 +62,8 @@ module decoder_engine_types
      type(ft8_signal_evidence) :: ft8
      type(ft4_signal_evidence) :: ft4
      type(superfox_evidence) :: superfox
+     type(jt9_result) :: jt9
+     type(jt65_result) :: jt65
   end type
 
   abstract interface

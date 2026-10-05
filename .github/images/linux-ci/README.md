@@ -40,9 +40,11 @@ and `linux-noble:stable` moves last within that cohort. Consumers resolve that
 pointer to its immutable `build-*` tag and use the same generation for every
 normal Linux leg.
 
-The armhf image pair is published explicitly with `include_armhf: true`. It is
-excluded from routine weekly/monthly refreshes because toolchain construction
-is expensive. The pair is built, promoted, and rolled back as one generation.
+The ARMHF image pair is included when the cache-refresh workflow refreshes the
+normal Linux image cohort. The pair is built, promoted, and rolled back as one
+generation. Its toolchain stage is reused unless a toolchain input or the explicit
+rebuild revision changes.
+
 Opt-in full-ci, release, and standalone armhf builds resolve the last promoted
 runtime generation once and require the matching cross-builder tag; a missing
 member fails explicitly. Manual full-ci can instead name an immutable candidate
@@ -74,6 +76,39 @@ retagging a retained `validated-build-*` generation as `stable` for rollback.
 Promotion and rollback are restricted to `develop`; non-promoting candidate
 builds may be run from another ref.
 
+## ARMHF toolchain reuse
+
+The cross-builder has an independent toolchain stage pinned to a Debian Bookworm
+amd64 base digest, which monthly refreshes do not update. Its inputs are the
+bootstrap package recipe, apt helper, `armhf-toolchain-config.sh`, and
+`armhf-cross-toolchain.config`. The final image
+uses the maintained Bookworm base and refreshes host packages, the ARMHF sysroot,
+and Hamlib independently. Monthly refresh epochs and full image fingerprints do
+not invalidate the toolchain stage.
+
+The ARMHF cross-builder exports intermediate layers to the `buildcache` tag in
+its own GHCR package with registry `mode=max` caching. Internal and public-release
+publication use their respective package namespaces for both imports and exports.
+A fresh builder can therefore reuse the completed toolchain stage. Only source
+archives use a local BuildKit cache mount; each actual toolchain build starts with
+a clean build directory and retains its detailed failure log in the job output.
+
+For an intentional toolchain refresh, update the pinned base digest when needed
+and increment `ARMHF_TOOLCHAIN_REBUILD_REVISION` in `armhf-toolchain-config.sh`.
+The revision invalidates the bootstrap package installation as well as compiler
+construction. Compiler, ABI, crosstool-NG, and ct-ng configuration changes also
+invalidate the relevant toolchain layers. Publish with `include_armhf: true` and
+validate the resulting image pair before promoting it. Final image manifests
+and compiler signatures are regenerated against the final host runtime libraries;
+reusing compiler files does not bypass compatibility checks.
+
+To validate reuse, export a baseline cache and import it into a fresh Buildx
+builder after changing only the refresh epoch or a downstream dependency input.
+The ct-ng build must be cached while the dependency work reruns. A changed ct-ng
+configuration or rebuild revision must execute the toolchain build again. Keep
+these validation publications separate from stable promotion and retain their
+build logs, image verification results, and timings.
+
 ## ccache compatibility
 
 The image recipe and ccache compatibility identities intentionally answer
@@ -91,10 +126,22 @@ normal per-object invalidation. Changes to unrelated image packages do not
 discard otherwise compatible objects.
 
 A new generation first restores its own snapshot and then falls back to any
-compatible older generation. The candidate build recompiles only genuine
-misses and saves an augmented generation-specific snapshot before promotion.
-Recipe-stale fallback builds may restore caches but are not allowed to save
-them.
+compatible older generation. The build recompiles only genuine misses and
+saves an augmented generation-specific snapshot. Recipe-stale fallback builds
+may restore caches but are not allowed to save them.
+
+ARMHF warming compiles production and test targets and runs the binary audits,
+then saves objects without preparing an AppDir or executing runtime tests and
+packaging. Image-pair verification, including its brief QEMU checks, remains
+required. The `armhf_build_only` workflow input defaults to false, preserving
+full ARMHF CI; build-only cache writes require `develop`.
+
+The cache-refresh workflow selects ARMHF weekly, for relevant build/configuration
+changes on `develop`, and through its `linux-armhf` manual target. Source-only
+pushes do not select it. Successful internal ARMHF image promotion warms the
+exact new generation afterward; a warmer failure does not undo promotion.
+Standalone and post-promotion warmers share a concurrency group, and an image
+refresh suppresses duplicate standalone warming.
 
 ## Retention
 
@@ -102,7 +149,8 @@ The weekly retention job keeps `stable`, preserves unrecognized and untagged
 versions, retains at least the newest three recognized package versions, and
 deletes only recognized build, validated-build, and candidate versions older
 than 60 days. Manual retention runs are dry-run only; scheduled runs apply the
-printed plan.
+printed plan. The ARMHF `buildcache` tag is protected as an unrecognized tag;
+older cache manifests left untagged when it moves are also preserved.
 
 The Buildx jobs deliberately disable provenance and SBOM attachment. Even a
 single-platform attestation is represented through an image index with

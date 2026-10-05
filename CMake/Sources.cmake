@@ -15,6 +15,7 @@ set (wsjt_qt_CXXSRCS
   helper_functions.cpp
   qt_helpers.cpp
   widgets/MessageBox.cpp
+  widgets/SuggestedFrequenciesDialog.cpp
   MetaDataRegistry.cpp
   Network/NetworkServerLookup.cpp
   Network/DecodedTime.cpp
@@ -28,6 +29,7 @@ set (wsjt_qt_CXXSRCS
   models/Bands.cpp
   models/Modes.cpp
   models/FrequencyList.cpp
+  models/FrequencySuggestions.cpp
   models/StationList.cpp
   widgets/FrequencyLineEdit.cpp
   widgets/FrequencyDeltaLineEdit.cpp
@@ -194,6 +196,7 @@ set (wsjtx_CXXSRCS
   widgets/mainwindow.cpp
   widgets/mainwindow_jtty.cpp
   widgets/mainwindow_jtty_receive.cpp
+  JttyReceiveResultController.cpp
   JttyRecording.cpp
   Modulator/JttyTxStream.cpp
   widgets/mainwindow_settings.cpp
@@ -219,6 +222,7 @@ if (WSJT_ENABLE_TESTS)
     Audio/FixtureSoundOutput.cpp
     Ft8TxLoopbackTestController.cpp
     JttyTxLoopbackTestController.cpp
+    WavDecodeTestController.cpp
     LiveAudioTestController.cpp
     ReceiveHandoffTestController.cpp
     )
@@ -273,6 +277,7 @@ set (wsjt_FSRCS
   lib/jt4.f90
   lib/jt4_decode.f90
   lib/jt65_decode.f90
+  lib/jt65_host_support.f90
   lib/jt65_mod.f90
   lib/jt65_mod6.f90 #ft8md
   lib/ft8_decode.f90

@@ -7,6 +7,8 @@
 #include "JttySpectrum.hpp"
 #include "JttyMessages.hpp"
 #include "JttyReceiveLine.hpp"
+#include "JttyReceiveResultController.hpp"
+#include "JttyReceiveTiming.hpp"
 #include "Detector/Detector.hpp"
 #include "Logger.hpp"
 #ifdef WIN32
@@ -24,9 +26,8 @@ extern dec_data_t& dec_data;
 extern "C" void refspectrum_(short*, int*, bool*, bool*, bool*, char const*, fortran_charlen_t);
 
 namespace {
-constexpr qint64 frameSamples = 59 * 384;
-constexpr qint64 stepSamples = frameSamples / 4;
-constexpr qint64 windowSamples = frameSamples + stepSamples;
+constexpr qint64 stepSamples = Jtty::receiveFrameSamples / 4;
+constexpr qint64 windowSamples = Jtty::receiveFrameSamples + stepSamples;
 
 JttyRecording::SavePolicy savePolicy(bool all, bool decoded)
 {
@@ -46,13 +47,6 @@ struct ReceiveSpan {
   float center = 1500, tolerance = 50;
 };
 
-struct ReceiveLine {
-  QString text;
-  JttyReceiveLine allLine, qsoLine;
-  DecodeOperatingContext context;
-  bool admitted = false;
-};
-
 void renderLine(DisplayText* browser, JttyReceiveLine::Presentation const& presentation,
                 JttyReceiveLine::Options const& options, JttyReceiveLine& line, bool chronological)
 {
@@ -64,7 +58,8 @@ void renderLine(DisplayText* browser, JttyReceiveLine::Presentation const& prese
 }
 
 struct MainWindow::JttyReceiveState {
-  enum class DecodeSource { Live, Wav, Review };
+  using Results = Jtty::ReceiveResultController;
+  using DecodeSource = Results::Source;
   Jtty::ReceiveHistory history;
   QMap<quint64, ReceiveSpan> spans;
   ReceiveSpan liveSpan, reviewSpan, diskSpan;
@@ -74,15 +69,13 @@ struct MainWindow::JttyReceiveState {
   Jtty::Decoder live, review, diskDecoder;
   JttySpectrum spectrum, diskSpectrum;
   JttyRecording recording;
-  QHash<qint64, ReceiveLine> liveLines, reviewLines;
-  struct SnrHistoryEntry { QString text; int snr; bool admitted; };
-  std::deque<SnrHistoryEntry> snrHistory;
+  Results results;
   JttyReceiveMailboxPtr liveMailbox;
   std::deque<JttyReceiveMailboxPtr> mailboxes;
   struct ReviewJob { ReceiveSpan span; qint64 first, stop; std::vector<short> pcm; bool picked; };
   std::deque<ReviewJob> jobs;
   bool scheduled = false, pumping = false, active = false, reviewing = false;
-  bool reviewHeading = false, disk = false, continuous = false;
+  bool disk = false, continuous = false;
   bool draining = false, drainCutoff = false, closeAfterDrain = false;
   std::function<void()> drainProgress;
 #if defined(WSJT_ENABLE_LIVE_AUDIO_TEST)
@@ -97,106 +90,63 @@ struct MainWindow::JttyReceiveState {
   void apply(MainWindow& window, QVector<Jtty::ReceiveUpdate> const& updates,
              ReceiveSpan const& span, DecodeSource source)
   {
-    auto& lines = source == DecodeSource::Live ? liveLines : reviewLines;
-    for (auto const& update : updates) {
-      if (update.text.isEmpty()) continue;
-      if (source == DecodeSource::Review && !reviewHeading) {
-        window.ui->decodedTextBrowser->insertLineSpacer(MainWindow::tr("JTTY review"));
-        window.ui->decodedTextBrowser2->insertLineSpacer(MainWindow::tr("JTTY review"));
-        reviewHeading = true;
-      }
-      bool const known = lines.contains(update.messageId);
-      auto& line = lines[update.messageId];
-      if (!known) {
-        line.context = span.context;
-        line.context.sequenceStart = span.anchor.addMSecs(qRound64(update.startSeconds * 1000.0));
-      }
-      auto const change = Jtty::compareMessages(line.text, update.text);
-      JttyReceiveLine::Presentation const presentation {span.displayGroup, update.messageId,
-        span.displayAnchor.addMSecs(qRound64(update.startSeconds * 1000.0)), update.startSeconds,
-        qRound(update.frequency), update.text, update.snr};
-      JttyReceiveLine::Options const options {window.ui->cbLowerCase->isChecked(),
-                                             window.ui->cbIncludeTime->isChecked()};
-      renderLine(window.ui->decodedTextBrowser, presentation, options, line.allLine, true);
-      bool const current = source == DecodeSource::Live && window.m_mode == "JTTY" && span.contextId == currentContext;
-      float const center = current ? window.ui->RxFreqSpinBox_2->value() : span.center;
-      float const tolerance = current ? window.ui->sbFtol_2->value() : span.tolerance;
-      bool const wasAdmitted = line.admitted;
-      line.admitted = Jtty::shouldApplyToQsoHistory(line.admitted, update.frequency, center, tolerance);
-      if (line.admitted) {
-        renderLine(window.ui->decodedTextBrowser2, presentation, options, line.qsoLine, false);
+    Results::Reception const reception {source, span.contextId, span.displayGroup,
+      span.anchor, span.displayAnchor, span.context, span.center, span.tolerance};
+    Results::Inputs const inputs {
+      [&window] { return JttyReceiveLine::Options {window.ui->cbLowerCase->isChecked(),
+                                                   window.ui->cbIncludeTime->isChecked()}; },
+      [&window, this] { return Results::Selection {window.m_mode == "JTTY", currentContext,
+        float(window.ui->RxFreqSpinBox_2->value()), float(window.ui->sbFtol_2->value())}; },
+      [&window] {
 #ifdef WIN32
-        if (source != DecodeSource::Review && window.m_mmttyif && (change.messageChanged || !wasAdmitted)) {
-          QString delta = wasAdmitted && change.extendsMessage ? change.appendedText : update.text;
-          if (!wasAdmitted || !change.extendsMessage) delta.prepend("\r\n");
-          if (window.ui->cbLowerCase->isChecked()) delta = delta.toLower();
-          window.m_mmttyif->echo_message_to_n1mm(delta);
-        }
+        return Results::EchoOptions {bool(window.m_mmttyif), window.ui->cbLowerCase->isChecked()};
 #else
-        Q_UNUSED(wasAdmitted);
-        Q_UNUSED(change);
+        Q_UNUSED(window);
+        return Results::EchoOptions {};
 #endif
+      },
+      [&window] { return window.m_config.spot_to_psk_reporter(); }
+    };
+    Results::Effects const effects {
+      [&window](Results::Pane pane) {
+        auto* browser = pane == Results::Pane::All
+          ? window.ui->decodedTextBrowser : window.ui->decodedTextBrowser2;
+        browser->insertLineSpacer(MainWindow::tr("JTTY review"));
+      },
+      [&window](Results::Pane pane, JttyReceiveLine& line,
+                JttyReceiveLine::Presentation const& presentation,
+                JttyReceiveLine::Options const& options) {
+        auto* browser = pane == Results::Pane::All
+          ? window.ui->decodedTextBrowser : window.ui->decodedTextBrowser2;
+        renderLine(browser, presentation, options, line, pane == Results::Pane::All);
+      },
+      [&window](QString const& text) {
+#ifdef WIN32
+        window.m_mmttyif->echo_message_to_n1mm(text);
+#else
+        Q_UNUSED(window);
+        Q_UNUSED(text);
+#endif
+      },
+      [this](qint64 first, qint64 last) { recording.noteDecoded(first, last); },
+      [&window](QString const& text, DecodeOperatingContext const& context) {
+        window.write_all("Rx", text, &context);
+      },
+      [&window](Results::Spot const& spot) {
+        if (!window.m_psk_Reporter.addRemoteStation(spot.sender, spot.grid, spot.frequency,
+                                                   spot.mode, spot.snr, spot.time))
+          window.showStatusMessage(MainWindow::tr("PSK Reporter spot queue full; oldest spot dropped"));
       }
-      line.text = update.text;
-      if (source == DecodeSource::Live) {
-        auto const start = qRound64(update.latestSeconds * 12000.0);
-        recording.noteDecoded(start, start + frameSamples);
-      }
-      if (source != DecodeSource::Review && update.terminal != Jtty::ReceiveTerminal::Growing) {
-        window.write_all("Rx", Jtty::formatJttyDecodeLine(
-          qRound(update.frequency), update.snr, update.text), &line.context);
-
-        // JTTY terminal decodes use this receive path rather than
-        // fast_decode_done(). Report only completed, live messages whose
-        // leading fields identify the transmitting station.
-        if (source == DecodeSource::Live
-            && update.terminal == Jtty::ReceiveTerminal::Complete
-            && window.m_config.spot_to_psk_reporter()) {
-          auto const fields = update.text.simplified().split(QChar{' '}, Qt::SkipEmptyParts);
-          if (fields.size() >= 2) {
-            auto const& first = fields.at(0);
-            auto const& sender = fields.at(1);
-            bool const structured = (first.compare(QStringLiteral("CQ"), Qt::CaseInsensitive) == 0
-                                     || first.compare(QStringLiteral("DE"), Qt::CaseInsensitive) == 0
-                                     || window.stdCall(first))
-                                    && window.stdCall(sender);
-            bool const selfSpot =
-              sender.compare(line.context.myCall, Qt::CaseInsensitive) == 0;
-
-            if (structured && !selfSpot) {
-              QString grid;
-              if (fields.size() >= 3 && fields.at(2).contains(MainWindow::grid_regexp))
-                grid = fields.at(2);
-
-              auto const frequency = line.context.periodFrequency + qRound(update.frequency);
-              auto const spotTime = line.context.sequenceStart.toUTC();
-              if (spotTime.isValid()
-                  && !window.m_psk_Reporter.addRemoteStation(
-                       sender, grid, frequency, QStringLiteral("JTTY"),
-                       update.snr, spotTime)) {
-                window.showStatusMessage(
-                  MainWindow::tr("PSK Reporter spot queue full; oldest spot dropped"));
-              }
-            }
-          }
-        }
-      }
-      snrHistory.push_back({update.text, update.snr, line.admitted});
-      if (snrHistory.size() > 500) snrHistory.pop_front();
-      if (update.terminal != Jtty::ReceiveTerminal::Growing) lines.remove(update.messageId);
-    }
+    };
+    results.apply(updates, reception, inputs, effects);
   }
 };
 
 int MainWindow::jttySnrForSelectedWord(QString const& word, bool leftPane) const
 {
   if (!m_jttyReceive) return -10;
-  auto const& history = m_jttyReceive->snrHistory;
-  for (auto it = history.crbegin(); it != history.crend(); ++it) {
-    if (!leftPane && !it->admitted) continue;
-    if (it->text.split(QChar{' '}, Qt::SkipEmptyParts).contains(word)) return it->snr;
-  }
-  return -10;
+  return m_jttyReceive->results.snrForSelectedWord(word,
+    leftPane ? Jtty::ReceiveResultController::Pane::All : Jtty::ReceiveResultController::Pane::Qso);
 }
 
 void MainWindow::refreshJttyReceiveLines()
@@ -228,8 +178,7 @@ void MainWindow::cancelJttyReview()
   state.review.end();
   state.review.takeUpdates();
   state.reviewing = false;
-  state.reviewHeading = false;
-  state.reviewLines.clear();
+  state.results.resetReplay();
   if (hadReview && !state.disk) ui->DecodeButton->setChecked(false);
 }
 
@@ -815,7 +764,7 @@ void MainWindow::beginJttyDisk()
   state.diskSpan.low = m_wideGraph->nStartFreq(); state.diskSpan.high = m_wideGraph->Fmax();
   state.diskSpan.center = ui->RxFreqSpinBox_2->value(); state.diskSpan.tolerance = ui->sbFtol_2->value();
   state.diskK = -1;
-  state.reviewHeading = false; state.reviewLines.clear();
+  state.results.resetReplay();
 }
 
 void MainWindow::decodeJttyDisk(int k)
@@ -829,7 +778,7 @@ void MainWindow::decodeJttyDisk(int k)
     state.diskDecoder.begin(state.diskSpan.id, 0, 0);
     state.diskSpectrum.begin(state.diskSpan.id, 0, state.diskSpan.anchor.toMSecsSinceEpoch());
     state.disk = true; state.diskK = 0;
-    state.reviewHeading = false; state.reviewLines.clear();
+    state.results.resetReplay();
   }
   if (k > state.diskK)
     state.diskSpectrum.process(state.diskK, dec_data.d2 + state.diskK, k - state.diskK,

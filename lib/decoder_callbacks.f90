@@ -2,7 +2,7 @@ module decoder_callbacks
 
   use jt4_decode
   use jt65_decode
-  use jt9_decode
+  use jt9_decode, only: jt9_decoder
   use ft8_decode
   use ft8_decodevar
   use ft4_decode
@@ -10,6 +10,7 @@ module decoder_callbacks
   use q65_decode
   use streaming_emit, only: streaming_emit_enabled, streaming_emit_decode
   use decoder_engine_types
+  use jt65_host_support, only: write_jt65_averages
   use, intrinsic :: iso_c_binding, only: c_ptr,c_null_ptr,c_char,c_null_char
 
   implicit none
@@ -19,7 +20,9 @@ module decoder_callbacks
      integer :: nutc = 0
      integer :: nfqso = 0
      integer :: ncontest = 0
+     integer :: submode = 0
      integer :: ios13 = -1
+     integer :: ios14 = -1
      logical :: bVHF = .false.
      logical :: b_superfox = .false.
      character(len=12) :: mycall = '            '
@@ -182,9 +185,12 @@ contains
     logical context_bVHF
     logical is_deep,is_average
     character decoded*22,csync*2,cflags*3
+    type(decoder_callback_context) :: context
+    type(engine_observation) :: observation
 
     select type (typed_this => this)
     type is (counting_jt65_decoder)
+       context = typed_this%context
        context_nutc = typed_this%context%nutc
        context_ios13 = typed_this%context%ios13
        context_bVHF = typed_this%context%bVHF
@@ -192,7 +198,32 @@ contains
        return
     end select
 
+    observation=engine_observation()
+    observation%mode=engine_mode_jt65
+    observation%variant=context%submode
+    observation%snr_db=snr
+    observation%frequency_hz=real(freq)
+    observation%dt_seconds=dt
+    observation%sync=sync
+    observation%quality=real(qual)
+    observation%ap_type=ishft(ft,-2)
+    observation%jt65%kind=merge(1,0,len_trim(decoded0)>0)
+    observation%jt65%method=iand(ft,3)
+    observation%jt65%average_count=nsum
+    observation%jt65%sync_polarity=nflip
+    observation%jt65%smoothing=nsmo
+    observation%jt65%has_width=merge(1,0,context%bVHF)
+    if(context%bVHF) observation%jt65%width_hz=width
+    observation%jt65%has_drift=merge(1,0,nflip/=0)
+    if(nflip/=0) observation%jt65%drift_hz=real(drift)
+    do i=1,len_trim(decoded0)
+       observation%message(i)=decoded0(i:i)
+    enddo
+    if(associated(context%sink)) call context%sink(context%sink_user,observation)
+
+    if(context%render_legacy) then
     !$omp critical(decode_results)
+    if(context%ios14==0) call write_jt65_averages(this,14)
     decoded=decoded0
     cflags='   '
     is_deep=ft.eq.2
@@ -254,9 +285,10 @@ contains
     call flush(6)
 
     !$omp end critical(decode_results)
+    endif
     select type (typed_this => this)
     type is (counting_jt65_decoder)
-       typed_this%decoded = typed_this%decoded + 1
+       if(len_trim(decoded0)>0) typed_this%decoded = typed_this%decoded + 1
     end select
   end subroutine jt65_decoded
 
@@ -270,16 +302,36 @@ contains
     real, intent(in) :: freq
     integer, intent(in) :: drift
     character(len=22), intent(in) :: decoded
-    integer context_nutc, context_ios13
+    type(engine_observation) :: observation
+    type(decoder_callback_context) :: context
+    integer context_nutc, context_ios13,i
 
     select type (typed_this => this)
     type is (counting_jt9_decoder)
+       context = typed_this%context
        context_nutc = typed_this%context%nutc
        context_ios13 = typed_this%context%ios13
     class default
        return
     end select
 
+    observation=engine_observation()
+    observation%mode=engine_mode_jt9
+    observation%variant=context%submode
+    observation%snr_db=snr
+    observation%frequency_hz=freq
+    observation%dt_seconds=dt
+    observation%sync=sync
+    if(context%submode==0) then
+       observation%jt9%has_drift=1
+       observation%jt9%drift_hz_per_minute=real(drift)*(12000.0/16384.0)*60.0/48.96
+    endif
+    do i=1,len_trim(decoded)
+       observation%message(i)=decoded(i:i)
+    enddo
+    if(associated(context%sink)) call context%sink(context%sink_user,observation)
+
+    if(context%render_legacy) then
     !$omp critical(decode_results)
 
     if (streaming_emit_enabled()) then
@@ -293,6 +345,7 @@ contains
 1002 format(i4.4,i4,i5,f6.1,f8.0,i4,3x,a22,' JT9')
     call flush(6)
     !$omp end critical(decode_results)
+    endif
     select type (typed_this => this)
     type is (counting_jt9_decoder)
        typed_this%decoded = typed_this%decoded + 1

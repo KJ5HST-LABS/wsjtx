@@ -189,6 +189,11 @@
 #include <QSerialPortInfo>
 #include <QItemSelectionModel>
 #include <QMenu>
+#include <QFrame>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QPushButton>
+#include <QSet>
 #include <vector>
 #include <utility>
 #include <iostream>
@@ -213,11 +218,13 @@
 #include "models/IARURegions.hpp"
 #include "models/Modes.hpp"
 #include "models/FrequencyList.hpp"
+#include "models/FrequencySuggestions.hpp"
 #include "models/StationList.hpp"
 #include "Network/NetworkServerLookup.hpp"
 #include "Network/FoxVerifier.hpp"
 #include "widgets/MessageBox.hpp"
 #include "widgets/SettingsDialogLayout.hpp"
+#include "widgets/SuggestedFrequenciesDialog.hpp"
 #include "validators/MaidenheadLocatorValidator.hpp"
 #include "validators/CallsignValidator.hpp"
 #include "Network/LotWUsers.hpp"
@@ -736,6 +743,10 @@ private:
   void save_frequencies ();
   void reset_frequencies ();
   void insert_frequency ();
+  void show_suggested_frequencies ();
+  void refresh_suggestion_notice ();
+  void dismiss_suggestions ();
+  void persist_seen_suggestions ();
   void size_frequency_table_columns();
 
     FrequencyList_v2_101::FrequencyItems read_frequencies_file (QString const&);
@@ -943,7 +954,13 @@ private:
   QAction * save_frequencies_action_;
   QAction * merge_frequencies_action_;
   QAction * reset_frequencies_action_;
+  QAction * suggested_frequencies_action_;
   FrequencyDialog * frequency_dialog_;
+  QFrame * suggestions_notice_ {nullptr};
+  QLabel * suggestions_notice_label_ {nullptr};
+  QPushButton * suggestions_browse_button_ {nullptr};
+  QPushButton * suggestions_dismiss_button_ {nullptr};
+  FrequencySuggestions::NoticeState suggestion_notice_state_;
 
   QAction station_delete_action_;
   QAction station_insert_action_;
@@ -2374,6 +2391,22 @@ Configuration::impl::impl (Configuration * self, QNetworkAccessManager * network
   ui_->calibration_slope_ppm_spin_box->setAccessibleName (tr ("Frequency calibration slope"));
   ui_->calibration_intercept_spin_box->setAccessibleName (tr ("Frequency calibration intercept"));
   ui_->frequencies_table_view->setAccessibleName (tr ("Working frequencies table"));
+  suggestions_notice_ = new QFrame {ui_->frequencies_tab};
+  suggestions_notice_->setFrameShape (QFrame::StyledPanel);
+  auto * suggestions_notice_layout = new QHBoxLayout {suggestions_notice_};
+  suggestions_notice_label_ = new QLabel {suggestions_notice_};
+  suggestions_notice_label_->setWordWrap (true);
+  suggestions_browse_button_ = new QPushButton {tr ("Browse suggestions..."), suggestions_notice_};
+  suggestions_dismiss_button_ = new QPushButton {tr ("Dismiss"), suggestions_notice_};
+  suggestions_notice_layout->addWidget (suggestions_notice_label_, 1);
+  suggestions_notice_layout->addWidget (suggestions_browse_button_);
+  suggestions_notice_layout->addWidget (suggestions_dismiss_button_);
+  ui_->horizontalLayout->insertWidget (0, suggestions_notice_);
+  suggestions_notice_->hide ();
+  connect (suggestions_browse_button_, &QPushButton::clicked,
+           this, &Configuration::impl::show_suggested_frequencies);
+  connect (suggestions_dismiss_button_, &QPushButton::clicked,
+           this, &Configuration::impl::dismiss_suggestions);
   ui_->stations_table_view->setAccessibleName (tr ("Station information table"));
   ui_->highlighting_list_view->setAccessibleName (tr ("Decode highlighting rules"));
   ui_->highlighting_list_view->setAccessibleDescription (tr ("Highlighting rules and priorities for decoded messages."));
@@ -2537,6 +2570,8 @@ Configuration::impl::impl (Configuration * self, QNetworkAccessManager * network
   register_settings_focus_page (ui_->frequencies_tab, {
     ui_->calibration_slope_ppm_spin_box,
     ui_->calibration_intercept_spin_box,
+    suggestions_browse_button_,
+    suggestions_dismiss_button_,
     ui_->frequencies_actions_tool_button,
     ui_->frequencies_table_view,
     ui_->stations_actions_tool_button,
@@ -2745,6 +2780,12 @@ Configuration::impl::impl (Configuration * self, QNetworkAccessManager * network
     PerformanceTrace::Phase settings_read {"configuration.settings_read"};
     read_settings ();
   }
+  {
+    SettingsGroup g {settings_, "Configuration"};
+    suggestion_notice_state_ = FrequencySuggestions::NoticeState {
+      settings_->value ("SeenSuggestedFrequencyKeys").toStringList (),
+      settings_->contains ("SeenSuggestedFrequencyKeys")};
+  }
 
   // set up dynamic loading of audio devices
   connect (ui_->sound_input_combo_box, &LazyFillComboBox::about_to_show_popup, [this] () {
@@ -2900,6 +2941,14 @@ Configuration::impl::impl (Configuration * self, QNetworkAccessManager * network
   frequencies_.sort (FrequencyList_v2_101::frequency_column);
 
   ui_->frequencies_table_view->setModel (&next_frequencies_);
+  connect (&next_frequencies_, &QAbstractItemModel::dataChanged,
+           this, [this] { refresh_suggestion_notice (); });
+  connect (&next_frequencies_, &QAbstractItemModel::rowsInserted,
+           this, [this] { refresh_suggestion_notice (); });
+  connect (&next_frequencies_, &QAbstractItemModel::rowsRemoved,
+           this, [this] { refresh_suggestion_notice (); });
+  connect (&next_frequencies_, &QAbstractItemModel::modelReset,
+           this, [this] { refresh_suggestion_notice (); });
   ui_->frequencies_table_view->setTabKeyNavigation (false);
   ui_->frequencies_table_view->horizontalHeader ()->setSectionResizeMode (QHeaderView::ResizeToContents);
 
@@ -2925,6 +2974,11 @@ Configuration::impl::impl (Configuration * self, QNetworkAccessManager * network
   ui_->frequencies_table_view->insertAction (nullptr, frequency_insert_action_);
   connect (frequency_insert_action_, &QAction::triggered, this, &Configuration::impl::insert_frequency);
 
+  suggested_frequencies_action_ = new QAction {tr ("Add suggested frequencies ..."), ui_->frequencies_table_view};
+  ui_->frequencies_table_view->insertAction (nullptr, suggested_frequencies_action_);
+  connect (suggested_frequencies_action_, &QAction::triggered,
+           this, &Configuration::impl::show_suggested_frequencies);
+
   load_frequencies_action_ = new QAction {tr ("&Load ..."), ui_->frequencies_table_view};
   ui_->frequencies_table_view->insertAction (nullptr, load_frequencies_action_);
   connect (load_frequencies_action_, &QAction::triggered, this, &Configuration::impl::load_frequencies);
@@ -2945,6 +2999,7 @@ Configuration::impl::impl (Configuration * self, QNetworkAccessManager * network
   frequencies_actions_menu->addAction (frequency_insert_action_);
   frequencies_actions_menu->addAction (frequency_delete_action_);
   frequencies_actions_menu->addSeparator ();
+  frequencies_actions_menu->addAction (suggested_frequencies_action_);
   frequencies_actions_menu->addAction (load_frequencies_action_);
   frequencies_actions_menu->addAction (save_frequencies_action_);
   frequencies_actions_menu->addAction (merge_frequencies_action_);
@@ -3287,6 +3342,10 @@ void Configuration::impl::initialize_models ()
 
   next_macros_.setStringList (macros_.stringList ());
   next_frequencies_.frequency_list (frequencies_.frequency_list ());
+  if (suggestion_notice_state_.acknowledge_present_catalog (
+        FrequencyList_v2_101::default_items (), frequencies_.frequency_list ()))
+    persist_seen_suggestions ();
+  refresh_suggestion_notice ();
   next_stations_.station_list (stations_.station_list ());
 
   next_decode_highlighing_model_.items (decode_highlighing_model_.items ());
@@ -4751,10 +4810,14 @@ void Configuration::impl::accept ()
   alert_Enabled_ = ui_->pbAlerts->isChecked();
 
   write_settings ();		// make visible to all
+  if (suggestion_notice_state_.commit (FrequencyList_v2_101::default_items (),
+                                       frequencies_.frequency_list ()))
+    persist_seen_suggestions ();
 }
 
 void Configuration::impl::reject ()
 {
+  suggestion_notice_state_.cancel ();
   if (dns_lookup_id_ > -1)
     {
       QHostInfo::abortHostLookup (dns_lookup_id_);
@@ -5875,6 +5938,61 @@ void Configuration::impl::reset_frequencies ()
       next_frequencies_.reset_to_defaults ();
     }
     size_frequency_table_columns ();
+    refresh_suggestion_notice ();
+}
+
+void Configuration::impl::persist_seen_suggestions ()
+{
+  SettingsGroup g {settings_, "Configuration"};
+  settings_->setValue ("SeenSuggestedFrequencyKeys", suggestion_notice_state_.seen_keys ());
+}
+
+void Configuration::impl::dismiss_suggestions ()
+{
+  suggestion_notice_state_.dismiss (FrequencyList_v2_101::default_items ());
+  persist_seen_suggestions ();
+  suggestions_notice_->hide ();
+}
+
+void Configuration::impl::refresh_suggestion_notice ()
+{
+  auto const visibility = suggestion_notice_state_.visibility (
+    FrequencyList_v2_101::default_items (), next_frequencies_.frequency_list ());
+  suggestions_notice_label_->setText (
+    visibility == FrequencySuggestions::NoticeState::Visibility::New
+      ? tr ("New suggested frequencies are available. Choose any you want to add without resetting your list.")
+      : tr ("Suggested frequencies are available. Choose any you want to add without resetting your list."));
+  suggestions_notice_->setVisible (visibility != FrequencySuggestions::NoticeState::Visibility::Hidden);
+}
+
+void Configuration::impl::show_suggested_frequencies ()
+{
+  QSet<QString> new_keys;
+  {
+    SettingsGroup g {settings_, "Configuration"};
+    if (settings_->contains ("SeenSuggestedFrequencyKeys"))
+      {
+        auto const seen = settings_->value ("SeenSuggestedFrequencyKeys").toStringList ();
+        for (auto const& item : FrequencyList_v2_101::default_items ())
+          {
+            auto const key = FrequencySuggestions::key (item);
+            if (!seen.contains (key)) new_keys.insert (key);
+          }
+      }
+  }
+
+  SuggestedFrequenciesDialog dialog {FrequencyList_v2_101::default_items (),
+                                     next_frequencies_.frequency_list (), bands_,
+                                     new_keys, this};
+  if (dialog.exec () == QDialog::Accepted)
+    {
+      auto additions = FrequencySuggestions::prepare_additions (
+        dialog.selected_items (), next_frequencies_.frequency_list (), bands_);
+      suggestion_notice_state_.selected_additions (additions);
+      next_frequencies_.frequency_list_merge (additions);
+      size_frequency_table_columns ();
+    }
+  refresh_suggestion_notice ();
 }
 
 void Configuration::impl::insert_frequency ()

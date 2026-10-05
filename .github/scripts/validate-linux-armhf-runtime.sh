@@ -22,16 +22,15 @@ source .github/scripts/armhf-ci-image-config.sh
 .github/scripts/verify-armhf-ci-image.sh runtime "$ARCH" "$HAMLIB_BRANCH"
 
 if [ "$phase" = all ] || [ "$phase" = test ]; then
-  echo "::group::ARMHF CTest under QEMU"
+  echo "::group::ARMHF CTest"
   started="$(date +%s)"
   set +e
   (
     cd wsjtx-build
-    echo "::notice::Skipping test_jtty_continuous_decode under ARMv7 QEMU pending performance investigation"
     LD_LIBRARY_PATH="$ARMHF_RUNTIME_PREFIX" \
       QT_QPA_PLATFORM=xcb \
       xvfb-run -a -s "-screen 0 1280x1024x24" \
-      ctest --exclude-regex '^test_jtty_continuous_decode$' --output-on-failure --output-junit ctest-results.xml
+      ctest --parallel 3 --output-on-failure --output-junit ctest-results.xml
   ) 2>&1 | tee wsjtx-build/ctest-armhf.log
   status=${PIPESTATUS[0]}
   set -e
