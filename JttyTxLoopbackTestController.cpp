@@ -246,6 +246,13 @@ void JttyTxLoopbackTestController::begin ()
 {
   m_timeout.start ();
   m_modalTimer.start ();
+  // The startup splash screen installs an application-wide event filter that
+  // swallows any Escape keypress for as long as it stays visible (up to a
+  // real 20-second wall-clock timer, independent of AUDIO_SPEED), which would
+  // intercept verifyCancellationPaths' synthetic Escape before it ever
+  // reaches MainWindow::keyPressEvent. Close it immediately so this test's
+  // correctness doesn't depend on outlasting that timer.
+  QMetaObject::invokeMethod (m_window, "splash_done", Qt::DirectConnection);
   prepareWhenReady ();
 }
 
