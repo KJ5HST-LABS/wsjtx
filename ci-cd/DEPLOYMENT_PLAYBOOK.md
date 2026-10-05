@@ -908,6 +908,8 @@ Betas are unattended weekly prereleases of `develop`, published from the single 
 
 > **Unattended publication.** No person reviews a beta before it is public. Each beta carries the newest green `develop`, including its workflow changes, which the release-bot App merges onto the release line.
 
+After each beta publishes ([Schedule](#schedule)), a release manager emails the mailing list with its GitHub Release link, a short summary of what is ready for testing and feedback, and how to open its unsigned packages ([Beta signing](#beta-signing)).
+
 ### Schedule
 
 `beta-cut.yml` runs every Tuesday at 20:00 UTC (cron `0 20 * * 2`), which is 16:00 US Eastern daylight time or 15:00 Eastern standard time. The Tuesday cut leaves Monday for fixes to land on `develop`. CI, the candidate, and the public builds then take about two to three hours, so a beta publishes on Tuesday evening, US Eastern time.
