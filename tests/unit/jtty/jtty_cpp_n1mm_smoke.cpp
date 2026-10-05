@@ -22,9 +22,8 @@ extern "C" int jtty_cpp_n1mm_smoke (int tones[], int* nsym)
   return status;
 }
 
-extern "C" int jtty_cpp_cq_smoke (int tones[], int* nsym, char text[], int chained)
+extern "C" int jtty_cpp_cq_smoke (int tones[], int* nsym, char text[])
 {
-  Q_UNUSED(chained)
   Jtty::NativeMacroContext const context {QStringLiteral ("K1ABC"), {}, 0};
   auto const compiled = Jtty::compileNativeMacro (
       1, Jtty::nativeMacroTemplate (1), context);
