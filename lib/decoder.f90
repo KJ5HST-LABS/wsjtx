@@ -7,10 +7,9 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   use jt65_decode
   use jt65_host_support, only: load_jt65_calls
   use jt9_decode
-  use fst4_decode
   use decoder_callbacks, only: decoder_callback_context,                     &
        counting_jt4_decoder, counting_jt65_decoder, counting_jt9_decoder,    &
-       counting_fst4_decoder,fst4_decoded,jt4_decoded,                       &
+       jt4_decoded,                       &
        jt4_average, jt65_decoded, jt9_decoded
   use streaming_emit, only: streaming_emit_enabled,                       &
        streaming_emit_decode
@@ -39,7 +38,6 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   type(decoder_callback_context) :: callback_context
   real ss(184,NSMAX)
   logical baddata,newdat65,newdat9,bVHF,bad0,ex
-  logical lprinthash22
   integer*2 id2(NTMAX*12000)
   real*4 dd(NTMAX*12000)
   character(len=20) :: datetime
@@ -53,13 +51,13 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   type(counting_jt4_decoder) :: my_jt4
   type(counting_jt65_decoder) :: my_jt65
   type(counting_jt9_decoder) :: my_jt9
-  type(counting_fst4_decoder) :: my_fst4
 
   if(params%nmode.eq.8.or.params%nmode.eq.5.or.params%nmode.eq.9.or.params%nmode.eq.65.or. &
-       params%nmode.eq.66) then
+       params%nmode.eq.66.or.params%nmode.eq.240.or.params%nmode.eq.241.or.params%nmode.eq.242) then
      call run_decoder_engine(id2,params,nfsample,completion,progress_generation, &
           0_c_int64_t,0_c_int64_t,0_c_int, &
-          merge(params%kin,0_c_int,params%nmode==5.or.params%nmode==9.or.params%nmode==65.or.params%nmode==66))
+          merge(params%kin,0_c_int,params%nmode==5.or.params%nmode==9.or.params%nmode==65.or.params%nmode==66.or. &
+               params%nmode==240.or.params%nmode==241.or.params%nmode==242))
      return
   endif
 
@@ -69,7 +67,6 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   my_jt4%decoded = 0
   my_jt65%decoded = 0
   my_jt9%decoded = 0
-  my_fst4%decoded = 0
   nsynced=0
   navg0=0
 
@@ -131,39 +128,6 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
   my_jt4%context = callback_context
   my_jt65%context = callback_context
   my_jt9%context = callback_context
-  my_fst4%context = callback_context
-
-  if(params%nmode.eq.240) then
-     ! We're in FST4 mode
-     ndepth=iand(params%ndepth,3)
-     iwspr=0
-     lprinthash22=.false.
-     params%nsubmode=0
-     call timer('dec_fst4',0)
-     call my_fst4%decode(fst4_decoded,id2,params%nutc,                &
-          params%nQSOProgress,params%nfa,params%nfb,                  &
-          params%nfqso,ndepth,params%ntr,params%nexp_decode,          &
-          params%ntol,params%emedelay,logical(params%nagain),         &
-          logical(params%lapcqonly),mycall,hiscall,iwspr,lprinthash22)
-     call timer('dec_fst4',1)
-     go to 800
-  endif
-
-  if(params%nmode.eq.241 .or. params%nmode.eq.242) then
-     ! We're in FST4W mode
-     ndepth=iand(params%ndepth,3)
-     iwspr=1
-     lprinthash22=.false.
-     if(params%nmode.eq.242) lprinthash22=.true. 
-     call timer('dec_fst4',0)
-     call my_fst4%decode(fst4_decoded,id2,params%nutc,                &
-          params%nQSOProgress,params%nfa,params%nfb,                  &
-          params%nfqso,ndepth,params%ntr,params%nexp_decode,          &
-          params%ntol,params%emedelay,logical(params%nagain),         &
-          logical(params%lapcqonly),mycall,hiscall,iwspr,lprinthash22)
-     call timer('dec_fst4',1)
-     go to 800
-  endif
 
   ! Zap data at start that might come from T/R switching transient?
   nadd=100
@@ -275,8 +239,7 @@ subroutine multimode_decoder_core(ss,id2,params,nfsample,completion,progress_gen
 
 
 ! JT65 is not yet producing info for nsynced, ndecoded.
-800 ndecoded = my_jt4%decoded + my_jt65%decoded + my_jt9%decoded +       &
-         my_fst4%decoded
+800 ndecoded = my_jt4%decoded + my_jt65%decoded + my_jt9%decoded
   call set_decode_completion(completion,nsynced,ndecoded,navg0)
   call write_decode_progress(active_progress_generation)
   close(13)
@@ -302,7 +265,8 @@ subroutine multimode_decoder(ss,id2,params,nfsample)
   if (.not. completion%available) return
 
   if (streaming_emit_enabled()) then
-     call streaming_emit_decode_finished(params%nutc,params%nmode==66)
+     call streaming_emit_decode_finished(params%nutc,params%nmode==66.or.params%nmode==240.or. &
+          params%nmode==241.or.params%nmode==242)
   else if (.not. lquiet) then
      call write_decode_completion(completion)
   end if

@@ -21,8 +21,8 @@
 !
 ! params_block is re-exported from streaming_apply (it owns the include); the
 ! baseline is a realistic params built via jt9_params_init's init routines.
-! Compiled + run by test/run-apply-routing-unit.sh against lib/streaming_control.f90
-! + lib/jt9_params_init.f90 + lib/streaming_apply.f90, in an ISOLATED module dir.
+! Registered with CTest as test_streaming_apply; the standalone
+! test/run-apply-routing-unit.sh also supports running this driver.
 program apply_routing_test
   use streaming_control, only: configure_fields
   use jt9_params_init,   only: cli_args_t, init_default_params,             &
@@ -46,6 +46,7 @@ program apply_routing_test
   call frame_multithreaded_guard()
   call frame_qso_guard()
   call frame_utc_precedence()
+  call frame_fst4_utc()
   call frame_phase9_pack()
 
   write(*,'(a)') '------------------------------------------------------------'
@@ -599,6 +600,44 @@ contains
     call apply_configure_fields(cfg, md, tr, p, BNFA, BNFB)
     call ok('nutc+utc -> utc WINS (nutc = 133430, not 120000)', p%nutc .eq. 133430)
   end subroutine frame_utc_precedence
+
+  subroutine frame_fst4_utc()
+    type(configure_fields) :: cfg, blank
+    type(params_block) :: p
+    integer :: md, mode
+    real(8) :: tr
+    character(len=16) :: label
+
+    do mode = 240, 242
+       write(label,'(a,i0)') 'mode ', mode
+       call fresh(p)
+       cfg = blank
+       cfg%mode_set = .true.; cfg%mode = mode
+       cfg%trperiod_set = .true.; cfg%trperiod = 120.d0
+       cfg%nutc_set = .true.; cfg%nutc = 120000
+       md = 8; tr = 15.d0
+       call apply_configure_fields(cfg, md, tr, p, BNFA, BNFB)
+       call ok(trim(label)//': full numeric noon stays HHMMSS', p%nutc .eq. 120000)
+
+       cfg%mode_set = .false.; cfg%trperiod_set = .false.
+       cfg%nutc = 1234
+       call apply_configure_fields(cfg, md, tr, p, BNFA, BNFB)
+       call ok(trim(label)//': legacy numeric HHMM becomes HHMMSS', p%nutc .eq. 123400)
+
+       cfg%nutc = 15
+       call apply_configure_fields(cfg, md, tr, p, BNFA, BNFB)
+       call ok(trim(label)//': legacy numeric 0015 means 00:15:00', p%nutc .eq. 1500)
+
+       cfg%nutc = 2359
+       cfg%utc_set = .true.; cfg%utc_nutc = 1500
+       call apply_configure_fields(cfg, md, tr, p, BNFA, BNFB)
+       call ok(trim(label)//': ISO 00:15:00 overrides numeric HHMM', p%nutc .eq. 1500)
+
+       cfg%nutc_set = .false.; cfg%utc_nutc = 30
+       call apply_configure_fields(cfg, md, tr, p, BNFA, BNFB)
+       call ok(trim(label)//': ISO 00:00:30 retains seconds', p%nutc .eq. 30)
+    end do
+  end subroutine frame_fst4_utc
 
   ! Frame PHASE9-PACK (Phase 9): the two derived packed ints route
   ! FLAT to params%ndepth / params%nexp_decode. The bit-PACKING itself (each wire

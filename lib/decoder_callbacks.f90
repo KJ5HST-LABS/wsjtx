@@ -6,7 +6,7 @@ module decoder_callbacks
   use ft8_decode
   use ft8_decodevar
   use ft4_decode
-  use fst4_decode
+  use fst4_decode, only: fst4_decoder
   use q65_decode
   use streaming_emit, only: streaming_emit_enabled, streaming_emit_decode
   use decoder_engine_types
@@ -17,6 +17,7 @@ module decoder_callbacks
 
   type :: decoder_callback_context
      ! Callback state is stored on each decoder instead of captured by a nested procedure.
+     integer :: mode = 0
      integer :: nutc = 0
      integer :: nfqso = 0
      integer :: ncontest = 0
@@ -72,6 +73,7 @@ module decoder_callbacks
   type, extends(fst4_decoder) :: counting_fst4_decoder
      type(decoder_callback_context) :: context
      integer :: decoded = 0
+     logical :: print_hash22 = .false.
   end type counting_fst4_decoder
 
   type, extends(q65_decoder) :: counting_q65_decoder
@@ -713,7 +715,7 @@ contains
   end subroutine ft4_decoded
 
   subroutine fst4_decoded (this,nutc,sync,nsnr,dt,freq,decoded,nap,   &
-       qual,ntrperiod,fmid,w50)
+       qual,ntrperiod,fmid,w50,result)
 
     implicit none
 
@@ -729,19 +731,29 @@ contains
     integer, intent(in) :: ntrperiod
     real, intent(in) :: fmid
     real, intent(in) :: w50
+    type(fst4_result), intent(in), optional :: result
+    type(engine_observation) :: observation
+    type(decoder_callback_context) :: context
+    integer :: display_utc,message_index,space
+    logical :: print_hash22
 
     character*2 annot
     character*37 decoded0
+    character*37 suffix
     character*70 line
     integer context_ios13
 
     select type (typed_this => this)
     type is (counting_fst4_decoder)
-       context_ios13 = typed_this%context%ios13
+       context=typed_this%context
+       context_ios13 = context%ios13
+       print_hash22=typed_this%print_hash22
     class default
        return
     end select
 
+    display_utc=nutc
+    if(context%utc_is_hhmmss.and.ntrperiod>=60) display_utc=nutc/100
     decoded0=decoded
     annot='  '
     if(nap.ne.0) then
@@ -749,15 +761,24 @@ contains
        if(qual.lt.0.17) decoded0(37:37)='?'
     endif
 
+    if(context%render_legacy) then
+    if(present(result)) then
+       if(print_hash22.and.result%has_hash22/=0) then
+          space=index(decoded0,' ')
+          suffix=decoded0(space+1:)
+          write(decoded0,'(a1,i7.7,a1)') '<',result%hash22,'>'
+          decoded0=trim(decoded0)//' '//trim(suffix)
+       endif
+    endif
     if(ntrperiod.lt.60) then
-       write(line,1001) nutc,nsnr,dt,nint(freq),decoded0,annot
+       write(line,1001) display_utc,nsnr,dt,nint(freq),decoded0,annot
 1001   format(i6.6,i4,f5.1,i5,' ` ',1x,a37,1x,a2)
-       if(context_ios13.eq.0) write(13,1002) nutc,nint(sync),nsnr,dt,freq,0,decoded0
+       if(context_ios13.eq.0) write(13,1002) display_utc,nint(sync),nsnr,dt,freq,0,decoded0
 1002   format(i6.6,i4,i5,f6.1,f8.0,i4,3x,a37,' FST4')
     else
-       write(line,1003) nutc,nsnr,dt,nint(freq),decoded0,annot
+       write(line,1003) display_utc,nsnr,dt,nint(freq),decoded0,annot
 1003   format(i4.4,i4,f5.1,i5,' ` ',1x,a37,1x,a2,2f7.3)
-       if(context_ios13.eq.0) write(13,1004) nutc,nint(sync),nsnr,dt,freq,0,decoded0
+       if(context_ios13.eq.0) write(13,1004) display_utc,nint(sync),nsnr,dt,freq,0,decoded0
 1004   format(i4.4,i4,i5,f6.1,f8.0,i4,3x,a37,' FST4')
     endif
 
@@ -767,7 +788,7 @@ contains
     endif
 
     if (streaming_emit_enabled()) then
-       call streaming_emit_decode("FST4", nutc, nsnr, dt, nint(freq), decoded0)
+       call streaming_emit_decode("FST4", nutc, nsnr, dt, nint(freq), decoded0,context%utc_is_hhmmss)
     else
        write(*,1005) line
     end if
@@ -775,6 +796,21 @@ contains
 
     call flush(6)
     if(context_ios13.eq.0) call flush(13)
+    endif
+
+    observation=engine_observation()
+    observation%mode=context%mode
+    observation%snr_db=nsnr
+    observation%ap_type=nap
+    observation%dt_seconds=dt
+    observation%frequency_hz=freq
+    observation%sync=sync
+    observation%quality=qual
+    if(present(result)) observation%fst4=result
+    do message_index=1,min(len_trim(decoded),37)
+       observation%message(message_index)=decoded(message_index:message_index)
+    enddo
+    if(associated(context%sink)) call context%sink(context%sink_user,observation)
 
     select type (typed_this => this)
     type is (counting_fst4_decoder)

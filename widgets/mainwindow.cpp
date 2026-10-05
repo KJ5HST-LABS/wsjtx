@@ -3554,6 +3554,7 @@ void MainWindow::on_actionSettings_triggered()           // Setup Dialog (Settin
 void MainWindow::monitor (bool state)
 {
   if (state && jttyDrainInProgress()) return;
+  bool const leavingDiskData = state && m_diskData;
   if (state && !m_monitoring && m_mode == "JTTY") updateJttyReceiveContext();
   if (!state && m_mode == "JTTY") {
     auto const reason = m_jttyTxLifecycle.active () ? JttyReceiveReason::Transmission
@@ -3606,6 +3607,7 @@ void MainWindow::monitor (bool state)
   }
   m_monitoring = state;
   if (!state) cancelPendingFt8Decode ("monitoring stopped");
+  if (leavingDiskData) updateDecodeControls ();
   check_button_color();
 }
 
@@ -5271,11 +5273,19 @@ void MainWindow::decode (Ft8MtdDecodeCoordinator::Stage ft8Stage,
       showStatusMessage (tr ("Decoder is starting; decode request skipped."));
       return;
     }
-  if (m_mode == "Q65" && !dec_data.params.newdat
-      && !m_decoderSession.canReuseSamples (66, int (m_TRperiod)))
+  if (m_mode == "FST4W" && !m_diskData && !dec_data.params.newdat)
     {
       ui->DecodeButton->setChecked (false);
-      showStatusMessage (tr ("No completed Q65 reception is available to decode again."));
+      showStatusMessage (tr ("FST4W manual decoding is available only for WAV files."));
+      return;
+    }
+  int const retainedMode = m_mode == "Q65" ? 66 : m_mode == "FST4" ? 240
+    : m_mode == "FST4W" ? 241 : 0;
+  if (retainedMode && !dec_data.params.newdat
+      && !m_decoderSession.canReuseSamples (retainedMode, int (m_TRperiod)))
+    {
+      ui->DecodeButton->setChecked (false);
+      showStatusMessage (tr ("No completed %1 reception is available to decode again.").arg (m_mode));
       return;
     }
   if (usesJt9Process () && !dec_data.params.newdat && !m_decoderSession.samples ())
@@ -5299,7 +5309,8 @@ void MainWindow::decode (Ft8MtdDecodeCoordinator::Stage ft8Stage,
   }
   if(!m_dataAvailable or m_TRperiod==0.0) return;
   ui->DecodeButton->setChecked (true);
-  if(!dec_data.params.nagain && m_diskData && m_TRperiod >= 60. && m_mode != "Q65") {
+  if(!dec_data.params.nagain && m_diskData && m_TRperiod >= 60. && m_mode != "Q65"
+      && m_mode != "FST4" && m_mode != "FST4W") {
     dec_data.params.nutc=dec_data.params.nutc/100;
   }
   if(dec_data.params.nagain==0 && dec_data.params.newdat==1 && (!m_diskData)) {
@@ -5309,7 +5320,7 @@ void MainWindow::decode (Ft8MtdDecodeCoordinator::Stage ft8Stage,
     m_dateTimeSeqStart = qt_truncate_date_time_to (QDateTime::currentDateTimeUtc (), m_TRperiod * 1.e3);
     auto t = m_dateTimeSeqStart.time ();
     dec_data.params.nutc = t.hour () * 100 + t.minute ();
-    if (m_TRperiod < 60. || m_mode == "Q65")
+    if (m_TRperiod < 60. || m_mode == "Q65" || m_mode == "FST4" || m_mode == "FST4W")
       {
         dec_data.params.nutc = dec_data.params.nutc * 100 + t.second ();
       }
@@ -5603,9 +5614,11 @@ void MainWindow::decode (Ft8MtdDecodeCoordinator::Stage ft8Stage,
 #if defined (WSJT_ENABLE_LIVE_AUDIO_TEST)
 bool MainWindow::startWavDecodeTest (QString const& path)
 {
-  auto const fixtureMode = (m_mode == QStringLiteral ("JT9")
-                           || m_mode == QStringLiteral ("JT65")
-                           || m_mode == QStringLiteral ("Q65")) && m_TRperiod == 60.0;
+  auto const fixtureMode = ((m_mode == QStringLiteral ("JT9")
+                            || m_mode == QStringLiteral ("JT65")
+                            || m_mode == QStringLiteral ("Q65")) && m_TRperiod == 60.0)
+    || (m_mode == QStringLiteral ("FST4") && m_TRperiod == 15.0)
+    || (m_mode == QStringLiteral ("FST4W") && m_TRperiod == 120.0);
   if (!m_automated_test || !m_config.is_dummy_rig ()
       || !fixtureMode || m_nSubMode != 0 || m_bFast9 || m_bFastMode
       || decoderBusy () || !decoderBackendRunning ()
@@ -6213,7 +6226,7 @@ void MainWindow::updateDecodeControls ()
   auto const enabled = !decoderBusy () && backendReady
     && !m_wav_load_coordinator.isLoading ();
   ui->DecodeButton->setEnabled (enabled && "WSPR" != m_mode
-                                && "FST4W" != m_mode && "Echo" != m_mode);
+                                && ("FST4W" != m_mode || m_diskData) && "Echo" != m_mode);
   update_wav_file_actions ();
   statusUpdate ();
 }
@@ -11941,7 +11954,7 @@ void MainWindow::WSPR_config(bool b)
   ui->DX_controls_widget->setVisible (!b or (m_mode=="Echo"));
   ui->lh_decodes_title_label->setVisible(!b and ui->cbMenus->isChecked());
   ui->logQSOButton->setVisible(!b);
-  ui->DecodeButton->setEnabled(!b);
+  updateDecodeControls ();
   bool bFST4W=(m_mode=="FST4W");
   ui->sbTxPercent->setEnabled(!bFST4W
                               or configuredRoundRobinPolicy ().kind == BeaconTx::RoundRobinPolicy::Kind::Random);

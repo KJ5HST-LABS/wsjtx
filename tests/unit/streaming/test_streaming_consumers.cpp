@@ -238,6 +238,70 @@ class TestStreamingConsumers final : public QObject
   Q_OBJECT
 
 private slots:
+  void fst4DecodesWaveform_data ()
+  {
+    QTest::addColumn<QString> ("mode");
+    QTest::addColumn<QString> ("path");
+    QTest::addColumn<int> ("period");
+    QTest::addColumn<QString> ("message");
+    QTest::newRow ("fst4-15") << QString {"FST4"} << QString::fromUtf8 (FST4_ENGINE_WAV)
+      << 15 << QString {"K1ABC W9XYZ FN42"};
+    QTest::newRow ("fst4w-120") << QString {"FST4W"} << QString::fromUtf8 (FST4W_ENGINE_WAV)
+      << 120 << QString {"K1ABC FN42 37"};
+  }
+
+  void fst4DecodesWaveform ()
+  {
+    QFETCH (QString, mode);
+    QFETCH (QString, path);
+    QFETCH (int, period);
+    QFETCH (QString, message);
+    QFile recording {path};
+    QVERIFY2 (recording.open (QIODevice::ReadOnly), qPrintable (recording.errorString ()));
+    auto const wav = recording.readAll ();
+    QCOMPARE (wav.size (), 44 + period * 12000 * 2);
+    QCOMPARE (wav.left (4), QByteArray {"RIFF"});
+    QCOMPARE (wav.mid (36, 4), QByteArray {"data"});
+    QJsonObject configuration {{"t", "configure"}, {"mode", mode}, {"trperiod", period},
+      {"depth_level", 1}, {"nfa", 1300}, {"nfb", 1700}, {"rxfreq", 1500},
+      {"noise_blanker_level", 0}, {"utc", "00:15:00"}};
+    QTemporaryDir directory;
+    QVERIFY (directory.isValid ());
+    auto const input = sessionHeader () + controlFrame (
+      QJsonDocument {configuration}.toJson (QJsonDocument::Compact)) + frame (0x01u, wav.mid (44));
+    auto const result = runProcess (QString::fromUtf8 (JT9_EXECUTABLE),
+      {"-a", directory.path (), "-t", directory.path (), "--stream"}, input, directory.path (), 360000);
+    verifyCompleted (result, 0);
+    auto const events = verifyEvents (result);
+    QCOMPARE (eventsMatching (events.values, "error").size (), 0);
+    bool found = false;
+    for (auto const& decode : eventsMatching (events.values, "decode"))
+      {
+        QCOMPARE (decode.value ("mode").toString (), QString {"FST4"});
+        found |= decode.value ("message").toString ().trimmed () == message;
+      }
+    QVERIFY2 (found, result.standardOutput.constData ());
+    QCOMPARE (eventsMatching (events.values, "decode_finished").size (), 1);
+  }
+
+  void fst4PartialEofCompletesOnce ()
+  {
+    QTemporaryDir directory;
+    QVERIFY (directory.isValid ());
+    auto const input = sessionHeader () + controlFrame (
+      R"({"t":"configure","mode":"FST4W","trperiod":120,"depth_level":1,"nutc":15})") +
+      silentAudioFrame (12001);
+    auto const result = runProcess (QString::fromUtf8 (JT9_EXECUTABLE),
+      {"-a", directory.path (), "-t", directory.path (), "--stream"}, input, directory.path ());
+    verifyCompleted (result, 0);
+    auto const events = verifyEvents (result);
+    QCOMPARE (eventsMatching (events.values, "error").size (), 0);
+    QCOMPARE (eventsMatching (events.values, "decode").size (), 0);
+    auto const completions = eventsMatching (events.values, "decode_finished");
+    QCOMPARE (completions.size (), 1);
+    QCOMPARE (completions.first ().value ("period_end").toString (), QString {"001500"});
+  }
+
   void q65DecodesWaveform ()
   {
     QFile recording {QString::fromUtf8 (Q65_ENGINE_WAV)};

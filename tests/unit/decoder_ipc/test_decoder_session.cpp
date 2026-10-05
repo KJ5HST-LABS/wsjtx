@@ -206,9 +206,15 @@ void TestDecoderSession::incompatibleSnapshotLeavesNextReceptionUntouched_data (
 {
   QTest::addColumn<int> ("previousMode");
   QTest::addColumn<int> ("previousPeriod");
-  QTest::newRow ("no-snapshot") << 0 << 0;
-  QTest::newRow ("different-mode") << 65 << 60;
-  QTest::newRow ("different-period") << 66 << 30;
+  QTest::addColumn<int> ("requestedMode");
+  QTest::addColumn<int> ("requestedPeriod");
+  QTest::newRow ("no-snapshot") << 0 << 0 << 66 << 60;
+  QTest::newRow ("different-mode") << 65 << 60 << 66 << 60;
+  QTest::newRow ("different-period") << 66 << 30 << 66 << 60;
+  QTest::newRow ("fst4-mode") << 241 << 120 << 240 << 15;
+  QTest::newRow ("fst4-period") << 240 << 30 << 240 << 15;
+  QTest::newRow ("fst4w-mode") << 240 << 15 << 241 << 120;
+  QTest::newRow ("fst4w-period") << 241 << 300 << 241 << 120;
 }
 
 void TestDecoderSession::incompatibleSnapshotLeavesNextReceptionUntouched ()
@@ -216,6 +222,9 @@ void TestDecoderSession::incompatibleSnapshotLeavesNextReceptionUntouched ()
   using namespace DecoderIpc;
   QFETCH (int, previousMode);
   QFETCH (int, previousPeriod);
+  QFETCH (int, requestedMode);
+  QFETCH (int, requestedPeriod);
+  int const validSamples = (requestedPeriod - 4) * RX_SAMPLE_RATE;
   QTemporaryDir directory;
   QVERIFY (directory.isValid ());
   Session session;
@@ -245,14 +254,14 @@ void TestDecoderSession::incompatibleSnapshotLeavesNextReceptionUntouched ()
   inputs.beginInput ();
   auto const input = inputs.inputId ();
   auto const analysis = inputs.analysisId ();
-  source->params.nmode = 66;
-  source->params.ntrperiod = 60;
+  source->params.nmode = requestedMode;
+  source->params.ntrperiod = requestedPeriod;
   source->params.kin = 10 * RX_SAMPLE_RATE;
   source->params.newdat = false;
   source->params.nagain = true;
-  QVERIFY (!session.canReuseSamples (66, 60));
+  QVERIFY (!session.canReuseSamples (requestedMode, requestedPeriod));
 
-  source->params.kin = 56 * RX_SAMPLE_RATE;
+  source->params.kin = validSamples;
   source->params.newdat = true;
   source->params.nagain = false;
   auto const scheduled = session.prepareRequest (*source, true, inputs);
@@ -261,19 +270,19 @@ void TestDecoderSession::incompatibleSnapshotLeavesNextReceptionUntouched ()
   QCOMPARE (scheduled.metadata ().attempt_no, int32_t {1});
   QCOMPARE (scheduled.metadata ().valid_samples, source->params.kin);
   QVERIFY (session.submit (scheduled));
-  QCOMPARE (shared.metadata.valid_samples, 56 * RX_SAMPLE_RATE);
+  QCOMPARE (shared.metadata.valid_samples, validSamples);
   QVERIFY (claim (shared, generation));
   QVERIFY (finish (shared, generation));
   QCOMPARE (session.complete ({0, 0, 0, generation}), Status::Ok);
-  QVERIFY (session.canReuseSamples (66, 60));
+  QVERIFY (session.canReuseSamples (requestedMode, requestedPeriod));
 
-  source->params.kin = 59 * RX_SAMPLE_RATE;
+  source->params.kin = (requestedPeriod - 1) * RX_SAMPLE_RATE;
   source->params.newdat = false;
   source->params.nagain = true;
   auto const repeat = session.prepareRequest (*source, false, inputs);
   QCOMPARE (repeat.metadata ().input_id, input);
-  QCOMPARE (repeat.metadata ().valid_samples, 56 * RX_SAMPLE_RATE);
-  QCOMPARE (repeat.options ().kin, 56 * RX_SAMPLE_RATE);
+  QCOMPARE (repeat.metadata ().valid_samples, validSamples);
+  QCOMPARE (repeat.options ().kin, validSamples);
   QVERIFY (!repeat.options ().newdat);
   session.shutdown ();
 }
@@ -283,7 +292,7 @@ void TestDecoderSession::preparedReuseRetainsCompletedInput_data ()
   QTest::addColumn<int> ("mode");
   QTest::addColumn<bool> ("rollover");
   QTest::addColumn<bool> ("again");
-  for (auto mode : {8, 5, 66})
+  for (auto mode : {8, 5, 66, 240, 241})
     for (auto rollover : {false, true})
       for (auto again : {false, true})
         QTest::newRow (qPrintable (QString {"mode-%1-rollover-%2-again-%3"}
@@ -308,7 +317,7 @@ void TestDecoderSession::preparedReuseRetainsCompletedInput ()
   InputState inputs;
   auto source = std::make_unique<dec_data_t> ();
   source->params.nmode = mode;
-  source->params.ntrperiod = mode == 5 ? 7 : mode == 8 ? 15 : 60;
+  source->params.ntrperiod = mode == 5 ? 7 : mode == 8 || mode == 240 ? 15 : mode == 241 ? 120 : 60;
   source->params.kin = mode == 5 ? 72000 : 150000;
   source->params.newdat = true;
   source->d2[0] = 17;

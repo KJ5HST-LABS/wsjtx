@@ -6,10 +6,11 @@ extern "C" {
 #endif
 
 typedef void *decoder_engine_handle;
-enum { DECODER_ENGINE_ABI = 6, DECODER_MODE_FT4 = 5, DECODER_MODE_FT8 = 8,
-       DECODER_MODE_JT9 = 9, DECODER_MODE_JT65 = 65, DECODER_MODE_Q65 = 66 };
+enum { DECODER_ENGINE_ABI = 7, DECODER_MODE_FT4 = 5, DECODER_MODE_FT8 = 8,
+       DECODER_MODE_JT9 = 9, DECODER_MODE_JT65 = 65, DECODER_MODE_Q65 = 66,
+       DECODER_MODE_FST4 = 240, DECODER_MODE_FST4W = 241 };
 enum { DECODER_SUPPORT_FT8 = 1, DECODER_SUPPORT_FT4 = 2, DECODER_SUPPORT_JT9 = 4,
-       DECODER_SUPPORT_JT65 = 8, DECODER_SUPPORT_Q65 = 16 };
+       DECODER_SUPPORT_JT65 = 8, DECODER_SUPPORT_Q65 = 16, DECODER_SUPPORT_FST4 = 32, DECODER_SUPPORT_FST4W = 64 };
 enum { DECODER_JT65_SYNC = 0, DECODER_JT65_MESSAGE = 1 };
 enum { DECODER_JT65_METHOD_NONE = 0, DECODER_JT65_METHOD_FEC = 1,
        DECODER_JT65_METHOD_DEEP_SEARCH = 2 };
@@ -162,6 +163,21 @@ typedef struct {
   float frequency_step_hz, dt_seconds;
 } decoder_q65_snapshot;
 
+/* FST4/FST4W use HHMMSS UTC and periods of 15, 30, 60, 120, 300, 900,
+   or 1800 seconds. blanker_mode is zero for a fixed percentage or 1/2/5
+   for an automatic sweep from zero through 20 percent. */
+typedef struct {
+  int32_t utc, period_seconds, receive_frequency_hz, search_low_hz, search_high_hz;
+  int32_t tolerance_hz, depth, qso_progress, single_decode, ap_cq_only;
+  int32_t blanker_mode, blanker_percent, measure_doppler;
+  float eme_delay_seconds;
+  char mycall[12], hiscall[12];
+} decoder_fst4_options;
+
+enum { DECODER_FST4W_CALL_CAPACITY = 100 };
+/* Known call/grid pairs are fixed-width, space-padded strings. */
+typedef struct { char call_grid[20]; } decoder_fst4w_call;
+
 /* Only the options for mode are read. EARLY is an FT8 phase; other modes use
    NORMAL or REPEAT. Mode support is reported by supported_modes. */
 typedef struct {
@@ -172,6 +188,7 @@ typedef struct {
   decoder_jt9_options jt9;
   decoder_jt65_options jt65;
   decoder_q65_options q65;
+  decoder_fst4_options fst4;
 } decoder_attempt_request;
 
 /* Borrowed read-only mono signed PCM. Only sample_count samples are read.
@@ -182,9 +199,14 @@ typedef struct {
    short or gapped input may complete without observations.
    Q65 accepts up to period_seconds * 12000 samples, for periods of 15, 30, 60,
    120, or 300 seconds.
+   FST4/FST4W accept up to period_seconds * 12000 samples, including
+   periods of 900 and 1800 seconds.
    Short inputs are zero-padded. Release input before changing its identity or mode.
    Q65 caches preparation by input identity: its PCM and sample_count must remain
-   unchanged until release; repeated attempts may change decoding options. */
+   unchanged until release; repeated attempts may change decoding options.
+   FST4/FST4W retain the input period and sample count until release. Repeats
+   perform fresh decoding with updated options; results are deduplicated within
+   each attempt. */
 typedef struct {
   const int16_t *samples;
   int32_t sample_count, sample_rate_hz;
@@ -244,6 +266,15 @@ typedef struct {
   int32_t period_seconds, method, average_count, recovered_bit78;
 } decoder_q65_result;
 
+/* effective_bits is 91 for FST4, or 66/50 for FST4W. Doppler values are
+   available only when has_doppler is set. has_hash22 identifies an unresolved
+   FST4W callsign; hash22 distinguishes results with the same display text. */
+typedef struct {
+  int32_t period_seconds, effective_bits, blanker_percent, has_doppler;
+  int32_t has_hash22, hash22;
+  float fmid_hz, width_hz;
+} decoder_fst4_result;
+
 /* dt_seconds retains the mode's operator-facing DT convention. Use the
    evidence's waveform_start_seconds for reconstruction when available.
    mode and variant select the result record; inactive records are zero.
@@ -264,6 +295,7 @@ typedef struct {
   decoder_jt9_result jt9;
   decoder_jt65_result jt65;
   decoder_q65_result q65;
+  decoder_fst4_result fst4;
 } decoder_observation;
 
 typedef struct {
@@ -282,7 +314,8 @@ int32_t decoder_engine_decode(decoder_engine_handle, const decoder_attempt_reque
                              const decoder_audio_view *, decoder_observation_callback,
                              void *, decoder_attempt_outcome *);
 /* Released input IDs may be reused for a new reception.
-   Release retains JT65/Q65 averages and caller knowledge. Reset clears both while
+   Release retains JT65/Q65 averages and caller knowledge, including FST4W
+   call/grid history. Reset clears reception history while
    retaining reusable capacity and plans. Incompatible mode configuration clears
    averages. Hosts clear JT65 averages when changing band or operating context. */
 int32_t decoder_engine_release_input(decoder_engine_handle, int64_t input_id);
@@ -304,6 +337,10 @@ int32_t decoder_engine_get_q65_snapshot(decoder_engine_handle, decoder_q65_snaps
                                        float *instant, float *averaged, int32_t capacity);
 /* Clear does not re-add the current reception on a subsequent repeat. */
 int32_t decoder_engine_clear_q65_averages(decoder_engine_handle);
+/* History is copied; count zero clears it. The getter uses the capacity/query
+   convention above. FST4W depth 3 accepts CRC-free results only from this history. */
+int32_t decoder_engine_set_fst4w_calls(decoder_engine_handle, const decoder_fst4w_call *, int32_t count);
+int32_t decoder_engine_get_fst4w_calls(decoder_engine_handle, decoder_fst4w_call *, int32_t capacity, int32_t *count);
 int32_t decoder_engine_destroy(decoder_engine_handle);
 
 #ifdef __cplusplus

@@ -4,6 +4,7 @@
 #include <QAction>
 #include <QApplication>
 #include <QFileInfo>
+#include <QKeyEvent>
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QTextEdit>
@@ -18,13 +19,16 @@ WavDecodeTestController::WavDecodeTestController (
   : QObject {parent}
   , m_window {window}
   , m_mode {mode}
+  , m_period {mode == Mode::Fst4 ? 15 : mode == Mode::Fst4w ? 120 : 60}
   , m_modeName {mode == Mode::Jt9 ? QStringLiteral ("JT9")
-                : mode == Mode::Jt65 ? QStringLiteral ("JT65") : QStringLiteral ("Q65")}
+                : mode == Mode::Jt65 ? QStringLiteral ("JT65")
+                : mode == Mode::Q65 ? QStringLiteral ("Q65")
+                : mode == Mode::Fst4 ? QStringLiteral ("FST4") : QStringLiteral ("FST4W")}
   , m_wavPath {std::move (wavPath)}
   , m_expectedMessage {expectedMessage.simplified ()}
 {
   m_timeout.setSingleShot (true);
-  m_timeout.setInterval (60000);
+  m_timeout.setInterval (m_mode == Mode::Fst4 || m_mode == Mode::Fst4w ? 360000 : 60000);
   connect (&m_timeout, &QTimer::timeout, this, [this] {
     finish (tr ("Timed out waiting for %1 WAV decoding.").arg (m_modeName));
   });
@@ -62,7 +66,7 @@ WavDecodeTestController::WavDecodeTestController (
            [this] (QString const& message) {
     if (m_activeGeneration && message.simplified () == m_expectedMessage)
       {
-        if (m_mode == Mode::Q65)
+        if (m_mode != Mode::Jt9 && m_mode != Mode::Jt65)
           {
             auto * display = m_window->findChild<QTextEdit *> ("decodedTextBrowser");
             bool found = false;
@@ -71,16 +75,16 @@ WavDecodeTestController::WavDecodeTestController (
                 {
                   auto const text = line.simplified ();
                   if (!text.contains (m_expectedMessage)) continue;
-                  if (text.section (' ', 0, 0) != QStringLiteral ("0015"))
+                  if (text.section (' ', 0, 0) != (m_period < 60 ? QStringLiteral ("001500") : QStringLiteral ("0015")))
                     {
-                      finish (tr ("Incorrect Q65 UTC in displayed line: %1").arg (text));
+                      finish (tr ("Incorrect %1 UTC in displayed line: %2").arg (m_modeName, text));
                       return;
                     }
                   found = true;
                 }
             if (!found)
               {
-                finish (tr ("The Q65 message was absent from the decode display."));
+                finish (tr ("The %1 message was absent from the decode display.").arg (m_modeName));
                 return;
               }
           }
@@ -115,7 +119,7 @@ void WavDecodeTestController::prepareWhenReady ()
   auto * frequency = m_window->findChild<QSpinBox *> ("RxFreqSpinBox");
   auto * decode = m_window->findChild<QAbstractButton *> ("DecodeButton");
   auto * rigStatus = m_window->findChild<QAbstractButton *> ("readFreq");
-  auto * period = m_window->findChild<QSpinBox *> ("sbTR");
+  auto * period = m_window->findChild<QSpinBox *> (m_mode == Mode::Fst4w ? "sbTR_FST4W" : "sbTR");
   if (!mode || !quick || !submode || !fast || !cqOnly || !frequency || !decode || !rigStatus || !period)
     {
       finish (tr ("A required %1 GUI control was not found.").arg (m_modeName));
@@ -124,7 +128,8 @@ void WavDecodeTestController::prepareWhenReady ()
   // Rig startup can change the dial frequency and resume monitoring.
   if (rigStatus->property ("state").toString () != QStringLiteral ("ok")
       || !m_window->decoderBackendRunning () || m_window->decoderBusy ()
-      || !mode->isEnabled () || !decode->isEnabled ())
+      || !mode->isEnabled ()
+      || (!decode->isEnabled () && !(m_configured && m_mode == Mode::Fst4w)))
     {
       m_prepareTimer.start (50);
       return;
@@ -134,17 +139,37 @@ void WavDecodeTestController::prepareWhenReady ()
       mode->trigger ();
       quick->trigger ();
       submode->setValue (0);
-      if (m_mode == Mode::Q65) period->setValue (60);
+      if (m_mode != Mode::Jt9 && m_mode != Mode::Jt65) period->setValue (m_period);
       if (fast->isChecked ()) fast->click ();
       cqOnly->setChecked (false);
       frequency->setValue (1500);
+      if (m_mode == Mode::Fst4 || m_mode == Mode::Fst4w)
+        {
+          auto * blanker = m_window->findChild<QSpinBox *> ("sbNB");
+          if (!blanker) { finish (tr ("The noise blanker control was not found.")); return; }
+          blanker->setValue (0);
+        }
+      if (m_mode == Mode::Fst4)
+        {
+          auto * low = m_window->findChild<QSpinBox *> ("sbF_Low");
+          auto * high = m_window->findChild<QSpinBox *> ("sbF_High");
+          if (!low || !high) { finish (tr ("The FST4 search controls were not found.")); return; }
+          low->setValue (1300);
+          high->setValue (1700);
+        }
+      if (m_mode == Mode::Fst4w)
+        {
+          auto * receive = m_window->findChild<QSpinBox *> ("sbFST4W_RxFreq");
+          if (!receive) { finish (tr ("The FST4W frequency control was not found.")); return; }
+          receive->setValue (1500);
+        }
       m_configured = true;
       m_prepareTimer.start (100);
       return;
     }
   if (!mode->isChecked () || !quick->isChecked ()
       || submode->value () != 0 || fast->isChecked ()
-      || (m_mode == Mode::Q65 && period->value () != 60)
+      || (m_mode != Mode::Jt9 && m_mode != Mode::Jt65 && period->value () != m_period)
       || !m_window->configureLiveAudioTestDecodeRange ())
     {
       finish (tr ("Unable to configure ordinary %1A decoding.").arg (m_modeName));
@@ -180,24 +205,51 @@ void WavDecodeTestController::completeCycle (quint64 generation)
       }
     if (m_completedCycles == 2)
       {
+        if (m_mode == Mode::Fst4w)
+          {
+            auto * monitor = m_window->findChild<QAbstractButton *> ("monitorButton");
+            if (!monitor || !monitor->isEnabled () || monitor->isChecked ())
+              {
+                finish (tr ("FST4W monitoring was not ready to resume after WAV decoding."));
+                return;
+              }
+            monitor->click ();
+            if (!monitor->isChecked () || m_window->diskDataActive () || decode->isEnabled ())
+              {
+                finish (tr ("FST4W monitoring did not disable manual WAV decoding."));
+                return;
+              }
+            m_window->statusBar ()->clearMessage ();
+            QKeyEvent repeat {QEvent::KeyPress, Qt::Key_D, Qt::ShiftModifier};
+            QApplication::sendEvent (m_window, &repeat);
+            if (m_finished) return;
+            if (m_window->decoderBusy () || m_activeGeneration || decode->isChecked ()
+                || m_window->statusBar ()->currentMessage ()
+                     != MainWindow::tr ("FST4W manual decoding is available only for WAV files."))
+              {
+                finish (tr ("FST4W accepted a manual repeat after resuming live monitoring."));
+                return;
+              }
+            monitor->click ();
+          }
         finish ();
         return;
       }
-    if (m_mode == Mode::Q65)
+    if (m_mode != Mode::Jt9 && m_mode != Mode::Jt65)
       {
-        auto * period = m_window->findChild<QSpinBox *> ("sbTR");
-        period->setValue (30);
+        auto * period = m_window->findChild<QSpinBox *> (m_mode == Mode::Fst4w ? "sbTR_FST4W" : "sbTR");
+        period->setValue (m_mode == Mode::Fst4w ? 300 : m_period == 15 ? 30 : 15);
         m_window->statusBar ()->clearMessage ();
         decode->click ();
         if (m_finished) return;
         if (m_window->decoderBusy () || m_activeGeneration || decode->isChecked ()
             || m_window->statusBar ()->currentMessage ()
-                 != MainWindow::tr ("No completed Q65 reception is available to decode again."))
+                 != MainWindow::tr ("No completed %1 reception is available to decode again.").arg (m_modeName))
           {
-            finish (tr ("Q65 accepted a repeat with an incompatible reception period."));
+            finish (tr ("%1 accepted a repeat with an incompatible reception period.").arg (m_modeName));
             return;
           }
-        period->setValue (60);
+        period->setValue (m_period);
       }
     m_observed = false;
     m_awaitingCycle = true;

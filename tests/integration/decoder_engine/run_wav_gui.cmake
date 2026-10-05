@@ -1,8 +1,9 @@
 if (NOT DEFINED MODE)
   set (MODE JT9)
 endif ()
-if (NOT MODE STREQUAL "JT9" AND NOT MODE STREQUAL "JT65" AND NOT MODE STREQUAL "Q65")
-  message (FATAL_ERROR "MODE must be JT9, JT65, or Q65")
+if (NOT MODE STREQUAL "JT9" AND NOT MODE STREQUAL "JT65" AND NOT MODE STREQUAL "Q65"
+    AND NOT MODE STREQUAL "FST4" AND NOT MODE STREQUAL "FST4W")
+  message (FATAL_ERROR "MODE must be JT9, JT65, Q65, FST4, or FST4W")
 endif ()
 string (TOLOWER "${MODE}" mode_option)
 
@@ -21,6 +22,12 @@ file (MAKE_DIRECTORY
   "${WORK_DIR}/data"
   "${WORK_DIR}/cache"
   "${ipc_dir}")
+
+if (MODE STREQUAL "FST4" OR MODE STREQUAL "FST4W")
+  set (timestamped_sample "${WORK_DIR}/261003_001500.wav")
+  configure_file ("${SAMPLE}" "${timestamped_sample}" COPYONLY)
+  set (SAMPLE "${timestamped_sample}")
+endif ()
 
 set (wsjtx_environment
   "XDG_CONFIG_HOME=${WORK_DIR}/config"
@@ -47,7 +54,7 @@ execute_process (
     --${mode_option}-wav-expected "${EXPECTED_MESSAGE}"
     --rig-name "${rig_name}"
   WORKING_DIRECTORY "${WORK_DIR}"
-  TIMEOUT 75
+  TIMEOUT 375
   RESULT_VARIABLE wsjtx_result
   OUTPUT_VARIABLE wsjtx_stdout
   ERROR_VARIABLE wsjtx_stderr)

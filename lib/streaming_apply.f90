@@ -283,7 +283,11 @@ contains
     ! field correctly (instead of "000000").
     if (in_cfg%nutc_set) then
        params%nutc = in_cfg%nutc
-       ! Legacy numeric Q65 times may be HHMM; ISO UTC is always HHMMSS.
+       ! Long-period FST4 numeric UTC also accepts legacy HHMM; ISO UTC is always HHMMSS.
+       if ((io_mode.eq.240.or.io_mode.eq.241.or.io_mode.eq.242).and.io_TRperiod.ge.60.and. &
+            params%nutc.le.2359) &
+            params%nutc=100*params%nutc
+       ! Legacy numeric Q65 times may be HHMM.
        if (io_mode.eq.66.and.io_TRperiod.ge.60.and.params%nutc.le.2359) &
             params%nutc=100*params%nutc
     endif

@@ -371,6 +371,7 @@ contains
   subroutine run_period_decode()
     decoded = .true.
     shared_data%params%newdat = .true.
+    shared_data%params%ntr = int(TRperiod)
     shared_data%params%nzhsym = nhsym
     ! FT8 override: decoder is tuned for nzhsym=50 (cf. jt9.f90:552).
     if (mode .eq. 8) shared_data%params%nzhsym = 50
@@ -380,11 +381,9 @@ contains
        shared_data%params%nzhsym = 181
     end if
     shared_data%params%kin    = 64800
-    if (mode .eq. 5 .or. mode .eq. 9 .or. mode .eq. 65 .or. mode .eq. 66) &
+    if (mode .eq. 5 .or. mode .eq. 9 .or. mode .eq. 65 .or. mode .eq. 66 .or. &
+         mode .eq. 240 .or. mode .eq. 241 .or. mode .eq. 242) &
          shared_data%params%kin = period%k
-    if (mode .eq. 240) shared_data%params%kin = 720000
-    if (mode .eq. 241) shared_data%params%kin = 720000
-    if (mode .eq. 242) shared_data%params%kin = 720000
 
     if (mode .eq. 144) then
        call decode_msk144(shared_data%id2, shared_data%params, data_dir)

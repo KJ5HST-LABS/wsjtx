@@ -394,7 +394,8 @@ program jt9
         stop 2
      end if
      call parse_wav_filename_nutc(infile, nutc, wav_utc_has_seconds)
-     if(mode.eq.66.and..not.wav_utc_has_seconds) nutc=100*nutc
+     if((mode.eq.66.or.mode.eq.240.or.mode.eq.241.or.mode.eq.242).and..not.wav_utc_has_seconds) &
+          nutc=100*nutc
      nsps=6912
      npts=TRperiod*12000.d0
      kstep=nsps/2
@@ -411,7 +412,8 @@ program jt9
      if(mode.eq.5) npts=21*3456
      if(mode.eq.66) npts=TRperiod*12000
      nblocks=npts/kstep
-     if(mode.eq.4.or.mode.eq.9) nblocks=(npts+kstep-1)/kstep
+     if(mode.eq.4.or.mode.eq.9.or.mode.eq.240.or.mode.eq.241.or.mode.eq.242) &
+          nblocks=(npts+kstep-1)/kstep
      do iblk=1,nblocks
         k0=(iblk-1)*kstep
         k=min(iblk*kstep,npts)
@@ -476,6 +478,7 @@ program jt9
      call init_default_params(shared_data%params, mode, TRperiod, args)
 
      ! WAV-path post-init overrides.
+     shared_data%params%ntr = int(TRperiod)
      shared_data%params%nutc      = nutc        ! parsed from filename
      shared_data%params%ndiskdat  = .true.      ! reading from disk
      shared_data%params%nzhsym    = nhsym       ! per-period (matches former jt9.f90:486)
@@ -571,7 +574,8 @@ program jt9
      endif
 
 ! Normal decoding pass
-     if(mode.eq.8.or.mode.eq.9.or.mode.eq.65.or.mode.eq.66) then
+     if(mode.eq.8.or.mode.eq.9.or.mode.eq.65.or.mode.eq.66.or. &
+          mode.eq.240.or.mode.eq.241.or.mode.eq.242) then
         call run_engine_wav(shared_data%id2,engine_valid_samples)
      else if(mode.eq.5) then
         call run_engine_wav(shared_data%id2,72576)

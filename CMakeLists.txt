@@ -1308,8 +1308,31 @@ if (WSJT_ENABLE_TESTS AND WSJT_ENABLE_GUI_SMOKE_TESTS
     LABELS "gui;decoder;q65;integration"
     PROCESSORS 1
     TIMEOUT 90)
+  foreach (fst4_mode FST4 FST4W)
+    string (TOLOWER "${fst4_mode}" fst4_mode_lower)
+    if (fst4_mode STREQUAL "FST4")
+      set (fst4_message "K1ABC W9XYZ FN42")
+    else ()
+      set (fst4_message "K1ABC FN42 37")
+    endif ()
+    add_test (
+      NAME test_wsjtx_${fst4_mode_lower}_wav
+      COMMAND ${CMAKE_COMMAND}
+        "-DWSJTX=$<TARGET_FILE:wsjtx>"
+        "-DMODE=${fst4_mode}"
+        "-DSAMPLE=${CMAKE_BINARY_DIR}/tests/unit/decoder_engine/${fst4_mode_lower}-engine.wav"
+        "-DEXPECTED_MESSAGE=${fst4_message}"
+        "-DWORK_DIR=${CMAKE_BINARY_DIR}/Testing/${fst4_mode}Wav"
+        -P ${CMAKE_SOURCE_DIR}/tests/integration/decoder_engine/run_wav_gui.cmake)
+    set_tests_properties (test_wsjtx_${fst4_mode_lower}_wav PROPERTIES
+      FIXTURES_REQUIRED ${fst4_mode_lower}_engine_wav
+      LABELS "gui;decoder;${fst4_mode_lower};integration"
+      PROCESSORS 1
+      TIMEOUT 390)
+  endforeach ()
   if (WSJT_ENABLE_TSAN)
-    set_tests_properties (test_wsjtx_jt9_wav test_wsjtx_jt65_wav test_wsjtx_q65_wav PROPERTIES
+    set_tests_properties (test_wsjtx_jt9_wav test_wsjtx_jt65_wav test_wsjtx_q65_wav
+      test_wsjtx_fst4_wav test_wsjtx_fst4w_wav PROPERTIES
       ENVIRONMENT "TSAN_OPTIONS=${wsjt_tsan_gui_options}")
   endif ()
 
