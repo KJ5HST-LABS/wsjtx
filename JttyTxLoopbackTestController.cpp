@@ -486,11 +486,12 @@ bool JttyTxLoopbackTestController::verifyCancellationPaths ()
   for (bool const useEscape : {false, true})
     {
       input->moveCursor (QTextCursor::End);
-      // Trailing space: auto-advance (already armed) commits the whole chunk
-      // itself, so no explicit Send click is needed (or safe to race against it).
+      // Send is a one-shot commit that disarms auto-advance, so unlike the
+      // armed (Alt+J) path, an explicit click is needed here to queue this chunk.
       QString const chunk = QStringLiteral (" ") + longMessageSegments ().join (' ')
         + QStringLiteral (" ");
       input->insertPlainText (chunk);
+      send->click ();
       if (m_finished || !input->toPlainText ().endsWith (chunk)
           || !send->text ().contains ("left"))
         {
