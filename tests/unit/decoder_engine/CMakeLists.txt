@@ -21,11 +21,18 @@ set_tests_properties (test_decoder_engine_ft4 PROPERTIES TIMEOUT 90)
 find_package (Threads REQUIRED)
 add_executable (test_decoder_engine_jt9 test_decoder_engine_jt9.c)
 set_target_properties (test_decoder_engine_jt9 PROPERTIES LINKER_LANGUAGE CXX)
-target_include_directories (test_decoder_engine_jt9 PRIVATE ${CMAKE_SOURCE_DIR})
+target_include_directories (test_decoder_engine_jt9 PRIVATE ${CMAKE_SOURCE_DIR} ${FFTW3_INCLUDE_DIRS})
 target_link_libraries (test_decoder_engine_jt9 PRIVATE test_decoder_engine_signal Threads::Threads)
-add_test (NAME test_decoder_engine_jt9 COMMAND test_decoder_engine_jt9)
-add_test (NAME test_decoder_engine_jt9_small_stack COMMAND test_decoder_engine_jt9 --small-stack)
-set_tests_properties (test_decoder_engine_jt9 test_decoder_engine_jt9_small_stack PROPERTIES TIMEOUT 90)
+add_test (NAME test_decoder_engine_jt9 COMMAND test_decoder_engine_jt9 --smoke)
+set_tests_properties (test_decoder_engine_jt9 PROPERTIES TIMEOUT 90)
+if (TARGET wsjt_fort)
+  add_test (NAME test_decoder_engine_jt9_small_stack COMMAND test_decoder_engine_jt9 --small-stack)
+  set_tests_properties (test_decoder_engine_jt9_small_stack PROPERTIES TIMEOUT 90)
+else ()
+  # The common target also uses wsjt_fort_omp; retain a one-thread smoke.
+  set_tests_properties (test_decoder_engine_jt9 PROPERTIES
+    ENVIRONMENT "OMP_DYNAMIC=FALSE;OMP_NUM_THREADS=1;OMP_THREAD_LIMIT=1;OMP_STACKSIZE=1M")
+endif ()
 
 add_library (test_decoder_engine_jt65_signal STATIC
   ../jt65/jt65_test_fixture.f90 jt65_engine_signal.f90)
@@ -92,9 +99,9 @@ if (TARGET wsjt_fort_omp)
 
   add_executable (test_decoder_engine_jt9_omp test_decoder_engine_jt9.c)
   set_target_properties (test_decoder_engine_jt9_omp PROPERTIES LINKER_LANGUAGE CXX)
-  target_include_directories (test_decoder_engine_jt9_omp PRIVATE ${CMAKE_SOURCE_DIR})
+  target_include_directories (test_decoder_engine_jt9_omp PRIVATE ${CMAKE_SOURCE_DIR} ${FFTW3_INCLUDE_DIRS})
   target_link_libraries (test_decoder_engine_jt9_omp PRIVATE test_decoder_engine_signal_omp Threads::Threads)
-  add_test (NAME test_decoder_engine_jt9_omp COMMAND test_decoder_engine_jt9_omp)
+  add_test (NAME test_decoder_engine_jt9_omp COMMAND test_decoder_engine_jt9_omp --smoke)
   add_test (NAME test_decoder_engine_jt9_omp_small_stack COMMAND test_decoder_engine_jt9_omp --small-stack)
   set_tests_properties (test_decoder_engine_jt9_omp test_decoder_engine_jt9_omp_small_stack PROPERTIES
     ENVIRONMENT "OMP_DYNAMIC=FALSE;OMP_NUM_THREADS=2;OMP_THREAD_LIMIT=2;OMP_STACKSIZE=1M"

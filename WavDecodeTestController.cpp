@@ -87,12 +87,15 @@ void WavDecodeTestController::prepareWhenReady ()
   auto * cqOnly = m_window->findChild<QAbstractButton *> ("cbCQonly");
   auto * frequency = m_window->findChild<QSpinBox *> ("RxFreqSpinBox");
   auto * decode = m_window->findChild<QAbstractButton *> ("DecodeButton");
-  if (!mode || !quick || !submode || !fast || !cqOnly || !frequency || !decode)
+  auto * rigStatus = m_window->findChild<QAbstractButton *> ("readFreq");
+  if (!mode || !quick || !submode || !fast || !cqOnly || !frequency || !decode || !rigStatus)
     {
       finish (tr ("A required %1 GUI control was not found.").arg (m_modeName));
       return;
     }
-  if (!m_window->decoderBackendRunning () || m_window->decoderBusy ()
+  // Rig startup can change the dial frequency and resume monitoring.
+  if (rigStatus->property ("state").toString () != QStringLiteral ("ok")
+      || !m_window->decoderBackendRunning () || m_window->decoderBusy ()
       || !mode->isEnabled () || !decode->isEnabled ())
     {
       m_prepareTimer.start (50);

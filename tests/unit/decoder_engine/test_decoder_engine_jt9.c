@@ -3,6 +3,7 @@
 #endif
 #include "DecoderEngine.h"
 #include <fenv.h>
+#include <fftw3.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -134,16 +135,44 @@ static int decode(fixture *f, int expect_message)
   return outcome.retained_count;
 }
 
-static void run_tests(void)
+static void create_fixture(fixture *f)
 {
   decoder_engine_options options = {DECODER_ENGINE_ABI};
+  f->samples = malloc(SAMPLE_COUNT * sizeof *f->samples);
+  f->before = malloc(SAMPLE_COUNT * sizeof *f->before);
+  CHECK(f->samples && f->before);
+  f->audio.samples = f->samples;
+  CHECK(decoder_engine_create(&options, &f->engine) == DECODER_OK);
+}
+
+static void check_lifecycle_and_destroy(fixture *f)
+{
+  decoder_engine_options options = {DECODER_ENGINE_ABI};
+  decode(f, 1);
+  CHECK(decoder_engine_reset_session(f->engine) == DECODER_OK);
+  decode(f, 1);
+  CHECK(decoder_engine_destroy(f->engine) == DECODER_OK);
+  CHECK(decoder_engine_create(&options, &f->engine) == DECODER_OK);
+  prepare(f, 7);
+  decode(f, 1);
+  CHECK(decoder_engine_destroy(f->engine) == DECODER_OK);
+  free(f->before);
+  free(f->samples);
+}
+
+static void run_smoke(void)
+{
+  fixture f = {0};
+  create_fixture(&f);
+  prepare(&f, 0);
+  check_lifecycle_and_destroy(&f);
+}
+
+static void run_tests(void)
+{
   decoder_attempt_outcome outcome;
   fixture f = {0};
-  f.samples = malloc(SAMPLE_COUNT * sizeof *f.samples);
-  f.before = malloc(SAMPLE_COUNT * sizeof *f.before);
-  CHECK(f.samples && f.before);
-  f.audio.samples = f.samples;
-  CHECK(decoder_engine_create(&options, &f.engine) == DECODER_OK);
+  create_fixture(&f);
 
   for (int submode = 0; submode <= 7; ++submode) {
     prepare(&f, submode);
@@ -265,16 +294,7 @@ static void run_tests(void)
   f.audio.sample_count = SAMPLE_COUNT + 1;
   CHECK(decoder_engine_decode(f.engine, &f.request, &f.audio, observe, &f, &outcome) == DECODER_INVALID);
   f.audio.sample_count = SAMPLE_COUNT;
-  decode(&f, 1);
-  CHECK(decoder_engine_reset_session(f.engine) == DECODER_OK);
-  decode(&f, 1);
-  CHECK(decoder_engine_destroy(f.engine) == DECODER_OK);
-  CHECK(decoder_engine_create(&options, &f.engine) == DECODER_OK);
-  prepare(&f, 7);
-  decode(&f, 1);
-  CHECK(decoder_engine_destroy(f.engine) == DECODER_OK);
-  free(f.before);
-  free(f.samples);
+  check_lifecycle_and_destroy(&f);
 }
 
 #ifdef _WIN32
@@ -304,7 +324,11 @@ static int add_tls_size(struct dl_phdr_info *info, size_t size, void *opaque)
 
 int main(int argc, char **argv)
 {
-  if (argc == 1) {
+  /* FFTW threading must be initialized before creating any plans. */
+  CHECK(fftwf_init_threads() != 0);
+  if (argc == 2 && !strcmp(argv[1], "--smoke")) {
+    run_smoke();
+  } else if (argc == 1) {
     run_tests();
   } else {
     CHECK(argc == 2 && !strcmp(argv[1], "--small-stack"));
