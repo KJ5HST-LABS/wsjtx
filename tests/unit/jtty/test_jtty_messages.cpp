@@ -1065,6 +1065,39 @@ private slots:
     QCOMPARE (Jtty::messageStyleDefaultTemplate (Jtty::MessageStyle::Ft8, 1),
               Jtty::ft8StyleMacroTemplate (1));
   }
+
+  void fillerTextIsRecognizedStandalone ()
+  {
+    QVERIFY (Jtty::isJttyFillerText (Jtty::jttyFillerText));
+    QVERIFY (Jtty::isJttyFillerText (QStringLiteral ("<<<<<")));
+    QVERIFY (!Jtty::isJttyFillerText (QString {}));
+    QVERIFY (!Jtty::isJttyFillerText (QStringLiteral ("FOX")));
+    QVERIFY (!Jtty::isJttyFillerText (QStringLiteral ("FOX <<<<<")));
+  }
+
+  void fillerStripLeavesRealTextUnaffected ()
+  {
+    QCOMPARE (Jtty::stripJttyFillerText (QStringLiteral ("FOX JUMPED OVER")),
+              QStringLiteral ("FOX JUMPED OVER"));
+  }
+
+  void fillerStripRemovesEmbeddedRunRegardlessOfSpacing ()
+  {
+    // Squished with no separator, as a receiver could decode if neither side's own packing added a boundary space.
+    QCOMPARE (Jtty::stripJttyFillerText (QStringLiteral ("OVER<<<<< <<<<<THE")),
+              QStringLiteral ("OVER THE"));
+    // Normally spaced.
+    QCOMPARE (Jtty::stripJttyFillerText (QStringLiteral ("OVER <<<<< <<<<< THE")),
+              QStringLiteral ("OVER THE"));
+    // Only the first filler frame has arrived so far (message still growing).
+    QCOMPARE (Jtty::stripJttyFillerText (QStringLiteral ("OVER <<<<<")),
+              QStringLiteral ("OVER"));
+  }
+
+  void fillerStripOfPureFillerIsEmpty ()
+  {
+    QVERIFY (Jtty::stripJttyFillerText (Jtty::jttyFillerText).isEmpty ());
+  }
 };
 
 QTEST_MAIN (TestJttyMessages)

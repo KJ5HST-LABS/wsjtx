@@ -1108,9 +1108,8 @@ contains
       enddo
       pn=(pa-pt)/3.0
       if(pn.gt.0.) then
-         ! Solve pt=S+N, pn=N+SNR_LEAKAGE_K*S for S/N; clamp so pn_corrected can't hit zero/negative.
-         pn_corrected=max(pn-SNR_LEAKAGE_K*pt, 0.01*pn)
-         snrdb=max(db((pt-pn)/pn_corrected) - db(2500.0/baud), SNR_FLOOR_DB)
+         ! Solve pt=S+N, pn=N+SNR_LEAKAGE_K*S for S/N
+         snrdb=max(db((pt-pn)/pn) - db(2500.0/baud), SNR_FLOOR_DB)
          cand(ncand)%snrdb=snrdb
       endif
       cand(ncand)%tsync=sample_time(istart) + real(cand(ncand)%xdt,real64)

@@ -17,6 +17,35 @@
 
 namespace Jtty
 {
+  // A content-free "keep transmitting" pattern (ordinary TEXT5-encoded text, nothing protocol-special) used to bridge a typing pause without PTT dropping/re-keying; '<' isn't used in normal chat text, so it's recognized and suppressed wherever JTTY text is displayed or logged.
+  inline QString const jttyFillerText =
+    QStringLiteral ("<<<<< <<<<<");
+
+  inline bool isJttyFillerText (QString const& text)
+  {
+    QString const trimmed = text.trimmed ();
+    if (trimmed.isEmpty ()) return false;
+    for (QChar const c : trimmed) {
+      if (c != QLatin1Char ('<') && c != QLatin1Char (' ')) return false;
+    }
+    return true;
+  }
+
+  // Collapses embedded filler runs (any internal spacing) to a single space, without trimming the string's own leading/trailing edge. For a growing-message delta fragment (e.g. ReceiveResultController's N1MM echo), a leading/trailing space is the word boundary against already-echoed text, not something filler-adjacent to discard.
+  inline QString collapseJttyFillerRuns (QString text)
+  {
+    static QRegularExpression const pattern (
+      QStringLiteral ("\\s*(?:<{5}\\s*)+"));
+    text.replace (pattern, QStringLiteral (" "));
+    return text;
+  }
+
+  // Filler travels gaplessly inside the same growing message as the real content around it, so it shows up embedded mid-string rather than as an isolated update; strips one-or-more 5-char '<' blocks (any internal spacing) and collapses the surrounding whitespace to a single space.
+  inline QString stripJttyFillerText (QString text)
+  {
+    return collapseJttyFillerRuns (text).simplified ();
+  }
+
   struct ParsedDecodeLine
   {
     int frequency {0};

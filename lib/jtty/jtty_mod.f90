@@ -8,7 +8,7 @@ module jtty_mod
 
 contains
 
-subroutine pack_jtty(message,c32,nframes,exchange_profile,frame_starts)
+subroutine pack_jtty(message,c32,nframes,exchange_profile,frame_starts,is_final)
 
 ! Input:   character*80   message     !JTTY message, as it appears to a user
 ! Output:  character*34   c32         !34-bit payload: 32 bits of existing
@@ -21,6 +21,8 @@ subroutine pack_jtty(message,c32,nframes,exchange_profile,frame_starts)
 !          integer        nframes     !Frames in this message (max = 16)
 !          integer        frame_starts(MAX_FRAMES), optional
 !                                      !1-indexed start column of each frame's source text in the normalized message (a structured atom's span runs through its trailing separator space).
+!          integer        is_final, optional
+!                                      !0/1; suppresses the "last frame of message" flag even on the final frame when 0 (absent means final, the existing behavior).
 !
 ! Minimize frames after alphabet and exchange-profile normalization.
 
@@ -30,6 +32,7 @@ subroutine pack_jtty(message,c32,nframes,exchange_profile,frame_starts)
   character*34 c32(MAX_FRAMES)
   integer, intent(in), optional :: exchange_profile
   integer, intent(out), optional :: frame_starts(MAX_FRAMES)
+  integer, intent(in), optional :: is_final
   integer, parameter :: INF=999
   type(jtty_source_atom) :: choice(80),atoms(MAX_FRAMES)
   integer :: dp(81),successor(80),n,ipos,inext,natoms,nframes,profile
@@ -81,7 +84,7 @@ subroutine pack_jtty(message,c32,nframes,exchange_profile,frame_starts)
      if(present(frame_starts)) frame_starts(natoms)=ipos
      ipos=successor(ipos)
   enddo
-  call pack_jtty_atoms(atoms,natoms,c32,nframes,valid)
+  call pack_jtty_atoms(atoms,natoms,c32,nframes,valid,is_final)
   if(.not.valid) then
      c32=''
      nframes=-1

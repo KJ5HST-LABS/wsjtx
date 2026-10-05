@@ -77,10 +77,16 @@ namespace
 // Mirrors lib/jtty/jtty_mod.f90's MAX_FRAMES.
 constexpr int kMaxJttyFrames = 16;
 
+// Backstop cap: batches at least this many words per auto-advance burst even if the operator never pauses (the idle timer below normally fires first).
+constexpr int kJttyAutoAdvanceBatchWords = 5;
+
+// A typing pause this long, with anything safely committable pending, flushes it rather than waiting for kJttyAutoAdvanceBatchWords to fill up.
+constexpr int kJttyAutoAdvanceIdleMs = 1500;
+
 extern "C" {
   void genjtty_profile_(char * msg, int const* exchange_profile,
                        int itone[], int* nsym, int frame_starts[],
-                       fortran_charlen_t);
+                       int const* is_final, fortran_charlen_t);
   void genjtty_atoms_c(Jtty::NativeAtomDescriptor const atoms[], int natoms,
                        int itone[], int* nsym, int* status);
 
@@ -132,26 +138,61 @@ qint64 MainWindow::submitJttyText(QString message)
   return requestId;
 }
 
-// Ctrl+K / Send button: force-flushes everything typed but not yet committed, ignoring the ordinary word-holdback.
+// Ctrl+K / Send button: one-shot send -- force-flushes, marks final (EOM), and disarms; typing more afterward needs another explicit Alt+J or Ctrl+K, nothing auto-advances.
 void MainWindow::commitJttyLiveEntry()
 {
   if (m_mode != "JTTY") return;
-  m_jttyLiveEntryArmed = true;
-  commitJttyLiveEntryPlan (/*forceFlush=*/true, Jtty::maxCompactAtomWords);
+  m_jttyAutoAdvanceIdleTimer.stop ();
+  commitJttyLiveEntryPlan (/*forceFlush=*/true, Jtty::maxCompactAtomWords, /*isFinal=*/true);
+  m_jttyLiveEntryArmed = false;
 }
 
-// Once armed, each keystroke also commits with no holdback, so typing keeps feeding an ongoing transmission instead of stalling for a compact-atom lookahead free text will rarely fill; Ctrl+K still flushes everything at once for that.
+// Alt+J: force-flushes like Ctrl+K but never marks final, and arms auto-advance/idle-flush; stays open (continuously filler-padded by finishJttyDrain) until Alt+K signs off or Halt Tx/Esc cancels it.
+void MainWindow::startJttyLiveStream()
+{
+  if (m_mode != "JTTY") return;
+  m_jttyLiveEntryArmed = true;
+  m_jttyAutoAdvanceIdleTimer.stop ();
+  commitJttyLiveEntryPlan (/*forceFlush=*/true, Jtty::maxCompactAtomWords, /*isFinal=*/false);
+}
+
+// Once armed, batches several words per commit rather than firing per word (each commit is its own transmission, and one-word bursts showed up as one decode line per word); fires on kJttyAutoAdvanceBatchWords piling up, or a pause via idleFlushJttyLiveEntry.
 void MainWindow::autoAdvanceJttyLiveEntry()
 {
   if (m_mode != "JTTY" || !m_jttyLiveEntryArmed || m_guardingJttyLiveEntryLock) return;
-  commitJttyLiveEntryPlan (/*forceFlush=*/false, /*holdbackWords=*/0);
+  QString const uncommitted = ui->Tx_Message->toPlainText ().mid (m_jttyLiveEntryCommitted);
+  int const completeWords = Jtty::completeWordCount (uncommitted);
+  if (completeWords - Jtty::maxCompactAtomWords >= kJttyAutoAdvanceBatchWords) {
+    m_jttyAutoAdvanceIdleTimer.stop ();
+    commitJttyLiveEntryPlan (/*forceFlush=*/false, Jtty::maxCompactAtomWords, /*isFinal=*/false);
+    return;
+  }
+  // Arms on any uncommitted content, complete word or not -- idleFlushJttyLiveEntry releases even a trailing not-yet-space-terminated word once the pause happens.
+  if (!uncommitted.trimmed ().isEmpty ()) {
+    m_jttyAutoAdvanceIdleTimer.start (kJttyAutoAdvanceIdleMs);
+  } else {
+    m_jttyAutoAdvanceIdleTimer.stop ();
+  }
 }
 
-void MainWindow::commitJttyLiveEntryPlan(bool forceFlush, int holdbackWords)
+// Force-flushes everything typed, including a trailing word with no trailing space yet, but isFinal=false unlike Ctrl+K, so the message stays open; a detected pause means no keystroke is coming to extend an atom or a partial word, so the usual holdback/complete-word protections no longer apply. Doesn't queue filler itself -- finishJttyDrain keeps the session continuously padded for as long as it's armed.
+void MainWindow::idleFlushJttyLiveEntry()
+{
+  if (m_mode != "JTTY" || !m_jttyLiveEntryArmed || m_guardingJttyLiveEntryLock) return;
+  commitJttyLiveEntryPlan (/*forceFlush=*/true, Jtty::maxCompactAtomWords, /*isFinal=*/false);
+}
+
+void MainWindow::sendJttyFillerPadding()
+{
+  qint64 const requestId = ++m_jttyTxRequestId;
+  execute_jtty_tx (requestId, Jtty::jttyFillerText, /*isFinal=*/false);
+}
+
+bool MainWindow::commitJttyLiveEntryPlan(bool forceFlush, int holdbackWords, bool isFinal)
 {
   QString const uncommitted = ui->Tx_Message->toPlainText ().mid (m_jttyLiveEntryCommitted);
   auto const plan = Jtty::planIncrementalCommit (uncommitted, forceFlush, holdbackWords);
-  if (plan.text.trimmed ().isEmpty ()) return;
+  if (plan.text.trimmed ().isEmpty ()) return false;
 
   QString expanded = jtty_msg_expand (plan.text);
   if (ui->cbLowerCase->isChecked ()) expanded = expanded.toLower ();
@@ -169,7 +210,7 @@ void MainWindow::commitJttyLiveEntryPlan(bool forceFlush, int holdbackWords)
   applyJttyLiveEntryFormatting ();
   m_guardingJttyLiveEntryLock = false;
 
-  execute_jtty_tx (requestId, expanded);
+  execute_jtty_tx (requestId, expanded, isFinal);
 
   for (auto& pending : m_jttyLiveEntryPending) {
     if (pending.requestId != requestId) continue;
@@ -183,12 +224,14 @@ void MainWindow::commitJttyLiveEntryPlan(bool forceFlush, int holdbackWords)
     break;
   }
   updateJttyLiveEntryFrameLabel ();
+  return true;
 }
 
 // Ctrl+Shift+K: clears the whole box, including locked/sent text, cancelling anything of it still queued/in flight.
 void MainWindow::clearJttyLiveEntry()
 {
   if (m_mode != "JTTY") return;
+  m_jttyAutoAdvanceIdleTimer.stop ();
   if (m_jttyTxLifecycle.active () || !m_jttyTransmitQueue.empty ()) {
     abort_jtty_tx ();
   }
@@ -203,6 +246,33 @@ void MainWindow::clearJttyLiveEntry()
   m_guardingJttyLiveEntryLock = false;
   updateJttySendButton ();
   updateJttyLiveEntryFrameLabel ();
+}
+
+// Inserts text at the cursor like ordinary typing, redirecting to the end first if the cursor (or its selection) reaches into the locked prefix.
+void MainWindow::insertJttyLiveEntryText(QString const& text)
+{
+  if (m_mode != "JTTY") return;
+  QTextCursor cursor = ui->Tx_Message->textCursor ();
+  if (qMin (cursor.position (), cursor.anchor ()) < m_jttyLiveEntryCommitted) {
+    cursor.movePosition (QTextCursor::End);
+  }
+  cursor.insertText (text);
+  ui->Tx_Message->setTextCursor (cursor);
+}
+
+// Ctrl+H: chat-style opener identifying both stations ("<hisCall> <myCall> "), expanded like any other macro at commit time.
+void MainWindow::insertJttyChatOpener()
+{
+  insertJttyLiveEntryText (QStringLiteral ("%H %M "));
+}
+
+// Alt+K: sign-off ("DE <myCall> K "), then finalizes (marks EOM) and disarms, so finishJttyDrain stops topping up with filler and PTT drops once this finishes playing.
+void MainWindow::insertJttyChatSignoff()
+{
+  insertJttyLiveEntryText (QStringLiteral ("DE %M K "));
+  m_jttyAutoAdvanceIdleTimer.stop ();
+  commitJttyLiveEntryPlan (/*forceFlush=*/true, Jtty::maxCompactAtomWords, /*isFinal=*/true);
+  m_jttyLiveEntryArmed = false;
 }
 
 // Fraction (0..1) of a pending commit that should show as sent, stepping one JTTY frame at a time using pack_jtty's own frame_starts boundaries (segment.frameCharStarts) rather than an even split, which put the boundary mid-atom; falls back to an even split if a segment's boundaries weren't captured. Each frame is a fixed 59*1536 samples (genjtty_frames, lib/jtty/genjtty.f90). Returns 0 for a requestId not yet enqueued (not started, never "finished").
@@ -282,8 +352,9 @@ int MainWindow::countJttyTransmitFrames(QString const& preparedMessage) const
         QVector<int> tones (944);
         int nsym = 0;
         int frameStarts[kMaxJttyFrames] = {};
+        int const finalFlag = 1;   // irrelevant to frame count, which EOM doesn't affect
         genjtty_profile_ (frame.data (), &exchangeProfile, tones.data (),
-                          &nsym, frameStarts, (FCL)80);
+                          &nsym, frameStarts, &finalFlag, (FCL)80);
         if (nsym > 0) {
           totalFrames += nsym / 59;
           break;
@@ -392,7 +463,8 @@ void MainWindow::guardJttyLiveEntryLock()
   m_guardingJttyLiveEntryLock = false;
 }
 
-void MainWindow::execute_jtty_tx(qint64 requestId, QString message)
+// isFinal marks EOM only on the very last segment of the very last line; every other segment stays non-final since more of the same commit follows, except an earlier line's own last segment, always final since a newline is a hard break. A non-final segment shows up at the receiver as a still-growing line (jtty_mdecode.f90's continuation matching stitches the next segment onto it) rather than its own completed message.
+void MainWindow::execute_jtty_tx(qint64 requestId, QString message, bool isFinal)
 {
   if (ui->cbLowerCase->isChecked()) message = message.toLower();
   auto const prepared = Jtty::prepareTransmitText(message);
@@ -402,11 +474,36 @@ void MainWindow::execute_jtty_tx(qint64 requestId, QString message)
     return;
   }
 
-  QVector<Jtty::TransmitSegment> segments;
   int const exchangeProfile = static_cast<int>(jttyExchangeProfile(m_config));
+  // One-shot encode of text already known to fit (no retry): used for the initial non-final pass and to re-bake a line's true last segment once its real EOM status is known.
+  auto encodeOnce = [&] (QString const& text, bool segmentIsFinal) {
+    Jtty::TransmitSegment segment;
+    auto frame = Jtty::transmitFrame(text).toLatin1();
+    segment.tones.resize(944);
+    int nsym = 0;
+    int frameStarts[kMaxJttyFrames] = {};
+    int const finalFlag = segmentIsFinal ? 1 : 0;
+    genjtty_profile_(frame.data(), &exchangeProfile, segment.tones.data(),
+                     &nsym, frameStarts, &finalFlag, (FCL)80);
+    if (nsym > 0) {
+      segment.tones.resize(nsym);
+      segment.text = QString::fromLatin1(frame).trimmed();
+      int const nframes = nsym / 59;
+      segment.frameCharStarts.reserve(nframes);
+      for (int i = 0; i < nframes; ++i) {
+        // Fortran gives 1-indexed columns; store 0-indexed offsets.
+        segment.frameCharStarts.append(frameStarts[i] - 1);
+      }
+    }
+    return segment;
+  };
+
+  QVector<Jtty::TransmitSegment> segments;
   // Newlines force a new segment; split them out before nextTransmitTextSegment (space-only breaks).
   auto const lines = message.split(QLatin1Char('\n'));
-  for (auto const& line : lines) {
+  for (int lineIndex = 0; lineIndex < lines.size(); ++lineIndex) {
+    auto const& line = lines[lineIndex];
+    int const lineStart = segments.size();
     for (int offset = 0; offset < line.size();) {
       auto source = Jtty::nextTransmitTextSegment(line, offset);
       if (source.text.trimmed().isEmpty()) {
@@ -415,23 +512,8 @@ void MainWindow::execute_jtty_tx(qint64 requestId, QString message)
       }
       Jtty::TransmitSegment segment;
       for (;;) {
-        auto frame = Jtty::transmitFrame(source.text).toLatin1();
-        segment.tones.resize(944);
-        int nsym = 0;
-        int frameStarts[kMaxJttyFrames] = {};
-        genjtty_profile_(frame.data(), &exchangeProfile, segment.tones.data(),
-                         &nsym, frameStarts, (FCL)80);
-        if (nsym > 0) {
-          segment.tones.resize(nsym);
-          segment.text = QString::fromLatin1(frame).trimmed();
-          int const nframes = nsym / 59;
-          segment.frameCharStarts.reserve(nframes);
-          for (int i = 0; i < nframes; ++i) {
-            // Fortran gives 1-indexed columns; store 0-indexed offsets.
-            segment.frameCharStarts.append(frameStarts[i] - 1);
-          }
-          break;
-        }
+        segment = encodeOnce(source.text, /*segmentIsFinal=*/false);
+        if (!segment.tones.isEmpty()) break;
         if (source.length <= 1) {
           Q_EMIT jttyTextRejected(requestId, JttyTxRejectReason::EncodingFailed);
           return;
@@ -442,6 +524,14 @@ void MainWindow::execute_jtty_tx(qint64 requestId, QString message)
       segments.append(std::move(segment));
       offset += source.length;
     }
+    if (segments.size() == lineStart) continue;
+    bool const lineIsFinal = lineIndex + 1 < lines.size() || isFinal;
+    if (!lineIsFinal) continue;
+    auto& last = segments.last();
+    auto final_ = encodeOnce(last.text, /*segmentIsFinal=*/true);
+    Q_ASSERT (!final_.tones.isEmpty());   // same text that just succeeded above
+    final_.frequency = last.frequency;
+    last = std::move(final_);
   }
 
   m_jttyQueueNotice = prepared.substituted
@@ -687,6 +777,8 @@ void MainWindow::updateJttyTransmitDisplay(qint64 servedSamples)
     for (auto const& segment : request.segments) {
       if (!segment.endSample || segment.endSample <= m_jttyDisplayedEndSample
           || segment.endSample - segment.sampleCount () >= servedSamples) continue;
+      m_jttyDisplayedEndSample = segment.endSample;
+      if (Jtty::isJttyFillerText (segment.text)) continue;   // idle-padding; never shown
       m_currentMessage = segment.text;
       write_all ("Tx", segment.text);
       auto const resolved = DecodeHighlightingModel::resolve_colors (
@@ -709,7 +801,6 @@ void MainWindow::updateJttyTransmitDisplay(qint64 servedSamples)
 #ifdef WIN32
       if (m_mmttyif) m_mmttyif->echo_message_to_n1mm (append_separator (segment.text));
 #endif
-      m_jttyDisplayedEndSample = segment.endSample;
     }
   }
 }
@@ -719,7 +810,7 @@ void MainWindow::updateJttySendButton()
   int const left = m_jttyTransmitQueue.remainingSegments (
     m_jttyQueueProgress.served_samples);
   QString text = tr ("Send message");
-  QString tooltip = tr ("Ctrl+K sends. Ctrl+Shift+K clears the box. New text follows pending text. Halt Tx or Esc cancels pending text.");
+  QString tooltip = tr ("Ctrl+K sends now (one-shot); Alt+J starts a live session until Alt+K signs off. Ctrl+Shift+K clears the box. Halt Tx or Esc cancels pending text.");
   if (!m_jttyTransmitQueue.empty ()) {
     text = left ? tr ("Send (%1 left)").arg (left) : tr ("Send (finishing)");
     tooltip += "\n\n" + tr ("Pending text:") + "\n"
@@ -763,6 +854,9 @@ void MainWindow::interruptJttyTx()
   if (!stop) {
     return;
   }
+  // Halt Tx/Esc is a decisive stop -- don't let a still-armed session silently resurrect a new transmission later; resuming needs another explicit Alt+J or Ctrl+K.
+  m_jttyLiveEntryArmed = false;
+  m_jttyAutoAdvanceIdleTimer.stop ();
 
   if (stop->backend == JttyTxLifecycle::Backend::Local) {
     auto const progress = m_jttyTxQueue->progress ();
@@ -823,6 +917,12 @@ void MainWindow::finishJttyDrain(JttyTxLifecycle::Drain const& drain)
   }
   if (!m_jttyTransmitQueue.empty ()) {
     feedJttyTransmitQueue ();
+    updateJttySendButton ();
+    return;
+  }
+  // Still armed: top up with more filler instead of dropping PTT, keeping the same transmission going rather than ending it and re-keying whenever real content does arrive.
+  if (m_mode == "JTTY" && m_jttyLiveEntryArmed) {
+    sendJttyFillerPadding ();
     updateJttySendButton ();
     return;
   }
