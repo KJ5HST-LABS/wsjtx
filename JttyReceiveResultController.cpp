@@ -45,8 +45,8 @@ void ReceiveResultController::apply(QVector<ReceiveUpdate> const& updates,
           auto const echo = inputs.echo();
           if (echo.enabled && (change.messageChanged || !wasAdmitted)) {
             QString delta = wasAdmitted && change.extendsMessage
-              ? stripJttyFillerText(change.appendedText) : displayText;
-            if (!delta.isEmpty()) {
+              ? collapseJttyFillerRuns(change.appendedText) : displayText;
+            if (!delta.trimmed().isEmpty()) {
               if (!wasAdmitted || !change.extendsMessage) delta.prepend("\r\n");
               if (echo.lowerCase) delta = delta.toLower();
               effects.echo(delta);
