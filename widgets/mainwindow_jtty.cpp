@@ -1111,7 +1111,9 @@ void MainWindow::jttyDecodeAgainAtSample(quint64 reception, qint64 sample)
 
 bool MainWindow::jtty_key_struck(QKeyEvent * e)
 {
+  fprintf (stderr, "JTTYTXDEBUG jtty_key_struck key=%d\n", e->key ());
   if(e->key() == Qt::Key_Escape) {
+    fprintf (stderr, "JTTYTXDEBUG jtty_key_struck calling abort_jtty_tx\n");
     abort_jtty_tx();
     return true;
   }
