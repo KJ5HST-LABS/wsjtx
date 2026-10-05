@@ -103,7 +103,7 @@ jobs:
       build_packages: true
 
   # Cross-compile on x86_64, then run target tests, packaging, and AppImage
-  # validation in the paired ARMv7 runtime image under QEMU.
+  # validation in the paired ARMv7 runtime image on an ARM runner.
   linux-armhf:
     needs: prepare
     uses: ./.github/workflows/build-linux.yml
@@ -134,6 +134,9 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
+      # build-linux.yml hands this tree between its ARMHF jobs; it is no asset.
+      - name: Drop the ARMHF build tree
+        run: rm -rf artifacts/armhf-build-tree
       - name: Verify all candidate artifacts
         run: python3 .github/scripts/release-policy.py verify-assets "${{ needs.prepare.outputs.version }}" artifacts
       - name: Verify candidate packaging reports

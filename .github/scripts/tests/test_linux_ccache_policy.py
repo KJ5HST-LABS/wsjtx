@@ -20,8 +20,14 @@ class LinuxCcachePolicyTests(unittest.TestCase):
         self.assertIsNotNone(match, name)
         return match.group("body")
 
-    def armhf_step(self, name):
-        workflow = self.read(".github/workflows/build-linux.yml").split("  build-armhf:\n", 1)[1]
+    def armhf_job(self, name):
+        workflow = self.read(".github/workflows/build-linux.yml")
+        body = workflow.split(f"\n  {name}:\n", 1)[1]
+        following = re.search(r"\n  [A-Za-z0-9_-]+:\n", body)
+        return body[:following.start() + 1] if following else body
+
+    def armhf_step(self, name, job="build-armhf"):
+        workflow = self.armhf_job(job)
         match = re.search(
             rf"^      - name: {re.escape(name)}\n(?P<body>.*?)(?=^      - |\Z)",
             workflow,
@@ -146,7 +152,7 @@ class LinuxCcachePolicyTests(unittest.TestCase):
             workflow.count(
                 "RUNTIME_IMAGE: ${{ needs.resolve-image.outputs.image_reference }}"
             ),
-            2,
+            3,
         )
         self.assertIn("build-linux-armhf-cross.sh", workflow)
         self.assertIn("validate-linux-armhf-runtime.sh", workflow)
@@ -182,14 +188,62 @@ class LinuxCcachePolicyTests(unittest.TestCase):
         self.assertIn("exit 0", script[skip_install:script.index("cmake --install")])
 
     def test_armhf_build_only_skips_runtime_and_artifact_steps(self):
+        test_job = self.armhf_job("test-armhf")
+        self.assertIn("    if: inputs.arch == 'armhf' && !inputs.armhf_build_only\n", test_job)
         for name in (
-            "Test and package under ARMv7 QEMU", "Publish armhf test summary",
+            "Test and package on native ARMv7", "Publish armhf test summary",
             "Upload armhf AppImage startup diagnostics", "Upload .deb", "Upload RPM",
             "Upload AppImage", "Upload build artifacts", "Upload test results",
             "Upload release tarballs",
         ):
             with self.subTest(step=name):
-                self.assertIn("!inputs.armhf_build_only", self.armhf_step(name))
+                self.assertIn(f"      - name: {name}\n", test_job)
+                self.assertNotIn(f"      - name: {name}\n", self.armhf_job("build-armhf"))
+        for name in ("Pack ARMHF build tree", "Upload ARMHF build tree"):
+            with self.subTest(step=name):
+                self.assertIn("if: ${{ !inputs.armhf_build_only }}", self.armhf_step(name))
+
+    def test_armhf_runtime_runs_natively_on_an_arm_runner_from_the_cross_build_tree(self):
+        build_job = self.armhf_job("build-armhf")
+        test_job = self.armhf_job("test-armhf")
+        self.assertIn("    runs-on: ubuntu-24.04\n", build_job)
+        self.assertIn("    runs-on: ubuntu-24.04-arm\n", test_job)
+        self.assertIn("    needs: [resolve-image, build-armhf]\n", test_job)
+        self.assertNotIn("setup-qemu-action", test_job)
+        self.assertNotIn("validate-linux-armhf-runtime.sh", build_job)
+        self.assertIn("bash .github/scripts/validate-linux-armhf-runtime.sh", self.armhf_step("Test and package on native ARMv7", "test-armhf"))
+        pack = self.armhf_step("Pack ARMHF build tree")
+        self.assertIn(
+            "sudo tar --create --file armhf-build-tree.tar --exclude='wsjtx-build/*.o' --exclude='wsjtx-build/*.a' wsjtx-build AppDir\n",
+            pack,
+        )
+        self.assertLess(build_job.index("- name: Save armhf ccache"), build_job.index("- name: Pack ARMHF build tree"))
+        for step in ("actions/checkout@", "docker/login-action@"):
+            self.assertIn(step, test_job)
+        self.assertLess(test_job.index("docker/login-action@"), test_job.index("- name: Require native 32-bit ARM execution"))
+        self.assertLess(test_job.index("- name: Require native 32-bit ARM execution"), test_job.index("- name: Download ARMHF build tree"))
+        preflight = self.armhf_step("Require native 32-bit ARM execution", "test-armhf")
+        self.assertIn("grep -Eq '^CPU op-mode\\(s\\):.*32-bit'", preflight)
+        self.assertIn("/proc/sys/fs/binfmt_misc/qemu-arm", preflight)
+        self.assertIn('docker run --rm --platform linux/arm/v7 "$RUNTIME_IMAGE" getconf LONG_BIT', preflight)
+        runtime_step = self.armhf_step("Test and package on native ARMv7", "test-armhf")
+        for fragment in ("docker run --rm --platform linux/arm/v7", '-v "${GITHUB_WORKSPACE}:/work"', "-w /work", "-e ARMHF_RUNTIME_PHASE"):
+            self.assertIn(fragment, runtime_step)
+        for name in ("Publish armhf test summary", "Upload test results"):
+            self.assertIn("        if: always()\n", self.armhf_step(name, "test-armhf"))
+        for name, artifact in (
+            ("Upload .deb", "wsjtx-${{ inputs.version }}-linux-armhf-deb"),
+            ("Upload RPM", "wsjtx-${{ inputs.version }}-linux-armhf-rpm"),
+            ("Upload AppImage", "wsjtx-${{ inputs.version }}-linux-armhf-AppImage"),
+        ):
+            self.assertIn(f"          name: {artifact}\n", self.armhf_step(name, "test-armhf"))
+        self.assertIn("name: armhf-build-tree\n", self.armhf_step("Upload ARMHF build tree"))
+        self.assertIn("name: armhf-build-tree\n", self.armhf_step("Download ARMHF build tree", "test-armhf"))
+        self.assertIn("tar --extract --file armhf-build-tree.tar", self.armhf_step("Unpack ARMHF build tree", "test-armhf"))
+        self.assertLess(test_job.index("- name: Unpack ARMHF build tree"), test_job.index("- name: Test and package on native ARMv7"))
+        runtime = self.read(".github/scripts/validate-linux-armhf-runtime.sh")
+        self.assertIn("ctest --parallel 3 --output-on-failure", runtime)
+        self.assertNotIn("--exclude-regex", runtime)
 
     def test_armhf_build_only_save_requires_trusted_successful_audits(self):
         save = self.armhf_step("Save armhf ccache")
@@ -200,8 +254,8 @@ class LinuxCcachePolicyTests(unittest.TestCase):
         self.assertIn("key: ${{ steps.ccache.outputs.cache-primary-key }}", save)
         self.assertNotIn("always()", save)
         self.assertNotIn("!cancelled()", save)
-        workflow = self.read(".github/workflows/build-linux.yml")
-        self.assertLess(workflow.index("- name: Test and package under ARMv7 QEMU"), workflow.index("- name: Save armhf ccache"))
+        build_job = self.armhf_job("build-armhf")
+        self.assertLess(build_job.index("- name: Cross-build ARMHF binaries"), build_job.index("- name: Save armhf ccache"))
 
     def test_release_requires_pinned_armhf_pair_without_stale_recipe_fallback(self):
         workflow = self.read(".github/workflows/release.yml")
