@@ -1055,12 +1055,7 @@ void MainWindow::on_pb24G_clicked()
 
 void MainWindow::on_pbSendMessage_clicked()
 {
-  submitJttyDraft (jtty_msg_expand (ui->Tx_Message->text ()).toUpper ());
-}
-
-void MainWindow::on_Tx_Message_returnPressed()
-{
-  on_pbSendMessage_clicked();
+  commitJttyLiveEntry ();
 }
 
 void MainWindow::on_pbF1_clicked()

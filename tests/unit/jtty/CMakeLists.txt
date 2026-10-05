@@ -151,10 +151,6 @@ add_executable (test_jtty_messages test_jtty_messages.cpp)
 target_link_libraries (test_jtty_messages Qt5::Test)
 add_test (NAME test_jtty_messages COMMAND test_jtty_messages)
 
-add_executable (test_jtty_draft_acceptance test_jtty_draft_acceptance.cpp)
-target_link_libraries (test_jtty_draft_acceptance Qt5::Test)
-add_test (NAME test_jtty_draft_acceptance COMMAND test_jtty_draft_acceptance)
-
 add_executable (test_jtty_continuous_decode test_jtty_continuous_decode.f90)
 target_include_directories (test_jtty_continuous_decode PRIVATE ${CMAKE_BINARY_DIR})
 wsjt_link_common_fortran (test_jtty_continuous_decode)
@@ -209,6 +205,10 @@ add_test (NAME test_jtty_tx_lifecycle COMMAND test_jtty_tx_lifecycle)
 add_executable (test_jtty_transmit_queue test_jtty_transmit_queue.cpp)
 target_link_libraries (test_jtty_transmit_queue Qt5::Test)
 add_test (NAME test_jtty_transmit_queue COMMAND test_jtty_transmit_queue)
+
+add_executable (test_jtty_live_entry test_jtty_live_entry.cpp)
+target_link_libraries (test_jtty_live_entry Qt5::Test)
+add_test (NAME test_jtty_live_entry COMMAND test_jtty_live_entry)
 
 add_executable (test_jtty_n1mm test_jtty_n1mm.cpp)
 target_link_libraries (test_jtty_n1mm Qt5::Test)

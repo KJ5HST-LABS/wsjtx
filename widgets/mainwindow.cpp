@@ -700,7 +700,8 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
   qApp->setFont (m_config.text_font ());
   ui->setupUi(this);
   updateJttySendButton ();
-  ui->Tx_Message->setToolTip (tr ("Press Enter to send. Long messages are split automatically; new messages follow pending text."));
+  ui->Tx_Message->setToolTip (tr ("Ctrl+K sends. Ctrl+Shift+K clears the box. Long messages are split automatically; new text follows pending text."));
+  ui->Tx_Message->installEventFilter (this);
   configureModeControlsLayout ();
   // A non-editable QComboBox always left-aligns its closed-box text, so fake a
   // centered "label" via a read-only editable line edit; the dropdown list's
@@ -712,17 +713,42 @@ MainWindow::MainWindow(QDir const& temp_directory, bool multiple,
   for (int i = 0; i < ui->comboBoxJttyStyle->count (); ++i) {
     ui->comboBoxJttyStyle->setItemData (i, Qt::AlignCenter, Qt::TextAlignmentRole);
   }
-  connect (ui->Tx_Message, &QLineEdit::textChanged, this,
-           [this] { m_jttyDraftAcceptanceTracker.noteDraftChanged (); });
-  connect (this, &MainWindow::jttyTextAccepted, this, [this] (qint64 requestId) {
-    if (m_jttyDraftAcceptanceTracker.accept (requestId)) {
-      ui->Tx_Message->clear ();
+  connect (ui->Tx_Message, &QPlainTextEdit::textChanged, this,
+           &MainWindow::guardJttyLiveEntryLock);
+  connect (ui->Tx_Message, &QPlainTextEdit::textChanged, this,
+           &MainWindow::autoAdvanceJttyLiveEntry);
+  connect (ui->Tx_Message, &QPlainTextEdit::textChanged, this,
+           &MainWindow::updateJttyLiveEntryFrameLabel);
+  // Acceptance leaves the span in m_jttyLiveEntryPending; only jttyTextCompleted (below) removes it.
+  connect (this, &MainWindow::jttyTextCompleted, this, [this] (qint64 requestId) {
+    for (int i = 0; i < m_jttyLiveEntryPending.size (); ++i) {
+      if (m_jttyLiveEntryPending[i].requestId == requestId) {
+        m_jttyLiveEntryFramesSent += m_jttyLiveEntryPending[i].totalFrames;
+        m_jttyLiveEntryPending.remove (i);
+        m_guardingJttyLiveEntryLock = true;
+        applyJttyLiveEntryFormatting ();
+        m_guardingJttyLiveEntryLock = false;
+        updateJttyLiveEntryFrameLabel ();
+        break;
+      }
     }
   });
   connect (this, &MainWindow::jttyTextRejected, this,
             [this] (qint64 requestId, JttyTxRejectReason) {
-              m_jttyDraftAcceptanceTracker.reject (requestId);
-            });
+    for (int i = 0; i < m_jttyLiveEntryPending.size (); ++i) {
+      if (m_jttyLiveEntryPending[i].requestId != requestId) continue;
+      auto const entry = m_jttyLiveEntryPending[i];
+      m_jttyLiveEntryPending.remove (i);
+      // Only the most recently committed span can be cleanly reopened for editing.
+      if (entry.end == m_jttyLiveEntryCommitted) {
+        m_guardingJttyLiveEntryLock = true;
+        m_jttyLiveEntryCommitted = entry.start;
+        applyJttyLiveEntryFormatting ();
+        m_guardingJttyLiveEntryLock = false;
+      }
+      break;
+    }
+  });
   m_tx_message_button_group = new QButtonGroup {this};
   m_tx_message_button_group->addButton (ui->txrb1, 1);
   m_tx_message_button_group->addButton (ui->txrb2, 2);
@@ -4157,6 +4183,28 @@ bool MainWindow::eventFilter (QObject * object, QEvent * event)
           }
 
         auto const key_event = static_cast<QKeyEvent *> (event);
+        if (object == ui->Tx_Message && !key_event->isAutoRepeat ()
+            && key_event->key () == Qt::Key_K
+            && key_event->modifiers () == (Qt::ControlModifier | Qt::ShiftModifier))
+          {
+            clearJttyLiveEntry ();
+            return true;
+          }
+        if (object == ui->Tx_Message && !key_event->isAutoRepeat ()
+            && key_event->key () == Qt::Key_K
+            && key_event->modifiers () == Qt::ControlModifier)
+          {
+            commitJttyLiveEntry ();
+            return true;
+          }
+        // An undo reaching into locked text can't be fixed by guardJttyLiveEntryLock's own undo() (wrong direction), so block the shortcuts outright while anything is locked.
+        if (object == ui->Tx_Message && !key_event->isAutoRepeat ()
+            && m_jttyLiveEntryCommitted > 0
+            && (key_event->matches (QKeySequence::Undo)
+                || key_event->matches (QKeySequence::Redo)))
+          {
+            return true;
+          }
         auto const handled = switchMainWindowTab (key_event) || switchTxNextMessage (key_event);
         tx_watchdog (false);
         if (handled) return true;

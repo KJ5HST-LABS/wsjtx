@@ -8,7 +8,7 @@ module jtty_mod
 
 contains
 
-subroutine pack_jtty(message,c32,nframes,exchange_profile)
+subroutine pack_jtty(message,c32,nframes,exchange_profile,frame_starts)
 
 ! Input:   character*80   message     !JTTY message, as it appears to a user
 ! Output:  character*34   c32         !34-bit payload: 32 bits of existing
@@ -19,6 +19,8 @@ subroutine pack_jtty(message,c32,nframes,exchange_profile)
 !                                      !uses as a free extra check beyond
 !                                      !the CRC.
 !          integer        nframes     !Frames in this message (max = 16)
+!          integer        frame_starts(MAX_FRAMES), optional
+!                                      !1-indexed start column of each frame's source text in the normalized message (a structured atom's span runs through its trailing separator space).
 !
 ! Minimize frames after alphabet and exchange-profile normalization.
 
@@ -27,6 +29,7 @@ subroutine pack_jtty(message,c32,nframes,exchange_profile)
   character*80 message,msg
   character*34 c32(MAX_FRAMES)
   integer, intent(in), optional :: exchange_profile
+  integer, intent(out), optional :: frame_starts(MAX_FRAMES)
   integer, parameter :: INF=999
   type(jtty_source_atom) :: choice(80),atoms(MAX_FRAMES)
   integer :: dp(81),successor(80),n,ipos,inext,natoms,nframes,profile
@@ -75,6 +78,7 @@ subroutine pack_jtty(message,c32,nframes,exchange_profile)
   do while(ipos.le.n)
      natoms=natoms+1
      atoms(natoms)=choice(ipos)
+     if(present(frame_starts)) frame_starts(natoms)=ipos
      ipos=successor(ipos)
   enddo
   call pack_jtty_atoms(atoms,natoms,c32,nframes,valid)
