@@ -16,8 +16,6 @@ source .github/scripts/armhf-ci-image-config.sh
 # shellcheck source=.github/scripts/linux-artifact-validation.sh
 source .github/scripts/linux-artifact-validation.sh
 export LD_LIBRARY_PATH="$ARMHF_RUNTIME_PREFIX"
-export ARMHF_QEMU_EXECUTABLE
-export LINUX_APPIMAGE_RUNNER="$ARMHF_QEMU_EXECUTABLE"
 
 echo "::group::Package .deb"
 (
@@ -89,20 +87,14 @@ QT_PLUGIN_ASSET_ID="$(
 )"
 curl "${curl_flags[@]}" -o linuxdeploy.AppImage \
   "https://github.com/linuxdeploy/linuxdeploy/releases/download/${LINUXDEPLOY_TAG}/linuxdeploy-armhf.AppImage"
-mkdir -p wsjtx-build/appimage-tools
-github_api_curl -H "Accept: application/octet-stream" \
-  -o wsjtx-build/appimage-tools/qt-plugin.AppImage \
+github_api_curl -H "Accept: application/octet-stream" -o linuxdeploy-plugin-qt.AppImage \
   "https://api.github.com/repos/linuxdeploy/linuxdeploy-plugin-qt/releases/assets/${QT_PLUGIN_ASSET_ID}"
 echo "$LINUXDEPLOY_SHA256  linuxdeploy.AppImage" | sha256sum -c -
-chmod +x linuxdeploy.AppImage wsjtx-build/appimage-tools/qt-plugin.AppImage
-# shellcheck disable=SC2016 # variables expand when the generated wrapper runs
-printf '%s\n' \
-  '#!/bin/sh' \
-  'exec "${ARMHF_QEMU_EXECUTABLE:?}" /work/wsjtx-build/appimage-tools/qt-plugin.AppImage "$@"' \
-  > linuxdeploy-plugin-qt.AppImage
-chmod +x linuxdeploy-plugin-qt.AppImage
-# Supply linuxdeploy with the non-executing ARMHF resolver; native ldd cannot
-# safely enter the target loader from this already-emulated container.
+chmod +x linuxdeploy.AppImage linuxdeploy-plugin-qt.AppImage
+# linuxdeploy resolves dependencies with the non-executing ARMHF resolver,
+# which reads the clean runtime prefix first and refuses a libquadmath
+# dependency the ARMHF runtime cannot satisfy.
+mkdir -p wsjtx-build/appimage-tools
 ln -sfn /work/.github/scripts/armhf-static-ldd.sh wsjtx-build/appimage-tools/ldd
 
 for target in AppDir/usr/bin/wsjtx AppDir/usr/bin/jt9 AppDir/usr/bin/qmap \
@@ -113,7 +105,6 @@ done
 export APPIMAGE_EXTRACT_AND_RUN=1
 export OUTPUT="wsjtx-${VERSION}-linux-${ARCH}.AppImage"
 env -u GITHUB_TOKEN PATH="/work/wsjtx-build/appimage-tools:$PATH" \
-  "$ARMHF_QEMU_EXECUTABLE" \
   ./linuxdeploy.AppImage --appimage-extract-and-run \
   --appdir AppDir \
   --plugin qt \
@@ -124,7 +115,7 @@ file "$OUTPUT"
 echo "::endgroup::"
 
 echo "::group::Validate AppImage payload"
-"$ARMHF_QEMU_EXECUTABLE" ./"$OUTPUT" --appimage-extract >/dev/null
+./"$OUTPUT" --appimage-extract >/dev/null
 validate_linux_application_tree squashfs-root appimage "$ARCH"
 rm -rf /work/squashfs-root
 echo "::endgroup::"
@@ -135,19 +126,13 @@ run_packaged_appimage_startup_smoke \
 echo "::endgroup::"
 
 echo "::group::Package release tarballs"
-# shellcheck disable=SC2016 # variables expand when the generated wrapper runs
-printf '%s\n' \
-  '#!/bin/sh' \
-  'exec "${ARMHF_QEMU_EXECUTABLE:?}" /work/linuxdeploy.AppImage "$@"' \
-  > wsjtx-build/appimage-tools/linuxdeploy
-chmod +x wsjtx-build/appimage-tools/linuxdeploy
 PATH="/work/wsjtx-build/appimage-tools:$PATH" .github/scripts/package-cli-tools.sh \
   --platform linux \
   --version "$VERSION" \
   --arch "$ARCH" \
   --groups CMake/release-tarballs.txt \
   --source wsjtx-build \
-  --linuxdeploy /work/wsjtx-build/appimage-tools/linuxdeploy \
+  --linuxdeploy /work/linuxdeploy.AppImage \
   --out release-tarballs
 echo "::endgroup::"
 

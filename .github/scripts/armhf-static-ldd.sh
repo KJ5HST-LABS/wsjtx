@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# linuxdeploy's ldd probe crashes when an ARM loader is nested under user-mode
-# QEMU. Resolve DT_NEEDED entries from the clean ARMHF runtime without executing
-# the target; packaged runtime behavior is still proved by the QEMU smoke test.
+# Resolve DT_NEEDED entries from the clean ARMHF runtime without executing the
+# target, so linuxdeploy sees the runtime prefix first and a libquadmath
+# dependency fails; the AppImage startup smoke test proves runtime behavior.
 
 if [ "$#" -ne 1 ]; then
   echo "Usage: armhf-static-ldd.sh ELF" >&2

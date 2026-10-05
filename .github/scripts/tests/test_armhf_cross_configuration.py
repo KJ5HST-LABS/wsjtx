@@ -146,17 +146,17 @@ class ArmhfCrossConfigurationTests(unittest.TestCase):
         self.assertIn("cpack -G RPM", runtime_package)
         self.assertIn("CPACK_INSTALL_CMAKE_PROJECTS=", runtime_package)
         self.assertIn("CPACK_INSTALLED_DIRECTORIES=/work/AppDir;/", runtime_package)
-        self.assertIn('"$ARMHF_QEMU_EXECUTABLE"', runtime_package)
-        self.assertIn(
-            'LINUX_APPIMAGE_RUNNER="$ARMHF_QEMU_EXECUTABLE"', runtime_package
-        )
+        self.assertNotIn("qemu", runtime_package.lower())
+        self.assertNotIn("LINUX_APPIMAGE_RUNNER", runtime_package)
+        self.assertIn("  ./linuxdeploy.AppImage --appimage-extract-and-run \\\n", runtime_package)
+        self.assertIn('./"$OUTPUT" --appimage-extract >/dev/null', runtime_package)
+        self.assertIn("-o linuxdeploy-plugin-qt.AppImage", runtime_package)
         self.assertIn("armhf-static-ldd.sh", runtime_package)
         self.assertIn('PATH="/work/wsjtx-build/appimage-tools:$PATH"', runtime_package)
         packaging = runtime_package[runtime_package.index("Package release tarballs"):]
         self.assertLess(runtime_package.index("--output appimage"), runtime_package.index("package-cli-tools.sh"))
-        self.assertIn('exec "${ARMHF_QEMU_EXECUTABLE:?}" /work/linuxdeploy.AppImage "$@"', packaging)
         self.assertIn('PATH="/work/wsjtx-build/appimage-tools:$PATH" .github/scripts/package-cli-tools.sh', packaging)
-        self.assertIn("--linuxdeploy /work/wsjtx-build/appimage-tools/linuxdeploy", packaging)
+        self.assertIn("--linuxdeploy /work/linuxdeploy.AppImage", packaging)
         self.assertIn(".github/scripts/smoke-release-tarballs.sh", packaging)
         self.assertNotIn("--ldd", packaging)
 

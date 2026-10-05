@@ -193,6 +193,9 @@ jobs:
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
+      # build-linux.yml hands this tree between its ARMHF jobs; it is no asset.
+      - name: Drop the ARMHF build tree
+        run: rm -rf artifacts/armhf-build-tree
       - name: Build corresponding source archive
         env:
           VERSION: ${{ needs.prepare.outputs.version }}

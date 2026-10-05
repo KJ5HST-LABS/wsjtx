@@ -188,7 +188,7 @@ When the PR is opened (and on every subsequent push), the default CI path runs t
 - **macOS ARM64** — builds; the app is ad-hoc signed and the package is unsigned
 - **Linux x86_64** — builds
 - **Linux aarch64** — builds (ARM Linux, via `ubuntu-24.04-arm`)
-- **Linux armhf** — builds in the armhf container
+- **Linux armhf** — cross-builds on `ubuntu-24.04`, then tests and packages in the armhf container on `ubuntu-24.04-arm`
 - **Windows x86_64** — builds via MSYS2/MinGW; the installer is unsigned
 
 Green checks cover the jobs selected for that run. A red X means something broke — click the check to see which platform failed and view the logs. The private release candidate always runs the complete five-target matrix before source can be promoted.
@@ -341,7 +341,7 @@ CI runs on GitHub-hosted runners:
 | macOS ARM64 | `macos-15` | ARM64 (Apple Silicon) | $0.062 per minute |
 | Linux x86_64 | `ubuntu-24.04` | x86_64 | $0.006 per minute |
 | Linux aarch64 | `ubuntu-24.04-arm` | aarch64 | $0.005 per minute |
-| Linux armhf | `ubuntu-24.04` + container | armhf | $0.006 per minute |
+| Linux armhf | `ubuntu-24.04` (cross-build), then `ubuntu-24.04-arm` + container (tests and packaging) | armhf | $0.006 per minute (cross-build), then $0.005 per minute |
 | Windows | `windows-latest` + MSYS2 | x86_64 | $0.010 per minute |
 | Orchestration (scheduler, tagging, promotion, gates) | `ubuntu-latest` | x86_64 | $0.006 per minute |
 

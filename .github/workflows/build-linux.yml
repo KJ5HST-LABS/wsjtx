@@ -175,9 +175,10 @@ on:
 #   aarch64 — validated GCC 13.4 Bookworm container on ubuntu-24.04-arm. This keeps the
 #            Bookworm glibc 2.36 + pre-t64 library baseline while using GCC 13
 #            (issue #49).
-#   armhf  — native x86_64-to-ARMHF GCC 13.4 cross-build followed by target
-#            tests and packaging in a Bookworm arm/v7 container under QEMU
-#            (issue #51). DigiPi / Pi Zero 2W class.
+#   armhf  — native x86_64-to-ARMHF GCC 13.4 cross-build, then target tests
+#            and packaging in a Bookworm arm/v7 container on ubuntu-24.04-arm,
+#            which runs 32-bit ARM code natively (issue #51). DigiPi / Pi Zero
+#            2W class.
 #
 # The native jobs use the build-linux-payload composite action. ARMHF needs
 # separate host-build and target-runtime phases, but shares their artifact
@@ -370,13 +371,13 @@ jobs:
     needs: resolve-image
     if: inputs.arch == 'armhf'
     runs-on: ubuntu-24.04
-    timeout-minutes: 160
-    # Compile natively on x86_64 with a pinned GCC 13.4 cross-toolchain, then
-    # execute target tests and packaging in a clean Bookworm ARMv7 runtime.
+    timeout-minutes: 60
+    # Compile natively on x86_64 with a pinned GCC 13.4 cross-toolchain;
+    # test-armhf then runs the target tests and packaging on an ARM runner.
     #
     # Keep JavaScript actions on the host: the runner's x86_64 Node runtime
-    # cannot execute in the ARMv7 container. Both explicit containers mount
-    # the checkout at /work so CTest paths remain stable across phases.
+    # cannot execute in the ARMv7 container. Every explicit container mounts
+    # the checkout at /work so CTest paths stay valid in test-armhf.
     env:
       VERSION: ${{ inputs.version }}
       HAMLIB_BRANCH: ${{ inputs.hamlib_branch }}
@@ -384,10 +385,8 @@ jobs:
       WSJT_PRERELEASE_NUMBER: ${{ inputs.prerelease_number }}
     steps:
       # setup-qemu-action runs on the host (job has no `container:`),
-      # mutating the host kernel's binfmt_misc table. With arm/v7
-      # registered, subsequent `docker run --platform linux/arm/v7`
-      # invocations execute the container's arm/v7 init + binaries via
-      # qemu-arm-static.
+      # mutating the host kernel's binfmt_misc table, so the image pair
+      # check below can run the ARMv7 runtime image's smoke programs.
       - uses: docker/setup-qemu-action@v4
         with:
           image: tonistiigi/binfmt:qemu-v10.2.3-68@sha256:400a4873b838d1b89194d982c45e5fb3cda4593fbfd7e08a02e76b03b21166f0
@@ -518,96 +517,6 @@ jobs:
             "$CROSS_BUILDER_IMAGE" \
             bash .github/scripts/build-linux-armhf-cross.sh
 
-      - name: Test and package under ARMv7 QEMU
-        id: armhf-runtime
-        if: ${{ !inputs.armhf_build_only }}
-        env:
-          ARCH: armhf
-          RUNTIME_IMAGE: ${{ needs.resolve-image.outputs.image_reference }}
-          WSJTX_CI_IMAGE_ALLOW_RECIPE_MISMATCH: ${{ inputs.allow_stale_image }}
-          ARMHF_RUNTIME_PHASE: ${{ inputs.build_packages && 'all' || 'test' }}
-        run: |
-          GITHUB_TOKEN="${{ github.token }}" docker run --rm --platform linux/arm/v7 \
-            -v "${GITHUB_WORKSPACE}:/work" \
-            -w /work \
-            -e VERSION \
-            -e HAMLIB_BRANCH \
-            -e ARCH \
-            -e GITHUB_TOKEN \
-            -e ARMHF_RUNTIME_PHASE \
-            -e WSJTX_CI_IMAGE_ALLOW_RECIPE_MISMATCH \
-            "$RUNTIME_IMAGE" \
-            bash .github/scripts/validate-linux-armhf-runtime.sh
-
-      - name: Publish armhf test summary
-        if: always() && !inputs.armhf_build_only
-        run: >-
-          python3 .github/scripts/publish-ctest-summary.py
-          "Linux armhf" wsjtx-build/ctest-results.xml
-          >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Upload armhf AppImage startup diagnostics
-        if: inputs.build_packages && !inputs.armhf_build_only && failure() && steps.armhf-runtime.outcome == 'failure'
-        uses: actions/upload-artifact@v7
-        with:
-          name: wsjtx-startup-smoke-linux-armhf
-          path: wsjtx-build/appimage-startup-smoke.log
-          if-no-files-found: ignore
-          retention-days: 7
-
-      # Artifacts produced inside the container land in $GITHUB_WORKSPACE
-      # via the bind-mount. Upload from the host where actions/upload-
-      # artifact runs natively. Same artifact names as the composite
-      # action's uploads so release.yml's all-platforms-ready gate
-      # pattern works unchanged.
-      - name: Upload .deb
-        if: inputs.build_packages && !inputs.armhf_build_only
-        uses: actions/upload-artifact@v7
-        with:
-          name: wsjtx-${{ inputs.version }}-linux-armhf-deb
-          path: wsjtx-build/wsjtx-${{ inputs.version }}-linux-armhf.deb
-          if-no-files-found: error
-          compression-level: 0
-      - name: Upload RPM
-        if: inputs.build_packages && !inputs.armhf_build_only
-        uses: actions/upload-artifact@v7
-        with:
-          name: wsjtx-${{ inputs.version }}-linux-armhf-rpm
-          path: wsjtx-build/*.rpm
-          if-no-files-found: error
-          compression-level: 0
-      - name: Upload AppImage
-        if: inputs.build_packages && !inputs.armhf_build_only
-        uses: actions/upload-artifact@v7
-        with:
-          name: wsjtx-${{ inputs.version }}-linux-armhf-AppImage
-          path: wsjtx-${{ inputs.version }}-linux-armhf.AppImage
-          if-no-files-found: error
-          compression-level: 0
-      - name: Upload build artifacts
-        if: inputs.build_packages && !inputs.armhf_build_only
-        uses: actions/upload-artifact@v7
-        with:
-          name: wsjtx-${{ inputs.version }}-linux-armhf
-          path: |
-            wsjtx-build/jt9
-            wsjtx-build/wsprd
-            wsjtx-build/wsjtx
-      - name: Upload release tarballs
-        if: inputs.build_packages && !inputs.armhf_build_only
-        uses: ./.github/actions/upload-release-tarballs
-        with:
-          version: ${{ inputs.version }}
-          target: linux-armhf
-          directory: release-tarballs
-      - name: Upload test results
-        if: always() && !inputs.armhf_build_only
-        uses: actions/upload-artifact@v7
-        with:
-          name: ctest-results-linux-armhf
-          path: wsjtx-build/ctest-results.xml
-          if-no-files-found: ignore
-
       - name: Report suppressed armhf ccache save
         if: inputs.save_ccache && steps.image.outputs.recipe_match != 'true'
         run: echo "::notice::Not saving armhf ccache because this build used a stale Linux CI image recipe"
@@ -619,6 +528,25 @@ jobs:
         with:
           path: .ccache-armhf
           key: ${{ steps.ccache.outputs.cache-primary-key }}
+
+      # test-armhf runs the tests and packaging on an ARM runner from this
+      # tree. tar keeps the modes, links and times upload-artifact drops;
+      # objects and static libraries are only needed to link.
+      - name: Pack ARMHF build tree
+        if: ${{ !inputs.armhf_build_only }}
+        run: |
+          sudo tar --create --file armhf-build-tree.tar --exclude='wsjtx-build/*.o' --exclude='wsjtx-build/*.a' wsjtx-build AppDir
+          ls -l armhf-build-tree.tar
+
+      # Kept one day: re-running test-armhf alone works within that window.
+      - name: Upload ARMHF build tree
+        if: ${{ !inputs.armhf_build_only }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: armhf-build-tree
+          path: armhf-build-tree.tar
+          if-no-files-found: error
+          retention-days: 1
 
       - name: Summarize ARMHF compiler cache
         if: always()
@@ -669,9 +597,149 @@ jobs:
               "Restore": restore,
               "Compilation and binary audits": steps.get("cross-build", {}).get("outcome", "not run"),
               "Compilation duration (seconds)": duration,
-              "Runtime tests and packaging": "disabled (build-only warmer)" if build_only else steps.get("armhf-runtime", {}).get("outcome", "not run"),
               "Cache publication": publication,
           }
           for label, value in rows.items():
               print(f"| {label} | {value} |")
           PY
+
+  test-armhf:
+    needs: [resolve-image, build-armhf]
+    if: inputs.arch == 'armhf' && !inputs.armhf_build_only
+    # ubuntu-24.04-arm executes 32-bit ARM code natively, so the runtime
+    # image runs here without QEMU.
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 90
+    env:
+      VERSION: ${{ inputs.version }}
+      HAMLIB_BRANCH: ${{ inputs.hamlib_branch }}
+      WSJT_RELEASE_CHANNEL: ${{ inputs.release_channel }}
+      WSJT_PRERELEASE_NUMBER: ${{ inputs.prerelease_number }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      # A CPU without 32-bit ARM support cannot run the image, and a registered
+      # qemu-arm handler would run it emulated without saying so.
+      - name: Require native 32-bit ARM execution
+        env:
+          RUNTIME_IMAGE: ${{ needs.resolve-image.outputs.image_reference }}
+        run: |
+          lscpu | grep -E '^(Model name|CPU op-mode)'
+          if ! lscpu | grep -Eq '^CPU op-mode\(s\):.*32-bit'; then
+            echo "::error::This runner cannot execute 32-bit ARM code"
+            exit 1
+          fi
+          if [ -e /proc/sys/fs/binfmt_misc/qemu-arm ]; then
+            echo "::error::A qemu-arm binfmt handler is registered, so ARMHF would run emulated"
+            exit 1
+          fi
+          bits=$(docker run --rm --platform linux/arm/v7 "$RUNTIME_IMAGE" getconf LONG_BIT)
+          if [ "$bits" != 32 ]; then
+            echo "::error::The ARMHF runtime image reports LONG_BIT=${bits}"
+            exit 1
+          fi
+
+      - name: Download ARMHF build tree
+        uses: actions/download-artifact@v8
+        with:
+          name: armhf-build-tree
+
+      - name: Unpack ARMHF build tree
+        run: |
+          sudo tar --extract --file armhf-build-tree.tar
+          rm armhf-build-tree.tar
+
+      - name: Test and package on native ARMv7
+        id: armhf-runtime
+        env:
+          ARCH: armhf
+          RUNTIME_IMAGE: ${{ needs.resolve-image.outputs.image_reference }}
+          WSJTX_CI_IMAGE_ALLOW_RECIPE_MISMATCH: ${{ inputs.allow_stale_image }}
+          ARMHF_RUNTIME_PHASE: ${{ inputs.build_packages && 'all' || 'test' }}
+        run: |
+          GITHUB_TOKEN="${{ github.token }}" docker run --rm --platform linux/arm/v7 \
+            -v "${GITHUB_WORKSPACE}:/work" \
+            -w /work \
+            -e VERSION \
+            -e HAMLIB_BRANCH \
+            -e ARCH \
+            -e GITHUB_TOKEN \
+            -e ARMHF_RUNTIME_PHASE \
+            -e WSJTX_CI_IMAGE_ALLOW_RECIPE_MISMATCH \
+            "$RUNTIME_IMAGE" \
+            bash .github/scripts/validate-linux-armhf-runtime.sh
+
+      - name: Publish armhf test summary
+        if: always()
+        run: >-
+          python3 .github/scripts/publish-ctest-summary.py
+          "Linux armhf" wsjtx-build/ctest-results.xml
+          >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload armhf AppImage startup diagnostics
+        if: inputs.build_packages && failure() && steps.armhf-runtime.outcome == 'failure'
+        uses: actions/upload-artifact@v7
+        with:
+          name: wsjtx-startup-smoke-linux-armhf
+          path: wsjtx-build/appimage-startup-smoke.log
+          if-no-files-found: ignore
+          retention-days: 7
+
+      # Artifacts produced inside the container land in $GITHUB_WORKSPACE
+      # via the bind-mount. Upload from the host where actions/upload-
+      # artifact runs natively. Same artifact names as the composite
+      # action's uploads so release.yml's all-platforms-ready gate
+      # pattern works unchanged.
+      - name: Upload .deb
+        if: inputs.build_packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: wsjtx-${{ inputs.version }}-linux-armhf-deb
+          path: wsjtx-build/wsjtx-${{ inputs.version }}-linux-armhf.deb
+          if-no-files-found: error
+          compression-level: 0
+      - name: Upload RPM
+        if: inputs.build_packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: wsjtx-${{ inputs.version }}-linux-armhf-rpm
+          path: wsjtx-build/*.rpm
+          if-no-files-found: error
+          compression-level: 0
+      - name: Upload AppImage
+        if: inputs.build_packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: wsjtx-${{ inputs.version }}-linux-armhf-AppImage
+          path: wsjtx-${{ inputs.version }}-linux-armhf.AppImage
+          if-no-files-found: error
+          compression-level: 0
+      - name: Upload build artifacts
+        if: inputs.build_packages
+        uses: actions/upload-artifact@v7
+        with:
+          name: wsjtx-${{ inputs.version }}-linux-armhf
+          path: |
+            wsjtx-build/jt9
+            wsjtx-build/wsprd
+            wsjtx-build/wsjtx
+      - name: Upload release tarballs
+        if: inputs.build_packages
+        uses: ./.github/actions/upload-release-tarballs
+        with:
+          version: ${{ inputs.version }}
+          target: linux-armhf
+          directory: release-tarballs
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: ctest-results-linux-armhf
+          path: wsjtx-build/ctest-results.xml
+          if-no-files-found: ignore

@@ -203,7 +203,7 @@ jobs:
 
   linux-armhf:
     needs: [prepare, linux]
-    # Opt-in only -- target tests and runtime validation execute under QEMU.
+    # Opt-in only, like the other targets beyond Linux x86_64.
     if: >-
       github.event_name == 'workflow_dispatch' ||
       contains(github.event.pull_request.labels.*.name, 'full-ci')
