@@ -509,7 +509,7 @@ contains
       usable=ja.le.jb
   end subroutine jtty_search_window
 
-   pure subroutine classify_active_candidate(existing,candidate,frame_period, &
+   subroutine classify_active_candidate(existing,candidate,frame_period, &
        match,is_window_dupe,nframes_gap)
       type(message_assembly), intent(in) :: existing
       type(decode), intent(in) :: candidate
@@ -532,6 +532,11 @@ contains
          match=abs(df1).lt.df_tol
          if(match) nframes_gap=nfp
       endif
+      write(0,9001) existing%f1,existing%tsync,candidate%f1,candidate%tsync, &
+           frame_period,df1,dtsync,nfp,fp_resid,match
+9001  format('JTTYDEBUG classify ef1=',f8.2,' etsync=',f12.3,' cf1=',f8.2, &
+           ' ctsync=',f12.3,' fp=',f10.6,' df1=',f8.2,' dtsync=',f12.3, &
+           ' nfp=',i4,' fp_resid=',f10.4,' match=',l2)
 
       ! Retro sweeps revisit only the preceding three quarter-frame windows.
       is_window_dupe=.false.
@@ -1186,6 +1191,11 @@ contains
             match=.false.
          endif
       endif
+      write(0,9002) dec%f1,dec%tsync,dec%is_last_frame,is_pure_dupe,nactive, &
+           iactive,match,best_cont,trim(dec%decoded)
+9002  format('JTTYDEBUG verdict f1=',f8.2,' tsync=',f12.3,' last=',l2, &
+           ' puredupe=',l2,' nactive=',i3,' iactive=',i3,' match=',l2, &
+           ' best_cont=',i3,' decoded="',a,'"')
 
       if(.not.is_pure_dupe .and. match) then
          call append_active_message(iactive,dec,best_gap,accepted_message,accepted)
