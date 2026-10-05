@@ -8666,10 +8666,6 @@ void MainWindow::stopTx()
 {
   auto const jttyStop = m_jttyTxLifecycle.beginStop ();
   bool const jttyTx = bool (jttyStop);
-  fprintf (stderr, "JTTYTXDEBUG stopTx entry jttyTx=%d delayedBackend=%d "
-           "queueEmpty=%d transmitting=%d g_iptt=%d\n",
-           jttyTx, int (m_delayedJttyStopContext.backend), m_jttyTransmitQueue.empty (),
-           m_transmitting, g_iptt);
 #ifdef WIN32
   bool const abnormalJttyStop = jttyTx
     && m_pendingTxStopReason != TxEvidence::TxStopReason::NormalEnd;
@@ -8682,16 +8678,12 @@ void MainWindow::stopTx()
     interruptJttyTx();
   } else if (!m_jttyTransmitQueue.empty ()) {
     auto const cancelled = m_jttyTransmitQueue.cancel ();
-    fprintf (stderr, "JTTYTXDEBUG stopTx else-if cancelledFromQueue=%d\n",
-             (int) cancelled.size ());
     for (auto requestId : cancelled) {
       Q_EMIT jttyTextRejected (requestId, JttyTxRejectReason::Aborted);
     }
     m_jttyQueueNotice = tr ("JTTY transmission cancelled; some text may already have transmitted.");
     updateJttySendButton ();
     if (!m_transmitting && g_iptt != 1) return;
-  } else {
-    fprintf (stderr, "JTTYTXDEBUG stopTx neither branch taken (nothing to cancel)\n");
   }
   if (tciAudio) Q_EMIT m_config.transceiver_modulator_stop();
   else Q_EMIT endTransmitMessage ();

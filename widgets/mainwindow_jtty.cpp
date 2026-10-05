@@ -548,8 +548,6 @@ void MainWindow::enqueueJttySegments(
     Q_EMIT jttyTextRejected(requestId, JttyTxRejectReason::NotAvailable);
     return;
   }
-  fprintf (stderr, "JTTYTXDEBUG enqueueJttySegments requestId=%lld queueEmptyBefore=%d\n",
-           (long long) requestId, m_jttyTransmitQueue.empty ());
   m_jttyTransmitQueue.append(requestId, std::move(segments));
   updateJttySendButton();
   feedJttyTransmitQueue();
@@ -572,23 +570,9 @@ void MainWindow::feedJttyTransmitQueue()
   if (m_feedingJttyTransmitQueue || m_closing || m_mode != "JTTY"
       || jttyDrainInProgress() || m_jttyTxLifecycle.hasPending ()
       || m_delayedJttyStopContext.backend != JttyTxLifecycle::Backend::None
-      || ptt0Timer.isActive ()) {
-    fprintf (stderr, "JTTYTXDEBUG feedJttyTransmitQueue blocked feeding=%d closing=%d "
-             "mode=%s drain=%d lifecyclePending=%d delayedBackend=%d ptt0Active=%d\n",
-             m_feedingJttyTransmitQueue, m_closing, m_mode.toLatin1 ().constData (),
-             jttyDrainInProgress (), m_jttyTxLifecycle.hasPending (),
-             int (m_delayedJttyStopContext.backend), ptt0Timer.isActive ());
-    return;
-  }
+      || ptt0Timer.isActive ()) return;
   auto const next = m_jttyTransmitQueue.nextSegment();
-  if (!next) {
-    fprintf (stderr, "JTTYTXDEBUG feedJttyTransmitQueue no next segment\n");
-    return;
-  }
-  fprintf (stderr, "JTTYTXDEBUG feedJttyTransmitQueue feeding text=\"%s\" "
-           "lifecycleActive=%d lifecyclePhase=%d\n",
-           next->text.toLatin1 ().constData (), m_jttyTxLifecycle.active (),
-           int (m_jttyTxLifecycle.phase ()));
+  if (!next) return;
 
   auto progress = m_jttyQueueProgress;
   if (m_jttyTxLifecycle.active ()
@@ -883,20 +867,14 @@ void MainWindow::interruptJttyTx()
     captureJttyTxEvidenceTotals (-1, stop->progress.total_samples,
                                  QStringLiteral ("TCI JTTY committed total captured before abort"));
   }
-  fprintf (stderr, "JTTYTXDEBUG interruptJttyTx pendingBefore=%d queueEmptyBefore=%d\n",
-           (int) m_pendingJttyMessages.size (), m_jttyTransmitQueue.empty ());
   rejectPendingJttyMessages(JttyTxRejectReason::Aborted);
   auto const cancelled = m_jttyTransmitQueue.cancel ();
-  fprintf (stderr, "JTTYTXDEBUG interruptJttyTx cancelledFromQueue=%d\n",
-           (int) cancelled.size ());
   for (auto requestId : cancelled) {
     bool const awaitingBackend = std::any_of (
       m_pendingJttyMessages.cbegin (), m_pendingJttyMessages.cend (),
       [requestId] (PendingJttyMessage const& pending) {
         return pending.requestId == requestId;
       });
-    fprintf (stderr, "JTTYTXDEBUG interruptJttyTx cancelled id=%lld awaitingBackend=%d\n",
-             (long long) requestId, awaitingBackend);
     if (!awaitingBackend) {
       Q_EMIT jttyTextRejected (requestId, JttyTxRejectReason::Aborted);
     }
