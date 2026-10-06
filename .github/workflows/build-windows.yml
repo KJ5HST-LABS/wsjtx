@@ -390,6 +390,7 @@ jobs:
       # CMakeLists.txt:1989-1990 sets CPACK_GENERATOR=NSIS on WIN32 and
       # CPACK_MONOLITHIC_INSTALL=1 packages every install() target.
       - name: Package NSIS installer
+        id: package_installer
         run: |
           cd wsjtx-build
           # Override CPACK_PACKAGE_VERSION and
@@ -402,16 +403,38 @@ jobs:
           # wsjtx-<inputs.version>-win64.exe. release.yml's prepare job
           # enforces numeric-base parity; this override covers the
           # suffix gap.
+          # MSYS2 supplies amd64 plugins; NSIS 3.13 can select x86 by default.
           cpack_args=(
             -G NSIS
             -D CPACK_PACKAGE_VERSION="${VERSION}"
             -D CPACK_PACKAGE_FILE_NAME="wsjtx-${VERSION}-win64"
+            -D 'CPACK_NSIS_EXTRA_DEFINES=Target amd64-unicode'
           )
           if [ "${CPACK_VERBOSE:-0}" = "1" ]; then
             cpack_args+=(-V)
           fi
-          cpack "${cpack_args[@]}"
-          ls -la *.exe
+          if cpack "${cpack_args[@]}"; then
+            ls -la *.exe
+          else
+            cpack_status=$?
+            for nsis_log in _CPack_Packages/*/NSIS/NSISOutput.log; do
+              [ -f "${nsis_log}" ] || continue
+              echo "::group::${nsis_log}"
+              cat "${nsis_log}"
+              echo "::endgroup::"
+            done
+            exit "${cpack_status}"
+          fi
+
+      - name: Upload NSIS failure diagnostics
+        if: ${{ failure() && steps.package_installer.outcome == 'failure' }}
+        uses: actions/upload-artifact@v7
+        with:
+          name: nsis-diagnostics-windows
+          path: |
+            wsjtx-build/_CPack_Packages/*/NSIS/NSISOutput.log
+            wsjtx-build/_CPack_Packages/*/NSIS/project.nsi
+          if-no-files-found: warn
 
       - name: Verify installer has no Authenticode signature
         shell: pwsh
