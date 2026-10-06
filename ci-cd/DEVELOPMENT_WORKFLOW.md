@@ -186,12 +186,13 @@ Or use the GitHub web UI: go to the repo, click "Compare & pull request" on the 
 When the PR is opened (and on every subsequent push), the default CI path runs the Linux x86_64 build. Apply the `full-ci` label or dispatch CI manually when all supported targets should run:
 
 - **macOS ARM64** — builds; the app is ad-hoc signed and the package is unsigned
+- **macOS Intel x86_64** — builds; the app is ad-hoc signed and the package is unsigned
 - **Linux x86_64** — builds
 - **Linux aarch64** — builds (ARM Linux, via `ubuntu-24.04-arm`)
 - **Linux armhf** — cross-builds on `ubuntu-24.04`, then tests and packages in the armhf container on `ubuntu-24.04-arm`
 - **Windows x86_64** — builds via MSYS2/MinGW; the installer is unsigned
 
-Green checks cover the jobs selected for that run. A red X means something broke — click the check to see which platform failed and view the logs. The private release candidate always runs the complete five-target matrix before source can be promoted.
+Green checks cover the jobs selected for that run. A red X means something broke — click the check to see which platform failed and view the logs. The private release candidate always runs the complete six-target matrix before source can be promoted.
 
 #### 7. Review and merge
 
@@ -299,7 +300,7 @@ CI/CD serves two purposes: **quality gates** (does it compile?) and **release au
   Push to develop   │                       ci.yml                            │
   or open a PR  ──> │ Linux x86_64 by default                               │
                     │                                                        │
-  full-ci/manual ──>│ macOS arm64, Linux x86_64 + aarch64 + armhf,          │
+  full-ci/manual ──>│ macOS arm64 + Intel, Linux x86_64 + aarch64 + armhf,  │
                     │ and Windows x86_64                                     │
                     │                                                        │
                     │ Selected jobs must all be green                        │
@@ -314,7 +315,7 @@ CI/CD serves two purposes: **quality gates** (does it compile?) and **release au
 **What CI checks:**
 - Default PR and branch CI compiles and tests Linux x86_64; `full-ci`, manual CI, and release candidates provide broader coverage
 - CI, candidate, and beta installers and packages are unsigned; on macOS the app inside carries an ad-hoc signature for validation ([beta signing](DEPLOYMENT_PLAYBOOK.md#beta-signing)).
-- Only a GA installer is signed, through SignPath; a GA release's macOS package is Developer ID-signed, and so is an RC's while hosted Developer ID signing is enabled ([procedures by channel](DEPLOYMENT_PLAYBOOK.md#procedures-by-channel)).
+- Only a GA installer is signed, through SignPath; a GA release's macOS packages are Developer ID-signed, and so are an RC's while hosted Developer ID signing is enabled ([procedures by channel](DEPLOYMENT_PLAYBOOK.md#procedures-by-channel)).
 - Build artifacts are uploaded for inspection
 - **Tests pass on every platform** (Qt helpers, decoder smoke tests, pFUnit Fortran unit tests — registered via ctest). See [Test Failure Policy](#test-failure-policy) below.
 
@@ -339,6 +340,7 @@ CI runs on GitHub-hosted runners:
 | Platform | Runner | Architecture | Cost |
 |----------|--------|-------------|------|
 | macOS ARM64 | `macos-15` | ARM64 (Apple Silicon) | $0.062 per minute |
+| macOS Intel x86_64 | `macos-15-intel` | x86_64 | $0.062 per minute |
 | Linux x86_64 | `ubuntu-24.04` | x86_64 | $0.006 per minute |
 | Linux aarch64 | `ubuntu-24.04-arm` | aarch64 | $0.005 per minute |
 | Linux armhf | `ubuntu-24.04` (cross-build), then `ubuntu-24.04-arm` + container (tests and packaging) | armhf | $0.006 per minute (cross-build), then $0.005 per minute |
@@ -355,7 +357,7 @@ Tests run via ctest at the end of each platform's build job, after compilation s
 
 - Any test failure fails the platform's build job
 - A failed build job fails the entire CI run (red X on the PR or push)
-- A failed candidate build blocks `release.yml`'s `candidate-ready` job, which requires macOS arm64, Linux x86_64, aarch64, and armhf, plus Windows x86_64. Candidate builds do not publish.
+- A failed candidate build blocks `release.yml`'s `candidate-ready` job, which requires macOS arm64 and Intel, Linux x86_64, aarch64, and armhf, plus Windows x86_64. Candidate builds do not publish.
 
 This is the simplest possible policy for v1. If a flaky test emerges, the team can add `continue-on-error: true` to the offending test's platform as a targeted soft-warn, file an issue to triage the flake, and remove the exception once fixed. No blanket soft-warn policy on `develop`.
 
@@ -428,7 +430,7 @@ The sample downloader reads `samples/contents_X.Y.json` and the files it lists f
 
 After public builds finish, review the bundle summary for its tag, source SHA, run link, signing modes, assets, and checksums. Then approve the final `publish` job in `public-release`; the same maintainer can approve their own run. RCs publish as prereleases.
 
-The playbook describes the required [reviewer settings](DEPLOYMENT_PLAYBOOK.md#public-final-publication-approval), [bundle checks and signing modes](DEPLOYMENT_PLAYBOOK.md#step-4-review-and-approve-final-publication), and manual replacement of a GA's macOS package when hosted signing is disabled.
+The playbook describes the required [reviewer settings](DEPLOYMENT_PLAYBOOK.md#public-final-publication-approval), [bundle checks and signing modes](DEPLOYMENT_PLAYBOOK.md#step-4-review-and-approve-final-publication), and manual replacement of a GA's macOS packages when hosted signing is disabled.
 
 #### 5. Recover without moving tags
 
@@ -440,7 +442,7 @@ Before a final release, cut one or more RCs and let the team exercise the same p
 
 #### When to cut an RC
 
-Cut an RC whenever a release contains more than a trivial change — any feature work, non-obvious bug fixes, or changes to the build or packaging path. An RC's Windows installer is unsigned, and its macOS package is unsigned while hosted Developer ID signing is disabled, so an RC does not exercise those signing paths. A pure doc or CI-config release does not need an RC.
+Cut an RC whenever a release contains more than a trivial change — any feature work, non-obvious bug fixes, or changes to the build or packaging path. An RC's Windows installer is unsigned, and its macOS packages are unsigned while hosted Developer ID signing is disabled, so an RC does not exercise those signing paths. A pure doc or CI-config release does not need an RC.
 
 #### Tagging an RC
 
@@ -450,9 +452,9 @@ RCs and GA are prepared on the same `release/X.Y` branch, never directly on `dev
 
 Before promoting an RC to GA, confirm:
 
-- All five target jobs in the public release workflow ran green
-- The macOS `.pkg` passes the [artifact checks](DEPLOYMENT_PLAYBOOK.md#step-5-verify-the-artifacts) in the Deployment Playbook; an unsigned RC package skips the package-signature, staple, and Gatekeeper checks
-- At least one volunteer on each supported platform (macOS ARM64, Linux x86_64, Linux aarch64, Windows x86_64) has installed the RC and exercised the workflow they care about; [beta signing](DEPLOYMENT_PLAYBOOK.md#beta-signing) says how to open the unsigned packages
+- All six target jobs in the public release workflow ran green
+- Both macOS `.pkg` assets pass the [artifact checks](DEPLOYMENT_PLAYBOOK.md#step-5-verify-the-artifacts) in the Deployment Playbook; an unsigned RC package skips the package-signature, staple, and Gatekeeper checks
+- At least one volunteer on each supported platform (macOS ARM64, macOS Intel x86_64, Linux x86_64, Linux aarch64, Linux armhf, Windows x86_64) has installed the RC and exercised the workflow they care about; [beta signing](DEPLOYMENT_PLAYBOOK.md#beta-signing) says how to open the unsigned packages
 - No critical issue has been filed against the RC for a reasonable soak period (typically 48 hours after the platform volunteers confirm)
 
 If an RC fails testing, land the fix on `develop`, cherry-pick it to the release branch, update the metadata to the next RC number, and create `-rc2`, `-rc3`, etc. Each RC remains an independent public prerelease for reference.
@@ -466,11 +468,13 @@ Change the tracked state from `RC N` to `GA` in a metadata-only commit (`channel
 | Artifact | Platform | Signed | Notes |
 |----------|----------|--------|-------|
 | `wsjtx-<ver>-arm64-macOS.pkg` | macOS ARM64 | GA: yes. Beta: no. RC: no while hosted Developer ID signing is disabled | GA: Developer ID signed, notarized, and stapled; verify per the Deployment Playbook. Beta and unsigned RC: remove the quarantine attribute before opening (`xattr -d com.apple.quarantine`) |
+| `wsjtx-<ver>-x86_64-macOS.pkg` | macOS Intel x86_64 | GA: yes. Beta: no. RC: no while hosted Developer ID signing is disabled | GA: Developer ID signed, notarized, and stapled; verify per the Deployment Playbook. Beta and unsigned RC: remove the quarantine attribute before opening (`xattr -d com.apple.quarantine`) |
 | `wsjtx-<ver>-linux-x86_64.AppImage` | Linux x86_64 | No | Published with matching `.deb` and `.rpm` packages |
 | `wsjtx-<ver>-linux-aarch64.AppImage` | Linux aarch64 | No | Published with matching `.deb` and `.rpm` packages |
 | `wsjtx-<ver>-linux-armhf.AppImage` | Linux armhf | No | Published with matching `.deb` and `.rpm` packages |
 | `wsjtx-<ver>-win64.exe` | Windows x86_64 | GA: yes. Beta and RC: no | GA: SignPath Foundation Authenticode |
 | `wsjtx-<ver>-arm64-macOS-<tarball>.tar.gz` | macOS ARM64 | No (ad-hoc) | Programs with their dylibs; remove the quarantine attribute before extracting (`xattr -d com.apple.quarantine`) |
+| `wsjtx-<ver>-x86_64-macOS-<tarball>.tar.gz` | macOS Intel x86_64 | No (ad-hoc) | Programs with their dylibs; remove the quarantine attribute before extracting (`xattr -d com.apple.quarantine`) |
 | `wsjtx-<ver>-linux-<arch>-<tarball>.tar.gz` | Linux x86_64, aarch64, armhf | No | Programs with the libraries they load; `README.txt` names the oldest glibc and the host libraries they need |
 | `wsjtx-<ver>-windows-x86_64-<tarball>.tar.gz` | Windows x86_64 | No | Programs with the DLLs they import |
 | `wsjtx-<ver>-src.tar.gz` | Source | N/A | Project-created archive of the public tagged commit |
@@ -478,7 +482,7 @@ Change the tracked state from `RC N` to `GA` in a metadata-only commit (`channel
 
 `<ver>` is the release's suffixed version: `X.Y.Z-betaN`, `X.Y.Z-rcN`, or `X.Y.Z`, and `<tarball>` is each release tarball `CMake/release-tarballs.txt` names. Betas, RCs, and GA releases publish the same set of assets.
 
-GitHub also adds automatic **Source code (zip)** and **Source code (tar.gz)** links from the public tag. They represent the same tagged source but are generated and compressed by GitHub, so their archive hashes need not equal the project-created `.tar.gz`. `SHA256SUMS` covers immutable assets uploaded by the project. For an RC or GA in manual macOS signing mode it excludes the replaceable `.pkg` file, which the manifest identifies separately. A beta's macOS packages are not replaceable, so `SHA256SUMS` covers them. A checksum detects changed bytes but is not a substitute for platform signatures or tag-to-commit checks.
+GitHub also adds automatic **Source code (zip)** and **Source code (tar.gz)** links from the public tag. They represent the same tagged source but are generated and compressed by GitHub, so their archive hashes need not equal the project-created `.tar.gz`. `SHA256SUMS` covers immutable assets uploaded by the project. For an RC or GA in manual macOS signing mode it excludes the two replaceable `.pkg` files, which the manifest identifies separately. A beta's macOS packages are not replaceable, so `SHA256SUMS` covers them. A checksum detects changed bytes but is not a substitute for platform signatures or tag-to-commit checks.
 
 ### Who can trigger a release?
 

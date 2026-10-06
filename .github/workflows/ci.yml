@@ -118,7 +118,7 @@ jobs:
   #   * Default (every push / PR to develop): Linux x86_64 only -- `linux`.
   #   * ASan + UBSan: runs on PRs carrying `sanitizers` or `full-ci`.
   #   * TSan: runs only on PRs carrying `thread-sanitizer`.
-  #   * Opt-in matrix (`linux-arm`, `linux-armhf`, macos, windows): runs when a
+  #   * Opt-in matrix (`linux-arm`, `linux-armhf`, macos, macos-intel, windows): runs when a
   #     PR carries the `full-ci` label, or when the workflow is started manually
   #     ("Run workflow" / workflow_dispatch). Release builds are unaffected --
   #     they run the full matrix via release.yml on build/v* tags.
@@ -140,6 +140,21 @@ jobs:
       arch: "arm64"
       runner: "macos-15"
       deployment_target: "11.0"
+      recache: ${{ inputs.recache || false }}
+
+  macos-intel:
+    needs: [prepare, linux]
+    # Opt-in only -- see the two-tier note above.
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      contains(github.event.pull_request.labels.*.name, 'full-ci')
+    uses: ./.github/workflows/build-macos.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      hamlib_branch: "4.7.2"
+      arch: "x86_64"
+      runner: "macos-15-intel"
+      deployment_target: "10.13"
       recache: ${{ inputs.recache || false }}
 
   linux:

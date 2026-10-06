@@ -3,7 +3,7 @@ description: "Restore or populate macOS Qt and pinned dependency caches without 
 
 inputs:
   arch:
-    description: "Target architecture: arm64"
+    description: "Target architecture: arm64 or x86_64"
     required: true
   runner:
     description: "GitHub Actions runner label"
@@ -31,7 +31,7 @@ runs:
       shell: bash
       run: |
         case "${{ inputs.arch }}:${{ inputs.runner }}:${{ inputs.deployment_target }}" in
-          arm64:macos-15:11.0)
+          arm64:macos-15:11.0|x86_64:macos-15-intel:10.13)
             echo "Using supported macOS dependency tuple: ${{ inputs.arch }} on ${{ inputs.runner }} targeting ${{ inputs.deployment_target }}"
             ;;
           *)
@@ -103,10 +103,33 @@ runs:
           --prefix "${GITHUB_WORKSPACE}/gfortran-prefix" \
           --github-output
 
+    - name: Install controlled Intel gfortran
+      id: controlled-intel-fc
+      if: inputs.arch == 'x86_64'
+      shell: bash
+      run: |
+        .github/scripts/install-xpack-gfortran-macos.sh \
+          --target "${{ inputs.deployment_target }}" \
+          --arch "${{ inputs.arch }}" \
+          --work-dir "${RUNNER_TEMP}/xpack-gfortran" \
+          --prefix "${GITHUB_WORKSPACE}/gfortran-prefix" \
+          --github-output
+
     - name: Select gfortran
       id: fc
       shell: bash
       run: |
+        if [ "${{ inputs.arch }}" = "x86_64" ]; then
+          echo "Using controlled gfortran: ${{ steps.controlled-intel-fc.outputs.path }}"
+          {
+            echo "path=${{ steps.controlled-intel-fc.outputs.path }}"
+            echo "runtime_lib_dir=${{ steps.controlled-intel-fc.outputs.runtime_lib_dir }}"
+            echo "runtime_archives=${{ steps.controlled-intel-fc.outputs.runtime_archives }}"
+            echo "cache_key=${{ steps.controlled-intel-fc.outputs.cache_key }}"
+          } >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
         echo "Using controlled gfortran: ${{ steps.controlled-arm-fc.outputs.path }}"
         {
           echo "path=${{ steps.controlled-arm-fc.outputs.path }}"

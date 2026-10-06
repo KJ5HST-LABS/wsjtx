@@ -80,6 +80,28 @@ git() {
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             return dict(line.split("=", 1) for line in output.read_text().splitlines())
 
+    def test_macos_warmer_selection_routes_both_architectures(self):
+        cases = [
+            ({"event": "workflow_dispatch", "target": "macos-x86_64"}, "false", "true"),
+            ({"event": "workflow_dispatch", "target": "macos-arm64"}, "true", "false"),
+            ({"event": "workflow_dispatch", "target": "macos"}, "true", "true"),
+            ({"event": "workflow_dispatch", "target": "all"}, "true", "true"),
+            ({"event": "workflow_dispatch", "target": "linux"}, "false", "false"),
+            ({"event": "schedule", "schedule": "23 10 * * 1"}, "true", "true"),
+        ]
+        for path in (
+            ".github/workflows/build-macos.yml", ".github/actions/warm-macos-deps/action.yml",
+            ".github/scripts/install-xpack-gfortran-macos.sh", ".github/scripts/build-qt-macos.sh",
+            ".github/scripts/macos-qt-cache-key.sh", ".github/scripts/verify-macos-static-archives.sh",
+            ".github/workflows/ci.yml", ".github/workflows/release.yml",
+        ):
+            cases.append(({"event": "push", "paths": [path]}, "true", "true"))
+        for inputs, arm, intel in cases:
+            with self.subTest(inputs=inputs):
+                outputs = self.select_warmers(**inputs)
+                self.assertEqual(outputs["macos_arm64"], arm)
+                self.assertEqual(outputs["macos_x86_64"], intel)
+
     def test_asan_warmer_selection(self):
         cases = [
             ({"event": "schedule", "schedule": "23 10 * * 1"}, "true", "none"),

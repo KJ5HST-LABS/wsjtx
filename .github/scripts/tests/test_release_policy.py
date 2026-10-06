@@ -20,6 +20,19 @@ SPEC.loader.exec_module(release_policy)
 
 
 class ReleasePolicyTest(unittest.TestCase):
+    def test_candidate_and_public_inventories_require_both_macos_architectures(self):
+        version = "3.2.0-rc1"
+        for distribution in (False, True):
+            mode = "distribution" if distribution else "validation"
+            suffix = "macOS.pkg" if distribution else "macOS-unsigned.pkg"
+            required = {f"wsjtx-{version}-{arch}-{suffix}" for arch in ("arm64", "x86_64")}
+            for inventory in (
+                release_policy.expected_assets(version, distribution),
+                release_policy.public_expected_assets(version, mode),
+            ):
+                with self.subTest(mode=mode, inventory=inventory):
+                    self.assertEqual({name for name in inventory if name.endswith(suffix)}, required)
+
     def test_newest_ga_line_uses_immutable_ga_tags_not_release_order_or_rc_line(self):
         refs = {
             "refs/tags/v2.7.0": "a" * 40,
@@ -917,6 +930,43 @@ class ReleasePolicyTest(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "revision"):
                 release_policy.validate_archive(tar_path, "3.2.0-rc1", "c" * 40)
 
+    def test_candidate_and_public_gates_reject_missing_intel_payloads(self):
+        version = "3.3.0-beta1"
+        for distribution in (False, True):
+            mode = "distribution" if distribution else "validation"
+            for public in (False, True):
+                with self.subTest(mode=mode, public=public), tempfile.TemporaryDirectory() as directory:
+                    root = Path(directory)
+                    expected = (
+                        release_policy.public_expected_assets(version, mode)
+                        if public else release_policy.expected_assets(version, distribution)
+                    )
+                    for name in expected:
+                        target = root / name
+                        target.mkdir()
+                        suffix = release_policy.asset_suffix(name)
+                        filename = name.replace("-unsigned", "")
+                        if not filename.endswith(suffix):
+                            filename += suffix
+                        (target / filename).write_bytes(name.encode())
+                    def verify():
+                        if public:
+                            return release_policy.find_public_asset_files(root, version, mode)
+                        return release_policy.find_asset_files(root, version, distribution)
+                    verify()
+                    suffix = "macOS.pkg" if distribution else "macOS-unsigned.pkg"
+                    required = [f"wsjtx-{version}-x86_64-{suffix}"] + [
+                        f"wsjtx-{version}-x86_64-macOS-{group}"
+                        for group in ("jt9", "jt9stream", "wsprd", "utilities")
+                    ]
+                    for name in required:
+                        artifact = root / name
+                        held = root / "held"
+                        artifact.rename(held)
+                        with self.subTest(missing=name), self.assertRaisesRegex(ValueError, re.escape(name)):
+                            verify()
+                        held.rename(artifact)
+
     def test_distribution_gate_rejects_unsigned_package(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -965,65 +1015,66 @@ class ReleasePolicyTest(unittest.TestCase):
             self.assertEqual(manifest["macos_signing"]["mode"], "distribution")
             self.assertEqual(manifest["macos_signing"]["replaceable_assets"], [])
             self.assertEqual(manifest["windows_signing"]["mode"], "signpath")
-            self.assertEqual(len(manifest["assets"]), 32)
+            self.assertEqual(len(manifest["assets"]), 37)
             self.assertTrue(
                 {f"{name}.tar.gz" for name in release_policy.release_tarballs(version)}
                 <= {entry["name"] for entry in manifest["assets"]}
             )
 
     def test_manual_macos_assets_keep_release_names_without_immutable_hashes(self):
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            version = "3.2.0"
-            for name in release_policy.public_expected_assets(version, "validation"):
-                target = root / name
-                target.mkdir()
-                if name in release_policy.release_tarballs(version):
-                    filename = f"{name}.tar.gz"
-                elif "macOS" in name:
-                    filename = name.replace("-unsigned", "")
-                elif "linux" in name:
-                    filename = f"{name}.AppImage"
-                else:
-                    filename = "wsjtx-win64.exe"
-                (target / filename).write_bytes(name.encode())
-            for arch in ("x86_64", "aarch64", "armhf"):
-                for package_type in ("deb", "rpm"):
-                    target = root / f"wsjtx-{version}-linux-{arch}-{package_type}"
+        for version in ("3.2.0", "3.2.0-rc1"):
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                for name in release_policy.public_expected_assets(version, "validation"):
+                    target = root / name
                     target.mkdir()
-                    (target / f"wsjtx-{arch}.{package_type}").write_bytes(arch.encode())
-            (root / f"wsjtx-{version}-src.tar.gz").write_bytes(b"source")
-            args = type("Args", (), {
-                "artifacts": str(root), "version": version, "repository": "WSJTX/wsjtx",
-                "commit": "a" * 40, "run_id": "123",
-                "linux_x86_64_digest": "sha256:" + "1" * 64,
-                "linux_aarch64_digest": "sha256:" + "2" * 64,
-                "linux_armhf_cross_digest": "sha256:" + "3" * 64,
-                "linux_armhf_digest": "sha256:" + "4" * 64,
-                "macos_mode": "validation",
-                "windows_mode": "signpath",
-            })()
+                    if name in release_policy.release_tarballs(version):
+                        filename = f"{name}.tar.gz"
+                    elif "macOS" in name:
+                        filename = name.replace("-unsigned", "")
+                    elif "linux" in name:
+                        filename = f"{name}.AppImage"
+                    else:
+                        filename = "wsjtx-win64.exe"
+                    (target / filename).write_bytes(name.encode())
+                for arch in ("x86_64", "aarch64", "armhf"):
+                    for package_type in ("deb", "rpm"):
+                        target = root / f"wsjtx-{version}-linux-{arch}-{package_type}"
+                        target.mkdir()
+                        (target / f"wsjtx-{arch}.{package_type}").write_bytes(arch.encode())
+                (root / f"wsjtx-{version}-src.tar.gz").write_bytes(b"source")
+                args = type("Args", (), {
+                    "artifacts": str(root), "version": version, "repository": "WSJTX/wsjtx",
+                    "commit": "a" * 40, "run_id": "123",
+                    "linux_x86_64_digest": "sha256:" + "1" * 64,
+                    "linux_aarch64_digest": "sha256:" + "2" * 64,
+                    "linux_armhf_cross_digest": "sha256:" + "3" * 64,
+                    "linux_armhf_digest": "sha256:" + "4" * 64,
+                    "macos_mode": "validation",
+                    "windows_mode": "signpath",
+                })()
 
-            release_policy.write_manifest(args)
+                release_policy.write_manifest(args)
 
-            manifest = json.loads((root / "release-manifest.json").read_text())
-            replaceable = {
-                f"wsjtx-{version}-arm64-macOS.pkg",
-            }
-            release_names = {path.name for path in release_policy.release_files(root, version, "validation")}
-            immutable_names = {entry["name"] for entry in manifest["assets"]}
-            checksum_names = {
-                line.split("  ", 1)[1]
-                for line in (root / "SHA256SUMS").read_text().splitlines()
-            }
-            self.assertEqual(manifest["macos_signing"]["mode"], "manual")
-            self.assertEqual(set(manifest["macos_signing"]["replaceable_assets"]), replaceable)
-            self.assertTrue(replaceable <= release_names)
-            self.assertTrue(replaceable.isdisjoint(immutable_names))
-            self.assertTrue(replaceable.isdisjoint(checksum_names))
-            self.assertIn("wsjtx-win64.exe", immutable_names)
-            tarballs = {f"{name}.tar.gz" for name in release_policy.release_tarballs(version)}
-            self.assertTrue(tarballs <= immutable_names & checksum_names)
+                manifest = json.loads((root / "release-manifest.json").read_text())
+                replaceable = {
+                    f"wsjtx-{version}-arm64-macOS.pkg",
+                    f"wsjtx-{version}-x86_64-macOS.pkg",
+                }
+                release_names = {path.name for path in release_policy.release_files(root, version, "validation")}
+                immutable_names = {entry["name"] for entry in manifest["assets"]}
+                checksum_names = {
+                    line.split("  ", 1)[1]
+                    for line in (root / "SHA256SUMS").read_text().splitlines()
+                }
+                self.assertEqual(manifest["macos_signing"]["mode"], "manual")
+                self.assertEqual(set(manifest["macos_signing"]["replaceable_assets"]), replaceable)
+                self.assertTrue(replaceable <= release_names)
+                self.assertTrue(replaceable.isdisjoint(immutable_names))
+                self.assertTrue(replaceable.isdisjoint(checksum_names))
+                self.assertIn("wsjtx-win64.exe", immutable_names)
+                tarballs = {f"{name}.tar.gz" for name in release_policy.release_tarballs(version)}
+                self.assertTrue(tarballs <= immutable_names & checksum_names)
 
     def test_unsigned_windows_manifest_selects_and_hashes_installer(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -1083,14 +1134,14 @@ class ReleasePolicyTest(unittest.TestCase):
             tools,
             [
                 f"wsjtx-{version}-{target}-{group}"
-                for target in ("arm64-macOS", "linux-x86_64", "linux-aarch64", "linux-armhf", "windows-x86_64")
+                for target in ("arm64-macOS", "x86_64-macOS", "linux-x86_64", "linux-aarch64", "linux-armhf", "windows-x86_64")
                 for group in ("jt9", "jt9stream", "wsprd", "utilities")
             ],
         )
-        self.assertEqual([release_policy.asset_suffix(name) for name in tools], [".tar.gz"] * 20)
+        self.assertEqual([release_policy.asset_suffix(name) for name in tools], [".tar.gz"] * 24)
         self.assertEqual(
-            [release_policy.asset_suffix(name) for name in release_policy.expected_assets(version, False)[:5]],
-            [".pkg", ".AppImage", ".AppImage", ".AppImage", ".exe"],
+            [release_policy.asset_suffix(name) for name in release_policy.expected_assets(version, False)[:6]],
+            [".pkg", ".pkg", ".AppImage", ".AppImage", ".AppImage", ".exe"],
         )
         for distribution in (False, True):
             self.assertTrue(set(tools) <= set(release_policy.expected_assets(version, distribution)))
@@ -1181,8 +1232,8 @@ class ReleasePolicyTest(unittest.TestCase):
             with self.subTest(name=name):
                 self.assertEqual(release_policy.asset_suffix(name), ".tar.gz")
         self.assertEqual(
-            [release_policy.asset_suffix(name) for name in release_policy.public_expected_assets(version, "validation", "unsigned")[:5]],
-            [".pkg", ".AppImage", ".AppImage", ".AppImage", ".exe"],
+            [release_policy.asset_suffix(name) for name in release_policy.public_expected_assets(version, "validation", "unsigned")[:6]],
+            [".pkg", ".pkg", ".AppImage", ".AppImage", ".AppImage", ".exe"],
         )
 
     def test_beta_manifest_hashes_unsigned_macos_packages_as_immutable_assets(self):
@@ -1220,7 +1271,7 @@ class ReleasePolicyTest(unittest.TestCase):
             release_policy.write_manifest(args)
 
             manifest = json.loads((root / "release-manifest.json").read_text())
-            beta_assets = {f"wsjtx-{version}-arm64-macOS.pkg"}
+            beta_assets = {f"wsjtx-{version}-{arch}-macOS.pkg" for arch in ("arm64", "x86_64")}
             beta_assets |= {f"{name}.tar.gz" for name in release_policy.release_tarballs(version)}
             immutable_names = {entry["name"] for entry in manifest["assets"]}
             checksum_names = {
@@ -1230,6 +1281,11 @@ class ReleasePolicyTest(unittest.TestCase):
             self.assertEqual(manifest["macos_signing"], {"mode": "unsigned", "replaceable_assets": []})
             self.assertTrue(beta_assets <= immutable_names)
             self.assertTrue(beta_assets <= checksum_names)
+            hashes = {entry["name"]: entry["sha256"] for entry in manifest["assets"]}
+            for arch in ("arm64", "x86_64"):
+                name = f"wsjtx-{version}-{arch}-macOS.pkg"
+                package = root / f"wsjtx-{version}-{arch}-macOS-unsigned.pkg" / name
+                self.assertEqual(hashes[name], release_policy.hash_file(package))
 
             args.macos_mode = "distribution"
             with self.assertRaisesRegex(ValueError, "BETA releases publish the validated unsigned macOS packages"):
@@ -1241,7 +1297,7 @@ class ReleasePolicyTest(unittest.TestCase):
             version = "3.2.0-rc1"
             commit = "b" * 40
             tag = f"v{version}"
-            for arch in ("arm64",):
+            for arch in ("arm64", "x86_64"):
                 package_dir = root / f"wsjtx-{version}-{arch}-macOS.pkg"
                 package_dir.mkdir()
                 package = package_dir / f"wsjtx-{version}-{arch}-macOS.pkg"
@@ -1273,6 +1329,18 @@ class ReleasePolicyTest(unittest.TestCase):
                 "signer_thumbprint": "5678", "identity_verified": True,
             }))
             release_policy.verify_signing_reports(root, version, commit, tag)
+            intel_report = root / f"macos-signing-report-{version}-x86_64" / "macos-signing-report.json"
+            contents = intel_report.read_bytes()
+            intel_report.unlink()
+            with self.assertRaisesRegex(ValueError, "macos-signing-report.*x86_64"):
+                release_policy.verify_signing_reports(root, version, commit, tag)
+            intel_report.write_bytes(contents)
+            intel_report_data = json.loads(contents)
+            intel_report_data["sha256"] = "0" * 64
+            intel_report.write_text(json.dumps(intel_report_data))
+            with self.assertRaisesRegex(ValueError, "macOS x86_64 report hash"):
+                release_policy.verify_signing_reports(root, version, commit, tag)
+            intel_report.write_bytes(contents)
             (verification_dir / "verification.json").write_text("{}")
             with self.assertRaisesRegex(ValueError, "release ref"):
                 release_policy.verify_signing_reports(root, version, commit, tag)
@@ -1283,7 +1351,7 @@ class ReleasePolicyTest(unittest.TestCase):
             version = "3.2.0-rc1"
             commit = "b" * 40
             tag = f"v{version}"
-            for arch in ("arm64",):
+            for arch in ("arm64", "x86_64"):
                 package_dir = root / f"wsjtx-{version}-{arch}-macOS-unsigned.pkg"
                 package_dir.mkdir()
                 package = package_dir / f"wsjtx-{version}-{arch}-macOS.pkg"
@@ -1314,6 +1382,18 @@ class ReleasePolicyTest(unittest.TestCase):
             }))
 
             release_policy.verify_signing_reports(root, version, commit, tag, "validation")
+            intel_report = root / f"macos-signing-report-{version}-x86_64" / "macos-signing-report.json"
+            contents = intel_report.read_bytes()
+            intel_report.unlink()
+            with self.assertRaisesRegex(ValueError, "macos-signing-report.*x86_64"):
+                release_policy.verify_signing_reports(root, version, commit, tag, "validation")
+            intel_report.write_bytes(contents)
+            intel_report_data = json.loads(contents)
+            intel_report_data["sha256"] = "0" * 64
+            intel_report.write_text(json.dumps(intel_report_data))
+            with self.assertRaisesRegex(ValueError, "macOS x86_64 report hash"):
+                release_policy.verify_signing_reports(root, version, commit, tag, "validation")
+            intel_report.write_bytes(contents)
 
             report = json.loads(
                 (root / f"macos-signing-report-{version}-arm64" / "macos-signing-report.json").read_text()

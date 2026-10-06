@@ -76,6 +76,17 @@ jobs:
       deployment_target: "11.0"
       signing_mode: validation
 
+  macos-intel:
+    needs: prepare
+    uses: ./.github/workflows/build-macos.yml
+    with:
+      version: ${{ needs.prepare.outputs.version }}
+      hamlib_branch: "4.7.2"
+      arch: x86_64
+      runner: macos-15-intel
+      deployment_target: "10.13"
+      signing_mode: validation
+
   linux:
     needs: prepare
     uses: ./.github/workflows/build-linux.yml
@@ -126,7 +137,7 @@ jobs:
       hamlib_branch: "4.7.2"
 
   candidate-ready:
-    needs: [prepare, macos, linux, linux-arm, linux-armhf, windows]
+    needs: [prepare, macos, macos-intel, linux, linux-arm, linux-armhf, windows]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:

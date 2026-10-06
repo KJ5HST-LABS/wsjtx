@@ -115,7 +115,7 @@ main() {
   fi
 
   case "${arch}:${runner}:${deployment_target}" in
-    arm64:macos-15:11.0)
+    arm64:macos-15:11.0|x86_64:macos-15-intel:10.13)
       ;;
     *)
       echo "Unsupported macOS Qt build tuple: arch=${arch}, runner=${runner}, deployment_target=${deployment_target}" >&2

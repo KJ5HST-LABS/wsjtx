@@ -104,7 +104,7 @@ Every promotion, beta included, creates or fast-forwards public `release/X.Y`, s
 │                                    manual run selects broader platform coverage.
 │
 ├── build-macos.yml              ← Reusable workflow (workflow_call).
-│                                    macOS arm64 build; Developer ID
+│                                    macOS build (arm64 or x86_64); Developer ID
 │                                    signing and notarization require credentials.
 │
 ├── build-linux.yml              ← Reusable workflow (workflow_call).
@@ -230,6 +230,7 @@ Each published public `v*` tag yields, on the public GitHub Release, one install
 | Artifact | Produced by | Format |
 |----------|-------------|--------|
 | `wsjtx-<ver>-arm64-macOS.pkg` | `build-macos.yml` (arm64 leg) | GA: signed in distribution mode; signed by hand and replaced in manual mode. RC: the unsigned validation package in manual mode; signed in distribution mode. Beta: the unsigned validation package |
+| `wsjtx-<ver>-x86_64-macOS.pkg` | `build-macos.yml` (x86_64 leg) | GA: signed in distribution mode; signed by hand and replaced in manual mode. RC: the unsigned validation package in manual mode; signed in distribution mode. Beta: the unsigned validation package |
 | `wsjtx-<ver>-linux-x86_64.AppImage` | `build-linux.yml` (x86_64 leg) | Portable AppImage |
 | `wsjtx-<ver>-linux-aarch64.AppImage` | `build-linux.yml` (aarch64 leg) | Portable AppImage |
 | `wsjtx-<ver>-linux-armhf.AppImage` | `build-linux.yml` (armhf leg) | Portable AppImage |
@@ -238,6 +239,7 @@ Each published public `v*` tag yields, on the public GitHub Release, one install
 | Linux armhf `.deb` and `.rpm` | `build-linux.yml` (armhf leg) | Distribution packages |
 | `wsjtx-<ver>-win64.exe` | `build-windows.yml`; signed by `sign-windows-release.yml` | GA: SignPath Foundation Authenticode. Beta and RC: unsigned |
 | `wsjtx-<ver>-arm64-macOS-<tarball>.tar.gz` | `build-macos.yml` | Programs with the dylibs they load in `lib/`; ad-hoc signed, not notarized |
+| `wsjtx-<ver>-x86_64-macOS-<tarball>.tar.gz` | `build-macos.yml` | Programs with the dylibs they load in `lib/`; ad-hoc signed, not notarized |
 | `wsjtx-<ver>-linux-<arch>-<tarball>.tar.gz` | `build-linux.yml` (x86_64, aarch64 and armhf legs) | Programs in `bin/` with the libraries they load in `lib/`, except the host libraries linuxdeploy leaves out; unsigned |
 | `wsjtx-<ver>-windows-x86_64-<tarball>.tar.gz` | `build-windows.yml` | Programs with the DLLs they import; not Authenticode-signed |
 | `wsjtx-<ver>-src.tar.gz` | Public release workflow | Source tarball from the public tag |
@@ -259,12 +261,15 @@ The gate checks for exactly one non-empty installer per platform and every relea
 | Platform | Expected artifact pattern |
 |----------|---------------------------|
 | macOS arm64 | `artifacts/wsjtx-<ver>-arm64-macOS.pkg/*.pkg` in distribution mode, or `artifacts/wsjtx-<ver>-arm64-macOS-unsigned.pkg/*.pkg` in manual mode and for betas |
+| macOS x86_64 | `artifacts/wsjtx-<ver>-x86_64-macOS.pkg/*.pkg` in distribution mode, or `artifacts/wsjtx-<ver>-x86_64-macOS-unsigned.pkg/*.pkg` in manual mode and for betas |
 | Linux x86_64 | `artifacts/wsjtx-<ver>-linux-x86_64-AppImage/*.AppImage` |
 | Linux aarch64 | `artifacts/wsjtx-<ver>-linux-aarch64-AppImage/*.AppImage` |
 | Linux armhf | `artifacts/wsjtx-<ver>-linux-armhf-AppImage/*.AppImage` |
 | Linux packages | One non-empty `.deb` in `artifacts/wsjtx-<ver>-linux-<arch>-deb/` and one `.rpm` in `artifacts/wsjtx-<ver>-linux-<arch>-rpm/` for each architecture, checked when the manifest is written |
 | Windows x86_64 | Signed mode: `artifacts/wsjtx-<ver>-windows-x86_64-installer-signed/*.exe`; unsigned mode: `artifacts/wsjtx-<ver>-windows-x86_64-installer/wsjtx-<ver>-win64.exe` and no `-installer-signed` artifact |
-| Release tarballs | One non-empty `.tar.gz` in `artifacts/wsjtx-<ver>-<target>-<tarball>/` for each target (`arm64-macOS`, `linux-x86_64`, `linux-aarch64`, `linux-armhf`, `windows-x86_64`) and each tarball in `CMake/release-tarballs.txt` |
+| Release tarballs | One non-empty `.tar.gz` in `artifacts/wsjtx-<ver>-<target>-<tarball>/` for each target (`arm64-macOS`, `x86_64-macOS`, `linux-x86_64`, `linux-aarch64`, `linux-armhf`, `windows-x86_64`) and each tarball in `CMake/release-tarballs.txt` |
+
+The four tarball groups across six platforms require 24 release tarballs.
 
 If any pattern matches no file or more than one, the release job stops before publishing.
 
@@ -547,7 +552,7 @@ The environment inventory must contain both certificate identities and the API-k
 
 Also configure the public workflow's non-secret expected Apple Team ID and SHA-1 fingerprints for the Application and Installer certificates. These are identifiers, not private-key material; the distribution job uses them to reject a valid but unintended identity.
 
-Set repository variable `MACOS_DISTRIBUTION_SIGNING_ENABLED=false` on `WSJTX/wsjtx` (`gh variable set MACOS_DISTRIBUTION_SIGNING_ENABLED --repo WSJTX/wsjtx --body false`) until the full environment is configured and tested. In that state, manual mode, the workflow publishes each validated unsigned package of an RC or GA under its stable release filename. The manifest identifies each such package as replaceable and excludes it from immutable hashes; workflow reruns preserve an existing package by name. Set the variable to `true` only after the package completes signing, notarization, stapling, identity, entitlement, and Gatekeeper verification. Distribution mode, `true`, signs every RC and GA package and fails closed if any credential is absent. Betas ignore the variable ([Beta signing](#beta-signing)).
+Set repository variable `MACOS_DISTRIBUTION_SIGNING_ENABLED=false` on `WSJTX/wsjtx` (`gh variable set MACOS_DISTRIBUTION_SIGNING_ENABLED --repo WSJTX/wsjtx --body false`) until the full environment is configured and tested. In that state, manual mode, the workflow publishes each validated unsigned package of an RC or GA under its stable release filename. The manifest identifies each such package as replaceable and excludes it from immutable hashes; workflow reruns preserve existing packages by name. Set the variable to `true` only after both architectures complete signing, notarization, stapling, identity, entitlement, and Gatekeeper verification. Distribution mode, `true`, signs every RC and GA package and fails closed if any credential is absent. Betas ignore the variable ([Beta signing](#beta-signing)).
 
 ### 5.4 Windows Authenticode Signing via SignPath Foundation
 
@@ -707,7 +712,7 @@ git push -u origin ci/github-actions
 gh pr create \
   --repo WSJTX/wsjtx-internal \
   --title "Add GitHub Actions CI/CD" \
-  --body "Five-platform CI (macOS arm64, Linux x86_64, Linux aarch64, Linux armhf, Windows x86_64) with tag-triggered releases (\`build/v*\`)."
+  --body "Six-platform CI (macOS arm64, macOS x86_64, Linux x86_64, Linux aarch64, Linux armhf, Windows x86_64) with tag-triggered releases (\`build/v*\`)."
 ```
 
 **Important note about forks:** Workflow files in PRs from forks don't run automatically — this is a GitHub security feature. The PR must be merged before the workflows will trigger. This means you can't test the CI from a fork PR. If you need to test before merging, use a branch on the official repo (Option A).
@@ -743,11 +748,12 @@ gh run list --repo WSJTX/wsjtx-internal --limit 5
 
 ### Step 3: Check the Selected Platforms
 
-An ordinary push runs the default Linux x86_64 check. Before a candidate, apply the `full-ci` label to a PR or manually dispatch full CI and confirm all five target builds. Expected times (first run, no cache):
+An ordinary push runs the default Linux x86_64 check. Before a candidate, apply the `full-ci` label to a PR or manually dispatch full CI and confirm all six target builds. Expected times (first run, no cache):
 
 | Platform | First Run | Cached Run |
 |----------|-----------|------------|
 | macOS arm64 | ~12-15 min | ~8 min |
+| macOS x86_64 (Intel) | ~15-20 min | ~10 min |
 | Linux x86_64 | ~10-12 min | ~7 min |
 | Linux aarch64 | ~10-12 min | ~7 min |
 | Windows x86_64 | ~40-45 min | ~15 min |
@@ -784,7 +790,7 @@ git push
 
 ## 9. Phase 7: Test the Release Pipeline
 
-Only do this after CI is green on all five targets.
+Only do this after CI is green on all six targets.
 
 ### Procedures by channel
 
@@ -858,7 +864,7 @@ git diff --cached HEAD --stat
 
 After promotion, verify that the public release branch and tag resolve to the candidate SHA. For a newest-line GA, check `master` too. For an older-line GA, confirm that `master` and GitHub Latest did not change. Public release-branch pushes skip CI; private release-branch pushes and pull requests run the default Linux x86_64 check.
 
-If `MACOS_DISTRIBUTION_SIGNING_ENABLED` is false, after a GA publication download the `.pkg` asset, sign and notarize it outside GitHub, verify its signature and installed behavior, then replace the asset without changing its filename (`gh release upload vX.Y.Z wsjtx-X.Y.Z-arm64-macOS.pkg --clobber --repo WSJTX/wsjtx`). It is intentionally absent from `SHA256SUMS`; the manifest and assemble summary identify it as manually replaceable. Enable the variable after the `apple-release-signing` environment is fully configured.
+If `MACOS_DISTRIBUTION_SIGNING_ENABLED` is false, after a GA publication download both `.pkg` assets, sign and notarize them outside GitHub, verify their signatures and installed behavior, then replace the assets without changing their filenames (`gh release upload vX.Y.Z wsjtx-X.Y.Z-arm64-macOS.pkg wsjtx-X.Y.Z-x86_64-macOS.pkg --clobber --repo WSJTX/wsjtx`). They are intentionally absent from `SHA256SUMS`; the manifest and assemble summary identify them as manually replaceable. Enable the variable after the `apple-release-signing` environment is fully configured.
 
 ### Step 5: Verify the Artifacts
 
@@ -867,15 +873,17 @@ Download the release artifacts to a new directory:
 ```bash
 RELEASE_DIR="$(mktemp -d)"
 gh release download "v$VERSION" --repo WSJTX/wsjtx --dir "$RELEASE_DIR"
-PKG="$RELEASE_DIR/wsjtx-${VERSION}-arm64-macOS.pkg"
 ```
 
-Verify a signed package's installer signature, stapled notarization ticket, and Gatekeeper policy independently; skip these three checks for an unsigned validation package:
+Verify both architectures. For each signed package, check its installer signature, stapled notarization ticket, and Gatekeeper policy independently; skip these three checks for unsigned validation packages:
 
 ```bash
-pkgutil --check-signature "$PKG"
-xcrun stapler validate "$PKG"
-spctl --assess --type install --verbose=2 "$PKG"
+for ARCH in arm64 x86_64; do
+  PKG="$RELEASE_DIR/wsjtx-${VERSION}-${ARCH}-macOS.pkg"
+  pkgutil --check-signature "$PKG"
+  xcrun stapler validate "$PKG"
+  spctl --assess --type install --verbose=2 "$PKG"
+done
 ```
 
 For a signed package, success requires a valid Developer ID Installer chain, a valid staple, and an `accepted` Gatekeeper assessment. These checks do not validate nested application signatures, entitlements, or runtime behavior.
@@ -883,18 +891,21 @@ For a signed package, success requires a valid Developer ID Installer chain, a v
 Inspect the packaged application rather than the staged build tree:
 
 ```bash
-EXPANDED="$RELEASE_DIR/expanded"
-pkgutil --expand-full "$PKG" "$EXPANDED"
-APP="$EXPANDED/wsjtx-component.pkg/Payload/Applications/wsjtx.app"
+for ARCH in arm64 x86_64; do
+  PKG="$RELEASE_DIR/wsjtx-${VERSION}-${ARCH}-macOS.pkg"
+  EXPANDED="$RELEASE_DIR/expanded-$ARCH"
+  pkgutil --expand-full "$PKG" "$EXPANDED"
+  APP="$EXPANDED/wsjtx-component.pkg/Payload/Applications/wsjtx.app"
 
-codesign --verify --deep --strict --verbose=2 "$APP"
-codesign -d --entitlements :- "$APP/Contents/MacOS/wsjtx"
-codesign -d --entitlements :- "$APP/Contents/MacOS/jt9"
+  codesign --verify --deep --strict --verbose=2 "$APP"
+  codesign -d --entitlements :- "$APP/Contents/MacOS/wsjtx"
+  codesign -d --entitlements :- "$APP/Contents/MacOS/jt9"
+done
 ```
 
 Signature verification must succeed, and both inspected executables must contain the two keys in `entitlements.plist`. The effective-entitlement check detects an outer bundle re-sign that preserved a valid signature but removed the executable entitlements.
 
-Finally, install the package (an unsigned package as [Beta signing](#beta-signing) describes) on a disposable or release-test macOS system and launch the installed app through Finder. Confirm that macOS grants audio input after the usage prompt, the receive level responds to live input, and `jt9` completes a decode cycle without a hardened-runtime or dynamic-loader failure. A successful signing or notarization check does not establish these runtime properties.
+Finally, install each architecture's package (an unsigned package as [Beta signing](#beta-signing) describes) on a matching disposable or release-test macOS system and launch the installed app through Finder. Confirm that macOS grants audio input after the usage prompt, the receive level responds to live input, and `jt9` completes a decode cycle without a hardened-runtime or dynamic-loader failure. A successful signing or notarization check does not establish these runtime properties.
 
 ### Step 6: Recover Safely
 
@@ -1018,7 +1029,7 @@ A successful re-run publishes the beta, and the next cut moves on to N+1 when `d
 
 ### Actions minutes
 
-Each beta uses about 125 to 135 private-repository minutes, about $1.40 at the rates in [where CI runs](DEVELOPMENT_WORKFLOW.md#where-ci-runs). Four or five betas a month use about 500 to 680 of the plan's included minutes. A cold macOS dependency build can run to the 180-minute macOS budget in [Cache readiness](#cache-readiness). The public builds run in `WSJTX/wsjtx`, where standard GitHub-hosted runners are free.
+The estimate for each beta with Apple silicon as the only macOS build is 125 to 135 private-repository minutes, about $1.40 at the rates in [where CI runs](DEVELOPMENT_WORKFLOW.md#where-ci-runs), or about 500 to 680 included minutes for four or five betas a month. These estimates need remeasurement with both macOS architectures. A cold macOS dependency build can run to the 180-minute macOS budget in [Cache readiness](#cache-readiness). The public builds run in `WSJTX/wsjtx`, where standard GitHub-hosted runners are free.
 
 ---
 
@@ -1140,7 +1151,7 @@ gh secret set DEVELOPER_ID_CERTIFICATE_P12 --repo WSJTX/wsjtx --env apple-releas
 | Log message | Meaning | Fix |
 |-------------|---------|-----|
 | "The signature of the binary is invalid" | Code signing used wrong identity or missed a binary | Check that all executables and dylibs are signed |
-| "The binary uses an SDK older than the 10.9 SDK" | Deployment target too old | Check `CMAKE_OSX_DEPLOYMENT_TARGET` (11.0, the `deployment_target` input of `build-macos.yml`) |
+| "The binary uses an SDK older than the 10.9 SDK" | Deployment target too old | Check `CMAKE_OSX_DEPLOYMENT_TARGET` (11.0 for arm64, 10.13 for x86_64 Intel, through the `deployment_target` input of `build-macos.yml`) |
 | "The signature does not include a secure timestamp" | Missing `--timestamp` in codesign | Verify the codesign commands include `--timestamp` |
 
 ### Problem: Windows build fails at OmniRig install
@@ -1204,7 +1215,7 @@ gh secret set CROSS_REPO_TOKEN --repo WSJTX/wsjtx-internal --env source-promotio
 | `.github/workflows/beta-cut.yml` | Scheduled Beta Cut: weekly or dispatched cut of the next beta on the line in `BETA` state | None |
 | `.github/workflows/beta-continue.yml` | Scheduled Beta Continue: carry each App-started beta run to its next stage | None |
 | `.github/workflows/sign-windows-release.yml` | Public SignPath build/sign/verification | SignPath project and policy identifiers |
-| `.github/workflows/build-macos.yml` | macOS arm64 build | None |
+| `.github/workflows/build-macos.yml` | macOS build (parameterized arm64/x86_64) | None |
 | `.github/workflows/build-linux.yml` | Linux build (parameterized x86_64/aarch64/armhf) | None |
 | `.github/workflows/build-windows.yml` | Windows x86_64 build | None |
 | `.github/workflows/hamlib-upstream-check.yml` | Scheduled (weekly cron + `workflow_dispatch`) poll of Hamlib upstream tags; files a tracking issue when a newer 4.x release is available. No platform builds; self-contained. | None |

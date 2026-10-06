@@ -55,6 +55,7 @@ on:
         type: choice
         options:
           - macos-arm64
+          - macos-x86_64
           - macos
           - windows
           - linux
@@ -94,6 +95,7 @@ jobs:
       retention: ${{ steps.detect.outputs.retention }}
       windows: ${{ steps.detect.outputs.windows }}
       macos_arm64: ${{ steps.detect.outputs.macos_arm64 }}
+      macos_x86_64: ${{ steps.detect.outputs.macos_x86_64 }}
       image_set: ${{ steps.detect.outputs.image_set }}
       hamlib_branch: ${{ steps.detect.outputs.hamlib_branch }}
       version: ${{ steps.detect.outputs.version }}
@@ -124,6 +126,7 @@ jobs:
           linux_asan_ubsan=false
           windows=false
           macos_arm64=false
+          macos_x86_64=false
 
           enable_cache_all() {
             linux_arm64=true
@@ -131,6 +134,7 @@ jobs:
             linux_asan_ubsan=true
             windows=true
             macos_arm64=true
+            macos_x86_64=true
           }
 
           enable_all() {
@@ -180,9 +184,13 @@ jobs:
                   ;;
                 macos)
                   macos_arm64=true
+                  macos_x86_64=true
                   ;;
                 macos-arm64)
                   macos_arm64=true
+                  ;;
+                macos-x86_64)
+                  macos_x86_64=true
                   ;;
                 *)
                   echo "::error::Unsupported targets input: $TARGETS"
@@ -235,6 +243,7 @@ jobs:
                     ;;
                   .github/workflows/build-macos.yml|.github/actions/warm-macos-deps/*|.github/scripts/build-*-macos.sh|.github/scripts/install-*-macos*.sh|.github/scripts/macos-qt-cache-key.sh|.github/scripts/verify-macos-*.sh)
                     macos_arm64=true
+                    macos_x86_64=true
                     ;;
                   *)
                     case "$(.github/scripts/is-linux-ci-image-input.sh --classify "$path")" in
@@ -287,6 +296,7 @@ jobs:
             echo "retention=$retention"
             echo "windows=$windows"
             echo "macos_arm64=$macos_arm64"
+            echo "macos_x86_64=$macos_x86_64"
             echo "image_set=$image_set"
             echo "hamlib_branch=$HAMLIB_BRANCH"
             echo "version=$VERSION"
@@ -304,6 +314,7 @@ jobs:
             echo "| Linux GHCR retention | $retention |"
             echo "| Windows x86_64 | $windows |"
             echo "| macOS arm64 | $macos_arm64 |"
+            echo "| macOS x86_64 | $macos_x86_64 |"
           } >> "$GITHUB_STEP_SUMMARY"
 
           echo "Normal image refreshes warm ARMHF and ASan/UBSan after promotion instead of running the standalone warmers." >> "$GITHUB_STEP_SUMMARY"
@@ -478,6 +489,20 @@ jobs:
           deployment_target: "11.0"
           hamlib_branch: ${{ needs.detect.outputs.hamlib_branch }}
 
+  warm-macos-x86_64-deps:
+    needs: detect
+    if: needs.detect.outputs.macos_x86_64 == 'true'
+    runs-on: macos-15-intel
+    timeout-minutes: 100
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/warm-macos-deps
+        with:
+          arch: x86_64
+          runner: macos-15-intel
+          deployment_target: "10.13"
+          hamlib_branch: ${{ needs.detect.outputs.hamlib_branch }}
+
   warm-macos-arm64-ccache:
     needs: [detect, warm-macos-arm64-deps]
     if: needs.detect.outputs.macos_arm64 == 'true'
@@ -488,6 +513,18 @@ jobs:
       arch: arm64
       runner: macos-15
       deployment_target: "11.0"
+      save_ccache: true
+
+  warm-macos-x86_64-ccache:
+    needs: [detect, warm-macos-x86_64-deps]
+    if: needs.detect.outputs.macos_x86_64 == 'true'
+    uses: ./.github/workflows/build-macos.yml
+    with:
+      version: ${{ needs.detect.outputs.version }}
+      hamlib_branch: ${{ needs.detect.outputs.hamlib_branch }}
+      arch: x86_64
+      runner: macos-15-intel
+      deployment_target: "10.13"
       save_ccache: true
 
   summary:
@@ -502,7 +539,9 @@ jobs:
       - warm-windows-x86_64-deps
       - warm-windows-ccache
       - warm-macos-arm64-deps
+      - warm-macos-x86_64-deps
       - warm-macos-arm64-ccache
+      - warm-macos-x86_64-ccache
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

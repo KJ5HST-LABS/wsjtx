@@ -1,5 +1,6 @@
-For *macOS* an installer is provided for ARM64 (Apple silicon)
-systems. Download the package from the {downloads}, double-click on the file
+For *macOS* installers are provided for x86_64 (Intel)
+systems and for ARM64 (Apple silicon) systems. Download the correct
+package for your system from the {downloads}, double-click on the file
 name, and follow the on-screen prompts in the Installer
 app.
 

@@ -22,6 +22,79 @@ def job(workflow: str, name: str) -> str:
 
 
 class ReleaseWorkflowPolicyTests(unittest.TestCase):
+    def test_both_macos_jobs_are_required_before_candidate_and_public_assembly(self):
+        release = (ROOT / ".github/workflows/release.yml").read_text()
+        for workflow, gate in ((release, "candidate-ready"), (PUBLIC, "assemble")):
+            self.assertIn("needs: [prepare, macos, macos-intel, linux, linux-arm, linux-armhf, windows]", job(workflow, gate))
+            for name, arch, runner, target in (
+                ("macos", "arm64", "macos-15", "11.0"),
+                ("macos-intel", "x86_64", "macos-15-intel", "10.13"),
+            ):
+                body = job(workflow, name)
+                self.assertIn("needs: prepare", body)
+                self.assertNotIn("    if:", body)
+                self.assertIn("uses: ./.github/workflows/build-macos.yml", body)
+                self.assertIn(f"arch: {arch}", body)
+                self.assertIn(f"runner: {runner}", body)
+                self.assertIn(f'deployment_target: "{target}"', body)
+                self.assertNotIn("rc_number:", body)
+                self.assertNotIn("release_channel:", body)
+                signing = "validation" if gate == "candidate-ready" else "${{ needs.prepare.outputs.macos_sign_mode }}"
+                self.assertIn(f"signing_mode: {signing}", body)
+
+    def test_intel_ci_is_opt_in_and_selected_artifacts_include_it(self):
+        ci = (ROOT / ".github/workflows/ci.yml").read_text()
+        intel = job(ci, "macos-intel")
+        self.assertIn("needs: [prepare, linux]", intel)
+        predicate = intel.split("    if: >-\n", 1)[1].split("    uses:", 1)[0]
+        self.assertEqual(predicate.strip(), "github.event_name == 'workflow_dispatch' ||\n      contains(github.event.pull_request.labels.*.name, 'full-ci')")
+        selected = (ROOT / ".github/workflows/build-selected-artifacts.yml").read_text()
+        self.assertIn("          - macos-x64\n", selected)
+        body = job(selected, "macos-x64")
+        self.assertIn("(inputs.targets == 'macos-x64' || inputs.targets == 'all')", body)
+        self.assertIn("needs: [prepare, linux-smoke-x64]", body)
+        for body in (intel, body):
+            self.assertIn('arch: "x86_64"', body)
+            self.assertIn('runner: "macos-15-intel"', body)
+            self.assertIn('deployment_target: "10.13"', body)
+            self.assertNotIn("release_channel:", body)
+            self.assertNotIn("rc_number:", body)
+
+    def test_macos_dispatch_defaults_and_compiler_selection_support_intel(self):
+        build = (ROOT / ".github/workflows/build-macos.yml").read_text()
+        runner = "${{ inputs.runner || (inputs.arch == 'x86_64' && 'macos-15-intel' || 'macos-15') }}"
+        self.assertIn("runs-on: " + runner, job(build, "build"))
+        self.assertIn("RUNNER: " + runner, job(build, "build"))
+        self.assertIn("runs-on: " + runner, job(build, "sign_distribution"))
+        self.assertIn("DEPLOYMENT_TARGET: ${{ inputs.deployment_target || (inputs.arch == 'x86_64' && '10.13' || '11.0') }}", build)
+        self.assertIn("          - x86_64\n", build)
+        action = (ROOT / ".github/actions/warm-macos-deps/action.yml").read_text()
+        for text in (build, action):
+            self.assertIn("arm64:macos-15:11.0|x86_64:macos-15-intel:10.13)", text)
+            self.assertIn("if: inputs.arch == 'x86_64'", text)
+            self.assertIn(".github/scripts/install-xpack-gfortran-macos.sh", text)
+            self.assertIn('if [ "${{ inputs.arch }}" = "x86_64" ]; then', text)
+            self.assertIn("steps.controlled-intel-fc.outputs.runtime_archives", text)
+
+    def test_intel_cache_jobs_outputs_and_summary_are_connected(self):
+        warm = (ROOT / ".github/workflows/warm-dependency-caches.yml").read_text()
+        self.assertIn("          - macos-x86_64\n", warm)
+        self.assertIn("macos_x86_64: ${{ steps.detect.outputs.macos_x86_64 }}", job(warm, "detect"))
+        deps = job(warm, "warm-macos-x86_64-deps")
+        compiler = job(warm, "warm-macos-x86_64-ccache")
+        self.assertIn("needs: detect", deps)
+        self.assertIn("needs: [detect, warm-macos-x86_64-deps]", compiler)
+        for body in (deps, compiler):
+            self.assertIn("if: needs.detect.outputs.macos_x86_64 == 'true'", body)
+            self.assertIn("arch: x86_64", body)
+            self.assertIn("runner: macos-15-intel", body)
+            self.assertIn('deployment_target: "10.13"', body)
+        self.assertIn("runs-on: macos-15-intel", deps)
+        self.assertIn("save_ccache: true", compiler)
+        summary = job(warm, "summary")
+        self.assertIn("- warm-macos-x86_64-deps", summary)
+        self.assertIn("- warm-macos-x86_64-ccache", summary)
+
     def test_public_release_marks_every_non_ga_channel_prerelease_and_latest_stays_ga_only(self):
         publish = step(PUBLIC, "Publish public GitHub Release")
         self.assertRegex(publish, r'if \[ "\$CHANNEL" != GA \]; then\s+EXPECTED_PRERELEASE=true\s+fi')

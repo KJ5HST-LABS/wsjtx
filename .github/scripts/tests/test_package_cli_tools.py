@@ -78,6 +78,10 @@ def minos(version):
     return ["Load command 9", "      cmd LC_BUILD_VERSION", "  cmdsize 32", " platform 1", f"    minos {version}"]
 
 
+def version_min_macosx(version):
+    return ["Load command 9", "      cmd LC_VERSION_MIN_MACOSX", "  cmdsize 16", f"  version {version}", "      sdk 15.0"]
+
+
 MINOS = minos("11.0")
 
 
@@ -289,6 +293,52 @@ class PackageCliToolsTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("They require macOS 13.0 or later.", self.text("wsjtx-9.9.9-x86_64-macOS-jt9", "README.txt"))
         self.assertIn("They require macOS 11.0 or later.", self.text("wsjtx-9.9.9-x86_64-macOS-wsprd", "README.txt"))
+
+    def test_macos_legacy_minimum_version_is_recorded_for_every_tarball(self):
+        self.macos_assets()
+        source_version = ["Load command 10", "      cmd LC_SOURCE_VERSION", "  cmdsize 16", "  version 99.0"]
+        for program in ("jt9", "jt9stream", "wsprd", "encode77"):
+            self.fixture(
+                f"otool.load.{program}",
+                source_version + rpath("@loader_path/lib") + version_min_macosx("10.13") + source_version,
+            )
+        for library in ("QtCore", "libfftw3f.3.dylib", "libfftw3f_threads.3.dylib"):
+            self.fixture(f"otool.load.{library}", version_min_macosx("10.13") + source_version)
+        result = self.package("macos", self.MACOS_GROUPS)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        for group in ("jt9", "jt9stream", "wsprd", "utilities"):
+            self.assertIn(
+                "They require macOS 10.13 or later.",
+                self.text(f"wsjtx-9.9.9-x86_64-macOS-{group}", "README.txt"),
+            )
+
+    def test_macos_floor_is_the_highest_across_both_version_commands(self):
+        self.macos_assets()
+        for modern, expected in (("10.12", "10.13"), ("13.0", "13.0")):
+            with self.subTest(modern=modern):
+                self.fixture("otool.load.jt9", rpath("@loader_path/lib") + minos(modern))
+                self.fixture("otool.load.QtCore", version_min_macosx("10.13"))
+                for library in ("libfftw3f.3.dylib", "libfftw3f_threads.3.dylib"):
+                    self.fixture(f"otool.load.{library}", minos(modern))
+                result = self.package("macos", ["jt9 jt9"])
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertIn(
+                    f"They require macOS {expected} or later.",
+                    self.text("wsjtx-9.9.9-x86_64-macOS-jt9", "README.txt"),
+                )
+
+    def test_macos_minimum_does_not_read_fields_from_other_load_commands(self):
+        self.macos_assets()
+        for command in ("LC_BUILD_VERSION", "LC_VERSION_MIN_MACOSX"):
+            with self.subTest(command=command):
+                self.fixture("otool.load.encode77", [
+                    "Load command 9", f"      cmd {command}", "  cmdsize 16",
+                    "Load command 10", "      cmd LC_SOURCE_VERSION", "  cmdsize 16", "  version 99.0",
+                ])
+                self.assert_failed(
+                    self.package("macos", ["utilities encode77"]),
+                    "no minimum macOS version recorded in wsjtx-9.9.9-x86_64-macOS-utilities",
+                )
 
     def test_macos_without_a_minimum_version_fails(self):
         self.macos_assets()

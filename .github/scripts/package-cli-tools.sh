@@ -192,7 +192,12 @@ macos_closure() {
 macos_minimum() {
   local file
   find "$DEST" -type f ! -name '*.txt' ! -name COPYING | while IFS= read -r file; do
-    otool -l "$file" | awk '$1 == "minos" { print $2 }'
+    otool -l "$file" | awk '
+      $1 == "Load" && $2 == "command" { command = "" }
+      $1 == "cmd" { command = $2 }
+      command == "LC_BUILD_VERSION" && $1 == "minos" { print $2 }
+      command == "LC_VERSION_MIN_MACOSX" && $1 == "version" { print $2 }
+    '
   done | sort -t . -k 1,1n -k 2,2n -k 3,3n | tail -n 1
 }
 
