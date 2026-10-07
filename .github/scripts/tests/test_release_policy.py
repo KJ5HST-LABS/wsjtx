@@ -440,11 +440,14 @@ class ReleasePolicyTest(unittest.TestCase):
             source = root / "source"
             legacy = root / "legacy"
             subprocess.run(["git", "init", "--bare", bare], check=True, capture_output=True)
+            # Background auto-maintenance would race the directory's removal.
+            subprocess.run(["git", "--git-dir", bare, "config", "maintenance.auto", "false"], check=True)
             for repository in (source, legacy):
                 subprocess.run(["git", "init", repository], check=True, capture_output=True)
                 for key, value in (
                     ("user.name", "Release Test"),
                     ("user.email", "release-test@example.invalid"),
+                    ("maintenance.auto", "false"),
                 ):
                     subprocess.run(["git", "-C", repository, "config", key, value], check=True)
                 (repository / "source.txt").write_text(repository.name, encoding="utf-8")
@@ -524,8 +527,10 @@ class ReleasePolicyTest(unittest.TestCase):
             bare = root / "public.git"
             work = root / "source"
             subprocess.run(["git", "init", "--bare", bare], check=True, capture_output=True)
+            subprocess.run(["git", "--git-dir", bare, "config", "maintenance.auto", "false"], check=True)
             subprocess.run(["git", "init", work], check=True, capture_output=True)
-            for key, value in (("user.name", "Release Test"), ("user.email", "release-test@example.invalid")):
+            for key, value in (("user.name", "Release Test"), ("user.email", "release-test@example.invalid"),
+                               ("maintenance.auto", "false")):
                 subprocess.run(["git", "-C", work, "config", key, value], check=True)
 
             def commit(parent: str | None, content: str, subject: str) -> str:
@@ -611,8 +616,10 @@ class ReleasePolicyTest(unittest.TestCase):
             bare = root / "public.git"
             work = root / "source"
             subprocess.run(["git", "init", "--bare", bare], check=True, capture_output=True)
+            subprocess.run(["git", "--git-dir", bare, "config", "maintenance.auto", "false"], check=True)
             subprocess.run(["git", "init", work], check=True, capture_output=True)
-            for key, value in (("user.name", "Release Test"), ("user.email", "release-test@example.invalid")):
+            for key, value in (("user.name", "Release Test"), ("user.email", "release-test@example.invalid"),
+                               ("maintenance.auto", "false")):
                 subprocess.run(["git", "-C", work, "config", key, value], check=True)
 
             def git(*arguments: str) -> str:
