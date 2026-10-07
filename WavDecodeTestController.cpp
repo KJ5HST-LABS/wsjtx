@@ -11,6 +11,9 @@
 #include <cstdlib>
 #include <iostream>
 #include <utility>
+#include <vector>
+
+#include "Audio/WavFile.hpp"
 
 #include "widgets/mainwindow.h"
 
@@ -64,6 +67,11 @@ WavDecodeTestController::WavDecodeTestController (
   });
   connect (m_window, &MainWindow::decodedMessageDisplayed, this,
            [this] (QString const& message) {
+    if (m_activeGeneration && !expectsMessage ())
+      {
+        finish (tr ("A short silent %1 WAV displayed a stale decode: %2").arg (m_modeName, message));
+        return;
+      }
     if (m_activeGeneration && message.simplified () == m_expectedMessage)
       {
         if (m_mode != Mode::Jt9 && m_mode != Mode::Jt65)
@@ -176,15 +184,100 @@ void WavDecodeTestController::prepareWhenReady ()
       return;
     }
   m_started = true;
+  loadShortWav ();
+}
+
+void WavDecodeTestController::loadShortWav ()
+{
+  if (!m_fixtureDirectory.isValid ())
+    {
+      finish (tr ("Unable to create the short WAV fixture directory."));
+      return;
+    }
+  auto const path = m_fixtureDirectory.filePath (m_stage == Stage::ShortFirst
+      ? QStringLiteral ("261003_001000") : QStringLiteral ("261003_002000"));
+  std::vector<short> const silence (12000, 0);
+  auto const error = Radio::WavFile::save (path, silence.data (), int (silence.size ()),
+      "K1ABC", "FN42", m_modeName, 0, 0, {}, {}, {});
+  if (!error.isEmpty () || !m_window->startWavDecodeTest (path + ".wav"))
+    {
+      finish (tr ("Unable to load the short %1 WAV: %2").arg (m_modeName, error));
+      return;
+    }
+  decodeShortWavWhenReady ();
+}
+
+void WavDecodeTestController::decodeShortWavWhenReady ()
+{
+  if (m_finished) return;
+  auto * open = m_window->findChild<QAction *> ("actionOpen");
+  auto * decode = m_window->findChild<QAbstractButton *> ("DecodeButton");
+  if (!open || !decode)
+    {
+      finish (tr ("The WAV load controls were not found."));
+      return;
+    }
+  if (!open->isEnabled ())
+    {
+      QTimer::singleShot (50, this, &WavDecodeTestController::decodeShortWavWhenReady);
+      return;
+    }
+  if (!decode->isEnabled () || m_window->decoderBusy () || !m_window->diskDataActive ())
+    {
+      finish (tr ("The short %1 WAV did not become ready for manual decoding.").arg (m_modeName));
+      return;
+    }
+  if (m_stage == Stage::ShortBeforeMonitoring)
+    {
+      if (!rejectsLiveRepeat ()) return;
+      m_stage = Stage::ShortReplacement;
+      loadShortWav ();
+      return;
+    }
   m_awaitingCycle = true;
-  if (!m_window->startWavDecodeTest (m_wavPath))
-    finish (tr ("Unable to start the %1 WAV load.").arg (m_modeName));
+  decode->click ();
+  if (!m_finished && !m_activeGeneration)
+    finish (tr ("Manual decoding did not start for the short %1 WAV.").arg (m_modeName));
+}
+
+bool WavDecodeTestController::rejectsLiveRepeat ()
+{
+  auto * monitor = m_window->findChild<QAbstractButton *> ("monitorButton");
+  auto * decode = m_window->findChild<QAbstractButton *> ("DecodeButton");
+  if (!monitor || !decode || !monitor->isEnabled () || monitor->isChecked ())
+    {
+      finish (tr ("%1 monitoring was not ready to resume after WAV loading.").arg (m_modeName));
+      return false;
+    }
+  monitor->click ();
+  if (!monitor->isChecked () || m_window->diskDataActive ()
+      || (m_mode == Mode::Fst4w && decode->isEnabled ()))
+    {
+      finish (tr ("%1 monitoring did not restore live decode controls.").arg (m_modeName));
+      return false;
+    }
+  m_window->statusBar ()->clearMessage ();
+  QKeyEvent repeat {QEvent::KeyPress, Qt::Key_D, Qt::ShiftModifier};
+  QApplication::sendEvent (m_window, &repeat);
+  if (m_finished) return false;
+  auto const expectedStatus = m_mode == Mode::Fst4w
+    ? MainWindow::tr ("FST4W manual decoding is available only for WAV files.")
+    : MainWindow::tr ("No completed %1 reception is available to decode again.").arg (m_modeName);
+  if (m_window->decoderBusy () || m_activeGeneration || decode->isChecked ()
+      || m_window->statusBar ()->currentMessage () != expectedStatus)
+    {
+      finish (tr ("%1 accepted a stale manual repeat after resuming live monitoring.").arg (m_modeName));
+      return false;
+    }
+  monitor->click ();
+  return true;
 }
 
 void WavDecodeTestController::completeCycle (quint64 generation)
 {
   if (m_finished) return;
-  if (!m_activeGeneration || generation != m_activeGeneration || !m_observed)
+  if (!m_activeGeneration || generation != m_activeGeneration
+      || (expectsMessage () && !m_observed))
     {
       finish (tr ("Cycle %1 did not display the expected message: %2")
               .arg (generation).arg (m_expectedMessage));
@@ -203,35 +296,31 @@ void WavDecodeTestController::completeCycle (quint64 generation)
         finish (tr ("%1 decoding did not return to an idle disk-data state.").arg (m_modeName));
         return;
       }
-    if (m_completedCycles == 2)
+    if (m_stage == Stage::ShortFirst)
       {
-        if (m_mode == Mode::Fst4w)
-          {
-            auto * monitor = m_window->findChild<QAbstractButton *> ("monitorButton");
-            if (!monitor || !monitor->isEnabled () || monitor->isChecked ())
-              {
-                finish (tr ("FST4W monitoring was not ready to resume after WAV decoding."));
-                return;
-              }
-            monitor->click ();
-            if (!monitor->isChecked () || m_window->diskDataActive () || decode->isEnabled ())
-              {
-                finish (tr ("FST4W monitoring did not disable manual WAV decoding."));
-                return;
-              }
-            m_window->statusBar ()->clearMessage ();
-            QKeyEvent repeat {QEvent::KeyPress, Qt::Key_D, Qt::ShiftModifier};
-            QApplication::sendEvent (m_window, &repeat);
-            if (m_finished) return;
-            if (m_window->decoderBusy () || m_activeGeneration || decode->isChecked ()
-                || m_window->statusBar ()->currentMessage ()
-                     != MainWindow::tr ("FST4W manual decoding is available only for WAV files."))
-              {
-                finish (tr ("FST4W accepted a manual repeat after resuming live monitoring."));
-                return;
-              }
-            monitor->click ();
-          }
+        m_stage = Stage::Initial;
+        m_awaitingCycle = true;
+        if (!m_window->startWavDecodeTest (m_wavPath))
+          finish (tr ("Unable to start the %1 WAV load.").arg (m_modeName));
+        return;
+      }
+    if (m_stage == Stage::Repeat)
+      {
+        m_stage = m_mode == Mode::Jt9 || m_mode == Mode::Jt65
+          ? Stage::ShortReplacement : Stage::ShortBeforeMonitoring;
+        loadShortWav ();
+        return;
+      }
+    if (m_stage == Stage::ShortReplacement)
+      {
+        m_stage = Stage::ShortRepeat;
+        m_awaitingCycle = true;
+        decode->click ();
+        return;
+      }
+    if (m_stage == Stage::ShortRepeat)
+      {
+        if (m_mode == Mode::Fst4w && !rejectsLiveRepeat ()) return;
         finish ();
         return;
       }
@@ -251,6 +340,7 @@ void WavDecodeTestController::completeCycle (quint64 generation)
           }
         period->setValue (m_period);
       }
+    m_stage = Stage::Repeat;
     m_observed = false;
     m_awaitingCycle = true;
     decode->click ();
@@ -261,13 +351,14 @@ void WavDecodeTestController::finish (QString const& error)
 {
   if (m_finished) return;
   m_finished = true;
-  m_succeeded = error.isEmpty () && m_completedCycles == 2;
+  m_succeeded = error.isEmpty () && m_completedCycles == 5;
   m_timeout.stop ();
   m_prepareTimer.stop ();
   m_modalTimer.stop ();
   if (m_succeeded)
     std::cerr << "WSJT-X " << m_modeName.toStdString () << " WAV test passed: initial and repeat decode displayed "
-              << m_expectedMessage.toStdString () << std::endl;
+              << m_expectedMessage.toStdString () << "; short initial, replacement, and repeat WAV decodes were silent"
+              << std::endl;
   else
     std::cerr << "WSJT-X " << m_modeName.toStdString () << " WAV test failed: " << error.toStdString ()
               << " completed_cycles=" << m_completedCycles << std::endl;

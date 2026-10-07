@@ -5047,7 +5047,12 @@ void MainWindow::wav_file_loaded ()
       dec_data.params.newdat=0;
     }
   }
-  if (result->valid) beginDecoderInput ();
+  m_dataAvailable = result->valid && result->frames > 0;
+  if (result->valid) {
+    beginDecoderInput ();
+    // Opening another file supersedes retained audio even if monitoring resumes before decoding.
+    if (!decoderBusy ()) m_decoderSession.abort ();
+  }
   m_fileDateTime=result->fileDateTime;
   if (m_mode == "JTTY") {
     if (result->firstSampleUtc.isValid()) m_UTCdiskDateTime = result->firstSampleUtc;
@@ -5273,6 +5278,17 @@ void MainWindow::decode (Ft8MtdDecodeCoordinator::Stage ft8Stage,
       showStatusMessage (tr ("Decoder is starting; decode request skipped."));
       return;
     }
+  if (!m_dataAvailable || m_TRperiod == 0.0)
+    {
+      ui->DecodeButton->setChecked (false);
+      return;
+    }
+  if (usesJt9Process () && m_diskData
+      && m_decoderInput.inputId () != m_decoderSession.completedSnapshot ().metadata.input_id)
+    {
+      dec_data.params.newdat = true;
+      dec_data.params.nagain = false;
+    }
   if (m_mode == "FST4W" && !m_diskData && !dec_data.params.newdat)
     {
       ui->DecodeButton->setChecked (false);
@@ -5307,7 +5323,6 @@ void MainWindow::decode (Ft8MtdDecodeCoordinator::Stage ft8Stage,
   } else {
     dec_data.params.yymmdd=-1;
   }
-  if(!m_dataAvailable or m_TRperiod==0.0) return;
   ui->DecodeButton->setChecked (true);
   if(!dec_data.params.nagain && m_diskData && m_TRperiod >= 60. && m_mode != "Q65"
       && m_mode != "FST4" && m_mode != "FST4W") {

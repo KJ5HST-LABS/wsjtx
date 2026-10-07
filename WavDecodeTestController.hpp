@@ -3,6 +3,7 @@
 
 #include <QObject>
 #include <QString>
+#include <QTemporaryDir>
 #include <QTimer>
 
 class MainWindow;
@@ -19,6 +20,11 @@ public:
 
 private:
   void prepareWhenReady ();
+  enum class Stage {ShortFirst, Initial, Repeat, ShortBeforeMonitoring, ShortReplacement, ShortRepeat};
+  bool expectsMessage () const {return m_stage == Stage::Initial || m_stage == Stage::Repeat;}
+  void loadShortWav ();
+  void decodeShortWavWhenReady ();
+  bool rejectsLiveRepeat ();
   void completeCycle (quint64 generation);
   void finish (QString const& error = {});
 
@@ -28,6 +34,8 @@ private:
   QString m_modeName;
   QString m_wavPath;
   QString m_expectedMessage;
+  QTemporaryDir m_fixtureDirectory;
+  Stage m_stage {Stage::ShortFirst};
   QTimer m_timeout;
   QTimer m_prepareTimer;
   QTimer m_modalTimer;
