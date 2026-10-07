@@ -52,7 +52,7 @@ subroutine jt9_stream(shared_data, mode, TRperiod)
   use streaming_emit, only: streaming_emit_ready,                          &
        streaming_emit_decode_finished, streaming_emit_error,               &
        streaming_emit_error_code, streaming_emit_error_version,            &
-       streaming_emit_error_type
+       streaming_emit_error_type, streaming_emit_set_time_form
   use streaming_control, only: parse_control_frame, configure_fields,      &
        control_type_error, CTRL_CONFIGURE, CTRL_HALT, CTRL_PARSE_ERR
   use streaming_apply, only: apply_configure_fields
@@ -327,6 +327,7 @@ subroutine jt9_stream(shared_data, mode, TRperiod)
               prev_TRperiod = TRperiod
               call apply_configure_fields(cfg, mode, TRperiod,             &
                    shared_data%params, baseline_nfa, baseline_nfb)
+              call streaming_emit_set_time_form(cfg%utc_set, cfg%nutc_set, TRperiod)
               ! A configure that changes the applied mode or period starts a
               ! new period; what was in flight is discarded. Repeating the
               ! current configuration leaves the period alone.

@@ -10,6 +10,9 @@ target_include_directories (test_decoder_engine PRIVATE ${CMAKE_SOURCE_DIR})
 target_link_libraries (test_decoder_engine PRIVATE test_decoder_engine_signal)
 add_test (NAME test_decoder_engine COMMAND test_decoder_engine)
 set_tests_properties (test_decoder_engine PROPERTIES TIMEOUT 90)
+add_test (NAME prepare_ft8_engine_wav COMMAND test_decoder_engine
+  --write-wav ${CMAKE_CURRENT_BINARY_DIR}/ft8-engine.wav)
+set_tests_properties (prepare_ft8_engine_wav PROPERTIES FIXTURES_SETUP ft8_engine_wav TIMEOUT 15)
 
 add_executable (test_decoder_engine_ft4 test_decoder_engine_ft4.c)
 set_target_properties (test_decoder_engine_ft4 PROPERTIES LINKER_LANGUAGE CXX)

@@ -270,8 +270,44 @@ static void check_mtd_lifecycle(callback_context *context, decoder_attempt_reque
   free(saved);
 }
 
-int main(void)
+static void write_le(FILE *file, uint32_t value, unsigned bytes)
 {
+  for (unsigned i = 0; i < bytes; ++i) CHECK(fputc((value >> (8 * i)) & 255, file) != EOF);
+}
+
+static void write_wav(const char *path)
+{
+  const int count = 180000;
+  int16_t *samples = malloc(count * sizeof *samples);
+  int8_t payload[77], tones[79];
+  CHECK(samples);
+  decoder_engine_test_signal(samples, payload, tones, 6000);
+  FILE *file = fopen(path, "wb");
+  CHECK(file);
+  CHECK(fwrite("RIFF", 1, 4, file) == 4);
+  write_le(file, 36 + count * 2, 4);
+  CHECK(fwrite("WAVEfmt ", 1, 8, file) == 8);
+  write_le(file, 16, 4);
+  write_le(file, 1, 2);
+  write_le(file, 1, 2);
+  write_le(file, 12000, 4);
+  write_le(file, 24000, 4);
+  write_le(file, 2, 2);
+  write_le(file, 16, 2);
+  CHECK(fwrite("data", 1, 4, file) == 4);
+  write_le(file, count * 2, 4);
+  for (int i = 0; i < count; ++i) write_le(file, (uint16_t)samples[i], 2);
+  CHECK(fclose(file) == 0);
+  free(samples);
+}
+
+int main(int argc, char **argv)
+{
+  if (argc == 3 && !strcmp(argv[1], "--write-wav")) {
+    write_wav(argv[2]);
+    return 0;
+  }
+  CHECK(argc == 1);
   decoder_engine_options options = {DECODER_ENGINE_ABI};
   decoder_engine_handle engine = NULL, second = NULL;
   decoder_engine_capabilities capabilities;

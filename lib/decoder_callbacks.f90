@@ -788,7 +788,8 @@ contains
     endif
 
     if (streaming_emit_enabled()) then
-       call streaming_emit_decode("FST4", nutc, nsnr, dt, nint(freq), decoded0,context%utc_is_hhmmss)
+       call streaming_emit_decode(merge('FST4W','FST4 ',context%mode==engine_mode_fst4w), &
+            nutc, nsnr, dt, nint(freq), decoded0,context%utc_is_hhmmss)
     else
        write(*,1005) line
     end if
