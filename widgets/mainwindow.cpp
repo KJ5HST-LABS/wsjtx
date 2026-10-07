@@ -5518,7 +5518,8 @@ void MainWindow::decode (Ft8MtdDecodeCoordinator::Stage ft8Stage,
     dec_data.params.ntrperiod=int(m_TRperiod);
     dec_data.params.lwidedxcsearch=m_FT8WideDxCallSearch ? 1 : 0;
   }
-  ::memcpy(dec_data.params.datetime, m_dateTime.toLatin1()+"    ", sizeof dec_data.params.datetime);
+  auto const dateTime = m_dateTime.toLatin1().leftJustified (sizeof dec_data.params.datetime, ' ', true);
+  ::memcpy(dec_data.params.datetime, dateTime.constData (), sizeof dec_data.params.datetime);
   ::memcpy(dec_data.params.mycall, (m_config.my_callsign()+"            ").toLatin1(),12);
   
   ::memcpy(dec_data.params.mybcall, (Radio::base_callsign(m_config.my_callsign())+"            ").toLatin1(),12);
