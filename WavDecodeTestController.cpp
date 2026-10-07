@@ -230,6 +230,10 @@ void WavDecodeTestController::decodeShortWavWhenReady ()
   if (m_stage == Stage::ShortBeforeMonitoring)
     {
       if (!rejectsLiveRepeat ()) return;
+      // A new WAV must not inherit the frequency of the previous live period.
+      QKeyEvent qsy {QEvent::KeyPress, Qt::Key_F12,
+                     Qt::ControlModifier | Qt::ShiftModifier};
+      QApplication::sendEvent (m_window, &qsy);
       m_stage = Stage::ShortReplacement;
       loadShortWav ();
       return;

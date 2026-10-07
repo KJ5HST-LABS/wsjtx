@@ -5893,9 +5893,10 @@ bool MainWindow::initializeDecoderSharedMemory ()
 
 DecodeOperatingContext MainWindow::currentDecodeOperatingContext () const
 {
-  auto const periodFrequency = m_freqNominalPeriod ? m_freqNominalPeriod
-                                                    : m_operatingFrequency.rx ();
-  auto const periodBand = m_currentBandPeriod.isEmpty ()
+  // WAV input is independent of the live period retained across a dial change.
+  auto const periodFrequency = !m_diskData && m_freqNominalPeriod ? m_freqNominalPeriod
+                                                                 : m_operatingFrequency.rx ();
+  auto const periodBand = m_diskData || m_currentBandPeriod.isEmpty ()
     ? m_config.bands ()->find (periodFrequency) : m_currentBandPeriod;
   DecodeOperatingContext context;
   context.mode = m_mode;
