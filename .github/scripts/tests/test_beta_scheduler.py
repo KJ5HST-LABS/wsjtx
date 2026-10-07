@@ -1152,6 +1152,9 @@ class RepositoryTest(unittest.TestCase):
         self.work = self.root / "work"
         self.git(self.root, "init", "--bare", "--initial-branch=develop", str(self.origin))
         self.git(self.root, "init", "--initial-branch=develop", str(self.work))
+        # Background auto-maintenance would race the directory's removal.
+        for repository in (self.origin, self.work):
+            self.git(repository, "config", "maintenance.auto", "false")
         (self.work / "app.txt").write_text("one\n")
         (self.work / STATE).write_bytes(state("DEVEL", version="9.1.0"))
         self.base = self.commit("develop base")
@@ -1164,7 +1167,8 @@ class RepositoryTest(unittest.TestCase):
         self.develop = self.commit("develop work")
         self.git(self.work, "push", str(self.origin), f"{self.develop}:refs/heads/develop")
         self.checkout = self.root / "checkout"
-        self.git(self.root, "clone", "--quiet", str(self.origin), str(self.checkout))
+        self.git(self.root, "clone", "--quiet", "--config", "maintenance.auto=false",
+                 str(self.origin), str(self.checkout))
         self.repository = beta.Repository(self.checkout, str(self.origin))
         self.repository.sync()
 
