@@ -78,7 +78,7 @@ jobs:
     timeout-minutes: ${{ inputs.sanitizer == 'tsan' && 180 || 60 }}
     continue-on-error: ${{ inputs.advisory }}
     container:
-      image: ${{ inputs.sanitizer == 'tsan' && format('ghcr.io/wsjtx/wsjtx-internal/linux-tsan-noble:{0}', needs.resolve-image.outputs.image_tag) || format('ghcr.io/wsjtx/wsjtx-internal/linux-noble:{0}', needs.resolve-image.outputs.image_tag) }}
+      image: ${{ inputs.sanitizer == 'tsan' && format('ghcr.io/kj5hst-labs/wsjtx-internal-sandbox/linux-tsan-noble:{0}', needs.resolve-image.outputs.image_tag) || format('ghcr.io/kj5hst-labs/wsjtx-internal-sandbox/linux-noble:{0}', needs.resolve-image.outputs.image_tag) }}
       options: --shm-size=1g
       credentials:
         username: ${{ github.actor }}

@@ -232,7 +232,7 @@ jobs:
                 echo "::error::image digests are valid only for public-release images"
                 exit 2
               fi
-              package_root=ghcr.io/wsjtx/wsjtx-internal
+              package_root=ghcr.io/kj5hst-labs/wsjtx-internal-sandbox
               ;;
             public-release)
               case "$REQUEST_REPOSITORY:$GITHUB_REF" in

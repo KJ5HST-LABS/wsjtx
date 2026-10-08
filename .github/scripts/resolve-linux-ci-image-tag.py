@@ -13,12 +13,12 @@ sys.path.insert(0, str(Path(__file__).parent))
 from ghcr_retention import GitHubPackagesClient, Version  # noqa: E402, F401
 
 
-OWNER = "WSJTX"
-NORMAL_PACKAGE = "wsjtx-internal/linux-noble"
-TSAN_PACKAGE = "wsjtx-internal/linux-tsan-noble"
-ARM64_PACKAGE = "wsjtx-internal/linux-arm64-bookworm"
-ARMHF_PACKAGE = "wsjtx-internal/linux-armv7-bookworm"
-ARMHF_CROSS_PACKAGE = "wsjtx-internal/linux-armhf-cross-bookworm"
+OWNER = "KJ5HST-LABS"
+NORMAL_PACKAGE = "wsjtx-internal-sandbox/linux-noble"
+TSAN_PACKAGE = "wsjtx-internal-sandbox/linux-tsan-noble"
+ARM64_PACKAGE = "wsjtx-internal-sandbox/linux-arm64-bookworm"
+ARMHF_PACKAGE = "wsjtx-internal-sandbox/linux-armv7-bookworm"
+ARMHF_CROSS_PACKAGE = "wsjtx-internal-sandbox/linux-armhf-cross-bookworm"
 ROUTINE_PACKAGES = (ARM64_PACKAGE,)
 BUILD_TAG = re.compile(r"^build-\d{8}-\d+-\d+$")
 
