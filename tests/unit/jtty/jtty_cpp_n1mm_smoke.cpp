@@ -1,12 +1,11 @@
 #include "widgets/JttyN1mm.hpp"
-#include "wsjtx_config.h"
+#include "lib/jtty/JttyTransmit.hpp"
 
 #include <algorithm>
 #include <array>
 
 extern "C" void genjtty_atoms_c (Jtty::NativeAtomDescriptor const atoms[], int natoms,
                                  int tones[], int* nsym, int* status);
-extern "C" void genjtty_profile_ (char*, int const*, int*, int*, int*, int const*, fortran_charlen_t);
 
 extern "C" int jtty_cpp_n1mm_smoke (int tones[], int* nsym)
 {
@@ -62,18 +61,21 @@ extern "C" int jtty_cpp_rtty_smoke (int tones[], int* nsym)
     auto text = Jtty::transmitFrame (example.raw).toLatin1 ();
     int packedSymbols {};
     std::array<int, 16> frameStarts {};
+    std::array<char, 16 * 34> frames {};
+    int nframes {};
+    int textStatus {};
     int const isFinal = 1;
     auto profile = static_cast<int> (context.exchangeProfile);
-    genjtty_profile_ (text.data (), &profile, packedTones.data (), &packedSymbols,
-                      frameStarts.data (), &isFinal, text.size ());
+    genjtty_text_c (text.data (), profile, isFinal, packedTones.data (), &packedSymbols,
+                    frames.data (), &nframes, frameStarts.data (), &textStatus);
     if (packedSymbols != *nsym || !std::equal (tones, tones + *nsym, packedTones.cbegin ()) ||
         text != Jtty::transmitFrame (example.canonical).toLatin1 ()) {
       return static_cast<int> (Jtty::NativeEncodeStatus::InvalidDescriptor);
     }
     text = Jtty::transmitFrame (example.raw).toLatin1 ();
     profile = static_cast<int> (Jtty::NativeExchangeProfile::None);
-    genjtty_profile_ (text.data (), &profile, packedTones.data (), &packedSymbols,
-                      frameStarts.data (), &isFinal, text.size ());
+    genjtty_text_c (text.data (), profile, isFinal, packedTones.data (), &packedSymbols,
+                    frames.data (), &nframes, frameStarts.data (), &textStatus);
     if (packedSymbols != 2 * *nsym || text != Jtty::transmitFrame (example.raw).toLatin1 ()) {
       return static_cast<int> (Jtty::NativeEncodeStatus::InvalidDescriptor);
     }
