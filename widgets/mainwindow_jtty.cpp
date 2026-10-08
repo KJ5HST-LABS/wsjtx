@@ -475,7 +475,7 @@ void MainWindow::execute_jtty_tx(qint64 requestId, QString message, bool isFinal
   }
 
   int const exchangeProfile = static_cast<int>(jttyExchangeProfile(m_config));
-  // One-shot encode of text already known to fit (no retry): used for the initial non-final pass and to re-bake a line's true last segment once its real EOM status is known.
+  // One-shot encode; empty tones mean the text did not encode. Used for the initial non-final pass and to re-bake a line's true last segment once its real EOM status is known.
   auto encodeOnce = [&] (QString const& text, bool segmentIsFinal) {
     Jtty::TransmitSegment segment;
     auto frame = Jtty::transmitFrame(text).toLatin1();
@@ -494,6 +494,8 @@ void MainWindow::execute_jtty_tx(qint64 requestId, QString message, bool isFinal
         // Fortran gives 1-indexed columns; store 0-indexed offsets.
         segment.frameCharStarts.append(frameStarts[i] - 1);
       }
+    } else {
+      segment.tones.clear();
     }
     return segment;
   };
@@ -529,7 +531,10 @@ void MainWindow::execute_jtty_tx(qint64 requestId, QString message, bool isFinal
     if (!lineIsFinal) continue;
     auto& last = segments.last();
     auto final_ = encodeOnce(last.text, /*segmentIsFinal=*/true);
-    Q_ASSERT (!final_.tones.isEmpty());   // same text that just succeeded above
+    if (final_.tones.isEmpty()) {
+      Q_EMIT jttyTextRejected(requestId, JttyTxRejectReason::EncodingFailed);
+      return;
+    }
     final_.frequency = last.frequency;
     last = std::move(final_);
   }
