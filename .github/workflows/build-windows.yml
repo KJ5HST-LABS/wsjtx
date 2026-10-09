@@ -215,6 +215,14 @@ jobs:
           if (-not $omnirig) { throw "OmniRig install failed — OmniRig.exe not found" }
           echo "OMNIRIG_PATH=$($omnirig.FullName)" >> $env:GITHUB_ENV
 
+      # Checkout's Git for Windows wrote the index; MSYS2's git, which
+      # getsvn runs, sees stale stat data until it refreshes.
+      - name: Refresh the git index for the revision label
+        run: |
+          git update-index -q --refresh || true
+          git status --short --untracked-files=no
+          git diff-index --quiet HEAD -- || { echo "::error::tracked files differ from HEAD"; exit 1; }
+
       - name: Configure build and tests
         run: |
           WORKSPACE=$(cygpath "${GITHUB_WORKSPACE}")

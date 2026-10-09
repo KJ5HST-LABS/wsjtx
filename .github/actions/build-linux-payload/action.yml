@@ -144,6 +144,16 @@ runs:
         ccache --show-config
         ccache --zero-stats
 
+    # The container's git does not own the workspace, and getsvn's
+    # diff-index does not refresh stat data; either labels the build -dirty.
+    - name: Refresh the git index for the revision label
+      shell: bash
+      run: |
+        git config --global --add safe.directory "${GITHUB_WORKSPACE}"
+        git update-index -q --refresh || true
+        git status --short --untracked-files=no
+        git diff-index --quiet HEAD -- || { echo "::error::tracked files differ from HEAD"; exit 1; }
+
     # Exercise the public CMake default without duplicating its compile graph.
     # AUTO resolves to BOTH on the OpenMP-capable Linux x86_64 toolchain.
     - name: Configure default Fortran graph
