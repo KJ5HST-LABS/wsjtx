@@ -532,10 +532,15 @@ add_executable (fmeasure lib/fmeasure.f90)
 # build the wsprd WSPR mode decoder driver
 generate_version_info (wsprd_VERSION_RESOURCES
   NAME wsprd
-  BUNDLE ${PROJECT_BUNDLE_NAME}
+  BUNDLE "wsprd, unofficial build based on WSJT-X code"
+  VENDOR_NAME "KJ5HST-LABS"
+  COMMENTS "Unofficial build based on WSJT-X code, not a WSJT-X release"
   ICON ${WSJTX_ICON_FILE}
   FILE_DESCRIPTION "WSPR mode decoder"
 )
+if (WIN32)
+  set_source_files_properties (${wsprd_VERSION_RESOURCES} PROPERTIES COMPILE_DEFINITIONS PRODUCT_WITHOUT_ICON)
+endif ()
 # message(STATUS "RC compiler: ${CMAKE_RC_COMPILER}")
 #  message(STATUS "RC rule: ${CMAKE_RC_COMPILE_OBJECT}")
 #  message(STATUS "wsprd_VERSION_RESOURCES: ${wsprd_VERSION_RESOURCES}")
@@ -979,10 +984,15 @@ endif ()
 # Build jt9codec with shared-memory worker mode disabled.
 generate_version_info (jt9codec_VERSION_RESOURCES
   NAME jt9codec
-  BUNDLE ${PROJECT_BUNDLE_NAME}
+  BUNDLE "jt9codec, unofficial build based on WSJT-X code"
+  VENDOR_NAME "KJ5HST-LABS"
+  COMMENTS "Unofficial build based on WSJT-X code, not a WSJT-X release"
   ICON ${WSJTX_ICON_FILE}
-  FILE_DESCRIPTION "jt9codec - WSJT-X Qt-free streaming decoder"
+  FILE_DESCRIPTION "jt9codec - Qt-free stream codec"
   )
+if (WIN32)
+  set_source_files_properties (${jt9codec_VERSION_RESOURCES} PROPERTIES COMPILE_DEFINITIONS PRODUCT_WITHOUT_ICON)
+endif ()
 add_executable (jt9codec ${jt9codec_FSRCS} ${jt9codec_VERSION_RESOURCES})
 target_compile_definitions (jt9codec PRIVATE JT9_PROGRAM_NAME=\"jt9codec\")
 # jt9codec shares jt9's Fortran module directory (fortran_modules_omp) so it
